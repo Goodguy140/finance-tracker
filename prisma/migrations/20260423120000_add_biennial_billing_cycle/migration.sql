@@ -1,0 +1,1 @@
+-- BillingCycle enum extended with BIENNIAL. SQLite stores enum values as TEXT; existing rows unchanged.

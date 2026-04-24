@@ -1,0 +1,260 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SERVER_ADMIN
+  USER
+}
+
+enum AccountType {
+  CHEQUING
+  SAVINGS
+  CREDIT_CARD
+  TFSA
+  RRSP
+  FHSA
+  NON_REGISTERED
+  CASH
+}
+
+enum CategoryKind {
+  EXPENSE
+  INCOME
+}
+
+enum TransactionType {
+  EXPENSE
+  INCOME
+}
+
+enum BillingCycle {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  BIENNIAL
+}
+
+enum InvestmentFlowDirection {
+  CONTRIBUTION
+  WITHDRAWAL
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String?
+  displayName     String
+  timezone        String    @default("America/Toronto")
+  countryCode     String    @default("CA")
+  emailVerifiedAt DateTime?
+  role            UserRole  @default(USER)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  authAccounts        AuthAccount[]
+  sessions            Session[]
+  resetTokens         PasswordResetToken[]
+  accounts            Account[]
+  categories          Category[]
+  transactions        Transaction[]
+  splitTransaction    SplitTransactionPart[]
+  budgets             Budget[]
+  subscriptions       Subscription[]
+  investmentFlows     InvestmentFlow[]
+  portfolioSnapshots  PortfolioSnapshot[]
+  updatedServerConfig ServerSetting[] @relation("ServerSettingUpdatedBy")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuthAccount {
+  id                String  @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  accessToken       String?
+  refreshToken      String?
+  expiresAt         Int?
+  tokenType         String?
+  scope             String?
+  idToken           String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model ServerSetting {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  encryptedValue  String
+  updatedByUserId String?
+  updatedAt       DateTime @updatedAt
+
+  updatedBy User? @relation("ServerSettingUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+}
+
+model Account {
+  id          String      @id @default(cuid())
+  userId      String
+  name        String
+  type        AccountType
+  currency    String      @default("CAD")
+  countryCode String      @default("CA")
+  provider    String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions       Transaction[]
+  subscriptions      Subscription[]
+  investmentFlows    InvestmentFlow[]
+  portfolioSnapshots PortfolioSnapshot[]
+}
+
+model Category {
+  id        String       @id @default(cuid())
+  userId    String
+  name      String
+  kind      CategoryKind
+  isDefault Boolean      @default(false)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions      Transaction[]
+  splitParts        SplitTransactionPart[]
+  budgets           Budget[]
+  subscriptions     Subscription[]
+
+  @@unique([userId, name, kind])
+}
+
+model Transaction {
+  id          String          @id @default(cuid())
+  userId      String
+  accountId   String
+  categoryId  String
+  type        TransactionType
+  amountCents Int
+  title       String?
+  date        DateTime
+  postedDate  DateTime?
+  accountDescription String?
+  note        String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account    Account                @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category   Category               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  splitParts SplitTransactionPart[]
+}
+
+model SplitTransactionPart {
+  id            String   @id @default(cuid())
+  userId        String
+  transactionId String
+  categoryId    String
+  amountCents   Int
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  category    Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+}
+
+model Budget {
+  id          String   @id @default(cuid())
+  userId      String
+  categoryId  String
+  name        String?
+  periodMonth String
+  limitCents  Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, categoryId, periodMonth])
+}
+
+model Subscription {
+  id             String       @id @default(cuid())
+  userId         String
+  accountId      String
+  categoryId     String
+  name           String
+  amountCents    Int
+  billingCycle   BillingCycle
+  nextChargeDate DateTime
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account  Account  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+}
+
+model InvestmentFlow {
+  id          String                  @id @default(cuid())
+  userId      String
+  accountId   String
+  date        DateTime
+  direction   InvestmentFlowDirection
+  amountCents Int
+  note        String?
+  createdAt   DateTime                @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+}
+
+model PortfolioSnapshot {
+  id              String   @id @default(cuid())
+  userId          String
+  accountId       String
+  date            DateTime
+  totalValueCents Int
+  note            String?
+  createdAt       DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+}
