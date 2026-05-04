@@ -30,16 +30,26 @@ export default async function SettingsPage() {
   }));
 
   return (
-    <main className="mx-auto my-8 max-w-2xl space-y-4 p-4 text-slate-100">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Settings</h1>
-        <Link href="/" className="text-blue-300 hover:text-blue-200 underline">Back to dashboard</Link>
+    <main className="mx-auto my-6 max-w-6xl space-y-5 px-4 pb-10 pt-2 text-slate-100 sm:px-5 lg:my-10 lg:space-y-6 lg:px-8">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Settings</h1>
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          {user.role === "SERVER_ADMIN" ? (
+            <Link
+              href="/settings/admin"
+              className="inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 transition hover:bg-slate-800"
+            >
+              Server admin
+            </Link>
+          ) : null}
+          <Link
+            href="/"
+            className="inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 transition hover:bg-slate-800"
+          >
+            Back to dashboard
+          </Link>
+        </div>
       </div>
-      {user.role === "SERVER_ADMIN" && (
-        <Link href="/settings/admin" className="inline-block rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 transition hover:bg-slate-800">
-          Server Admin Settings
-        </Link>
-      )}
       <SettingsForms
         defaults={{
           displayName: user.displayName,

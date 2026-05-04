@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, useSyncExternalStore, type ChangeEvent, type ReactNode } from "react";
+import { useId, useLayoutEffect, useState, useSyncExternalStore, type ChangeEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { signIn, signOut } from "next-auth/react";
 import { GoogleSignInForm } from "@/components/google-sign-in-form";
@@ -1157,6 +1157,25 @@ export function InvestmentForms({ accounts }: { accounts: Option[] }) {
   );
 }
 
+type SettingsTabId = "profile" | "data" | "budgets" | "advanced";
+
+const SETTINGS_TAB_META: { id: SettingsTabId; label: string; labelCompact: string; hint: string }[] = [
+  { id: "profile", label: "Profile", labelCompact: "Profile", hint: "Display name, country, timezone, password" },
+  {
+    id: "data",
+    label: "Import & accounts",
+    labelCompact: "Import",
+    hint: "CSV import and financial accounts",
+  },
+  { id: "budgets", label: "Budgets", labelCompact: "Budgets", hint: "Category spending limits" },
+  {
+    id: "advanced",
+    label: "Advanced",
+    labelCompact: "Advanced",
+    hint: "Clear financial data or delete your login",
+  },
+];
+
 export function SettingsForms({
   defaults,
   accounts,
@@ -1170,177 +1189,258 @@ export function SettingsForms({
   expenseCategories: Option[];
   budgets: Array<{ id: string; periodMonth: string; name: string | null; categoryName: string; limitCents: number }>;
 }) {
+  const [tab, setTab] = useState<SettingsTabId>("profile");
+
+  useLayoutEffect(() => {
+    const syncFromHash = () => {
+      if (typeof window === "undefined") return;
+      if (window.location.hash.toLowerCase() === "#budgets") {
+        setTab("budgets");
+      }
+    };
+    syncFromHash();
+    window.addEventListener("hashchange", syncFromHash);
+    return () => window.removeEventListener("hashchange", syncFromHash);
+  }, []);
+
   return (
-    <div className="space-y-4">
-      <ExpenseCsvImportForm accounts={accounts} expenseCategories={expenseCategories} />
-      <div className="space-y-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-        <h3 className="font-semibold text-slate-100">Accounts</h3>
-        <p className="text-xs leading-relaxed text-slate-400">
-          Archive hides an account from dashboard pickers and import defaults; past transactions stay unchanged. Archiving
-          is blocked while a subscription, investment flow, or snapshot still uses the account. Remove deletes the
-          account row; past expenses and income stay in history with the stored account name. Remove uses the same
-          dependency rules.
-        </p>
-        <form action={createFinancialAccountAction} className="grid grid-cols-2 gap-2">
-          <input name="name" placeholder="Account name" className={`col-span-2 ${inputClass}`} />
-          <select name="type" className={selectClass}>
-            <option value="CHEQUING">Chequing</option>
-            <option value="SAVINGS">Savings</option>
-            <option value="CREDIT_CARD">Credit card</option>
-            <option value="TFSA">TFSA</option>
-            <option value="RRSP">RRSP</option>
-            <option value="FHSA">FHSA</option>
-            <option value="NON_REGISTERED">Non-registered</option>
-            <option value="CASH">Cash</option>
-          </select>
-          <button className={primaryBtnClass}>Add account</button>
-        </form>
-        <div className="space-y-2">
-          <h4 className="text-xs font-medium uppercase tracking-wide text-slate-500">Active</h4>
-          {accountItems.every((a) => a.archived) ? (
-            <p className="text-sm text-slate-500">No active accounts. Add one above, or restore an archived account.</p>
-          ) : null}
-          {accountItems
-            .filter((a) => !a.archived)
-            .map((account) => (
-              <div
-                key={account.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-950/50 p-2.5 text-sm"
+    <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-10">
+      <nav
+        className="shrink-0 border-b border-slate-800/80 pb-1 lg:sticky lg:top-24 lg:w-56 lg:self-start lg:border-b-0 lg:border-r lg:border-slate-800/90 lg:pb-0 lg:pr-8"
+        aria-label="Settings sections"
+      >
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500 lg:mb-3">Sections</p>
+        <div
+          role="tablist"
+          className="flex flex-row gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0"
+        >
+          {SETTINGS_TAB_META.map((t) => {
+            const selected = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                title={t.hint}
+                className={`touch-manipulation rounded-xl border px-3.5 py-2.5 text-left text-sm font-medium transition sm:px-4 ${
+                  selected
+                    ? "border-slate-600 bg-slate-800 text-slate-50 shadow-sm ring-1 ring-slate-700/80"
+                    : "border-transparent bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:bg-slate-900/90 hover:text-slate-200"
+                } shrink-0 whitespace-nowrap lg:w-full lg:shrink lg:whitespace-normal`}
+                onClick={() => setTab(t.id)}
               >
-                <p className="text-slate-200">
-                  {account.name} ({account.type})
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <form action={setFinancialAccountArchivedAction}>
-                    <input type="hidden" name="accountId" value={account.id} />
-                    <input type="hidden" name="archived" value="true" />
-                    <button type="submit" className={secondaryBtnClass}>
-                      Archive
-                    </button>
-                  </form>
-                  <form action={deleteFinancialAccountAction}>
-                    <input type="hidden" name="accountId" value={account.id} />
-                    <button type="submit" className={secondaryBtnClass}>
-                      Remove
-                    </button>
-                  </form>
-                </div>
-              </div>
-            ))}
-          {accountItems.some((a) => a.archived) ? (
-            <>
-              <h4 className="pt-2 text-xs font-medium uppercase tracking-wide text-slate-500">Archived</h4>
-              {accountItems
-                .filter((a) => a.archived)
-                .map((account) => (
-                  <div
-                    key={account.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-700/60 bg-slate-950/30 p-2.5 text-sm opacity-95"
-                  >
-                    <p className="text-slate-300">
-                      {account.name} ({account.type})
-                      <span className="ml-2 rounded-md border border-slate-600 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-400">
-                        Hidden
-                      </span>
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <form action={setFinancialAccountArchivedAction}>
-                        <input type="hidden" name="accountId" value={account.id} />
-                        <input type="hidden" name="archived" value="false" />
-                        <button type="submit" className={secondaryBtnClass}>
-                          Restore
-                        </button>
-                      </form>
-                      <form action={deleteFinancialAccountAction}>
-                        <input type="hidden" name="accountId" value={account.id} />
-                        <button type="submit" className={secondaryBtnClass}>
-                          Remove
-                        </button>
-                      </form>
-                    </div>
-                  </div>
-                ))}
-            </>
-          ) : null}
+                <span className="lg:hidden">{t.id === "data" ? t.labelCompact : t.label}</span>
+                <span className="hidden lg:inline">{t.label}</span>
+              </button>
+            );
+          })}
         </div>
-      </div>
-      <div id="budgets" className="budget-settings-card scroll-mt-6 space-y-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-        <h3 className="font-semibold text-slate-100">Budgets</h3>
-        <p className="text-sm text-slate-400">One rolling budget with category entries. Type a category to create one, or pick a suggested match.</p>
-        <BudgetForm expenseCategories={expenseCategories} />
-        <div className="space-y-2">
-          <h4 className="text-sm font-medium text-slate-200">All budgets</h4>
-          {budgets.map((budget) => (
-            <div key={budget.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
-              <form action={updateBudgetAction} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
-                <input type="hidden" name="budgetId" value={budget.id} />
-                <div className="space-y-2">
-                  <input
-                    name="name"
-                    defaultValue={budget.name ?? budget.categoryName}
-                    className={inputClass}
-                    placeholder="Budget name"
-                    required
-                  />
-                  <p className="text-xs text-slate-400">{budget.categoryName} - {budget.periodMonth}</p>
-                </div>
-                <CurrencyAmountInput
-                  name="limit"
-                  defaultValue={(budget.limitCents / 100).toFixed(2)}
-                  placeholder="Limit"
-                  required
-                />
-                <button type="submit" className={`${primaryBtnClass} w-full sm:w-auto`}>Save</button>
+      </nav>
+
+      <div className="min-w-0 flex-1 space-y-4">
+        {tab === "profile" ? (
+          <div className="space-y-4" role="tabpanel" aria-label="Profile">
+            <form action={updateProfileAction} className="space-y-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 lg:p-5">
+              <h3 className="text-base font-semibold text-slate-100 lg:text-lg">Profile</h3>
+              <input name="displayName" defaultValue={defaults.displayName} className={inputClass} />
+              <input name="countryCode" defaultValue={defaults.countryCode} className={inputClass} />
+              <input name="timezone" defaultValue={defaults.timezone} className={inputClass} />
+              <button className={primaryBtnClass}>Save profile</button>
+            </form>
+            <form action={changePasswordAction} className="space-y-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 lg:p-5">
+              <h3 className="text-base font-semibold text-slate-100 lg:text-lg">Change password</h3>
+              <input type="password" name="currentPassword" placeholder="Current password" className={inputClass} />
+              <input type="password" name="newPassword" placeholder="New password" className={inputClass} />
+              <input type="password" name="confirmPassword" placeholder="Confirm new password" className={inputClass} />
+              <button className={primaryBtnClass}>Update password</button>
+            </form>
+          </div>
+        ) : null}
+
+        {tab === "data" ? (
+          <div className="space-y-4" role="tabpanel" aria-label="Import and accounts">
+            <ExpenseCsvImportForm accounts={accounts} expenseCategories={expenseCategories} />
+            <div className="space-y-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 lg:p-5">
+              <h3 className="text-base font-semibold text-slate-100 lg:text-lg">Accounts</h3>
+              <p className="text-xs leading-relaxed text-slate-400">
+                Archive hides an account from dashboard pickers and import defaults; past transactions stay unchanged.
+                Archiving is blocked while a subscription, investment flow, or snapshot still uses the account. Remove
+                deletes the account row; past expenses and income stay in history with the stored account name. Remove
+                uses the same dependency rules.
+              </p>
+              <form action={createFinancialAccountAction} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <input name="name" placeholder="Account name" className={`sm:col-span-2 ${inputClass}`} />
+                <select name="type" className={selectClass}>
+                  <option value="CHEQUING">Chequing</option>
+                  <option value="SAVINGS">Savings</option>
+                  <option value="CREDIT_CARD">Credit card</option>
+                  <option value="TFSA">TFSA</option>
+                  <option value="RRSP">RRSP</option>
+                  <option value="FHSA">FHSA</option>
+                  <option value="NON_REGISTERED">Non-registered</option>
+                  <option value="CASH">Cash</option>
+                </select>
+                <button className={`${primaryBtnClass} w-full sm:w-auto`}>Add account</button>
               </form>
-              <div className="mt-2 flex justify-end">
-                <form action={deleteBudgetAction}>
-                  <input type="hidden" name="budgetId" value={budget.id} />
-                  <button className={secondaryBtnClass}>Remove</button>
-                </form>
+              <div className="space-y-2">
+                <h4 className="text-xs font-medium uppercase tracking-wide text-slate-500">Active</h4>
+                {accountItems.every((a) => a.archived) ? (
+                  <p className="text-sm text-slate-500">
+                    No active accounts. Add one above, or restore an archived account.
+                  </p>
+                ) : null}
+                {accountItems
+                  .filter((a) => !a.archived)
+                  .map((account) => (
+                    <div
+                      key={account.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-950/50 p-2.5 text-sm"
+                    >
+                      <p className="text-slate-200">
+                        {account.name} ({account.type})
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <form action={setFinancialAccountArchivedAction}>
+                          <input type="hidden" name="accountId" value={account.id} />
+                          <input type="hidden" name="archived" value="true" />
+                          <button type="submit" className={secondaryBtnClass}>
+                            Archive
+                          </button>
+                        </form>
+                        <form action={deleteFinancialAccountAction}>
+                          <input type="hidden" name="accountId" value={account.id} />
+                          <button type="submit" className={secondaryBtnClass}>
+                            Remove
+                          </button>
+                        </form>
+                      </div>
+                    </div>
+                  ))}
+                {accountItems.some((a) => a.archived) ? (
+                  <>
+                    <h4 className="pt-2 text-xs font-medium uppercase tracking-wide text-slate-500">Archived</h4>
+                    {accountItems
+                      .filter((a) => a.archived)
+                      .map((account) => (
+                        <div
+                          key={account.id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-700/60 bg-slate-950/30 p-2.5 text-sm opacity-95"
+                        >
+                          <p className="text-slate-300">
+                            {account.name} ({account.type})
+                            <span className="ml-2 rounded-md border border-slate-600 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                              Hidden
+                            </span>
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <form action={setFinancialAccountArchivedAction}>
+                              <input type="hidden" name="accountId" value={account.id} />
+                              <input type="hidden" name="archived" value="false" />
+                              <button type="submit" className={secondaryBtnClass}>
+                                Restore
+                              </button>
+                            </form>
+                            <form action={deleteFinancialAccountAction}>
+                              <input type="hidden" name="accountId" value={account.id} />
+                              <button type="submit" className={secondaryBtnClass}>
+                                Remove
+                              </button>
+                            </form>
+                          </div>
+                        </div>
+                      ))}
+                  </>
+                ) : null}
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        ) : null}
+
+        {tab === "budgets" ? (
+          <div
+            id="budgets"
+            className="budget-settings-card scroll-mt-24 space-y-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 lg:p-5"
+            role="tabpanel"
+            aria-label="Budgets"
+          >
+            <h3 className="text-base font-semibold text-slate-100 lg:text-lg">Budgets</h3>
+            <p className="text-sm text-slate-400">
+              One rolling budget with category entries. Type a category to create one, or pick a suggested match.
+            </p>
+            <BudgetForm expenseCategories={expenseCategories} />
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium text-slate-200">All budgets</h4>
+              {budgets.map((budget) => (
+                <div key={budget.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
+                  <form action={updateBudgetAction} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+                    <input type="hidden" name="budgetId" value={budget.id} />
+                    <div className="space-y-2">
+                      <input
+                        name="name"
+                        defaultValue={budget.name ?? budget.categoryName}
+                        className={inputClass}
+                        placeholder="Budget name"
+                        required
+                      />
+                      <p className="text-xs text-slate-400">
+                        {budget.categoryName} - {budget.periodMonth}
+                      </p>
+                    </div>
+                    <CurrencyAmountInput
+                      name="limit"
+                      defaultValue={(budget.limitCents / 100).toFixed(2)}
+                      placeholder="Limit"
+                      required
+                    />
+                    <button type="submit" className={`${primaryBtnClass} w-full sm:w-auto`}>
+                      Save
+                    </button>
+                  </form>
+                  <div className="mt-2 flex justify-end">
+                    <form action={deleteBudgetAction}>
+                      <input type="hidden" name="budgetId" value={budget.id} />
+                      <button className={secondaryBtnClass}>Remove</button>
+                    </form>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {tab === "advanced" ? (
+          <div className="space-y-4" role="tabpanel" aria-label="Advanced">
+            <form action={clearUserFinancialDataAction} className="space-y-2 rounded-2xl border border-amber-800/60 bg-amber-950/25 p-4 lg:p-5">
+              <h3 className="text-base font-semibold text-amber-200 lg:text-lg">Clear financial data</h3>
+              <p className="text-sm text-amber-100/85">
+                Permanently removes transactions (including splits), budgets, financial accounts, categories,
+                subscriptions, investment flows, and portfolio snapshots for your login. Your email, password, OAuth
+                links, profile fields (name, country, timezone), and sessions are kept. Default expense/income
+                categories and starter accounts are recreated so you can keep using the app.
+              </p>
+              <p className="text-xs text-amber-200/70">
+                Type <span className="font-mono text-amber-100">RESET FINANCIAL DATA</span> to confirm.
+              </p>
+              <input name="confirmation" className={inputClass} placeholder="RESET FINANCIAL DATA" autoComplete="off" />
+              <button
+                type="submit"
+                className="rounded-xl bg-amber-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-amber-600"
+              >
+                Clear all financial data
+              </button>
+            </form>
+            <form action={deleteAccountAction} className="space-y-2 rounded-2xl border border-red-900/60 bg-red-950/30 p-4 lg:p-5">
+              <h3 className="text-base font-semibold text-red-300 lg:text-lg">Delete account</h3>
+              <p className="text-sm text-red-200/80">Type DELETE to confirm irreversible account removal.</p>
+              <input name="confirmation" className={inputClass} />
+              <button className="rounded-xl bg-red-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-red-500">
+                Delete account
+              </button>
+            </form>
+          </div>
+        ) : null}
       </div>
-      <form action={updateProfileAction} className="space-y-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-        <h3 className="font-semibold text-slate-100">Profile</h3>
-        <input name="displayName" defaultValue={defaults.displayName} className={inputClass} />
-        <input name="countryCode" defaultValue={defaults.countryCode} className={inputClass} />
-        <input name="timezone" defaultValue={defaults.timezone} className={inputClass} />
-        <button className={primaryBtnClass}>Save profile</button>
-      </form>
-      <form action={changePasswordAction} className="space-y-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-        <h3 className="font-semibold text-slate-100">Change Password</h3>
-        <input type="password" name="currentPassword" placeholder="Current password" className={inputClass} />
-        <input type="password" name="newPassword" placeholder="New password" className={inputClass} />
-        <input type="password" name="confirmPassword" placeholder="Confirm new password" className={inputClass} />
-        <button className={primaryBtnClass}>Update password</button>
-      </form>
-      <form action={clearUserFinancialDataAction} className="space-y-2 rounded-2xl border border-amber-800/60 bg-amber-950/25 p-4">
-        <h3 className="font-semibold text-amber-200">Clear financial data</h3>
-        <p className="text-sm text-amber-100/85">
-          Permanently removes transactions (including splits), budgets, financial accounts, categories, subscriptions,
-          investment flows, and portfolio snapshots for your login. Your email, password, OAuth links, profile fields
-          (name, country, timezone), and sessions are kept. Default expense/income categories and starter accounts are
-          recreated so you can keep using the app.
-        </p>
-        <p className="text-xs text-amber-200/70">
-          Type <span className="font-mono text-amber-100">RESET FINANCIAL DATA</span> to confirm.
-        </p>
-        <input name="confirmation" className={inputClass} placeholder="RESET FINANCIAL DATA" autoComplete="off" />
-        <button
-          type="submit"
-          className="rounded-xl bg-amber-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-amber-600"
-        >
-          Clear all financial data
-        </button>
-      </form>
-      <form action={deleteAccountAction} className="space-y-2 rounded-2xl border border-red-900/60 bg-red-950/30 p-4">
-        <h3 className="font-semibold text-red-300">Delete Account</h3>
-        <p className="text-sm text-red-200/80">Type DELETE to confirm irreversible account removal.</p>
-        <input name="confirmation" className={inputClass} />
-        <button className="rounded-xl bg-red-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-red-500">Delete account</button>
-      </form>
     </div>
   );
 }
