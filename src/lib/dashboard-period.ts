@@ -40,6 +40,13 @@ export function endExclusiveOfMonthYm(ym: string): Date {
   return new Date(Date.UTC(y, m, 1, 0, 0, 0, 0));
 }
 
+/** Shift calendar month by `deltaMonths` (negative = earlier). */
+export function shiftYm(ym: string, deltaMonths: number): string {
+  const [y, mo] = ym.split("-").map(Number);
+  const d = new Date(Date.UTC(y, mo - 1 + deltaMonths, 1, 0, 0, 0, 0));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
 /** First `YYYY-MM` of the calendar year of `ym`. */
 export function ytdFirstMonthYm(ym: string): string {
   return `${ym.slice(0, 4)}-01`;

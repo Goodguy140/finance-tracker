@@ -4,6 +4,7 @@ import {
   describeDashboardPeriod,
   endExclusiveOfMonthYm,
   parseDashboardSearchParams,
+  shiftYm,
   startOfCalendarYearForYm,
   startOfMonthYm,
   ytdFirstMonthYm,
@@ -81,6 +82,13 @@ describe("budgetPeriodMonthInYtd", () => {
 describe("ytdFirstMonthYm", () => {
   it("returns January of anchor year", () => {
     expect(ytdFirstMonthYm("2024-08")).toBe("2024-01");
+  });
+});
+
+describe("shiftYm", () => {
+  it("shifts across year boundaries", () => {
+    expect(shiftYm("2025-01", -1)).toBe("2024-12");
+    expect(shiftYm("2024-12", 1)).toBe("2025-01");
   });
 });
 
