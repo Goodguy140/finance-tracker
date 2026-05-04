@@ -138,6 +138,8 @@ model Account {
   currency    String      @default("CAD")
   countryCode String      @default("CA")
   provider    String?
+  /** Hidden from pickers on the dashboard and in import defaults; past data unchanged. */
+  archived    Boolean     @default(false)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
@@ -169,7 +171,7 @@ model Category {
 model Transaction {
   id          String          @id @default(cuid())
   userId      String
-  accountId   String
+  accountId   String?
   categoryId  String
   type        TransactionType
   amountCents Int
@@ -182,7 +184,7 @@ model Transaction {
   updatedAt   DateTime        @updatedAt
 
   user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account    Account                @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  account    Account?               @relation(fields: [accountId], references: [id], onDelete: SetNull)
   category   Category               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   splitParts SplitTransactionPart[]
 }

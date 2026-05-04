@@ -159,3 +159,8 @@ export const accountSchema = z.object({
   name: z.string().trim().min(2).max(80),
   type: z.enum(["CHEQUING", "SAVINGS", "CREDIT_CARD", "TFSA", "RRSP", "FHSA", "NON_REGISTERED", "CASH"]),
 });
+
+export const setAccountArchivedSchema = z.object({
+  accountId: z.string().min(1),
+  archived: z.enum(["true", "false"]),
+});

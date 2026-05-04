@@ -12,8 +12,14 @@ export default async function SettingsPage() {
     prisma.budget.findMany({ where: { userId: user.id }, include: { category: true }, orderBy: [{ periodMonth: "desc" }, { category: { name: "asc" } }] }),
   ]);
 
-  const accountOptions = accounts.map((account) => ({ id: account.id, name: account.name }));
-  const accountItems = accounts.map((account) => ({ id: account.id, name: account.name, type: account.type }));
+  const activeAccounts = accounts.filter((a) => !a.archived);
+  const accountOptions = activeAccounts.map((account) => ({ id: account.id, name: account.name }));
+  const accountItems = accounts.map((account) => ({
+    id: account.id,
+    name: account.name,
+    type: account.type,
+    archived: account.archived,
+  }));
   const expenseCategoryOptions = categories.map((category) => ({ id: category.id, name: category.name }));
   const budgetItems = budgets.map((budget) => ({
     id: budget.id,

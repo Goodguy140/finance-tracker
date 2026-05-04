@@ -49,7 +49,10 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const transactionDateFilter = period.transactionDateFilter;
 
   const [accounts, categories, budgets, subscriptions, periodExpenses, incomeTotal] = await Promise.all([
-    prisma.account.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" } }),
+    prisma.account.findMany({
+      where: { userId: user.id, archived: false },
+      orderBy: { createdAt: "asc" },
+    }),
     prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" } }),
     prisma.budget.findMany({ where: { userId: user.id }, include: { category: true }, orderBy: { updatedAt: "desc" } }),
     prisma.subscription.findMany({
@@ -210,7 +213,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     note: txn.note,
     accountId: txn.accountId,
     categoryId: txn.categoryId,
-    accountLabel: txn.account.name,
+    accountLabel: txn.account
+      ? `${txn.account.name} (${txn.account.type})`
+      : (txn.accountDescription ?? "Removed account"),
     categoryLabel: txn.category.name,
     isSplit: txn.splitParts.length > 0,
   }));

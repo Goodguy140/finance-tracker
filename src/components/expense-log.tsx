@@ -28,7 +28,7 @@ export type ExpenseLogEntry = {
   postedDateDisplay: string | null;
   title: string | null;
   note: string | null;
-  accountId: string;
+  accountId: string | null;
   categoryId: string;
   accountLabel: string;
   categoryLabel: string;
@@ -248,7 +248,18 @@ function EditExpenseModal({
         <form action={formAction} className={formGridResponsive}>
           <input type="hidden" name="transactionId" value={entry.id} />
           <LabeledField label="Account" hint="Financial account this expense is charged to.">
-            <select id={`${fieldIds}-account`} name="accountId" className={selectClass} defaultValue={entry.accountId}>
+            <select
+              id={`${fieldIds}-account`}
+              name="accountId"
+              className={selectClass}
+              defaultValue={entry.accountId ?? ""}
+              required
+            >
+              {entry.accountId ? null : (
+                <option value="" disabled>
+                  Choose account (previous account was removed)
+                </option>
+              )}
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}

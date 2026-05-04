@@ -17,6 +17,7 @@ import {
   createSubscriptionAction,
   deleteBudgetAction,
   deleteFinancialAccountAction,
+  setFinancialAccountArchivedAction,
   deleteAccountAction,
   requestPasswordResetAction,
   resetPasswordAction,
@@ -1165,7 +1166,7 @@ export function SettingsForms({
 }: {
   defaults: { displayName: string; countryCode: string; timezone: string };
   accounts: Option[];
-  accountItems: Array<{ id: string; name: string; type: string }>;
+  accountItems: Array<{ id: string; name: string; type: string; archived: boolean }>;
   expenseCategories: Option[];
   budgets: Array<{ id: string; periodMonth: string; name: string | null; categoryName: string; limitCents: number }>;
 }) {
@@ -1174,6 +1175,12 @@ export function SettingsForms({
       <ExpenseCsvImportForm accounts={accounts} expenseCategories={expenseCategories} />
       <div className="space-y-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
         <h3 className="font-semibold text-slate-100">Accounts</h3>
+        <p className="text-xs leading-relaxed text-slate-400">
+          Archive hides an account from dashboard pickers and import defaults; past transactions stay unchanged. Archiving
+          is blocked while a subscription, investment flow, or snapshot still uses the account. Remove deletes the
+          account row; past expenses and income stay in history with the stored account name. Remove uses the same
+          dependency rules.
+        </p>
         <form action={createFinancialAccountAction} className="grid grid-cols-2 gap-2">
           <input name="name" placeholder="Account name" className={`col-span-2 ${inputClass}`} />
           <select name="type" className={selectClass}>
@@ -1189,15 +1196,72 @@ export function SettingsForms({
           <button className={primaryBtnClass}>Add account</button>
         </form>
         <div className="space-y-2">
-          {accountItems.map((account) => (
-            <div key={account.id} className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/50 p-2.5 text-sm">
-              <p className="text-slate-200">{account.name} ({account.type})</p>
-              <form action={deleteFinancialAccountAction}>
-                <input type="hidden" name="accountId" value={account.id} />
-                <button className={secondaryBtnClass}>Remove</button>
-              </form>
-            </div>
-          ))}
+          <h4 className="text-xs font-medium uppercase tracking-wide text-slate-500">Active</h4>
+          {accountItems.every((a) => a.archived) ? (
+            <p className="text-sm text-slate-500">No active accounts. Add one above, or restore an archived account.</p>
+          ) : null}
+          {accountItems
+            .filter((a) => !a.archived)
+            .map((account) => (
+              <div
+                key={account.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-950/50 p-2.5 text-sm"
+              >
+                <p className="text-slate-200">
+                  {account.name} ({account.type})
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <form action={setFinancialAccountArchivedAction}>
+                    <input type="hidden" name="accountId" value={account.id} />
+                    <input type="hidden" name="archived" value="true" />
+                    <button type="submit" className={secondaryBtnClass}>
+                      Archive
+                    </button>
+                  </form>
+                  <form action={deleteFinancialAccountAction}>
+                    <input type="hidden" name="accountId" value={account.id} />
+                    <button type="submit" className={secondaryBtnClass}>
+                      Remove
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ))}
+          {accountItems.some((a) => a.archived) ? (
+            <>
+              <h4 className="pt-2 text-xs font-medium uppercase tracking-wide text-slate-500">Archived</h4>
+              {accountItems
+                .filter((a) => a.archived)
+                .map((account) => (
+                  <div
+                    key={account.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-700/60 bg-slate-950/30 p-2.5 text-sm opacity-95"
+                  >
+                    <p className="text-slate-300">
+                      {account.name} ({account.type})
+                      <span className="ml-2 rounded-md border border-slate-600 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                        Hidden
+                      </span>
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <form action={setFinancialAccountArchivedAction}>
+                        <input type="hidden" name="accountId" value={account.id} />
+                        <input type="hidden" name="archived" value="false" />
+                        <button type="submit" className={secondaryBtnClass}>
+                          Restore
+                        </button>
+                      </form>
+                      <form action={deleteFinancialAccountAction}>
+                        <input type="hidden" name="accountId" value={account.id} />
+                        <button type="submit" className={secondaryBtnClass}>
+                          Remove
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                ))}
+            </>
+          ) : null}
         </div>
       </div>
       <div id="budgets" className="budget-settings-card scroll-mt-6 space-y-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">

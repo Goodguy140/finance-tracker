@@ -13,6 +13,7 @@ import { parseImportedDate } from "@/lib/import-dates";
 import { decryptSecret, encryptSecret } from "@/lib/security";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { resolveGoogleOauthSettings } from "@/lib/oauth-settings";
+import { mergeAccountDescriptionOnDetach } from "@/lib/transaction-account-detach";
 import {
   budgetSchema,
   accountSchema,
@@ -29,6 +30,7 @@ import {
   subscriptionSchema,
   deleteBudgetSchema,
   deleteSubscriptionSchema,
+  setAccountArchivedSchema,
   updateBudgetSchema,
   updateSubscriptionSchema,
 } from "@/lib/validation";
@@ -184,7 +186,7 @@ export async function importExpensesCsvAction(formData: FormData) {
   }
 
   const accounts = await prisma.account.findMany({
-    where: { userId: user.id },
+    where: { userId: user.id, archived: false },
     select: { id: true, name: true },
   });
   const accountByName = new Map(accounts.map((account) => [account.name.trim().toLowerCase(), account.id]));
@@ -596,6 +598,7 @@ export async function createFinancialAccountAction(formData: FormData) {
       name: payload.name,
       type: payload.type as AccountType,
       countryCode: user.countryCode,
+      archived: false,
     },
   });
   revalidatePath("/");
@@ -607,17 +610,71 @@ export async function deleteFinancialAccountAction(formData: FormData) {
   const accountId = getFormValue(formData, "accountId");
   if (!accountId) throw new Error("Account id is required.");
 
-  const txnCount = await prisma.transaction.count({ where: { userId: user.id, accountId } });
   const subscriptionCount = await prisma.subscription.count({ where: { userId: user.id, accountId } });
   const investmentFlowCount = await prisma.investmentFlow.count({ where: { userId: user.id, accountId } });
   const snapshotCount = await prisma.portfolioSnapshot.count({ where: { userId: user.id, accountId } });
-  if (txnCount + subscriptionCount + investmentFlowCount + snapshotCount > 0) {
-    throw new Error("Account has related records and cannot be deleted.");
+  if (subscriptionCount + investmentFlowCount + snapshotCount > 0) {
+    throw new Error(
+      "This account still has subscriptions, investment flows, or portfolio snapshots. Remove or reassign them first, then try again.",
+    );
   }
 
-  const existing = await prisma.account.findFirst({ where: { id: accountId, userId: user.id }, select: { id: true } });
-  if (!existing) throw new Error("Account not found.");
-  await prisma.account.delete({ where: { id: accountId } });
+  const account = await prisma.account.findFirst({
+    where: { id: accountId, userId: user.id },
+    select: { id: true, name: true, type: true },
+  });
+  if (!account) throw new Error("Account not found.");
+
+  const removedLabel = `${account.name} (${account.type})`;
+
+  await prisma.$transaction(async (tx) => {
+    const rows = await tx.transaction.findMany({
+      where: { userId: user.id, accountId },
+      select: { id: true, accountDescription: true },
+    });
+    for (const row of rows) {
+      await tx.transaction.update({
+        where: { id: row.id },
+        data: {
+          accountId: null,
+          accountDescription: mergeAccountDescriptionOnDetach(row.accountDescription, removedLabel),
+        },
+      });
+    }
+    await tx.account.delete({ where: { id: account.id } });
+  });
+
+  revalidatePath("/");
+  revalidatePath("/settings");
+}
+
+export async function setFinancialAccountArchivedAction(formData: FormData) {
+  const user = await requireUser();
+  const payload = setAccountArchivedSchema.parse({
+    accountId: getFormValue(formData, "accountId"),
+    archived: getFormValue(formData, "archived"),
+  });
+  const archived = payload.archived === "true";
+
+  if (archived) {
+    const [subscriptionCount, investmentFlowCount, snapshotCount] = await Promise.all([
+      prisma.subscription.count({ where: { userId: user.id, accountId: payload.accountId } }),
+      prisma.investmentFlow.count({ where: { userId: user.id, accountId: payload.accountId } }),
+      prisma.portfolioSnapshot.count({ where: { userId: user.id, accountId: payload.accountId } }),
+    ]);
+    if (subscriptionCount + investmentFlowCount + snapshotCount > 0) {
+      throw new Error(
+        "Cannot archive while this account is used by a subscription, investment flow, or portfolio snapshot. Reassign or remove those first.",
+      );
+    }
+  }
+
+  const result = await prisma.account.updateMany({
+    where: { id: payload.accountId, userId: user.id },
+    data: { archived },
+  });
+  if (result.count === 0) throw new Error("Account not found.");
+
   revalidatePath("/");
   revalidatePath("/settings");
 }
