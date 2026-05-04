@@ -3,13 +3,13 @@ import { mergeAccountDescriptionOnDetach } from "./transaction-account-detach";
 
 describe("mergeAccountDescriptionOnDetach", () => {
   it("uses removed label when no existing description", () => {
-    expect(mergeAccountDescriptionOnDetach(null, "Visa (CREDIT_CARD)")).toBe("Visa (CREDIT_CARD)");
-    expect(mergeAccountDescriptionOnDetach("  ", "Chequing (CHEQUING)")).toBe("Chequing (CHEQUING)");
+    expect(mergeAccountDescriptionOnDetach(null, "Visa (Credit card)")).toBe("Visa (Credit card)");
+    expect(mergeAccountDescriptionOnDetach("  ", "Chequing (Chequing)")).toBe("Chequing (Chequing)");
   });
 
   it("appends removed label when description exists", () => {
-    expect(mergeAccountDescriptionOnDetach("Imported memo", "Visa (CREDIT_CARD)")).toBe(
-      "Imported memo · Visa (CREDIT_CARD)",
+    expect(mergeAccountDescriptionOnDetach("Imported memo", "Visa (Credit card)")).toBe(
+      "Imported memo · Visa (Credit card)",
     );
   });
 });

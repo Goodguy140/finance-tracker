@@ -13,6 +13,7 @@ import { parseImportedDate } from "@/lib/import-dates";
 import { decryptSecret, encryptSecret } from "@/lib/security";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { resolveGoogleOauthSettings } from "@/lib/oauth-settings";
+import { formatAccountDetachedLabel } from "@/lib/account-type-labels";
 import { mergeAccountDescriptionOnDetach } from "@/lib/transaction-account-detach";
 import {
   budgetSchema,
@@ -625,7 +626,7 @@ export async function deleteFinancialAccountAction(formData: FormData) {
   });
   if (!account) throw new Error("Account not found.");
 
-  const removedLabel = `${account.name} (${account.type})`;
+  const removedLabel = formatAccountDetachedLabel(account.name, account.type);
 
   await prisma.$transaction(async (tx) => {
     const rows = await tx.transaction.findMany({

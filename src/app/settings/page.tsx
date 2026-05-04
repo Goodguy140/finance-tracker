@@ -19,6 +19,7 @@ export default async function SettingsPage() {
     name: account.name,
     type: account.type,
     archived: account.archived,
+    currency: account.currency,
   }));
   const expenseCategoryOptions = categories.map((category) => ({ id: category.id, name: category.name }));
   const budgetItems = budgets.map((budget) => ({

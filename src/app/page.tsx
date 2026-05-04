@@ -17,6 +17,7 @@ import {
   parseDashboardSearchParams,
 } from "@/lib/dashboard-period";
 import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
+import { formatAccountTypeLabel } from "@/lib/account-type-labels";
 import { formatCurrency } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
@@ -81,7 +82,10 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
   const expenseCategories = categories.filter((c) => c.kind === CategoryKind.EXPENSE);
   const incomeCategories = categories.filter((c) => c.kind === CategoryKind.INCOME);
-  const accountOptions = accounts.map((a) => ({ id: a.id, name: `${a.name} (${a.type})` }));
+  const accountOptions = accounts.map((a) => ({
+    id: a.id,
+    name: `${a.name} (${formatAccountTypeLabel(a.type)})`,
+  }));
   const expenseCategoryOptions = expenseCategories.map((c) => ({ id: c.id, name: c.name }));
   const incomeCategoryOptions = incomeCategories.map((c) => ({ id: c.id, name: c.name }));
 
@@ -214,7 +218,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     accountId: txn.accountId,
     categoryId: txn.categoryId,
     accountLabel: txn.account
-      ? `${txn.account.name} (${txn.account.type})`
+      ? `${txn.account.name} (${formatAccountTypeLabel(txn.account.type)})`
       : (txn.accountDescription ?? "Removed account"),
     categoryLabel: txn.category.name,
     isSplit: txn.splitParts.length > 0,
@@ -225,7 +229,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     name: sub.name,
     amountCents: sub.amountCents,
     accountId: sub.accountId,
-    accountLabel: `${sub.account.name} (${sub.account.type})`,
+    accountLabel: `${sub.account.name} (${formatAccountTypeLabel(sub.account.type)})`,
     categoryId: sub.categoryId,
     categoryLabel: sub.category.name,
     billingCycle: sub.billingCycle,
