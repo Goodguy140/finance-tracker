@@ -1,10 +1,45 @@
 import Link from "next/link";
 import { LoginForm } from "@/components/forms";
 
-export default function LoginPage() {
+export const dynamic = "force-dynamic";
+
+type SearchParams = Promise<{ error?: string | string[] }>;
+
+const oauthErrorMessages: Record<string, string> = {
+  google:
+    "Google sign-in is not available right now. Ask an admin to enable Google OAuth client settings in the app.",
+  OAuthSignin: "Google sign-in could not be started. Check NEXTAUTH_URL and Google OAuth redirect URIs.",
+  OAuthCallback:
+    "Google callback failed (often wrong redirect_uri or lost OAuth cookies). Retry sign-in; if you use a tunnel, set AUTH_TRUST_HOST=true and restart the dev server.",
+  OAuthCreateAccount: "Could not create your account from Google.",
+  AccessDenied: "Sign-in was denied.",
+  Configuration: "Auth is misconfigured (for example NEXTAUTH_SECRET or OAuth client settings).",
+  Callback: "Something went wrong during the OAuth callback.",
+  Default: "Sign-in failed. Try again or use email and password.",
+};
+
+function loginErrorMessage(code: string | undefined): string | null {
+  if (!code) return null;
+  return oauthErrorMessages[code] ?? oauthErrorMessages.Default;
+}
+
+export default async function LoginPage({ searchParams }: { searchParams: SearchParams }) {
+  const sp = await searchParams;
+  const raw = sp.error;
+  const errorCode = Array.isArray(raw) ? raw[0] : raw;
+  const errorMessage = loginErrorMessage(errorCode);
+
   return (
     <main className="mx-auto mt-20 max-w-md rounded-2xl border border-slate-800 bg-slate-900/80 p-6 text-slate-100 shadow-xl backdrop-blur">
       <h1 className="mb-4 text-2xl font-semibold text-slate-100">Login</h1>
+      {errorMessage ? (
+        <p className="mb-4 rounded-lg border border-amber-800/80 bg-amber-950/40 px-3 py-2 text-sm text-amber-100">
+          {errorMessage}
+          {errorCode ? (
+            <span className="mt-1 block text-xs text-amber-200/70">(code: {errorCode})</span>
+          ) : null}
+        </p>
+      ) : null}
       <LoginForm />
       <div className="mt-4 space-y-1 text-sm text-slate-400">
         <p>

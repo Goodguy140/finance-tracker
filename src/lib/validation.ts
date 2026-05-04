@@ -65,6 +65,16 @@ export const budgetSchema = z.object({
     .optional(),
 });
 
+export const updateBudgetSchema = z.object({
+  budgetId: z.string().min(1),
+  name: z.string().trim().min(1).max(80),
+  limit: z.coerce.number().positive(),
+});
+
+export const deleteBudgetSchema = z.object({
+  budgetId: z.string().min(1),
+});
+
 export const subscriptionSchema = z.object({
   accountId: z.string().min(1),
   categoryId: z.string().min(1),
@@ -72,6 +82,14 @@ export const subscriptionSchema = z.object({
   amount: z.coerce.number().positive(),
   billingCycle: z.enum(["WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "BIENNIAL"]),
   nextChargeDate: z.string().min(1),
+});
+
+export const updateSubscriptionSchema = subscriptionSchema.extend({
+  subscriptionId: z.string().min(1),
+});
+
+export const deleteSubscriptionSchema = z.object({
+  subscriptionId: z.string().min(1),
 });
 
 export const investmentFlowSchema = z.object({

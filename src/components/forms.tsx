@@ -15,11 +15,13 @@ import {
   createPortfolioSnapshotAction,
   createSplitExpenseAction,
   createSubscriptionAction,
+  deleteBudgetAction,
   deleteFinancialAccountAction,
   deleteAccountAction,
   requestPasswordResetAction,
   resetPasswordAction,
   signupAction,
+  updateBudgetAction,
   updateAdminOauthSettingsAction,
   updateProfileAction,
   upsertBudgetAction,
@@ -1002,6 +1004,7 @@ export function BudgetForm({ expenseCategories }: { expenseCategories: Option[] 
         list={categorySuggestionsId}
         placeholder="Category (type or choose)"
         className={`col-span-2 ${inputClass}`}
+        required
       />
       <datalist id={categorySuggestionsId}>
         {expenseCategories.map((category) => (
@@ -1028,8 +1031,8 @@ export function BudgetForm({ expenseCategories }: { expenseCategories: Option[] 
           ? "Past override applies only to the selected historical month."
           : `This budget applies automatically from ${getCurrentPeriodMonth()} onward.`}
       </p>
-      <CurrencyAmountInput name="limit" placeholder="Limit" className="col-span-2" />
-      <button className={`col-span-2 ${primaryBtnClass}`}>Save budget</button>
+      <CurrencyAmountInput name="limit" placeholder="Limit" className="col-span-2" required />
+      <button type="submit" className={`col-span-2 ${primaryBtnClass}`}>Save budget</button>
     </form>
   );
 }
@@ -1164,7 +1167,7 @@ export function SettingsForms({
   accounts: Option[];
   accountItems: Array<{ id: string; name: string; type: string }>;
   expenseCategories: Option[];
-  budgets: Array<{ id: string; periodMonth: string; categoryName: string; limitCents: number }>;
+  budgets: Array<{ id: string; periodMonth: string; name: string | null; categoryName: string; limitCents: number }>;
 }) {
   return (
     <div className="space-y-4">
@@ -1204,12 +1207,33 @@ export function SettingsForms({
         <div className="space-y-2">
           <h4 className="text-sm font-medium text-slate-200">All budgets</h4>
           {budgets.map((budget) => (
-            <div key={budget.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-medium text-slate-100">{budget.categoryName}</p>
-                <strong className="text-slate-100">CAD ${(budget.limitCents / 100).toFixed(2)}</strong>
+            <div key={budget.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
+              <form action={updateBudgetAction} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+                <input type="hidden" name="budgetId" value={budget.id} />
+                <div className="space-y-2">
+                  <input
+                    name="name"
+                    defaultValue={budget.name ?? budget.categoryName}
+                    className={inputClass}
+                    placeholder="Budget name"
+                    required
+                  />
+                  <p className="text-xs text-slate-400">{budget.categoryName} - {budget.periodMonth}</p>
+                </div>
+                <CurrencyAmountInput
+                  name="limit"
+                  defaultValue={(budget.limitCents / 100).toFixed(2)}
+                  placeholder="Limit"
+                  required
+                />
+                <button type="submit" className={`${primaryBtnClass} w-full sm:w-auto`}>Save</button>
+              </form>
+              <div className="mt-2 flex justify-end">
+                <form action={deleteBudgetAction}>
+                  <input type="hidden" name="budgetId" value={budget.id} />
+                  <button className={secondaryBtnClass}>Remove</button>
+                </form>
               </div>
-              <p className="text-xs text-slate-400">{budget.categoryName} - {budget.periodMonth}</p>
             </div>
           ))}
         </div>

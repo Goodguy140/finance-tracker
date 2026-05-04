@@ -18,6 +18,7 @@ export default async function SettingsPage() {
   const budgetItems = budgets.map((budget) => ({
     id: budget.id,
     periodMonth: budget.periodMonth,
+    name: budget.name,
     categoryName: budget.category.name,
     limitCents: budget.limitCents,
   }));

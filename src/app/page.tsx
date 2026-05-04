@@ -11,10 +11,10 @@ import { CategorySpendPieChart } from "@/components/category-spend-pie";
 import { ExpenseLogPanel } from "@/components/expense-log";
 import { SubscriptionsPanel } from "@/components/subscriptions-panel";
 import {
+  budgetPeriodMonthInYtd,
   currentPeriodYm,
-  endExclusiveOfMonthYm,
-  parseDashboardMonthParam,
-  startOfMonthYm,
+  describeDashboardPeriod,
+  parseDashboardSearchParams,
 } from "@/lib/dashboard-period";
 import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
 import { formatCurrency } from "@/lib/money";
@@ -29,35 +29,24 @@ const billingCycleLabels: Record<BillingCycle, string> = {
   BIENNIAL: "Every 2 years",
 };
 
-type SearchParams = Promise<{ month?: string | string[] }>;
+type BudgetProgressRow = {
+  id: string;
+  categoryName: string;
+  spentCents: number;
+  limitCents: number;
+  progressPct: number;
+};
+
+type SearchParams = Promise<{ month?: string | string[]; range?: string | string[] }>;
 
 export default async function Home({ searchParams }: { searchParams: SearchParams }) {
   const user = await requireUser();
   const sp = await searchParams;
   const now = new Date();
   const anchorYm = currentPeriodYm(now);
-  const period = parseDashboardMonthParam(sp.month, now);
-  const isAllMonths = period.kind === "all";
-  const selectedYm = period.kind === "month" ? period.ym : anchorYm;
-  const budgetAnchorYm = isAllMonths ? anchorYm : selectedYm;
-
-  const expenseDateWhere =
-    period.kind === "month"
-      ? { date: { gte: startOfMonthYm(period.ym), lt: endExclusiveOfMonthYm(period.ym) } }
-      : {};
-
-  const incomeDateWhere =
-    period.kind === "month"
-      ? { date: { gte: startOfMonthYm(period.ym), lt: endExclusiveOfMonthYm(period.ym) } }
-      : {};
-
-  const periodDescription =
-    period.kind === "month"
-      ? new Date(startOfMonthYm(period.ym)).toLocaleString(undefined, {
-          month: "long",
-          year: "numeric",
-        })
-      : "All months (lifetime totals)";
+  const period = parseDashboardSearchParams(sp, now);
+  const periodDescription = describeDashboardPeriod(period);
+  const transactionDateFilter = period.transactionDateFilter;
 
   const [accounts, categories, budgets, subscriptions, periodExpenses, incomeTotal] = await Promise.all([
     prisma.account.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" } }),
@@ -72,7 +61,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       where: {
         userId: user.id,
         type: TransactionType.EXPENSE,
-        ...expenseDateWhere,
+        ...transactionDateFilter,
       },
       include: { category: true, account: true, splitParts: { include: { category: true } } },
       orderBy: { date: "desc" },
@@ -81,7 +70,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       where: {
         userId: user.id,
         type: TransactionType.INCOME,
-        ...incomeDateWhere,
+        ...transactionDateFilter,
       },
       _sum: { amountCents: true },
     }),
@@ -93,15 +82,6 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const expenseCategoryOptions = expenseCategories.map((c) => ({ id: c.id, name: c.name }));
   const incomeCategoryOptions = incomeCategories.map((c) => ({ id: c.id, name: c.name }));
 
-  const activeBudgetsByCategory = new Map<string, (typeof budgets)[number]>();
-  for (const budget of budgets) {
-    if (budget.periodMonth > budgetAnchorYm) continue;
-    const existing = activeBudgetsByCategory.get(budget.categoryId);
-    if (!existing || budget.periodMonth > existing.periodMonth) {
-      activeBudgetsByCategory.set(budget.categoryId, budget);
-    }
-  }
-  const totalBudgetCents = Array.from(activeBudgetsByCategory.values()).reduce((sum, budget) => sum + budget.limitCents, 0);
   const spendByCategory = new Map<string, number>();
   for (const expense of periodExpenses) {
     if (expense.splitParts.length > 0) {
@@ -112,22 +92,103 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     }
     spendByCategory.set(expense.categoryId, (spendByCategory.get(expense.categoryId) ?? 0) + expense.amountCents);
   }
-  const budgetProgressItems = Array.from(activeBudgetsByCategory.values())
-    .map((budget) => {
-      const spentCents = spendByCategory.get(budget.categoryId) ?? 0;
-      const progressPct =
-        budget.limitCents > 0
-          ? Math.min(Math.max((spentCents / budget.limitCents) * 100, 0), 100)
-          : 0;
-      return {
-        id: budget.id,
-        categoryName: budget.category.name,
-        spentCents,
-        limitCents: budget.limitCents,
-        progressPct,
-      };
-    })
-    .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
+
+  const categoryName = (categoryId: string) =>
+    categories.find((c) => c.id === categoryId)?.name ?? budgets.find((b) => b.categoryId === categoryId)?.category.name ?? "Unknown";
+
+  let budgetProgressItems: BudgetProgressRow[];
+  let totalBudgetCents: number;
+  let configuredBudgetsCount: number;
+
+  if (period.range === "month") {
+    const activeBudgetsByCategory = new Map<string, (typeof budgets)[number]>();
+    for (const budget of budgets) {
+      if (budget.periodMonth > period.ym) continue;
+      const existing = activeBudgetsByCategory.get(budget.categoryId);
+      if (!existing || budget.periodMonth > existing.periodMonth) {
+        activeBudgetsByCategory.set(budget.categoryId, budget);
+      }
+    }
+    budgetProgressItems = Array.from(activeBudgetsByCategory.values())
+      .map((budget) => {
+        const spentCents = spendByCategory.get(budget.categoryId) ?? 0;
+        const limitCents = budget.limitCents;
+        const progressPct =
+          limitCents > 0 ? Math.min(Math.max((spentCents / limitCents) * 100, 0), 100) : 0;
+        return {
+          id: budget.id,
+          categoryName: budget.category.name,
+          spentCents,
+          limitCents,
+          progressPct,
+        };
+      })
+      .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
+    totalBudgetCents = budgetProgressItems.reduce((sum, row) => sum + row.limitCents, 0);
+    configuredBudgetsCount = activeBudgetsByCategory.size;
+  } else if (period.range === "ytd") {
+    const limitSumByCategory = new Map<string, number>();
+    const nameByCategory = new Map<string, string>();
+    for (const budget of budgets) {
+      if (!budgetPeriodMonthInYtd(budget.periodMonth, period.ym)) continue;
+      limitSumByCategory.set(
+        budget.categoryId,
+        (limitSumByCategory.get(budget.categoryId) ?? 0) + budget.limitCents,
+      );
+      if (!nameByCategory.has(budget.categoryId)) {
+        nameByCategory.set(budget.categoryId, budget.category.name);
+      }
+    }
+    const categoryIds = new Set([...limitSumByCategory.keys(), ...spendByCategory.keys()]);
+    budgetProgressItems = Array.from(categoryIds)
+      .map((categoryId) => {
+        const limitCents = limitSumByCategory.get(categoryId) ?? 0;
+        const spentCents = spendByCategory.get(categoryId) ?? 0;
+        const progressPct =
+          limitCents > 0 ? Math.min(Math.max((spentCents / limitCents) * 100, 0), 100) : 0;
+        return {
+          id: categoryId,
+          categoryName: nameByCategory.get(categoryId) ?? categoryName(categoryId),
+          spentCents,
+          limitCents,
+          progressPct,
+        };
+      })
+      .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
+    totalBudgetCents = budgetProgressItems.reduce((sum, row) => sum + row.limitCents, 0);
+    configuredBudgetsCount = Array.from(limitSumByCategory.entries()).filter(([, cents]) => cents > 0).length;
+  } else {
+    const limitSumByCategory = new Map<string, number>();
+    const nameByCategory = new Map<string, string>();
+    for (const budget of budgets) {
+      limitSumByCategory.set(
+        budget.categoryId,
+        (limitSumByCategory.get(budget.categoryId) ?? 0) + budget.limitCents,
+      );
+      if (!nameByCategory.has(budget.categoryId)) {
+        nameByCategory.set(budget.categoryId, budget.category.name);
+      }
+    }
+    const categoryIds = new Set([...limitSumByCategory.keys(), ...spendByCategory.keys()]);
+    budgetProgressItems = Array.from(categoryIds)
+      .map((categoryId) => {
+        const limitCents = limitSumByCategory.get(categoryId) ?? 0;
+        const spentCents = spendByCategory.get(categoryId) ?? 0;
+        const progressPct =
+          limitCents > 0 ? Math.min(Math.max((spentCents / limitCents) * 100, 0), 100) : 0;
+        return {
+          id: categoryId,
+          categoryName: nameByCategory.get(categoryId) ?? categoryName(categoryId),
+          spentCents,
+          limitCents,
+          progressPct,
+        };
+      })
+      .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
+    totalBudgetCents = budgetProgressItems.reduce((sum, row) => sum + row.limitCents, 0);
+    configuredBudgetsCount = Array.from(limitSumByCategory.entries()).filter(([, cents]) => cents > 0).length;
+  }
+
   const currentSpendCents = periodExpenses.reduce((sum, row) => sum + row.amountCents, 0);
 
   const categoryPieSlices = Array.from(spendByCategory.entries())
@@ -158,11 +219,22 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     id: sub.id,
     name: sub.name,
     amountCents: sub.amountCents,
+    accountId: sub.accountId,
     accountLabel: `${sub.account.name} (${sub.account.type})`,
+    categoryId: sub.categoryId,
     categoryLabel: sub.category.name,
+    billingCycle: sub.billingCycle,
     billingCycleLabel: billingCycleLabels[sub.billingCycle],
+    nextChargeDateYmd: ymdFromDateUtc(sub.nextChargeDate),
     nextChargeDateDisplay: formatDateOnlyUtc(sub.nextChargeDate),
   }));
+
+  const spendVsBudgetLabel =
+    period.range === "month"
+      ? "Spend vs budgeted"
+      : period.range === "ytd"
+        ? "YTD spend vs summed budgets"
+        : "Lifetime spend vs summed budgets";
 
   return (
     <main className="min-h-screen bg-slate-950 p-4 text-slate-100">
@@ -226,27 +298,34 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                   Manage budgets
                 </Link>
               </div>
-              {isAllMonths ? (
+              {period.range === "ytd" ? (
                 <p className="mt-1 text-xs text-slate-400">
-                  Spend totals are across all time. Budget limits shown are your active limits as of this month.
+                  Budget limits are the sum of your saved monthly budgets from January through the selected month, compared
+                  to spending in the same period.
+                </p>
+              ) : null}
+              {period.range === "lifetime" ? (
+                <p className="mt-1 text-xs text-slate-400">
+                  Budget limits are the sum of every saved monthly budget per category (not a single monthly envelope).
+                  Spending is all-time in the same categories.
                 </p>
               ) : null}
               <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
-                  <p className="text-xs uppercase tracking-wide text-slate-400">
-                    {isAllMonths ? "Lifetime spend vs budgeted" : "Spend vs budgeted"}
-                  </p>
+                  <p className="text-xs uppercase tracking-wide text-slate-400">{spendVsBudgetLabel}</p>
                   <p className="text-base font-semibold">
                     {formatCurrency(currentSpendCents)} / {formatCurrency(totalBudgetCents)}
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
-                  <p className="text-xs uppercase tracking-wide text-slate-400">Total budgeted</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    {period.range === "month" ? "Total budgeted" : "Total budgeted (summed)"}
+                  </p>
                   <p className="text-base font-semibold">{formatCurrency(totalBudgetCents)}</p>
                 </div>
                 <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5 sm:col-span-2">
                   <p className="text-xs uppercase tracking-wide text-slate-400">Configured budgets</p>
-                  <p className="text-base font-semibold">{activeBudgetsByCategory.size}</p>
+                  <p className="text-base font-semibold">{configuredBudgetsCount}</p>
                 </div>
               </div>
               <div className="mt-3 space-y-2">
@@ -276,7 +355,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                   {subscriptions.length} subscription{subscriptions.length === 1 ? "" : "s"} · next charge soonest first
                 </p>
               </div>
-              <SubscriptionsPanel items={subscriptionListItems} />
+              <SubscriptionsPanel items={subscriptionListItems} accounts={accountOptions} expenseCategories={expenseCategoryOptions} />
             </div>
 
             <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">

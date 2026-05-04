@@ -10,8 +10,9 @@ import { parseStatementAmount, toCents } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { dateFromYmd } from "@/lib/date-only";
 import { parseImportedDate } from "@/lib/import-dates";
-import { encryptSecret } from "@/lib/security";
+import { decryptSecret, encryptSecret } from "@/lib/security";
 import { requireAdmin, requireUser } from "@/lib/session";
+import { resolveGoogleOauthSettings } from "@/lib/oauth-settings";
 import {
   budgetSchema,
   accountSchema,
@@ -26,6 +27,10 @@ import {
   signupSchema,
   splitExpenseSchema,
   subscriptionSchema,
+  deleteBudgetSchema,
+  deleteSubscriptionSchema,
+  updateBudgetSchema,
+  updateSubscriptionSchema,
 } from "@/lib/validation";
 
 function getFormValue(formData: FormData, key: string) {
@@ -321,11 +326,15 @@ export async function createSplitExpenseAction(formData: FormData) {
 export async function upsertBudgetAction(formData: FormData) {
   const user = await requireUser();
   const rawPeriodMonth = getFormValue(formData, "periodMonth");
-  const payload = budgetSchema.parse({
+  const parsed = budgetSchema.safeParse({
     categoryName: getFormValue(formData, "categoryName"),
     limit: getFormValue(formData, "limit"),
     periodMonth: rawPeriodMonth || undefined,
   });
+  if (!parsed.success) {
+    throw new Error("Category name and budget limit are required.");
+  }
+  const payload = parsed.data;
   const currentPeriodMonth = toPeriodMonth();
   const periodMonth = payload.periodMonth ?? currentPeriodMonth;
 
@@ -374,6 +383,54 @@ export async function upsertBudgetAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
+export async function updateBudgetAction(formData: FormData) {
+  const user = await requireUser();
+  const parsed = updateBudgetSchema.safeParse({
+    budgetId: getFormValue(formData, "budgetId"),
+    name: getFormValue(formData, "name"),
+    limit: getFormValue(formData, "limit"),
+  });
+  if (!parsed.success) {
+    throw new Error("Budget name and limit are required.");
+  }
+  const payload = parsed.data;
+
+  const existing = await prisma.budget.findFirst({
+    where: { id: payload.budgetId, userId: user.id },
+    select: { id: true },
+  });
+  if (!existing) throw new Error("Budget not found.");
+
+  await prisma.budget.update({
+    where: { id: existing.id },
+    data: {
+      name: payload.name.trim(),
+      limitCents: toCents(payload.limit),
+    },
+  });
+  revalidatePath("/");
+  revalidatePath("/settings");
+}
+
+export async function deleteBudgetAction(formData: FormData) {
+  const user = await requireUser();
+  const payload = deleteBudgetSchema.parse({
+    budgetId: getFormValue(formData, "budgetId"),
+  });
+
+  const existing = await prisma.budget.findFirst({
+    where: { id: payload.budgetId, userId: user.id },
+    select: { id: true },
+  });
+  if (!existing) throw new Error("Budget not found.");
+
+  await prisma.budget.delete({
+    where: { id: existing.id },
+  });
+  revalidatePath("/");
+  revalidatePath("/settings");
+}
+
 export async function createSubscriptionAction(formData: FormData) {
   const user = await requireUser();
   const payload = subscriptionSchema.parse({
@@ -396,6 +453,58 @@ export async function createSubscriptionAction(formData: FormData) {
       nextChargeDate: dateFromYmd(payload.nextChargeDate),
     },
   });
+  revalidatePath("/");
+}
+
+export async function updateSubscriptionAction(formData: FormData) {
+  const user = await requireUser();
+  const parsed = updateSubscriptionSchema.safeParse({
+    subscriptionId: getFormValue(formData, "subscriptionId"),
+    accountId: getFormValue(formData, "accountId"),
+    categoryId: getFormValue(formData, "categoryId"),
+    name: getFormValue(formData, "name"),
+    amount: getFormValue(formData, "amount"),
+    billingCycle: getFormValue(formData, "billingCycle"),
+    nextChargeDate: getFormValue(formData, "nextChargeDate"),
+  });
+  if (!parsed.success) {
+    throw new Error("Subscription name, amount, billing cycle, account, and next charge date are required.");
+  }
+  const payload = parsed.data;
+
+  const existing = await prisma.subscription.findFirst({
+    where: { id: payload.subscriptionId, userId: user.id },
+    select: { id: true },
+  });
+  if (!existing) throw new Error("Subscription not found.");
+
+  await prisma.subscription.update({
+    where: { id: existing.id },
+    data: {
+      accountId: payload.accountId,
+      categoryId: payload.categoryId,
+      name: payload.name.trim(),
+      amountCents: toCents(payload.amount),
+      billingCycle: payload.billingCycle,
+      nextChargeDate: dateFromYmd(payload.nextChargeDate),
+    },
+  });
+  revalidatePath("/");
+}
+
+export async function deleteSubscriptionAction(formData: FormData) {
+  const user = await requireUser();
+  const payload = deleteSubscriptionSchema.parse({
+    subscriptionId: getFormValue(formData, "subscriptionId"),
+  });
+
+  const existing = await prisma.subscription.findFirst({
+    where: { id: payload.subscriptionId, userId: user.id },
+    select: { id: true },
+  });
+  if (!existing) throw new Error("Subscription not found.");
+
+  await prisma.subscription.delete({ where: { id: existing.id } });
   revalidatePath("/");
 }
 
@@ -602,10 +711,21 @@ export async function resetPasswordAction(formData: FormData) {
 
 export async function updateAdminOauthSettingsAction(formData: FormData) {
   const user = await requireAdmin();
+  const [clientIdRow, clientSecretRow] = await Promise.all([
+    prisma.serverSetting.findUnique({ where: { key: "oauth.google.clientId" } }),
+    prisma.serverSetting.findUnique({ where: { key: "oauth.google.clientSecret" } }),
+  ]);
+  const resolved = resolveGoogleOauthSettings({
+    enabledRaw: getFormValue(formData, "googleEnabled"),
+    clientIdRaw: getFormValue(formData, "googleClientId"),
+    clientSecretRaw: getFormValue(formData, "googleClientSecret"),
+    existingClientId: clientIdRow ? decryptSecret(clientIdRow.encryptedValue) : "",
+    existingClientSecret: clientSecretRow ? decryptSecret(clientSecretRow.encryptedValue) : "",
+  });
   const entries = [
-    { key: "oauth.google.enabled", value: getFormValue(formData, "googleEnabled") || "false" },
-    { key: "oauth.google.clientId", value: getFormValue(formData, "googleClientId") },
-    { key: "oauth.google.clientSecret", value: getFormValue(formData, "googleClientSecret") },
+    { key: "oauth.google.enabled", value: resolved.enabled },
+    { key: "oauth.google.clientId", value: resolved.clientId },
+    { key: "oauth.google.clientSecret", value: resolved.clientSecret },
   ];
 
   for (const entry of entries) {
