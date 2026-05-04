@@ -175,6 +175,10 @@ model Transaction {
   categoryId  String
   type        TransactionType
   amountCents Int
+  /** Purchase total before credits/rewards (optional; net outflow stays in amountCents). */
+  preCreditCents Int?
+  /** Credits, rewards, or discounts applied (positive cents; subtracted from pre-credit total). */
+  creditCents    Int?
   title       String?
   date        DateTime
   postedDate  DateTime?

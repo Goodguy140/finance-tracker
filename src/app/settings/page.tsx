@@ -57,6 +57,9 @@ export default async function SettingsPage() {
           countryCode: user.countryCode,
           timezone: user.timezone,
         }}
+        profileEmail={user.email}
+        hasPassword={user.passwordHash != null}
+        joinedAt={user.createdAt.toISOString()}
         accounts={accountOptions}
         accountItems={accountItems}
         expenseCategories={expenseCategoryOptions}

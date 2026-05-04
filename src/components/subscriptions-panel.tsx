@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { deleteSubscriptionAction, updateSubscriptionAction } from "@/app/actions";
+import { ServerActionForm } from "@/components/server-action-form";
 import { MetaChip } from "@/components/meta-chip";
 import { formatCurrency } from "@/lib/money";
 
@@ -78,12 +79,12 @@ export function SubscriptionsPanel({
               <button type="button" className={secondaryBtnClass} onClick={() => setEditingId(sub.id)}>
                 Edit
               </button>
-              <form action={deleteSubscriptionAction}>
+              <ServerActionForm action={deleteSubscriptionAction} onSuccess={() => setEditingId(null)}>
                 <input type="hidden" name="subscriptionId" value={sub.id} />
                 <button type="submit" className={secondaryBtnClass}>
                   Remove
                 </button>
-              </form>
+              </ServerActionForm>
             </div>
           </div>
         ))}
@@ -92,7 +93,11 @@ export function SubscriptionsPanel({
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-3">
           <div className="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-950 p-4 shadow-2xl">
             <h3 className="text-lg font-semibold text-slate-100">Edit subscription</h3>
-            <form action={updateSubscriptionAction} className="mt-3 space-y-3">
+            <ServerActionForm
+              action={updateSubscriptionAction}
+              className="mt-3 space-y-3"
+              onSuccess={() => setEditingId(null)}
+            >
               <input type="hidden" name="subscriptionId" value={editingItem.id} />
               <input name="name" defaultValue={editingItem.name} className={inputClass} placeholder="Subscription name" required />
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -143,7 +148,7 @@ export function SubscriptionsPanel({
                   Save changes
                 </button>
               </div>
-            </form>
+            </ServerActionForm>
           </div>
         </div>
       ) : null}

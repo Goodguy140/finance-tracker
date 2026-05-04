@@ -14,14 +14,16 @@ import { decryptSecret, encryptSecret } from "@/lib/security";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { resolveGoogleOauthSettings } from "@/lib/oauth-settings";
 import { formatAccountDetachedLabel } from "@/lib/account-type-labels";
+import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
 import { mergeAccountDescriptionOnDetach } from "@/lib/transaction-account-detach";
 import {
   budgetSchema,
   accountSchema,
   expenseCsvImportSchema,
-  expenseSchema,
+  expenseBaseSchema,
   incomeSchema,
-  updateExpenseSchema,
+  updateIncomeBaseSchema,
+  updateExpenseBaseSchema,
   investmentFlowSchema,
   loginSchema,
   passwordChangeSchema,
@@ -81,15 +83,15 @@ export async function signupAction(formData: FormData) {
 
 export async function createExpenseAction(formData: FormData) {
   const user = await requireUser();
-  const payload = expenseSchema.parse({
+  const payload = expenseBaseSchema.parse({
     accountId: getFormValue(formData, "accountId"),
     categoryId: getFormValue(formData, "categoryId"),
-    amount: getFormValue(formData, "amount"),
     date: getFormValue(formData, "date"),
     postedDate: getFormValue(formData, "postedDate") || undefined,
     title: getFormValue(formData, "title") || undefined,
     note: getFormValue(formData, "note"),
   });
+  const amounts = parseExpenseAmountFromForm(formData);
 
   await prisma.transaction.create({
     data: {
@@ -97,7 +99,9 @@ export async function createExpenseAction(formData: FormData) {
       accountId: payload.accountId,
       categoryId: payload.categoryId,
       type: TransactionType.EXPENSE,
-      amountCents: toCents(payload.amount),
+      amountCents: amounts.amountCents,
+      preCreditCents: amounts.preCreditCents,
+      creditCents: amounts.creditCents,
       date: dateFromYmd(payload.date),
       postedDate: payload.postedDate ? dateFromYmd(payload.postedDate) : null,
       title: payload.title,
@@ -109,16 +113,16 @@ export async function createExpenseAction(formData: FormData) {
 
 export async function updateExpenseAction(formData: FormData) {
   const user = await requireUser();
-  const payload = updateExpenseSchema.parse({
+  const payload = updateExpenseBaseSchema.parse({
     transactionId: getFormValue(formData, "transactionId"),
     accountId: getFormValue(formData, "accountId"),
     categoryId: getFormValue(formData, "categoryId"),
-    amount: getFormValue(formData, "amount"),
     date: getFormValue(formData, "date"),
     postedDate: getFormValue(formData, "postedDate") || undefined,
     title: getFormValue(formData, "title") || undefined,
     note: getFormValue(formData, "note"),
   });
+  const amounts = parseExpenseAmountFromForm(formData);
 
   const existing = await prisma.transaction.findFirst({
     where: {
@@ -136,9 +140,13 @@ export async function updateExpenseAction(formData: FormData) {
   await prisma.transaction.update({
     where: { id: existing.id },
     data: {
-      accountId: payload.accountId,
-      categoryId: payload.categoryId,
-      amountCents: toCents(payload.amount),
+      account: payload.accountId
+        ? { connect: { id: payload.accountId } }
+        : { disconnect: true },
+      category: { connect: { id: payload.categoryId } },
+      amountCents: amounts.amountCents,
+      preCreditCents: amounts.preCreditCents,
+      creditCents: amounts.creditCents,
       date: dateFromYmd(payload.date),
       postedDate: payload.postedDate ? dateFromYmd(payload.postedDate) : null,
       title: payload.title,
@@ -266,6 +274,7 @@ export async function createIncomeAction(formData: FormData) {
     categoryId: getFormValue(formData, "categoryId"),
     amount: getFormValue(formData, "amount"),
     date: getFormValue(formData, "date"),
+    postedDate: getFormValue(formData, "postedDate") || undefined,
     title: getFormValue(formData, "title") || undefined,
     note: getFormValue(formData, "note"),
   });
@@ -277,6 +286,49 @@ export async function createIncomeAction(formData: FormData) {
       categoryId: payload.categoryId,
       type: TransactionType.INCOME,
       amountCents: toCents(payload.amount),
+      date: dateFromYmd(payload.date),
+      title: payload.title,
+      note: payload.note,
+    },
+  });
+  revalidatePath("/");
+}
+
+export async function updateIncomeAction(formData: FormData) {
+  const user = await requireUser();
+  const payload = updateIncomeBaseSchema.parse({
+    transactionId: getFormValue(formData, "transactionId"),
+    accountId: getFormValue(formData, "accountId"),
+    categoryId: getFormValue(formData, "categoryId"),
+    date: getFormValue(formData, "date"),
+    title: getFormValue(formData, "title") || undefined,
+    note: getFormValue(formData, "note"),
+  });
+  const amountRaw = getFormValue(formData, "amount");
+  const amount = Number(amountRaw);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Amount must be a positive number.");
+  }
+
+  const existing = await prisma.transaction.findFirst({
+    where: {
+      id: payload.transactionId,
+      userId: user.id,
+      type: TransactionType.INCOME,
+    },
+  });
+  if (!existing) throw new Error("Income entry not found.");
+
+  await prisma.transaction.update({
+    where: { id: existing.id },
+    data: {
+      account: payload.accountId
+        ? { connect: { id: payload.accountId } }
+        : { disconnect: true },
+      category: { connect: { id: payload.categoryId } },
+      amountCents: toCents(amount),
+      preCreditCents: null,
+      creditCents: null,
       date: dateFromYmd(payload.date),
       title: payload.title,
       note: payload.note,
@@ -637,7 +689,7 @@ export async function deleteFinancialAccountAction(formData: FormData) {
       await tx.transaction.update({
         where: { id: row.id },
         data: {
-          accountId: null,
+          account: { disconnect: true },
           accountDescription: mergeAccountDescriptionOnDetach(row.accountDescription, removedLabel),
         },
       });

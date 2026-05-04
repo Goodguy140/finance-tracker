@@ -9,6 +9,7 @@ import {
 import { DashboardMonthFilter } from "@/components/dashboard-month-filter";
 import { CategorySpendPieChart } from "@/components/category-spend-pie";
 import { ExpenseLogPanel } from "@/components/expense-log";
+import { IncomeLogPanel } from "@/components/income-log";
 import { SubscriptionsPanel } from "@/components/subscriptions-panel";
 import {
   budgetPeriodMonthInYtd,
@@ -49,7 +50,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const periodDescription = describeDashboardPeriod(period);
   const transactionDateFilter = period.transactionDateFilter;
 
-  const [accounts, categories, budgets, subscriptions, periodExpenses, incomeTotal] = await Promise.all([
+  const [accounts, categories, budgets, subscriptions, periodExpenses, periodIncomes, incomeTotal] = await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
       orderBy: { createdAt: "asc" },
@@ -68,6 +69,15 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         ...transactionDateFilter,
       },
       include: { category: true, account: true, splitParts: { include: { category: true } } },
+      orderBy: { date: "desc" },
+    }),
+    prisma.transaction.findMany({
+      where: {
+        userId: user.id,
+        type: TransactionType.INCOME,
+        ...transactionDateFilter,
+      },
+      include: { category: true, account: true },
       orderBy: { date: "desc" },
     }),
     prisma.transaction.aggregate({
@@ -209,6 +219,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const expenseLogEntries = periodExpenses.map((txn) => ({
     id: txn.id,
     amountCents: txn.amountCents,
+    preCreditCents: txn.preCreditCents,
+    creditCents: txn.creditCents,
     dateYmd: ymdFromDateUtc(txn.date),
     dateDisplay: formatDateOnlyUtc(txn.date),
     postedDateYmd: txn.postedDate ? ymdFromDateUtc(txn.postedDate) : null,
@@ -222,6 +234,21 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       : (txn.accountDescription ?? "Removed account"),
     categoryLabel: txn.category.name,
     isSplit: txn.splitParts.length > 0,
+  }));
+
+  const incomeLogEntries = periodIncomes.map((txn) => ({
+    id: txn.id,
+    amountCents: txn.amountCents,
+    dateYmd: ymdFromDateUtc(txn.date),
+    dateDisplay: formatDateOnlyUtc(txn.date),
+    title: txn.title,
+    note: txn.note,
+    accountId: txn.accountId,
+    categoryId: txn.categoryId,
+    sourceLabel: txn.category.name,
+    accountLabel: txn.account
+      ? `${txn.account.name} (${formatAccountTypeLabel(txn.account.type)})`
+      : (txn.accountDescription ?? "Removed account"),
   }));
 
   const subscriptionListItems = subscriptions.map((sub) => ({
@@ -292,9 +319,21 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
           <aside className="space-y-4 lg:col-span-5">
             <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
-              <h2 className="text-lg font-semibold">Income</h2>
-              <p className="text-xs text-slate-400">{periodDescription}</p>
-              <p className="text-2xl font-bold">{formatCurrency(incomeTotal._sum.amountCents ?? 0)}</p>
+              <div className="flex flex-col gap-3 border-b border-slate-800/80 pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+                <div className="min-w-0">
+                  <h2 className="text-lg font-semibold text-slate-100">Income</h2>
+                  <p className="text-xs text-slate-400">{periodDescription}</p>
+                  <p className="mt-2 text-xs tabular-nums text-slate-500">
+                    {periodIncomes.length} deposit{periodIncomes.length === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <p className="shrink-0 text-2xl font-bold tabular-nums text-emerald-200 sm:text-right">
+                  {formatCurrency(incomeTotal._sum.amountCents ?? 0)}
+                </p>
+              </div>
+              <div className="pt-4">
+                <IncomeLogPanel entries={incomeLogEntries} accounts={accountOptions} categories={incomeCategoryOptions} />
+              </div>
             </div>
 
             <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">

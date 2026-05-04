@@ -22,6 +22,10 @@ type Option = { id: string; name: string };
 export type ExpenseLogEntry = {
   id: string;
   amountCents: number;
+  /** Gross / receipt total before credits; null when using a simple amount only. */
+  preCreditCents: number | null;
+  /** Credits or discounts in positive cents. */
+  creditCents: number | null;
   dateYmd: string;
   dateDisplay: string;
   postedDateYmd: string | null;
@@ -77,6 +81,35 @@ function persistExpenseLogDensity(next: ExpenseLogDensity) {
   emitExpenseLogDensity();
 }
 
+function showReceiptBreakdown(txn: ExpenseLogEntry) {
+  if (txn.preCreditCents == null || txn.preCreditCents <= 0) return false;
+  if ((txn.creditCents ?? 0) > 0) return true;
+  return txn.preCreditCents !== txn.amountCents;
+}
+
+function ExpenseAmountBlock({ txn, size }: { txn: ExpenseLogEntry; size: "default" | "compact" }) {
+  const meta = showReceiptBreakdown(txn);
+  const textClass =
+    size === "compact" ? "text-[10px] leading-tight" : "text-xs leading-snug";
+  return (
+    <div className="flex shrink-0 flex-col items-end gap-1 text-right">
+      <AmountPill cents={txn.amountCents} size={size} />
+      {meta ? (
+        <div className={`max-w-[16rem] space-y-0.5 ${textClass}`}>
+          <p className="tabular-nums text-slate-400">
+            Total <span className="font-medium text-slate-300">{formatCurrency(txn.preCreditCents!)}</span>
+          </p>
+          {(txn.creditCents ?? 0) > 0 ? (
+            <p className="tabular-nums text-emerald-400/95">
+              Credits <span className="font-medium">{formatCurrency(-(txn.creditCents ?? 0))}</span>
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function AmountPill({ cents, size = "default" }: { cents: number; size?: "default" | "compact" }) {
   const credit = cents < 0;
   const sizeClass =
@@ -88,17 +121,17 @@ function AmountPill({ cents, size = "default" }: { cents: number; size?: "defaul
       className={
         credit
           ? `shrink-0 rounded-full border border-emerald-500/35 bg-emerald-500/15 text-emerald-100 ${sizeClass}`
-          : `shrink-0 rounded-full border border-blue-500/35 bg-blue-500/15 text-blue-100 ${sizeClass}`
+          : `shrink-0 rounded-full border border-violet-500/35 bg-violet-500/15 text-violet-100 ${sizeClass}`
       }
     >
-      {formatCurrency(cents)}
+      {credit ? formatCurrency(cents) : <>Paid {formatCurrency(cents)}</>}
     </span>
   );
 }
 
 function ExpenseChipRow({ txn }: { txn: ExpenseLogEntry }) {
   return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
+    <div className="mt-1 flex flex-wrap gap-1.5">
       {txn.title ? <MetaChip label="Category">{txn.categoryLabel}</MetaChip> : null}
       <MetaChip label="Account">{txn.accountLabel}</MetaChip>
       <MetaChip label="Transaction">{txn.dateDisplay}</MetaChip>
@@ -141,7 +174,7 @@ function ExpenseLogMeta({
   return (
     <>
       {isSplit ? (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
           <span className="inline-flex items-center rounded-full border border-amber-500/35 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-100 sm:text-xs">
             Split — view only
           </span>
@@ -196,6 +229,9 @@ function EditExpenseModal({
 }) {
   const router = useRouter();
   const fieldIds = useId();
+  const [receiptBreakdown, setReceiptBreakdown] = useState(
+    entry.preCreditCents != null && entry.preCreditCents > 0,
+  );
 
   const [state, formAction, isPending] = useActionState(
     async (_prev: UpdateState, formData: FormData): Promise<UpdateState> => {
@@ -226,6 +262,10 @@ function EditExpenseModal({
   }, [onClose]);
 
   const amountDollars = (entry.amountCents / 100).toFixed(2);
+  const preDollarsDefault =
+    entry.preCreditCents != null ? (entry.preCreditCents / 100).toFixed(2) : "";
+  const creditDollarsDefault =
+    entry.creditCents != null ? (entry.creditCents / 100).toFixed(2) : "";
 
   return (
     <div
@@ -276,13 +316,65 @@ function EditExpenseModal({
               ))}
             </select>
           </LabeledField>
-          <CurrencyAmountInput
-            name="amount"
-            label="Amount"
-            placeholder="0.00 (negative for credits)"
-            defaultValue={amountDollars}
-            required
-          />
+
+          <div className={spanFullSm}>
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-700/80 bg-slate-950/45 px-4 py-3 ring-1 ring-white/5 transition hover:bg-slate-900/55">
+              <input
+                type="checkbox"
+                checked={receiptBreakdown}
+                onChange={(e) => setReceiptBreakdown(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-2 focus:ring-blue-500/30"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-slate-200">Receipt breakdown</span>
+                <span className="mt-1 block text-xs leading-relaxed text-slate-500">
+                  Track subtotal, credits, and net paid—same as Add expense.
+                </span>
+              </span>
+            </label>
+          </div>
+
+          {!receiptBreakdown ? (
+            <>
+              <CurrencyAmountInput
+                name="amount"
+                label="Amount"
+                placeholder="0.00 (negative for credits)"
+                defaultValue={amountDollars}
+                required
+              />
+              <input type="hidden" name="preCreditTotal" value="" />
+              <input type="hidden" name="creditTotal" value="" />
+            </>
+          ) : (
+            <div
+              className={`${spanFullSm} space-y-4 rounded-xl border border-emerald-500/20 bg-gradient-to-br from-slate-950/80 to-slate-900/40 p-4 ring-1 ring-emerald-500/10`}
+            >
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-slate-100">Totals from your receipt</p>
+                <p className="text-xs leading-relaxed text-slate-500">
+                  Net amount saved is total minus credits (shown as Paid in your log).
+                </p>
+              </div>
+              <div className={formGridResponsive}>
+                <CurrencyAmountInput
+                  name="preCreditTotal"
+                  label="Total before credits"
+                  placeholder="0.00"
+                  defaultValue={preDollarsDefault}
+                  required
+                />
+                <CurrencyAmountInput
+                  name="creditTotal"
+                  label="Credits & discounts"
+                  placeholder="0.00"
+                  defaultValue={creditDollarsDefault}
+                />
+              </div>
+              <input type="hidden" name="amount" value="" />
+            </div>
+          )}
+
           <DateField
             name="date"
             label="Transaction date"
@@ -322,8 +414,8 @@ function EditExpenseModal({
             />
           </LabeledField>
           <p className={`${spanFullSm} text-xs leading-relaxed text-slate-400`}>
-            Use a negative amount for statement credits (refunds, chargebacks). They use the same category and reduce net
-            spend in budgets.
+            Without receipt breakdown, use a negative amount for statement-level credits (refunds, chargebacks). With
+            breakdown, credits are the rewards/discounts line from your receipt.
           </p>
           {state.ok === false && state.error ? (
             <p className={`${spanFullSm} text-sm text-red-300`}>{state.error}</p>
@@ -383,13 +475,15 @@ export function ExpenseLogPanel({
                 <div
                   className={`rounded-xl border border-slate-800 bg-slate-950/50 text-sm opacity-90 ${cardPad}`}
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <span className="min-w-0 flex-1 font-semibold leading-snug text-slate-100">
-                      {txn.title || txn.categoryLabel}
-                    </span>
-                    <AmountPill cents={txn.amountCents} size={pillSize} />
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <span className="block font-semibold leading-snug text-slate-100">
+                        {txn.title || txn.categoryLabel}
+                      </span>
+                      <ExpenseLogMeta txn={txn} density={density} isSplit />
+                    </div>
+                    <ExpenseAmountBlock txn={txn} size={pillSize} />
                   </div>
-                  <ExpenseLogMeta txn={txn} density={density} isSplit />
                 </div>
               ) : (
                 <button
@@ -397,13 +491,15 @@ export function ExpenseLogPanel({
                   onClick={() => setEditingId(txn.id)}
                   className={`w-full rounded-xl border border-slate-800 bg-slate-950/50 text-left text-sm text-slate-100 transition hover:border-blue-500/40 hover:bg-slate-900/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 touch-manipulation ${cardPad}`}
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <span className="min-w-0 flex-1 font-semibold leading-snug text-slate-100">
-                      {txn.title || txn.categoryLabel}
-                    </span>
-                    <AmountPill cents={txn.amountCents} size={pillSize} />
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <span className="block font-semibold leading-snug text-slate-100">
+                        {txn.title || txn.categoryLabel}
+                      </span>
+                      <ExpenseLogMeta txn={txn} density={density} isSplit={false} />
+                    </div>
+                    <ExpenseAmountBlock txn={txn} size={pillSize} />
                   </div>
-                  <ExpenseLogMeta txn={txn} density={density} isSplit={false} />
                 </button>
               )}
             </div>

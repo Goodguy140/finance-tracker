@@ -19,28 +19,39 @@ const nonZeroExpenseAmount = z.coerce
     message: "Enter a non-zero amount. Use a negative value for credits (e.g. refunds) shown on statements.",
   });
 
-export const expenseSchema = z.object({
+export const expenseBaseSchema = z.object({
   accountId: z.string().min(1),
   categoryId: z.string().min(1),
-  amount: nonZeroExpenseAmount,
   date: z.string().min(1),
   postedDate: z.string().optional(),
   title: z.string().trim().max(120).optional(),
   note: z.string().max(250).optional(),
 });
 
-export const updateExpenseSchema = expenseSchema.extend({
+/** Full expense payload including a single amount field (e.g. CSV tooling). */
+export const expenseSchema = expenseBaseSchema.extend({
+  amount: nonZeroExpenseAmount,
+});
+
+export const updateExpenseBaseSchema = expenseBaseSchema.extend({
   transactionId: z.string().min(1),
 });
 
-export const incomeSchema = z.object({
+export const incomeBaseSchema = z.object({
   accountId: z.string().min(1),
   categoryId: z.string().min(1),
-  amount: z.coerce.number().positive(),
   date: z.string().min(1),
-  postedDate: z.string().optional(),
   title: z.string().trim().max(120).optional(),
   note: z.string().max(250).optional(),
+});
+
+export const incomeSchema = incomeBaseSchema.extend({
+  amount: z.coerce.number().positive(),
+  postedDate: z.string().optional(),
+});
+
+export const updateIncomeBaseSchema = incomeBaseSchema.extend({
+  transactionId: z.string().min(1),
 });
 
 export const splitExpenseSchema = z.object({
