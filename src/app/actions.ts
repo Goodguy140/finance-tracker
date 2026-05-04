@@ -156,6 +156,24 @@ export async function updateExpenseAction(formData: FormData) {
   revalidatePath("/");
 }
 
+export async function deleteExpenseTransactionAction(formData: FormData) {
+  const user = await requireUser();
+  const transactionId = getFormValue(formData, "transactionId");
+  if (!transactionId) throw new Error("Transaction id is required.");
+
+  const existing = await prisma.transaction.findFirst({
+    where: {
+      id: transactionId,
+      userId: user.id,
+      type: TransactionType.EXPENSE,
+    },
+  });
+  if (!existing) throw new Error("Expense not found.");
+
+  await prisma.transaction.delete({ where: { id: existing.id } });
+  revalidatePath("/");
+}
+
 export async function importExpensesCsvAction(formData: FormData) {
   const user = await requireUser();
   const rowsJson = getFormValue(formData, "rowsJson");
@@ -334,6 +352,24 @@ export async function updateIncomeAction(formData: FormData) {
       note: payload.note,
     },
   });
+  revalidatePath("/");
+}
+
+export async function deleteIncomeTransactionAction(formData: FormData) {
+  const user = await requireUser();
+  const transactionId = getFormValue(formData, "transactionId");
+  if (!transactionId) throw new Error("Transaction id is required.");
+
+  const existing = await prisma.transaction.findFirst({
+    where: {
+      id: transactionId,
+      userId: user.id,
+      type: TransactionType.INCOME,
+    },
+  });
+  if (!existing) throw new Error("Income entry not found.");
+
+  await prisma.transaction.delete({ where: { id: existing.id } });
   revalidatePath("/");
 }
 

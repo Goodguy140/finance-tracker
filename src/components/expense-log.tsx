@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useId, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { updateExpenseAction } from "@/app/actions";
+import { deleteExpenseTransactionAction, updateExpenseAction } from "@/app/actions";
 import { MetaChip } from "@/components/meta-chip";
 import { formatCurrency } from "@/lib/money";
 import {
@@ -40,6 +40,8 @@ export type ExpenseLogEntry = {
 };
 
 type UpdateState = { ok: true } | { ok: false; error: string | null };
+
+type DeleteState = { ok: true } | { ok: false; error: string | null };
 
 type ExpenseLogDensity = "expanded" | "compact";
 
@@ -246,12 +248,32 @@ function EditExpenseModal({
     { ok: false, error: null },
   );
 
+  const [deleteState, deleteFormAction, deletePending] = useActionState(
+    async (_prev: DeleteState, formData: FormData): Promise<DeleteState> => {
+      try {
+        await deleteExpenseTransactionAction(formData);
+        return { ok: true };
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Could not delete.";
+        return { ok: false, error: message };
+      }
+    },
+    { ok: false, error: null },
+  );
+
   useEffect(() => {
     if (state.ok) {
       onClose();
       router.refresh();
     }
   }, [state, onClose, router]);
+
+  useEffect(() => {
+    if (deleteState.ok) {
+      onClose();
+      router.refresh();
+    }
+  }, [deleteState, onClose, router]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -423,16 +445,49 @@ function EditExpenseModal({
           <div className={`${spanFullSm} flex flex-col gap-2 pt-1 sm:flex-row sm:flex-wrap`}>
             <button
               type="submit"
-              disabled={isPending}
+              disabled={isPending || deletePending}
               className={`w-full ${primaryBtnClass} py-2.5 sm:w-auto sm:py-2`}
             >
               {isPending ? "Saving…" : "Save changes"}
             </button>
-            <button type="button" className={`w-full ${secondaryBtnClass} py-2.5 sm:w-auto sm:py-2`} onClick={onClose}>
+            <button
+              type="button"
+              disabled={isPending || deletePending}
+              className={`w-full ${secondaryBtnClass} py-2.5 sm:w-auto sm:py-2`}
+              onClick={onClose}
+            >
               Cancel
             </button>
           </div>
         </form>
+
+        <div className={`${spanFullSm} mt-4 border-t border-slate-800/90 pt-4`}>
+          <p className="mb-2 text-xs leading-relaxed text-slate-500">
+            Remove this expense from your log and category totals. This cannot be undone.
+          </p>
+          <form action={deleteFormAction}>
+            <input type="hidden" name="transactionId" value={entry.id} />
+            {deleteState.ok === false && deleteState.error ? (
+              <p className="mb-2 text-sm text-red-300">{deleteState.error}</p>
+            ) : null}
+            <button
+              type="submit"
+              disabled={isPending || deletePending}
+              className="w-full touch-manipulation rounded-xl border border-red-800/70 bg-red-950/40 px-3 py-2.5 text-sm font-medium text-red-200 transition hover:border-red-700/80 hover:bg-red-950/60 sm:w-auto"
+              onClick={(e) => {
+                if (
+                  !window.confirm(
+                    "Delete this expense permanently? This cannot be undone.",
+                  )
+                ) {
+                  e.preventDefault();
+                }
+              }}
+            >
+              {deletePending ? "Deleting…" : "Delete expense"}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );

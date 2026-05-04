@@ -20,6 +20,7 @@ import {
 import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
 import { formatCurrency } from "@/lib/money";
+import { syncSubscriptionNextChargeDatesForUser } from "@/lib/subscription-next-charge";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 
@@ -49,6 +50,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const period = parseDashboardSearchParams(sp, now);
   const periodDescription = describeDashboardPeriod(period);
   const transactionDateFilter = period.transactionDateFilter;
+
+  await syncSubscriptionNextChargeDatesForUser(user.id);
 
   const [accounts, categories, budgets, subscriptions, periodExpenses, periodIncomes, incomeTotal] = await Promise.all([
     prisma.account.findMany({
