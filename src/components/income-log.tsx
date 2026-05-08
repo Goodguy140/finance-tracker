@@ -162,6 +162,8 @@ function EditIncomeModal({
 }) {
   const router = useRouter();
   const fieldIds = useId();
+  const [showTitle, setShowTitle] = useState(Boolean(entry.title));
+  const [showNote, setShowNote] = useState(Boolean(entry.note));
 
   const [state, formAction, isPending] = useActionState(
     async (_prev: UpdateState, formData: FormData): Promise<UpdateState> => {
@@ -265,6 +267,30 @@ function EditIncomeModal({
               ))}
             </select>
           </LabeledField>
+          <div className={`${spanFullSm} flex flex-wrap gap-2`}>
+            <button
+              type="button"
+              onClick={() => setShowTitle((v) => !v)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                showTitle
+                  ? "border-blue-500/40 bg-blue-500/15 text-blue-100"
+                  : "border-slate-700/80 bg-slate-950/50 text-slate-300 hover:bg-slate-900/70"
+              }`}
+            >
+              Title
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowNote((v) => !v)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                showNote
+                  ? "border-blue-500/40 bg-blue-500/15 text-blue-100"
+                  : "border-slate-700/80 bg-slate-950/50 text-slate-300 hover:bg-slate-900/70"
+              }`}
+            >
+              Note
+            </button>
+          </div>
           <CurrencyAmountInput
             name="amount"
             label="Amount"
@@ -279,26 +305,34 @@ function EditIncomeModal({
             defaultValue={entry.dateYmd}
             required
           />
-          <LabeledField label="Title" hint="Optional label shown under the source (max 120 characters)." className={spanFullSm}>
-            <textarea
-              name="title"
-              rows={3}
-              maxLength={120}
-              className={textAreaClass}
-              placeholder="e.g. Paycheque, freelance invoice"
-              defaultValue={entry.title ?? ""}
-            />
-          </LabeledField>
-          <LabeledField label="Note" hint="Optional details (max 250 characters)." className={spanFullSm}>
-            <textarea
-              name="note"
-              rows={4}
-              maxLength={250}
-              className={textAreaClass}
-              placeholder="Additional context"
-              defaultValue={entry.note ?? ""}
-            />
-          </LabeledField>
+          {showTitle ? (
+            <LabeledField label="Title" hint="Optional label shown under the source (max 120 characters)." className={spanFullSm}>
+              <textarea
+                name="title"
+                rows={2}
+                maxLength={120}
+                className={textAreaClass}
+                placeholder="e.g. Paycheque, freelance invoice"
+                defaultValue={entry.title ?? ""}
+              />
+            </LabeledField>
+          ) : (
+            <input type="hidden" name="title" value="" />
+          )}
+          {showNote ? (
+            <LabeledField label="Note" hint="Optional details (max 250 characters)." className={spanFullSm}>
+              <textarea
+                name="note"
+                rows={4}
+                maxLength={250}
+                className={textAreaClass}
+                placeholder="Additional context"
+                defaultValue={entry.note ?? ""}
+              />
+            </LabeledField>
+          ) : (
+            <input type="hidden" name="note" value="" />
+          )}
           {state.ok === false && state.error ? (
             <p className={`${spanFullSm} text-sm text-red-300`}>{state.error}</p>
           ) : null}

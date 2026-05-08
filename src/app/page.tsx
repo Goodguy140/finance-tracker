@@ -224,6 +224,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     amountCents: txn.amountCents,
     preCreditCents: txn.preCreditCents,
     creditCents: txn.creditCents,
+    creditBreakdownJson: txn.creditBreakdownJson,
     dateYmd: ymdFromDateUtc(txn.date),
     dateDisplay: formatDateOnlyUtc(txn.date),
     postedDateYmd: txn.postedDate ? ymdFromDateUtc(txn.postedDate) : null,

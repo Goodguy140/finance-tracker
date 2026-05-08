@@ -8,6 +8,7 @@ export type ParsedExpenseAmount = {
   amountCents: number;
   preCreditCents: number | null;
   creditCents: number | null;
+  creditBreakdownJson: string | null;
 };
 
 /**
@@ -16,7 +17,10 @@ export type ParsedExpenseAmount = {
  */
 export function parseExpenseAmountFromForm(formData: FormData): ParsedExpenseAmount {
   const preRaw = getFormValue(formData, "preCreditTotal").trim();
-  const creditRaw = getFormValue(formData, "creditTotal").trim();
+  const creditRaws = formData
+    .getAll("creditTotal")
+    .map((v) => String(v ?? "").trim())
+    .filter((v) => v !== "");
   const amountRaw = getFormValue(formData, "amount").trim();
 
   if (preRaw !== "") {
@@ -24,9 +28,13 @@ export function parseExpenseAmountFromForm(formData: FormData): ParsedExpenseAmo
     if (!Number.isFinite(pre) || pre <= 0) {
       throw new Error("Total before credits must be a positive number.");
     }
-    const creditNum = creditRaw === "" ? 0 : Number(creditRaw);
-    if (!Number.isFinite(creditNum) || creditNum < 0) {
-      throw new Error("Credits must be zero or a positive number.");
+    let creditNum = 0;
+    for (const c of creditRaws) {
+      const n = Number(c);
+      if (!Number.isFinite(n) || n < 0) {
+        throw new Error("Each credit must be zero or a positive number.");
+      }
+      creditNum += n;
     }
     const net = pre - creditNum;
     if (!Number.isFinite(net) || net === 0) {
@@ -38,10 +46,15 @@ export function parseExpenseAmountFromForm(formData: FormData): ParsedExpenseAmo
       amountCents: toCents(net),
       preCreditCents: toCents(pre),
       creditCents: toCents(creditNum),
+      creditBreakdownJson: JSON.stringify(
+        creditRaws
+          .map((c) => toCents(Number(c)))
+          .filter((cents) => Number.isFinite(cents) && cents > 0),
+      ),
     };
   }
 
-  if (creditRaw !== "") {
+  if (creditRaws.length > 0) {
     throw new Error("Enter a total before credits, or clear the credits field.");
   }
 
@@ -54,5 +67,6 @@ export function parseExpenseAmountFromForm(formData: FormData): ParsedExpenseAmo
     amountCents: toCents(amount),
     preCreditCents: null,
     creditCents: null,
+    creditBreakdownJson: null,
   };
 }

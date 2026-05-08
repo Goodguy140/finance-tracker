@@ -179,6 +179,8 @@ model Transaction {
   preCreditCents Int?
   /** Credits, rewards, or discounts applied (positive cents; subtracted from pre-credit total). */
   creditCents    Int?
+  /** Optional JSON array of per-credit cents to preserve distinct credit lines across edits. */
+  creditBreakdownJson String?
   title       String?
   date        DateTime
   postedDate  DateTime?

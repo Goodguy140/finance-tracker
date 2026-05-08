@@ -26,6 +26,8 @@ export type ExpenseLogEntry = {
   preCreditCents: number | null;
   /** Credits or discounts in positive cents. */
   creditCents: number | null;
+  /** JSON array of per-credit cents to preserve separate credit lines across edits. */
+  creditBreakdownJson: string | null;
   dateYmd: string;
   dateDisplay: string;
   postedDateYmd: string | null;
@@ -229,11 +231,29 @@ function EditExpenseModal({
   categories: Option[];
   onClose: () => void;
 }) {
+  function parseCreditRowsFromJson(raw: string | null, fallbackCreditDollars: string) {
+    if (!raw) return [fallbackCreditDollars !== "" ? fallbackCreditDollars : ""];
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [fallbackCreditDollars !== "" ? fallbackCreditDollars : ""];
+      const rows = parsed
+        .map((v) => Number(v))
+        .filter((v) => Number.isFinite(v) && v > 0)
+        .map((cents) => (cents / 100).toFixed(2));
+      return rows.length > 0 ? rows : [fallbackCreditDollars !== "" ? fallbackCreditDollars : ""];
+    } catch {
+      return [fallbackCreditDollars !== "" ? fallbackCreditDollars : ""];
+    }
+  }
+
   const router = useRouter();
   const fieldIds = useId();
   const [receiptBreakdown, setReceiptBreakdown] = useState(
     entry.preCreditCents != null && entry.preCreditCents > 0,
   );
+  const [showPostedDate, setShowPostedDate] = useState(entry.postedDateYmd != null);
+  const [showTitle, setShowTitle] = useState(Boolean(entry.title));
+  const [showNote, setShowNote] = useState(Boolean(entry.note));
 
   const [state, formAction, isPending] = useActionState(
     async (_prev: UpdateState, formData: FormData): Promise<UpdateState> => {
@@ -285,9 +305,46 @@ function EditExpenseModal({
 
   const amountDollars = (entry.amountCents / 100).toFixed(2);
   const preDollarsDefault =
-    entry.preCreditCents != null ? (entry.preCreditCents / 100).toFixed(2) : "";
+    entry.preCreditCents != null ? (entry.preCreditCents / 100).toFixed(2) : amountDollars;
   const creditDollarsDefault =
     entry.creditCents != null ? (entry.creditCents / 100).toFixed(2) : "";
+  const [amountValue, setAmountValue] = useState(amountDollars);
+  const [preCreditValue, setPreCreditValue] = useState(preDollarsDefault);
+  const [creditRows, setCreditRows] = useState<string[]>(
+    parseCreditRowsFromJson(entry.creditBreakdownJson, creditDollarsDefault),
+  );
+  const creditSum = sumCredits(creditRows);
+  const preCreditNumber = Number(preCreditValue);
+  const hasValidPreCredit = Number.isFinite(preCreditNumber);
+  const netPaidPreview = hasValidPreCredit ? preCreditNumber - creditSum : null;
+
+  function sumCredits(rows: string[]) {
+    return rows.reduce((sum, row) => {
+      const n = Number(row);
+      return Number.isFinite(n) && n >= 0 ? sum + n : sum;
+    }, 0);
+  }
+
+  function toggleReceiptBreakdown() {
+    if (!receiptBreakdown) {
+      if (preCreditValue.trim() === "" && amountValue.trim() !== "") {
+        setPreCreditValue(amountValue);
+      }
+      setReceiptBreakdown(true);
+      return;
+    }
+
+    const pre = Number(preCreditValue);
+    if (Number.isFinite(pre) && pre > 0) {
+      const net = pre - sumCredits(creditRows);
+      if (Number.isFinite(net) && net !== 0) {
+        setAmountValue(String(Number(net.toFixed(2))));
+      } else {
+        setAmountValue(String(Number(pre.toFixed(2))));
+      }
+    }
+    setReceiptBreakdown(false);
+  }
 
   return (
     <div
@@ -339,32 +396,64 @@ function EditExpenseModal({
             </select>
           </LabeledField>
 
-          <div className={spanFullSm}>
-            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-700/80 bg-slate-950/45 px-4 py-3 ring-1 ring-white/5 transition hover:bg-slate-900/55">
-              <input
-                type="checkbox"
-                checked={receiptBreakdown}
-                onChange={(e) => setReceiptBreakdown(e.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-2 focus:ring-blue-500/30"
-              />
-              <span className="min-w-0">
-                <span className="block text-sm font-medium text-slate-200">Receipt breakdown</span>
-                <span className="mt-1 block text-xs leading-relaxed text-slate-500">
-                  Track subtotal, credits, and net paid—same as Add expense.
-                </span>
-              </span>
-            </label>
+          <div className={`${spanFullSm} flex flex-wrap gap-2`}>
+            <button
+              type="button"
+              onClick={() => setShowPostedDate((v) => !v)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                showPostedDate
+                  ? "border-blue-500/40 bg-blue-500/15 text-blue-100"
+                  : "border-slate-700/80 bg-slate-950/50 text-slate-300 hover:bg-slate-900/70"
+              }`}
+            >
+              Posted date
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowTitle((v) => !v)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                showTitle
+                  ? "border-blue-500/40 bg-blue-500/15 text-blue-100"
+                  : "border-slate-700/80 bg-slate-950/50 text-slate-300 hover:bg-slate-900/70"
+              }`}
+            >
+              Title
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowNote((v) => !v)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                showNote
+                  ? "border-blue-500/40 bg-blue-500/15 text-blue-100"
+                  : "border-slate-700/80 bg-slate-950/50 text-slate-300 hover:bg-slate-900/70"
+              }`}
+            >
+              Note
+            </button>
+            <button
+              type="button"
+              onClick={toggleReceiptBreakdown}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                receiptBreakdown
+                  ? "border-emerald-500/45 bg-emerald-500/15 text-emerald-100"
+                  : "border-slate-700/80 bg-slate-950/50 text-slate-300 hover:bg-slate-900/70"
+              }`}
+            >
+              Receipt breakdown
+            </button>
           </div>
 
           {!receiptBreakdown ? (
             <>
-              <CurrencyAmountInput
-                name="amount"
-                label="Amount"
-                placeholder="0.00 (negative for credits)"
-                defaultValue={amountDollars}
-                required
-              />
+              <LabeledField label="Amount" hint="Tip: use a negative amount for full refunds or chargebacks.">
+                <CurrencyAmountInput
+                  name="amount"
+                  placeholder="0.00 (negative for credits)"
+                  value={amountValue}
+                  onChange={(e) => setAmountValue(e.target.value)}
+                  required
+                />
+              </LabeledField>
               <input type="hidden" name="preCreditTotal" value="" />
               <input type="hidden" name="creditTotal" value="" />
             </>
@@ -383,16 +472,64 @@ function EditExpenseModal({
                   name="preCreditTotal"
                   label="Total before credits"
                   placeholder="0.00"
-                  defaultValue={preDollarsDefault}
+                  value={preCreditValue}
+                  onChange={(e) => setPreCreditValue(e.target.value)}
                   required
                 />
-                <CurrencyAmountInput
-                  name="creditTotal"
-                  label="Credits & discounts"
-                  placeholder="0.00"
-                  defaultValue={creditDollarsDefault}
-                />
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-slate-200">Credits & discounts</p>
+                  <div className="space-y-2">
+                    {creditRows.map((value, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <CurrencyAmountInput
+                          name="creditTotal"
+                          label={undefined}
+                          placeholder={idx === 0 ? "0.00" : `Credit #${idx + 1}`}
+                          value={value}
+                          onChange={(e) =>
+                            setCreditRows((rows) => rows.map((r, i) => (i === idx ? e.target.value : r)))
+                          }
+                        />
+                        {creditRows.length > 1 ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCreditRows((rows) => rows.filter((_, i) => i !== idx))
+                            }
+                            className="shrink-0 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800"
+                            aria-label={`Remove credit ${idx + 1}`}
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCreditRows((rows) => [...rows, ""])}
+                    className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-slate-800"
+                  >
+                    Add another credit
+                  </button>
+                  <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">
+                    <p className="tabular-nums">
+                      Credit sum: <span className="font-medium text-emerald-300">{creditSum.toFixed(2)}</span>
+                    </p>
+                    <p className="mt-1 tabular-nums text-slate-400">
+                      Net paid preview:{" "}
+                      <span className="font-medium text-slate-200">
+                        {netPaidPreview !== null ? netPaidPreview.toFixed(2) : "--"}
+                      </span>
+                    </p>
+                  </div>
+                </div>
               </div>
+              <p className="border-t border-slate-800/90 pt-3 text-xs leading-relaxed text-slate-500">
+                Enter the full receipt total first, then add each reward, coupon, or statement credit separately. We
+                automatically sum all credits and save your paid amount as{" "}
+                <span className="font-medium text-slate-300">total minus combined credits</span>.
+              </p>
               <input type="hidden" name="amount" value="" />
             </div>
           )}
@@ -404,41 +541,49 @@ function EditExpenseModal({
             defaultValue={entry.dateYmd}
             required
           />
-          <DateField
-            name="postedDate"
-            label="Posted date"
-            hint="Optional. When the transaction cleared on your statement, if different from the transaction date."
-            defaultValue={entry.postedDateYmd ?? undefined}
-            className={spanFullSm}
-          />
-          <LabeledField
-            label="Title"
-            hint="Optional. Shown in your expense log (max 120 characters)."
-            className={spanFullSm}
-          >
-            <textarea
-              name="title"
-              rows={3}
-              maxLength={120}
-              className={textAreaClass}
-              placeholder="e.g. Weekly groceries, Shell fuel"
-              defaultValue={entry.title ?? ""}
+          {showPostedDate ? (
+            <DateField
+              name="postedDate"
+              label="Posted date"
+              hint="Optional. When the transaction cleared on your statement, if different from the transaction date."
+              defaultValue={entry.postedDateYmd ?? undefined}
+              className={spanFullSm}
             />
-          </LabeledField>
-          <LabeledField label="Note" hint="Optional details (max 250 characters)." className={spanFullSm}>
-            <textarea
-              name="note"
-              rows={5}
-              maxLength={250}
-              className={textAreaClass}
-              placeholder="Extra context, memo, or split notes"
-              defaultValue={entry.note ?? ""}
-            />
-          </LabeledField>
-          <p className={`${spanFullSm} text-xs leading-relaxed text-slate-400`}>
-            Without receipt breakdown, use a negative amount for statement-level credits (refunds, chargebacks). With
-            breakdown, credits are the rewards/discounts line from your receipt.
-          </p>
+          ) : (
+            <input type="hidden" name="postedDate" value="" />
+          )}
+          {showTitle ? (
+            <LabeledField
+              label="Title"
+              hint="Optional. Shown in your expense log (max 120 characters)."
+              className={spanFullSm}
+            >
+              <textarea
+                name="title"
+                rows={2}
+                maxLength={120}
+                className={textAreaClass}
+                placeholder="e.g. Weekly groceries, Shell fuel"
+                defaultValue={entry.title ?? ""}
+              />
+            </LabeledField>
+          ) : (
+            <input type="hidden" name="title" value="" />
+          )}
+          {showNote ? (
+            <LabeledField label="Note" hint="Optional details (max 250 characters)." className={spanFullSm}>
+              <textarea
+                name="note"
+                rows={4}
+                maxLength={250}
+                className={textAreaClass}
+                placeholder="Extra context, memo, or split notes"
+                defaultValue={entry.note ?? ""}
+              />
+            </LabeledField>
+          ) : (
+            <input type="hidden" name="note" value="" />
+          )}
           {state.ok === false && state.error ? (
             <p className={`${spanFullSm} text-sm text-red-300`}>{state.error}</p>
           ) : null}
