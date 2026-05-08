@@ -36,6 +36,7 @@ import {
   deleteBudgetSchema,
   deleteSubscriptionSchema,
   setAccountArchivedSchema,
+  updateAccountSchema,
   updateBudgetSchema,
   updateSubscriptionSchema,
 } from "@/lib/validation";
@@ -772,6 +773,29 @@ export async function createFinancialAccountAction(formData: FormData) {
       archived: false,
     },
   });
+  revalidatePath("/");
+  revalidatePath("/settings");
+}
+
+export async function updateFinancialAccountAction(formData: FormData) {
+  const user = await requireUser();
+  const payload = updateAccountSchema.parse({
+    accountId: getFormValue(formData, "accountId"),
+    name: getFormValue(formData, "name"),
+    type: getFormValue(formData, "type"),
+    currency: getFormValue(formData, "currency"),
+  });
+
+  const result = await prisma.account.updateMany({
+    where: { id: payload.accountId, userId: user.id },
+    data: {
+      name: payload.name,
+      type: payload.type as AccountType,
+      currency: payload.currency,
+    },
+  });
+  if (result.count === 0) throw new Error("Account not found.");
+
   revalidatePath("/");
   revalidatePath("/settings");
 }

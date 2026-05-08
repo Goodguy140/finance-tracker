@@ -19,6 +19,7 @@ import {
   createSubscriptionAction,
   deleteBudgetAction,
   deleteFinancialAccountAction,
+  updateFinancialAccountAction,
   setFinancialAccountArchivedAction,
   deleteAccountAction,
   importUserBackupAction,
@@ -1450,6 +1451,13 @@ export function SettingsForms({
   budgets: Array<{ id: string; periodMonth: string; name: string | null; categoryName: string; limitCents: number }>;
 }) {
   const [tab, setTab] = useState<SettingsTabId>("profile");
+  const [editingAccount, setEditingAccount] = useState<{
+    id: string;
+    name: string;
+    type: string;
+    archived: boolean;
+    currency: string;
+  } | null>(null);
   const profileInitials = getProfileInitials(defaults.displayName, profileEmail);
   const joinedLabel = new Date(joinedAt).toLocaleDateString(undefined, {
     month: "long",
@@ -1757,32 +1765,24 @@ export function SettingsForms({
                     .map((account) => (
                       <li
                         key={account.id}
-                        className="rounded-xl border border-slate-800 bg-slate-950/55 p-3.5 sm:flex sm:items-center sm:justify-between sm:gap-4 sm:p-4"
+                        className="rounded-xl border border-slate-800 bg-slate-950/55 p-0"
                       >
-                        <div className="min-w-0 flex-1 space-y-2">
-                          <p className="truncate text-base font-semibold text-slate-100">{account.name}</p>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <AccountTypePill accountType={account.type} />
-                            <span className="rounded-md border border-slate-700/80 bg-slate-900/60 px-2 py-0.5 text-[11px] font-medium tabular-nums text-slate-400">
-                              {account.currency}
-                            </span>
+                        <button
+                          type="button"
+                          onClick={() => setEditingAccount(account)}
+                          className="w-full rounded-xl p-3.5 text-left transition hover:bg-slate-900/40 sm:p-4"
+                        >
+                          <div className="min-w-0 space-y-2">
+                            <p className="truncate text-base font-semibold text-slate-100">{account.name}</p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <AccountTypePill accountType={account.type} />
+                              <span className="rounded-md border border-slate-700/80 bg-slate-900/60 px-2 py-0.5 text-[11px] font-medium tabular-nums text-slate-400">
+                                {account.currency}
+                              </span>
+                              <span className="text-xs text-slate-500">Click to edit</span>
+                            </div>
                           </div>
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2 sm:mt-0 sm:shrink-0">
-                          <ServerActionForm action={setFinancialAccountArchivedAction}>
-                            <input type="hidden" name="accountId" value={account.id} />
-                            <input type="hidden" name="archived" value="true" />
-                            <button type="submit" className={secondaryBtnClass}>
-                              Archive
-                            </button>
-                          </ServerActionForm>
-                          <ServerActionForm action={deleteFinancialAccountAction}>
-                            <input type="hidden" name="accountId" value={account.id} />
-                            <button type="submit" className={secondaryBtnClass}>
-                              Remove
-                            </button>
-                          </ServerActionForm>
-                        </div>
+                        </button>
                       </li>
                     ))}
                 </ul>
@@ -1800,41 +1800,88 @@ export function SettingsForms({
                       .map((account) => (
                         <li
                           key={account.id}
-                          className="rounded-xl border border-slate-700/50 bg-slate-950/25 p-3.5 sm:flex sm:items-center sm:justify-between sm:gap-4 sm:p-4"
+                          className="rounded-xl border border-slate-700/50 bg-slate-950/25 p-0"
                         >
-                          <div className="min-w-0 flex-1 space-y-2">
-                            <p className="truncate text-base font-semibold text-slate-200">{account.name}</p>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <AccountTypePill accountType={account.type} />
-                              <span className="rounded-md border border-slate-600/80 bg-slate-900/50 px-2 py-0.5 text-[11px] font-medium tabular-nums text-slate-500">
-                                {account.currency}
-                              </span>
-                              <span className="rounded-full border border-slate-600 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
-                                Hidden
-                              </span>
+                          <button
+                            type="button"
+                            onClick={() => setEditingAccount(account)}
+                            className="w-full rounded-xl p-3.5 text-left transition hover:bg-slate-900/30 sm:p-4"
+                          >
+                            <div className="min-w-0 space-y-2">
+                              <p className="truncate text-base font-semibold text-slate-200">{account.name}</p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <AccountTypePill accountType={account.type} />
+                                <span className="rounded-md border border-slate-600/80 bg-slate-900/50 px-2 py-0.5 text-[11px] font-medium tabular-nums text-slate-500">
+                                  {account.currency}
+                                </span>
+                                <span className="rounded-full border border-slate-600 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                                  Hidden
+                                </span>
+                                <span className="text-xs text-slate-500">Click to edit</span>
+                              </div>
                             </div>
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2 sm:mt-0 sm:shrink-0">
-                            <ServerActionForm action={setFinancialAccountArchivedAction}>
-                              <input type="hidden" name="accountId" value={account.id} />
-                              <input type="hidden" name="archived" value="false" />
-                              <button type="submit" className={secondaryBtnClass}>
-                                Restore
-                              </button>
-                            </ServerActionForm>
-                            <ServerActionForm action={deleteFinancialAccountAction}>
-                              <input type="hidden" name="accountId" value={account.id} />
-                              <button type="submit" className={secondaryBtnClass}>
-                                Remove
-                              </button>
-                            </ServerActionForm>
-                          </div>
+                          </button>
                         </li>
                       ))}
                   </ul>
                 </div>
               ) : null}
             </div>
+            {editingAccount && typeof document !== "undefined"
+              ? createPortal(
+                  <div className="fixed inset-0 z-[70] bg-black/50 p-4">
+                    <div className="mx-auto mt-10 w-full max-w-2xl rounded-2xl border border-slate-700 bg-slate-950 p-4 sm:p-5">
+                      <div className="mb-4 flex items-center justify-between">
+                        <h4 className="text-lg font-semibold text-slate-100">Edit account</h4>
+                        <button type="button" className={secondaryBtnClass} onClick={() => setEditingAccount(null)}>
+                          Close
+                        </button>
+                      </div>
+                      <ServerActionForm
+                        action={updateFinancialAccountAction}
+                        onSuccess={() => setEditingAccount(null)}
+                        className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+                      >
+                        <input type="hidden" name="accountId" value={editingAccount.id} />
+                        <LabeledField label="Title" className="sm:col-span-2">
+                          <input name="name" defaultValue={editingAccount.name} className={inputClass} required />
+                        </LabeledField>
+                        <LabeledField label="Type">
+                          <select name="type" className={selectClass} defaultValue={editingAccount.type}>
+                            {ACCOUNT_TYPE_ORDER.map((t) => (
+                              <option key={t} value={t}>
+                                {ACCOUNT_TYPE_LABELS[t]}
+                              </option>
+                            ))}
+                          </select>
+                        </LabeledField>
+                        <LabeledField label="Currency">
+                          <input name="currency" defaultValue={editingAccount.currency} maxLength={3} className={inputClass} required />
+                        </LabeledField>
+                        <button type="submit" className={`${primaryBtnClass} sm:col-span-2`}>
+                          Save account
+                        </button>
+                      </ServerActionForm>
+                      <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-800 pt-4">
+                        <ServerActionForm action={setFinancialAccountArchivedAction} onSuccess={() => setEditingAccount(null)}>
+                          <input type="hidden" name="accountId" value={editingAccount.id} />
+                          <input type="hidden" name="archived" value={editingAccount.archived ? "false" : "true"} />
+                          <button type="submit" className={secondaryBtnClass}>
+                            {editingAccount.archived ? "Restore" : "Archive"}
+                          </button>
+                        </ServerActionForm>
+                        <ServerActionForm action={deleteFinancialAccountAction} onSuccess={() => setEditingAccount(null)}>
+                          <input type="hidden" name="accountId" value={editingAccount.id} />
+                          <button type="submit" className={secondaryBtnClass}>
+                            Remove
+                          </button>
+                        </ServerActionForm>
+                      </div>
+                    </div>
+                  </div>,
+                  document.body,
+                )
+              : null}
           </div>
         ) : null}
 

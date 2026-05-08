@@ -171,6 +171,15 @@ export const accountSchema = z.object({
   type: z.enum(["CHEQUING", "SAVINGS", "CREDIT_CARD", "TFSA", "RRSP", "FHSA", "NON_REGISTERED", "CASH"]),
 });
 
+export const updateAccountSchema = accountSchema.extend({
+  accountId: z.string().min(1),
+  currency: z
+    .string()
+    .trim()
+    .length(3)
+    .transform((value) => value.toUpperCase()),
+});
+
 export const setAccountArchivedSchema = z.object({
   accountId: z.string().min(1),
   archived: z.enum(["true", "false"]),
