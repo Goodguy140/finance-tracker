@@ -21,6 +21,7 @@ import {
   deleteFinancialAccountAction,
   setFinancialAccountArchivedAction,
   deleteAccountAction,
+  importUserBackupAction,
   requestPasswordResetAction,
   resetPasswordAction,
   signupAction,
@@ -2006,6 +2007,35 @@ export function SettingsForms({
 
         {tab === "advanced" ? (
           <div className="space-y-4" role="tabpanel" aria-label="Advanced">
+            <section className="space-y-3 rounded-2xl border border-sky-800/60 bg-sky-950/25 p-4 lg:p-5">
+              <h3 className="text-base font-semibold text-sky-200 lg:text-lg">Backup and restore</h3>
+              <p className="text-sm text-sky-100/85">
+                Export all data associated with this user account to a JSON file, then import it later to restore this
+                account. Import replaces this account&apos;s existing data.
+              </p>
+              <a
+                href="/api/backup/export"
+                className="inline-flex items-center justify-center rounded-xl bg-sky-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-600"
+              >
+                Export backup JSON
+              </a>
+              <ServerActionForm action={importUserBackupAction} className="space-y-2 rounded-xl border border-sky-800/70 bg-sky-950/35 p-3">
+                <p className="text-xs text-sky-200/85">Import a previous backup JSON for this same account email.</p>
+                <input
+                  name="backupJson"
+                  type="file"
+                  accept="application/json,.json"
+                  required
+                  className={inputClass}
+                />
+                <button
+                  type="submit"
+                  className="rounded-xl bg-sky-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-600"
+                >
+                  Import backup JSON
+                </button>
+              </ServerActionForm>
+            </section>
             <ServerActionForm action={clearUserFinancialDataAction} className="space-y-2 rounded-2xl border border-amber-800/60 bg-amber-950/25 p-4 lg:p-5">
               <h3 className="text-base font-semibold text-amber-200 lg:text-lg">Clear financial data</h3>
               <p className="text-sm text-amber-100/85">

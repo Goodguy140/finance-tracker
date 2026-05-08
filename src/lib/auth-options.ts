@@ -5,6 +5,23 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import { decryptSecret } from "@/lib/security";
 import { prisma } from "@/lib/prisma";
+import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
+
+function getRequiredAuthSecret() {
+  const secret = process.env.NEXTAUTH_SECRET?.trim();
+  if (!secret && process.env.NODE_ENV === "production") {
+    throw new Error("Missing required env var NEXTAUTH_SECRET in production.");
+  }
+  return secret;
+}
+
+function publicSignupAllowed() {
+  const value = process.env.ALLOW_PUBLIC_SIGNUP?.trim().toLowerCase();
+  if (value === undefined) {
+    return process.env.NODE_ENV !== "production";
+  }
+  return value === "true" || value === "1";
+}
 
 async function getServerSetting(key: string) {
   const row = await prisma.serverSetting.findUnique({ where: { key } });
@@ -35,6 +52,12 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         const email = credentials?.email?.toLowerCase().trim();
         const password = credentials?.password ?? "";
         if (!email || !password) return null;
+        enforceSlidingWindowRateLimit(
+          `login:${email}`,
+          10,
+          15 * 60 * 1000,
+          "Too many login attempts. Please try again later.",
+        );
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user?.passwordHash) return null;
         const valid = await compare(password, user.passwordHash);
@@ -63,6 +86,9 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           const existing = await prisma.user.findUnique({
             where: { email: user.email.toLowerCase() },
           });
+          if (!existing && !publicSignupAllowed()) {
+            return false;
+          }
           const currentCount = existing ? 1 : await prisma.user.count();
           const dbUser =
             existing ??
@@ -119,6 +145,6 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         return session;
       },
     },
-    secret: process.env.NEXTAUTH_SECRET,
+    secret: getRequiredAuthSecret(),
   };
 }

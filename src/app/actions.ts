@@ -16,6 +16,8 @@ import { resolveGoogleOauthSettings } from "@/lib/oauth-settings";
 import { formatAccountDetachedLabel } from "@/lib/account-type-labels";
 import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
 import { mergeAccountDescriptionOnDetach } from "@/lib/transaction-account-detach";
+import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
+import { userBackupSchema } from "@/lib/backup-schema";
 import {
   budgetSchema,
   accountSchema,
@@ -51,6 +53,34 @@ function getOptionalMappedValue(row: Record<string, string>, key?: string) {
   return row[key]?.trim() || undefined;
 }
 
+function publicSignupAllowed() {
+  const value = process.env.ALLOW_PUBLIC_SIGNUP?.trim().toLowerCase();
+  if (value === undefined) {
+    return process.env.NODE_ENV !== "production";
+  }
+  return value === "true" || value === "1";
+}
+
+async function assertUserOwnsAccount(userId: string, accountId: string) {
+  const account = await prisma.account.findFirst({
+    where: { id: accountId, userId },
+    select: { id: true },
+  });
+  if (!account) {
+    throw new Error("Selected account was not found.");
+  }
+}
+
+async function assertUserOwnsCategory(userId: string, categoryId: string, kind?: CategoryKind) {
+  const category = await prisma.category.findFirst({
+    where: { id: categoryId, userId, ...(kind ? { kind } : {}) },
+    select: { id: true },
+  });
+  if (!category) {
+    throw new Error("Selected category was not found.");
+  }
+}
+
 export async function signupAction(formData: FormData) {
   const payload = signupSchema.parse({
     email: getFormValue(formData, "email"),
@@ -61,6 +91,15 @@ export async function signupAction(formData: FormData) {
       getFormValue(formData, "timezone") ||
       getDefaultTimezone(getFormValue(formData, "countryCode") || "CA"),
   });
+  if (!publicSignupAllowed()) {
+    throw new Error("Public sign up is disabled.");
+  }
+  enforceSlidingWindowRateLimit(
+    `signup:${payload.email.toLowerCase()}`,
+    5,
+    15 * 60 * 1000,
+    "Too many signup attempts. Please try again later.",
+  );
 
   const existing = await prisma.user.findUnique({ where: { email: payload.email.toLowerCase() } });
   if (existing) throw new Error("An account with this email already exists.");
@@ -92,6 +131,10 @@ export async function createExpenseAction(formData: FormData) {
     note: getFormValue(formData, "note"),
   });
   const amounts = parseExpenseAmountFromForm(formData);
+  await Promise.all([
+    payload.accountId ? assertUserOwnsAccount(user.id, payload.accountId) : Promise.resolve(),
+    assertUserOwnsCategory(user.id, payload.categoryId, CategoryKind.EXPENSE),
+  ]);
 
   await prisma.transaction.create({
     data: {
@@ -124,6 +167,10 @@ export async function updateExpenseAction(formData: FormData) {
     note: getFormValue(formData, "note"),
   });
   const amounts = parseExpenseAmountFromForm(formData);
+  await Promise.all([
+    payload.accountId ? assertUserOwnsAccount(user.id, payload.accountId) : Promise.resolve(),
+    assertUserOwnsCategory(user.id, payload.categoryId, CategoryKind.EXPENSE),
+  ]);
 
   const existing = await prisma.transaction.findFirst({
     where: {
@@ -207,6 +254,14 @@ export async function importExpensesCsvAction(formData: FormData) {
     },
     fieldSelections,
   });
+  await Promise.all([
+    payload.defaults.accountId
+      ? assertUserOwnsAccount(user.id, payload.defaults.accountId)
+      : Promise.resolve(),
+    payload.defaults.categoryId
+      ? assertUserOwnsCategory(user.id, payload.defaults.categoryId, CategoryKind.EXPENSE)
+      : Promise.resolve(),
+  ]);
 
   const usedFields = payload.fieldSelections.filter((field) => field);
   const uniqueFields = new Set(usedFields);
@@ -298,6 +353,10 @@ export async function createIncomeAction(formData: FormData) {
     title: getFormValue(formData, "title") || undefined,
     note: getFormValue(formData, "note"),
   });
+  await Promise.all([
+    payload.accountId ? assertUserOwnsAccount(user.id, payload.accountId) : Promise.resolve(),
+    assertUserOwnsCategory(user.id, payload.categoryId, CategoryKind.INCOME),
+  ]);
 
   await prisma.transaction.create({
     data: {
@@ -329,6 +388,10 @@ export async function updateIncomeAction(formData: FormData) {
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error("Amount must be a positive number.");
   }
+  await Promise.all([
+    payload.accountId ? assertUserOwnsAccount(user.id, payload.accountId) : Promise.resolve(),
+    assertUserOwnsCategory(user.id, payload.categoryId, CategoryKind.INCOME),
+  ]);
 
   const existing = await prisma.transaction.findFirst({
     where: {
@@ -387,6 +450,12 @@ export async function createSplitExpenseAction(formData: FormData) {
     note: getFormValue(formData, "note"),
     parts: parsedParts,
   });
+  await Promise.all([
+    assertUserOwnsAccount(user.id, payload.accountId),
+    ...payload.parts.map((part) =>
+      assertUserOwnsCategory(user.id, part.categoryId, CategoryKind.EXPENSE),
+    ),
+  ]);
 
   const totalCents = payload.parts.reduce((sum, p) => sum + toCents(p.amount), 0);
   const fallbackCategory = await prisma.category.findFirst({
@@ -535,6 +604,10 @@ export async function createSubscriptionAction(formData: FormData) {
     billingCycle: getFormValue(formData, "billingCycle"),
     nextChargeDate: getFormValue(formData, "nextChargeDate"),
   });
+  await Promise.all([
+    assertUserOwnsAccount(user.id, payload.accountId),
+    assertUserOwnsCategory(user.id, payload.categoryId, CategoryKind.EXPENSE),
+  ]);
 
   await prisma.subscription.create({
     data: {
@@ -565,6 +638,10 @@ export async function updateSubscriptionAction(formData: FormData) {
     throw new Error("Subscription name, amount, billing cycle, account, and next charge date are required.");
   }
   const payload = parsed.data;
+  await Promise.all([
+    assertUserOwnsAccount(user.id, payload.accountId),
+    assertUserOwnsCategory(user.id, payload.categoryId, CategoryKind.EXPENSE),
+  ]);
 
   const existing = await prisma.subscription.findFirst({
     where: { id: payload.subscriptionId, userId: user.id },
@@ -611,6 +688,7 @@ export async function createInvestmentFlowAction(formData: FormData) {
     date: getFormValue(formData, "date"),
     note: getFormValue(formData, "note").trim() || undefined,
   });
+  await assertUserOwnsAccount(user.id, payload.accountId);
 
   await prisma.investmentFlow.create({
     data: {
@@ -633,6 +711,7 @@ export async function createPortfolioSnapshotAction(formData: FormData) {
     date: getFormValue(formData, "date"),
     note: getFormValue(formData, "note").trim() || undefined,
   });
+  await assertUserOwnsAccount(user.id, payload.accountId);
 
   await prisma.portfolioSnapshot.create({
     data: {
@@ -795,6 +874,242 @@ export async function clearUserFinancialDataAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
+export async function importUserBackupAction(formData: FormData) {
+  const user = await requireUser();
+  const raw = formData.get("backupJson");
+  if (!(raw instanceof File)) {
+    throw new Error("Backup file is required.");
+  }
+  const content = await raw.text();
+  if (!content.trim()) {
+    throw new Error("Backup file is empty.");
+  }
+
+  const parsed = userBackupSchema.parse(JSON.parse(content));
+  if (parsed.user.email.toLowerCase() !== user.email.toLowerCase()) {
+    throw new Error("Backup email does not match the current account.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.passwordResetToken.deleteMany({ where: { userId: user.id } });
+    await tx.authAccount.deleteMany({ where: { userId: user.id } });
+    await tx.budget.deleteMany({ where: { userId: user.id } });
+    await tx.subscription.deleteMany({ where: { userId: user.id } });
+    await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
+    await tx.portfolioSnapshot.deleteMany({ where: { userId: user.id } });
+    await tx.transaction.deleteMany({ where: { userId: user.id } });
+    await tx.account.deleteMany({ where: { userId: user.id } });
+    await tx.category.deleteMany({ where: { userId: user.id } });
+
+    const accountIdMap = new Map<string, string>();
+    const categoryIdMap = new Map<string, string>();
+    const transactionIdMap = new Map<string, string>();
+
+    await tx.user.update({
+      where: { id: user.id },
+      data: {
+        displayName: parsed.user.displayName,
+        timezone: parsed.user.timezone,
+        countryCode: parsed.user.countryCode,
+        role: parsed.user.role,
+        passwordHash: parsed.user.passwordHash,
+        emailVerifiedAt: parsed.user.emailVerifiedAt ? new Date(parsed.user.emailVerifiedAt) : null,
+      },
+    });
+
+    for (const account of parsed.accounts) {
+      const created = await tx.account.create({
+        data: {
+          userId: user.id,
+          name: account.name,
+          type: account.type,
+          currency: account.currency,
+          countryCode: account.countryCode,
+          provider: account.provider,
+          archived: account.archived,
+          createdAt: new Date(account.createdAt),
+          updatedAt: new Date(account.updatedAt),
+        },
+        select: { id: true },
+      });
+      accountIdMap.set(account.id, created.id);
+    }
+
+    for (const category of parsed.categories) {
+      const created = await tx.category.create({
+        data: {
+          userId: user.id,
+          name: category.name,
+          kind: category.kind,
+          isDefault: category.isDefault,
+          createdAt: new Date(category.createdAt),
+          updatedAt: new Date(category.updatedAt),
+        },
+        select: { id: true },
+      });
+      categoryIdMap.set(category.id, created.id);
+    }
+
+    for (const row of parsed.transactions) {
+      const mappedCategoryId = categoryIdMap.get(row.categoryId);
+      if (!mappedCategoryId) {
+        throw new Error("Backup references unknown transaction category.");
+      }
+      const mappedAccountId = row.accountId ? accountIdMap.get(row.accountId) : null;
+      if (row.accountId && !mappedAccountId) {
+        throw new Error("Backup references unknown transaction account.");
+      }
+      const created = await tx.transaction.create({
+        data: {
+          userId: user.id,
+          accountId: mappedAccountId ?? null,
+          categoryId: mappedCategoryId,
+          type: row.type,
+          amountCents: row.amountCents,
+          preCreditCents: row.preCreditCents,
+          creditCents: row.creditCents,
+          creditBreakdownJson: row.creditBreakdownJson,
+          title: row.title,
+          date: new Date(row.date),
+          postedDate: row.postedDate ? new Date(row.postedDate) : null,
+          accountDescription: row.accountDescription,
+          note: row.note,
+          createdAt: new Date(row.createdAt),
+          updatedAt: new Date(row.updatedAt),
+        },
+        select: { id: true },
+      });
+      transactionIdMap.set(row.id, created.id);
+    }
+
+    for (const row of parsed.transactions) {
+      const mappedTransactionId = transactionIdMap.get(row.id);
+      if (!mappedTransactionId) continue;
+      for (const part of row.splitParts) {
+        const mappedCategoryId = categoryIdMap.get(part.categoryId);
+        if (!mappedCategoryId) {
+          throw new Error("Backup references unknown split category.");
+        }
+        await tx.splitTransactionPart.create({
+          data: {
+            userId: user.id,
+            transactionId: mappedTransactionId,
+            categoryId: mappedCategoryId,
+            amountCents: part.amountCents,
+          },
+        });
+      }
+    }
+
+    for (const row of parsed.budgets) {
+      const mappedCategoryId = categoryIdMap.get(row.categoryId);
+      if (!mappedCategoryId) {
+        throw new Error("Backup references unknown budget category.");
+      }
+      await tx.budget.create({
+        data: {
+          userId: user.id,
+          categoryId: mappedCategoryId,
+          name: row.name,
+          periodMonth: row.periodMonth,
+          limitCents: row.limitCents,
+          createdAt: new Date(row.createdAt),
+          updatedAt: new Date(row.updatedAt),
+        },
+      });
+    }
+
+    for (const row of parsed.subscriptions) {
+      const mappedCategoryId = categoryIdMap.get(row.categoryId);
+      const mappedAccountId = accountIdMap.get(row.accountId);
+      if (!mappedCategoryId || !mappedAccountId) {
+        throw new Error("Backup references unknown subscription account or category.");
+      }
+      await tx.subscription.create({
+        data: {
+          userId: user.id,
+          accountId: mappedAccountId,
+          categoryId: mappedCategoryId,
+          name: row.name,
+          amountCents: row.amountCents,
+          billingCycle: row.billingCycle,
+          nextChargeDate: new Date(row.nextChargeDate),
+          createdAt: new Date(row.createdAt),
+          updatedAt: new Date(row.updatedAt),
+        },
+      });
+    }
+
+    for (const row of parsed.investmentFlows) {
+      const mappedAccountId = accountIdMap.get(row.accountId);
+      if (!mappedAccountId) {
+        throw new Error("Backup references unknown investment account.");
+      }
+      await tx.investmentFlow.create({
+        data: {
+          userId: user.id,
+          accountId: mappedAccountId,
+          date: new Date(row.date),
+          direction: row.direction,
+          amountCents: row.amountCents,
+          note: row.note,
+          createdAt: new Date(row.createdAt),
+        },
+      });
+    }
+
+    for (const row of parsed.portfolioSnapshots) {
+      const mappedAccountId = accountIdMap.get(row.accountId);
+      if (!mappedAccountId) {
+        throw new Error("Backup references unknown snapshot account.");
+      }
+      await tx.portfolioSnapshot.create({
+        data: {
+          userId: user.id,
+          accountId: mappedAccountId,
+          date: new Date(row.date),
+          totalValueCents: row.totalValueCents,
+          note: row.note,
+          createdAt: new Date(row.createdAt),
+        },
+      });
+    }
+
+    for (const row of parsed.authAccounts) {
+      await tx.authAccount.create({
+        data: {
+          userId: user.id,
+          provider: row.provider,
+          providerAccountId: row.providerAccountId,
+          accessToken: row.accessToken,
+          refreshToken: row.refreshToken,
+          expiresAt: row.expiresAt,
+          tokenType: row.tokenType,
+          scope: row.scope,
+          idToken: row.idToken,
+          createdAt: new Date(row.createdAt),
+          updatedAt: new Date(row.updatedAt),
+        },
+      });
+    }
+
+    for (const row of parsed.passwordResetTokens) {
+      await tx.passwordResetToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: row.tokenHash,
+          expiresAt: new Date(row.expiresAt),
+          usedAt: row.usedAt ? new Date(row.usedAt) : null,
+          createdAt: new Date(row.createdAt),
+        },
+      });
+    }
+  });
+
+  revalidatePath("/");
+  revalidatePath("/settings");
+}
+
 export async function deleteAccountAction(formData: FormData) {
   const user = await requireUser();
   const confirmation = getFormValue(formData, "confirmation");
@@ -807,6 +1122,12 @@ export async function requestPasswordResetAction(formData: FormData) {
     email: getFormValue(formData, "email"),
     password: "12345678",
   }).email;
+  enforceSlidingWindowRateLimit(
+    `password-reset-request:${email.toLowerCase()}`,
+    5,
+    15 * 60 * 1000,
+    "Too many password reset attempts. Please try again later.",
+  );
   const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
   if (!user) return;
 
@@ -819,14 +1140,19 @@ export async function requestPasswordResetAction(formData: FormData) {
     },
   });
 
-  // Email transport is intentionally deferred; token is logged for local development.
-  console.log(`Password reset token for ${user.email}: ${token}`);
+  // TODO: Wire email delivery. Intentionally not logged to avoid credential leakage.
 }
 
 export async function resetPasswordAction(formData: FormData) {
   const email = getFormValue(formData, "email").toLowerCase();
   const token = getFormValue(formData, "token");
   const newPassword = getFormValue(formData, "newPassword");
+  enforceSlidingWindowRateLimit(
+    `password-reset:${email}`,
+    10,
+    15 * 60 * 1000,
+    "Too many password reset attempts. Please try again later.",
+  );
   if (newPassword.length < 8) throw new Error("Password must be at least 8 characters.");
 
   const user = await prisma.user.findUnique({ where: { email } });

@@ -4,6 +4,14 @@ import { getToken } from "next-auth/jwt";
 
 const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/reset-password"];
 
+function getNextAuthSecret() {
+  const secret = process.env.NEXTAUTH_SECRET?.trim();
+  if (!secret && process.env.NODE_ENV === "production") {
+    throw new Error("Missing required env var NEXTAUTH_SECRET in production.");
+  }
+  return secret;
+}
+
 /** Public site host/proto from NEXTAUTH_URL (non-loopback only). */
 function parsedNextAuthPublicOrigin(): { host: string; proto: "http" | "https" } | null {
   const raw = process.env.NEXTAUTH_URL?.trim();
@@ -87,7 +95,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next(nextInit);
   }
 
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  const token = await getToken({ req, secret: getNextAuthSecret() });
   const isPublic = PUBLIC_PATHS.some((path) => pathname.startsWith(path));
 
   if (!token && !isPublic) {
@@ -102,5 +110,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/health).*)"],
 };

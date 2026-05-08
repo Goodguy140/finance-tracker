@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.github
+coverage
+playwright-report
+test-results
+*.tsbuildinfo
+.env*
+dev.db
+prisma/*.db
+prisma/*.db-journal

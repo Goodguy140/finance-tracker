@@ -3,8 +3,15 @@ import crypto from "crypto";
 const ALGORITHM = "aes-256-gcm";
 
 function getKey() {
-  const base = process.env.SERVER_SETTINGS_ENCRYPTION_KEY ?? "dev-only-key-change-me";
-  return crypto.createHash("sha256").update(base).digest();
+  const base = process.env.SERVER_SETTINGS_ENCRYPTION_KEY;
+  if (!base && process.env.NODE_ENV === "production") {
+    throw new Error("Missing required env var SERVER_SETTINGS_ENCRYPTION_KEY in production.");
+  }
+  const resolved = base ?? "dev-only-key-change-me";
+  if (process.env.NODE_ENV === "production" && resolved.length < 32) {
+    throw new Error("SERVER_SETTINGS_ENCRYPTION_KEY must be at least 32 characters in production.");
+  }
+  return crypto.createHash("sha256").update(resolved).digest();
 }
 
 export function encryptSecret(plainText: string) {
