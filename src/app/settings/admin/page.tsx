@@ -4,6 +4,8 @@ import { decryptSecret } from "@/lib/security";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/session";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminSettingsPage() {
   await requireAdmin();
   const [enabledRow, idRow] = await Promise.all([

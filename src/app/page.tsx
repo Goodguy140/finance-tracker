@@ -42,6 +42,8 @@ type BudgetProgressRow = {
 
 type SearchParams = Promise<{ month?: string | string[]; range?: string | string[] }>;
 
+export const dynamic = "force-dynamic";
+
 export default async function Home({ searchParams }: { searchParams: SearchParams }) {
   const user = await requireUser();
   const sp = await searchParams;

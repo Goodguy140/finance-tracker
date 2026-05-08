@@ -6,6 +6,8 @@
   --surface: #0f172a;
   --surface-muted: #111827;
   --border: #1e293b;
+  --font-geist-sans: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-geist-mono: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 @theme inline {

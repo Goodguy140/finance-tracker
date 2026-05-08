@@ -4,6 +4,8 @@ import { SettingsForms } from "@/components/forms";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 
+export const dynamic = "force-dynamic";
+
 export default async function SettingsPage() {
   const user = await requireUser();
   const [accounts, categories, budgets] = await Promise.all([
