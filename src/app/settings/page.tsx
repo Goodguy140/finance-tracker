@@ -66,6 +66,7 @@ export default async function SettingsPage() {
         accountItems={accountItems}
         expenseCategories={expenseCategoryOptions}
         budgets={budgetItems}
+        defaultExpenseAccountId={user.defaultExpenseAccountId}
       />
     </main>
   );

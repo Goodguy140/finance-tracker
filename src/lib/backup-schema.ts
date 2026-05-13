@@ -15,6 +15,7 @@ export const userBackupSchema = z.object({
     emailVerifiedAt: isoDate.nullable(),
     createdAt: isoDate,
     updatedAt: isoDate,
+    defaultExpenseAccountId: z.string().min(1).nullable().optional(),
   }),
   authAccounts: z.array(
     z.object({

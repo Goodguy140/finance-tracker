@@ -184,3 +184,10 @@ export const setAccountArchivedSchema = z.object({
   accountId: z.string().min(1),
   archived: z.enum(["true", "false"]),
 });
+
+export const updateDefaultExpenseAccountSchema = z.object({
+  defaultExpenseAccountId: z
+    .string()
+    .trim()
+    .transform((value) => (value === "" ? null : value)),
+});
