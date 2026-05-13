@@ -47,9 +47,9 @@ jobs:
     env:
       DATABASE_URL: file:./.data/e2e.db
       NEXTAUTH_URL: http://127.0.0.1:3050
-      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
-      SERVER_SETTINGS_ENCRYPTION_KEY: ${{ secrets.SERVER_SETTINGS_ENCRYPTION_KEY }}
       AUTH_TRUST_HOST: "true"
+      # NEXTAUTH_SECRET / SERVER_SETTINGS_ENCRYPTION_KEY optional: playwright.config.ts
+      # supplies CI-safe defaults when unset (fork PRs without repository secrets).
     steps:
       - name: Checkout
         uses: actions/checkout@v4
