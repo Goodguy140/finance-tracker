@@ -61,8 +61,12 @@ model User {
   countryCode     String    @default("CA")
   emailVerifiedAt DateTime?
   role            UserRole  @default(USER)
+  /** When set, the Add Expense form preselects this account (must be one of the user's accounts). */
+  defaultExpenseAccountId String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+
+  defaultExpenseAccount Account? @relation("UserDefaultExpenseAccount", fields: [defaultExpenseAccountId], references: [id], onDelete: SetNull)
 
   authAccounts        AuthAccount[]
   sessions            Session[]
@@ -145,6 +149,7 @@ model Account {
   updatedAt   DateTime    @updatedAt
 
   user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultExpenseForUsers User[]        @relation("UserDefaultExpenseAccount")
   transactions       Transaction[]
   subscriptions      Subscription[]
   investmentFlows    InvestmentFlow[]

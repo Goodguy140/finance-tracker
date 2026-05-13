@@ -786,7 +786,7 @@ export function ExpenseForm({ accounts, expenseCategories }: { accounts: Option[
   const fieldIds = useId();
   const [receiptBreakdown, setReceiptBreakdown] = useState(false);
   const [showPostedDate, setShowPostedDate] = useState(false);
-  const [showTitle, setShowTitle] = useState(false);
+  const [showTitle, setShowTitle] = useState(true);
   const [showNote, setShowNote] = useState(false);
   const [amountValue, setAmountValue] = useState("");
   const [preCreditValue, setPreCreditValue] = useState("");
@@ -826,6 +826,23 @@ export function ExpenseForm({ accounts, expenseCategories }: { accounts: Option[
 
   return (
     <ServerActionForm action={createExpenseAction} className={formGridResponsive}>
+      {showTitle ? (
+        <LabeledField
+          label="Title"
+          hint="Optional. Shown in your expense log (max 120 characters)."
+          className={spanFullSm}
+        >
+          <textarea
+            name="title"
+            rows={2}
+            maxLength={120}
+            className={textAreaClass}
+            placeholder="e.g. Weekly groceries, Shell fuel"
+          />
+        </LabeledField>
+      ) : (
+        <input type="hidden" name="title" value="" />
+      )}
       <LabeledField label="Account" hint="Financial account this expense is charged to.">
         <select id={`${fieldIds}-account`} name="accountId" className={selectClass}>
           {accounts.map((a) => (
@@ -998,23 +1015,6 @@ export function ExpenseForm({ accounts, expenseCategories }: { accounts: Option[
         />
       ) : (
         <input type="hidden" name="postedDate" value="" />
-      )}
-      {showTitle ? (
-        <LabeledField
-          label="Title"
-          hint="Optional. Shown in your expense log (max 120 characters)."
-          className={spanFullSm}
-        >
-          <textarea
-            name="title"
-            rows={2}
-            maxLength={120}
-            className={textAreaClass}
-            placeholder="e.g. Weekly groceries, Shell fuel"
-          />
-        </LabeledField>
-      ) : (
-        <input type="hidden" name="title" value="" />
       )}
       {showNote ? (
         <LabeledField label="Note" hint="Optional details (max 250 characters)." className={spanFullSm}>

@@ -35,3 +35,7 @@ jobs:
 
       - name: Docker build smoke test
         run: docker build -t finance-tracker-app:ci .
+
+      # require('@prisma/engines') catches missing @prisma/* hoisted deps; migrate deploy --help exercises the CLI without a DB.
+      - name: Docker Prisma CLI runtime smoke test
+        run: docker run --rm finance-tracker-app:ci sh -c 'set -e && node -e "require(\"@prisma/engines\")" && ./node_modules/.bin/prisma migrate deploy --help >/dev/null'

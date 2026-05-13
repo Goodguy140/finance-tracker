@@ -108,7 +108,7 @@ openssl rand -base64 48
 curl -fsS http://<host>:3000/api/health
 ```
 
-The container startup command runs `npm run db:deploy` before starting the app server.
+The container startup command runs `prisma migrate deploy` (via `./node_modules/.bin/prisma`) before starting the app server, so migrations apply automatically on every start.
 
 ## Release Preflight Checklist
 
