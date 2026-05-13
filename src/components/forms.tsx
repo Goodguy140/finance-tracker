@@ -19,6 +19,7 @@ import {
   createSubscriptionAction,
   deleteBudgetAction,
   deleteFinancialAccountAction,
+  updateDefaultExpenseAccountAction,
   updateFinancialAccountAction,
   setFinancialAccountArchivedAction,
   deleteAccountAction,
@@ -36,6 +37,11 @@ import { parseImportedDate } from "@/lib/import-dates";
 import { formatCurrency, parseStatementAmount } from "@/lib/money";
 
 type Option = { id: string; name: string };
+
+function defaultExpenseAccountSelectValue(accounts: Option[], preferred?: string | null) {
+  if (preferred && accounts.some((a) => a.id === preferred)) return preferred;
+  return accounts[0]?.id ?? "";
+}
 export const inputClass =
   "w-full min-h-[2.75rem] rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2.5 text-base leading-normal text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 sm:text-sm";
 export const selectClass =
@@ -259,13 +265,23 @@ function importTargetsForHeader(header: string, headers: string[], mapping: Reco
   });
 }
 
-export function ExpenseCsvImportForm({ accounts, expenseCategories }: { accounts: Option[]; expenseCategories: Option[] }) {
+export function ExpenseCsvImportForm({
+  accounts,
+  expenseCategories,
+  defaultExpenseAccountId,
+}: {
+  accounts: Option[];
+  expenseCategories: Option[];
+  defaultExpenseAccountId?: string | null;
+}) {
   const hasHydrated = useSyncExternalStore(noopSubscribe, () => true, () => false);
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<Array<Record<string, string>>>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
-  const [defaultAccountId, setDefaultAccountId] = useState(accounts[0]?.id ?? "");
+  const [defaultAccountId, setDefaultAccountId] = useState(() =>
+    defaultExpenseAccountSelectValue(accounts, defaultExpenseAccountId),
+  );
   const [defaultCategoryId, setDefaultCategoryId] = useState(expenseCategories[0]?.id ?? "");
   const [manualDate, setManualDate] = useState("");
   const [manualPostedDate, setManualPostedDate] = useState("");
@@ -587,8 +603,35 @@ export function ExpenseCsvImportForm({ accounts, expenseCategories }: { accounts
 }
 
 export function SignupForm() {
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
   return (
-    <ServerActionForm action={signupAction} className="space-y-3">
+    <form
+      className="space-y-3"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setError(null);
+        setPending(true);
+        const form = e.currentTarget;
+        const formData = new FormData(form);
+        try {
+          await signupAction(formData);
+          const email = String(formData.get("email") ?? "");
+          const password = String(formData.get("password") ?? "");
+          await signIn("credentials", {
+            email,
+            password,
+            callbackUrl: `${window.location.origin}/`,
+          });
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Sign up failed.");
+        } finally {
+          setPending(false);
+        }
+      }}
+    >
+      {error ? <p className="text-sm text-red-300">{error}</p> : null}
       <input
         name="displayName"
         required
@@ -619,14 +662,18 @@ export function SignupForm() {
         defaultValue="America/Toronto"
         className={inputClass}
       />
-      <button className={primaryBtnClass}>Create account</button>
-    </ServerActionForm>
+      <button className={primaryBtnClass} disabled={pending} type="submit">
+        Create account
+      </button>
+    </form>
   );
 }
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   return (
     <div className="space-y-3">
@@ -634,9 +681,33 @@ export function LoginForm() {
         className="space-y-3"
         onSubmit={async (e) => {
           e.preventDefault();
-          await signIn("credentials", { email, password, callbackUrl: "/" });
+          setError(null);
+          setPending(true);
+          try {
+            const origin = typeof window !== "undefined" ? window.location.origin : "";
+            const result = await signIn("credentials", {
+              email,
+              password,
+              callbackUrl: `${origin}/`,
+              redirect: false,
+            });
+            if (result?.error) {
+              setError("Invalid email or password.");
+              return;
+            }
+            if (result?.url) {
+              window.location.href = result.url;
+              return;
+            }
+            window.location.href = `${origin}/`;
+          } catch {
+            setError("Sign-in failed. Please try again.");
+          } finally {
+            setPending(false);
+          }
         }}
       >
+        {error ? <p className="text-sm text-red-300">{error}</p> : null}
         <input
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -653,7 +724,7 @@ export function LoginForm() {
           placeholder="Password"
           className={inputClass}
         />
-        <button type="submit" className={`w-full ${primaryBtnClass} py-2.5 sm:py-2`}>
+        <button type="submit" disabled={pending} className={`w-full ${primaryBtnClass} py-2.5 sm:py-2`}>
           Login
         </button>
       </form>
@@ -676,10 +747,12 @@ export function AddFormsDropdown({
   accounts,
   expenseCategories,
   incomeCategories,
+  defaultExpenseAccountId,
 }: {
   accounts: Option[];
   expenseCategories: Option[];
   incomeCategories: Option[];
+  defaultExpenseAccountId?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [activeForm, setActiveForm] = useState<AddMenuFormKey>("income");
@@ -756,10 +829,18 @@ export function AddFormsDropdown({
             <IncomeForm accounts={accounts} incomeCategories={incomeCategories} />
           ) : null}
           {activeForm === "splitExpense" ? (
-            <SplitExpenseForm accounts={accounts} expenseCategories={expenseCategories} />
+            <SplitExpenseForm
+              accounts={accounts}
+              expenseCategories={expenseCategories}
+              defaultExpenseAccountId={defaultExpenseAccountId}
+            />
           ) : null}
           {activeForm === "subscription" ? (
-            <SubscriptionForm accounts={accounts} expenseCategories={expenseCategories} />
+            <SubscriptionForm
+              accounts={accounts}
+              expenseCategories={expenseCategories}
+              defaultExpenseAccountId={defaultExpenseAccountId}
+            />
           ) : null}
           {activeForm === "investment" ? <InvestmentForms accounts={accounts} /> : null}
 
@@ -781,9 +862,18 @@ export function AddFormsDropdown({
   );
 }
 
-export function ExpenseForm({ accounts, expenseCategories }: { accounts: Option[]; expenseCategories: Option[] }) {
+export function ExpenseForm({
+  accounts,
+  expenseCategories,
+  defaultExpenseAccountId,
+}: {
+  accounts: Option[];
+  expenseCategories: Option[];
+  defaultExpenseAccountId?: string | null;
+}) {
   const today = getTodayIsoDate();
   const fieldIds = useId();
+  const accountSelectDefault = defaultExpenseAccountSelectValue(accounts, defaultExpenseAccountId);
   const [receiptBreakdown, setReceiptBreakdown] = useState(false);
   const [showPostedDate, setShowPostedDate] = useState(false);
   const [showTitle, setShowTitle] = useState(true);
@@ -844,7 +934,12 @@ export function ExpenseForm({ accounts, expenseCategories }: { accounts: Option[
         <input type="hidden" name="title" value="" />
       )}
       <LabeledField label="Account" hint="Financial account this expense is charged to.">
-        <select id={`${fieldIds}-account`} name="accountId" className={selectClass}>
+        <select
+          id={`${fieldIds}-account`}
+          name="accountId"
+          className={selectClass}
+          defaultValue={accountSelectDefault}
+        >
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
@@ -1075,10 +1170,19 @@ export function IncomeForm({ accounts, incomeCategories }: { accounts: Option[];
   );
 }
 
-export function SplitExpenseForm({ accounts, expenseCategories }: { accounts: Option[]; expenseCategories: Option[] }) {
+export function SplitExpenseForm({
+  accounts,
+  expenseCategories,
+  defaultExpenseAccountId,
+}: {
+  accounts: Option[];
+  expenseCategories: Option[];
+  defaultExpenseAccountId?: string | null;
+}) {
   const defaultCategoryId = expenseCategories[0]?.id ?? "";
   const today = getTodayIsoDate();
   const fieldIds = useId();
+  const accountSelectDefault = defaultExpenseAccountSelectValue(accounts, defaultExpenseAccountId);
   const [parts, setParts] = useState<Array<{ categoryId: string; amount: string }>>([
     { categoryId: defaultCategoryId, amount: "0" },
   ]);
@@ -1092,7 +1196,12 @@ export function SplitExpenseForm({ accounts, expenseCategories }: { accounts: Op
   return (
     <ServerActionForm action={createSplitExpenseAction} className={formGridResponsive}>
       <LabeledField label="Account" hint="Account for this split expense.">
-        <select id={`${fieldIds}-account`} name="accountId" className={selectClass}>
+        <select
+          id={`${fieldIds}-account`}
+          name="accountId"
+          className={selectClass}
+          defaultValue={accountSelectDefault}
+        >
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
@@ -1283,9 +1392,18 @@ export function BudgetForm({ expenseCategories }: { expenseCategories: Option[] 
   );
 }
 
-export function SubscriptionForm({ accounts, expenseCategories }: { accounts: Option[]; expenseCategories: Option[] }) {
+export function SubscriptionForm({
+  accounts,
+  expenseCategories,
+  defaultExpenseAccountId,
+}: {
+  accounts: Option[];
+  expenseCategories: Option[];
+  defaultExpenseAccountId?: string | null;
+}) {
   const today = getTodayIsoDate();
   const fieldIds = useId();
+  const accountSelectDefault = defaultExpenseAccountSelectValue(accounts, defaultExpenseAccountId);
 
   return (
     <ServerActionForm action={createSubscriptionAction} className={formGridResponsive}>
@@ -1299,7 +1417,12 @@ export function SubscriptionForm({ accounts, expenseCategories }: { accounts: Op
         />
       </LabeledField>
       <LabeledField label="Account" hint="Account charged for this subscription.">
-        <select id={`${fieldIds}-account`} name="accountId" className={selectClass}>
+        <select
+          id={`${fieldIds}-account`}
+          name="accountId"
+          className={selectClass}
+          defaultValue={accountSelectDefault}
+        >
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
@@ -1440,6 +1563,7 @@ export function SettingsForms({
   accountItems,
   expenseCategories,
   budgets,
+  defaultExpenseAccountId,
 }: {
   defaults: { displayName: string; countryCode: string; timezone: string };
   profileEmail: string;
@@ -1449,6 +1573,7 @@ export function SettingsForms({
   accountItems: Array<{ id: string; name: string; type: string; archived: boolean; currency: string }>;
   expenseCategories: Option[];
   budgets: Array<{ id: string; periodMonth: string; name: string | null; categoryName: string; limitCents: number }>;
+  defaultExpenseAccountId: string | null;
 }) {
   const [tab, setTab] = useState<SettingsTabId>("profile");
   const [editingAccount, setEditingAccount] = useState<{
@@ -1483,6 +1608,10 @@ export function SettingsForms({
   const archivedAccountCount = accountItems.filter((a) => a.archived).length;
   const budgetRowCount = budgets.length;
   const budgetTotalCents = budgets.reduce((sum, b) => sum + b.limitCents, 0);
+  const defaultExpenseAccountFieldValue =
+    defaultExpenseAccountId && accounts.some((a) => a.id === defaultExpenseAccountId)
+      ? defaultExpenseAccountId
+      : "";
 
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-10">
@@ -1703,7 +1832,11 @@ export function SettingsForms({
 
         {tab === "data" ? (
           <div className="space-y-4" role="tabpanel" aria-label="Import and accounts">
-            <ExpenseCsvImportForm accounts={accounts} expenseCategories={expenseCategories} />
+            <ExpenseCsvImportForm
+              accounts={accounts}
+              expenseCategories={expenseCategories}
+              defaultExpenseAccountId={defaultExpenseAccountId}
+            />
             <div className="space-y-6 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/85 to-slate-900/55 p-4 shadow-lg lg:space-y-8 lg:p-6">
               <div className="flex flex-col gap-3 border-b border-slate-800/80 pb-4 lg:flex-row lg:items-end lg:justify-between lg:pb-5">
                 <div className="min-w-0 space-y-1">
@@ -1717,6 +1850,39 @@ export function SettingsForms({
                   {activeAccountCount} active
                   {archivedAccountCount > 0 ? ` · ${archivedAccountCount} archived` : ""}
                 </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-800/90 bg-slate-950/35 p-4 lg:p-5">
+                <h4 className="mb-1 text-sm font-medium text-slate-200">Default expense account</h4>
+                <p className="mb-4 max-w-prose text-xs leading-relaxed text-slate-500">
+                  Preselects this account on the dashboard Add Expense form and in CSV import defaults. Choose None to use
+                  your first active account instead.
+                </p>
+                <ServerActionForm action={updateDefaultExpenseAccountAction} className={`${formGridResponsive} items-end`}>
+                  <LabeledField
+                    label="Account"
+                    hint="Only active accounts are listed. Archiving or removing an account clears this default."
+                    className="sm:col-span-2"
+                  >
+                    <select
+                      name="defaultExpenseAccountId"
+                      className={selectClass}
+                      defaultValue={defaultExpenseAccountFieldValue}
+                    >
+                      <option value="">None (first active account)</option>
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </LabeledField>
+                  <div className="flex items-end sm:col-span-2 sm:justify-end">
+                    <button type="submit" className={primaryBtnClass}>
+                      Save default
+                    </button>
+                  </div>
+                </ServerActionForm>
               </div>
 
               <div className="rounded-xl border border-slate-800/90 bg-slate-950/35 p-4 lg:p-5">

@@ -18,7 +18,12 @@ env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/finance-tracker-app
 
 jobs:
+  tests:
+    uses: ./.github/workflows/test.yml
+    secrets: inherit
+
   publish:
+    needs: tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

@@ -17,6 +17,7 @@ export type UserBackupPayload = {
     emailVerifiedAt: IsoString | null;
     createdAt: IsoString;
     updatedAt: IsoString;
+    defaultExpenseAccountId?: string | null;
   };
   authAccounts: Array<{
     provider: string;
@@ -144,6 +145,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       emailVerifiedAt: toIso(user.emailVerifiedAt),
       createdAt: user.createdAt.toISOString(),
       updatedAt: user.updatedAt.toISOString(),
+      defaultExpenseAccountId: user.defaultExpenseAccountId,
     },
     authAccounts: user.authAccounts.map((row) => ({
       provider: row.provider,

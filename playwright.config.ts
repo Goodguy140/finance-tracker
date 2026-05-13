@@ -7,17 +7,16 @@ export default defineConfig({
     timeout: 10_000,
   },
   use: {
-    baseURL: "http://127.0.0.1:3000",
+    baseURL: "http://127.0.0.1:3050",
     trace: "on-first-retry",
   },
   webServer: {
-    command: "npm run dev",
-    url: "http://127.0.0.1:3000/login",
+    command: "npm run build && PORT=3050 npm run start",
+    url: "http://127.0.0.1:3050/login",
     reuseExistingServer: false,
-    timeout: 120_000,
+    timeout: 300_000,
     env: {
-      NEXTAUTH_URL: "http://127.0.0.1:3000",
-      AUTH_TRUST_HOST: "false",
+      NEXTAUTH_URL: "http://127.0.0.1:3050",
     },
   },
   projects: [

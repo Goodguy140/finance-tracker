@@ -278,6 +278,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         ? "YTD spend vs summed budgets"
         : "Lifetime spend vs summed budgets";
 
+  const incomeSumCents = incomeTotal._sum.amountCents ?? 0;
+  const showDashboardIncomeCard = periodIncomes.length > 0 || incomeSumCents > 0;
+
   return (
     <main className="min-h-screen bg-slate-950 p-4 text-slate-100">
       <div className="mx-auto max-w-7xl space-y-4">
@@ -300,6 +303,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
               accounts={accountOptions}
               expenseCategories={expenseCategoryOptions}
               incomeCategories={incomeCategoryOptions}
+              defaultExpenseAccountId={user.defaultExpenseAccountId}
             />
             <Link href="/settings" className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-200 transition hover:bg-slate-800">Settings</Link>
             <LogoutButton />
@@ -310,7 +314,11 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           <section className="space-y-4 lg:col-span-7">
             <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg sm:p-4">
               <h2 className="mb-3 text-lg font-semibold">Add Expense</h2>
-              <ExpenseForm accounts={accountOptions} expenseCategories={expenseCategoryOptions} />
+              <ExpenseForm
+                accounts={accountOptions}
+                expenseCategories={expenseCategoryOptions}
+                defaultExpenseAccountId={user.defaultExpenseAccountId}
+              />
             </div>
             <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
               <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
@@ -324,23 +332,25 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           </section>
 
           <aside className="space-y-4 lg:col-span-5">
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
-              <div className="flex flex-col gap-3 border-b border-slate-800/80 pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-                <div className="min-w-0">
-                  <h2 className="text-lg font-semibold text-slate-100">Income</h2>
-                  <p className="text-xs text-slate-400">{periodDescription}</p>
-                  <p className="mt-2 text-xs tabular-nums text-slate-500">
-                    {periodIncomes.length} deposit{periodIncomes.length === 1 ? "" : "s"}
+            {showDashboardIncomeCard ? (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
+                <div className="flex flex-col gap-3 border-b border-slate-800/80 pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-semibold text-slate-100">Income</h2>
+                    <p className="text-xs text-slate-400">{periodDescription}</p>
+                    <p className="mt-2 text-xs tabular-nums text-slate-500">
+                      {periodIncomes.length} deposit{periodIncomes.length === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                  <p className="shrink-0 text-2xl font-bold tabular-nums text-emerald-200 sm:text-right">
+                    {formatCurrency(incomeSumCents)}
                   </p>
                 </div>
-                <p className="shrink-0 text-2xl font-bold tabular-nums text-emerald-200 sm:text-right">
-                  {formatCurrency(incomeTotal._sum.amountCents ?? 0)}
-                </p>
+                <div className="pt-4">
+                  <IncomeLogPanel entries={incomeLogEntries} accounts={accountOptions} categories={incomeCategoryOptions} />
+                </div>
               </div>
-              <div className="pt-4">
-                <IncomeLogPanel entries={incomeLogEntries} accounts={accountOptions} categories={incomeCategoryOptions} />
-              </div>
-            </div>
+            ) : null}
 
             <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
               <div className="flex items-center justify-between gap-3">

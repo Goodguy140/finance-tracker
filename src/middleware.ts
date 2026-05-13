@@ -48,21 +48,29 @@ function authTrustHostEnabled(): boolean {
   return v === "true" || v === "1";
 }
 
-function syntheticForwardedHeaders(req: NextRequest): Headers | null {
+function syntheticForwardedHeaders(headers: Headers): Headers | null {
   if (!authTrustHostEnabled()) return null;
   const pub = parsedNextAuthPublicOrigin();
   if (!pub) return null;
 
-  const host = req.headers.get("host") ?? "";
-  const xfHostRaw = req.headers.get("x-forwarded-host");
+  const host = headers.get("host") ?? "";
+  const xfHostRaw = headers.get("x-forwarded-host");
   const effective = (xfHostRaw?.split(",")[0]?.trim() || host).toLowerCase();
   if (effective === pub.host.toLowerCase()) return null;
   if (!isLoopbackHost(effective)) return null;
 
-  const h = new Headers(req.headers);
+  const h = new Headers(headers);
   h.set("x-forwarded-host", pub.host);
   h.set("x-forwarded-proto", pub.proto);
   return h;
+}
+
+/** NextAuth reads x-forwarded-proto when AUTH_TRUST_HOST is set; dev servers often omit it. */
+function withDevForwardedProto(req: NextRequest, headers: Headers): boolean {
+  if (process.env.NODE_ENV !== "development") return false;
+  if (headers.get("x-forwarded-proto")) return false;
+  headers.set("x-forwarded-proto", req.nextUrl.protocol === "https:" ? "https" : "http");
+  return true;
 }
 
 /**
@@ -86,9 +94,14 @@ export const __authProxyInternals = {
 
 export async function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname;
-  const forwardHeaders = skipSyntheticForwardedForPath(pathname)
-    ? null
-    : syntheticForwardedHeaders(req);
+  const baseHeaders = new Headers(req.headers);
+  const addedDevProto = withDevForwardedProto(req, baseHeaders);
+  let forwardHeaders: Headers | null = null;
+  if (!skipSyntheticForwardedForPath(pathname)) {
+    forwardHeaders = syntheticForwardedHeaders(baseHeaders) ?? (addedDevProto ? baseHeaders : null);
+  } else if (addedDevProto) {
+    forwardHeaders = baseHeaders;
+  }
   const nextInit = forwardHeaders ? { request: { headers: forwardHeaders } } : {};
 
   if (pathname.startsWith("/api/auth")) {

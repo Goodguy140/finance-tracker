@@ -3,6 +3,7 @@ name: Test
 on:
   push:
   pull_request:
+  workflow_call:
 
 concurrency:
   group: test-${{ github.workflow }}-${{ github.ref }}
@@ -39,3 +40,37 @@ jobs:
       # require('@prisma/engines') catches missing @prisma/* hoisted deps; migrate deploy --help exercises the CLI without a DB.
       - name: Docker Prisma CLI runtime smoke test
         run: docker run --rm finance-tracker-app:ci sh -c 'set -e && node -e "require(\"@prisma/engines\")" && ./node_modules/.bin/prisma migrate deploy --help >/dev/null'
+
+  e2e:
+    needs: checks
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: file:./.data/e2e.db
+      NEXTAUTH_URL: http://127.0.0.1:3050
+      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+      SERVER_SETTINGS_ENCRYPTION_KEY: ${{ secrets.SERVER_SETTINGS_ENCRYPTION_KEY }}
+      AUTH_TRUST_HOST: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare SQLite database path
+        run: mkdir -p .data
+
+      - name: Apply Prisma migrations
+        run: npx prisma migrate deploy
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: npm run test:e2e

@@ -38,6 +38,7 @@ import {
   setAccountArchivedSchema,
   updateAccountSchema,
   updateBudgetSchema,
+  updateDefaultExpenseAccountSchema,
   updateSubscriptionSchema,
 } from "@/lib/validation";
 
@@ -800,6 +801,39 @@ export async function updateFinancialAccountAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
+export async function updateDefaultExpenseAccountAction(formData: FormData) {
+  const user = await requireUser();
+  const payload = updateDefaultExpenseAccountSchema.parse({
+    defaultExpenseAccountId: getFormValue(formData, "defaultExpenseAccountId"),
+  });
+
+  if (payload.defaultExpenseAccountId == null) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { defaultExpenseAccountId: null },
+    });
+  } else {
+    const account = await prisma.account.findFirst({
+      where: {
+        id: payload.defaultExpenseAccountId,
+        userId: user.id,
+        archived: false,
+      },
+      select: { id: true },
+    });
+    if (!account) {
+      throw new Error("Pick an active account you own, or clear the default.");
+    }
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { defaultExpenseAccountId: account.id },
+    });
+  }
+
+  revalidatePath("/");
+  revalidatePath("/settings");
+}
+
 export async function deleteFinancialAccountAction(formData: FormData) {
   const user = await requireUser();
   const accountId = getFormValue(formData, "accountId");
@@ -836,6 +870,10 @@ export async function deleteFinancialAccountAction(formData: FormData) {
         },
       });
     }
+    await tx.user.updateMany({
+      where: { id: user.id, defaultExpenseAccountId: account.id },
+      data: { defaultExpenseAccountId: null },
+    });
     await tx.account.delete({ where: { id: account.id } });
   });
 
@@ -870,6 +908,13 @@ export async function setFinancialAccountArchivedAction(formData: FormData) {
   });
   if (result.count === 0) throw new Error("Account not found.");
 
+  if (archived) {
+    await prisma.user.updateMany({
+      where: { id: user.id, defaultExpenseAccountId: payload.accountId },
+      data: { defaultExpenseAccountId: null },
+    });
+  }
+
   revalidatePath("/");
   revalidatePath("/settings");
 }
@@ -882,6 +927,10 @@ export async function clearUserFinancialDataAction(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: user.id },
+      data: { defaultExpenseAccountId: null },
+    });
     await tx.budget.deleteMany({ where: { userId: user.id } });
     await tx.subscription.deleteMany({ where: { userId: user.id } });
     await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
@@ -915,6 +964,10 @@ export async function importUserBackupAction(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: user.id },
+      data: { defaultExpenseAccountId: null },
+    });
     await tx.passwordResetToken.deleteMany({ where: { userId: user.id } });
     await tx.authAccount.deleteMany({ where: { userId: user.id } });
     await tx.budget.deleteMany({ where: { userId: user.id } });
@@ -958,6 +1011,19 @@ export async function importUserBackupAction(formData: FormData) {
       });
       accountIdMap.set(account.id, created.id);
     }
+
+    let restoredDefaultExpenseAccountId: string | null = null;
+    const backupDefaultId = parsed.user.defaultExpenseAccountId;
+    if (backupDefaultId) {
+      const backed = parsed.accounts.find((a) => a.id === backupDefaultId);
+      if (backed && !backed.archived) {
+        restoredDefaultExpenseAccountId = accountIdMap.get(backupDefaultId) ?? null;
+      }
+    }
+    await tx.user.update({
+      where: { id: user.id },
+      data: { defaultExpenseAccountId: restoredDefaultExpenseAccountId },
+    });
 
     for (const category of parsed.categories) {
       const created = await tx.category.create({
