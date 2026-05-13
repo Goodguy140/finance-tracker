@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { LoginForm } from "@/components/forms";
+import { getLoginDebugVersionLine } from "@/lib/app-version";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,12 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
           Forgot password? <Link href="/forgot-password" className="font-medium text-blue-300 hover:text-blue-200 underline">Reset it</Link>
         </p>
       </div>
+      <p
+        className="mt-6 border-t border-slate-800/80 pt-3 text-center font-mono text-[11px] leading-snug text-slate-500"
+        title="Build / environment (for support and debugging)"
+      >
+        {getLoginDebugVersionLine()}
+      </p>
     </main>
   );
 }
