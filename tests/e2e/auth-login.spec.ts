@@ -29,6 +29,42 @@ test("user can login with email/password", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
 });
 
+test("user can login with email/password when optional Google settings are unreadable", async ({ page }) => {
+  const stamp = Date.now();
+  const email = `e2e-bad-google-${stamp}@example.com`;
+  const password = "e2e-password-123";
+
+  await prisma.serverSetting.upsert({
+    where: { key: "oauth.google.enabled" },
+    create: {
+      key: "oauth.google.enabled",
+      encryptedValue: "00000000000000000000000000000000:00000000000000000000000000000000:00",
+    },
+    update: {
+      encryptedValue: "00000000000000000000000000000000:00000000000000000000000000000000:00",
+    },
+  });
+  const user = await prisma.user.create({
+    data: {
+      email,
+      passwordHash: await hash(password, 12),
+      displayName: "E2E Bad Google User",
+      countryCode: "CA",
+      timezone: "America/Toronto",
+      role: "USER",
+    },
+  });
+  await ensureDefaultDataForUser(user);
+
+  await page.goto("/login");
+  await page.getByPlaceholder("Email").fill(email);
+  await page.getByPlaceholder("Password").fill(password);
+  await page.getByRole("button", { name: "Login" }).click();
+
+  await expect(page).toHaveURL("/");
+  await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
+});
+
 test("user can logout and is redirected to login", async ({ page }) => {
   const stamp = Date.now();
   const email = `e2e-logout-${stamp}@example.com`;

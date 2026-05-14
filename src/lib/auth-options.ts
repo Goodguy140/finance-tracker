@@ -26,7 +26,12 @@ function publicSignupAllowed() {
 async function getServerSetting(key: string) {
   const row = await prisma.serverSetting.findUnique({ where: { key } });
   if (!row) return null;
-  return decryptSecret(row.encryptedValue);
+  try {
+    return decryptSecret(row.encryptedValue);
+  } catch {
+    // OAuth settings are optional; stale encrypted rows should not block password login.
+    return null;
+  }
 }
 
 async function getGoogleProvider() {
