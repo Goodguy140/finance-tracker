@@ -1,27 +1,47 @@
 import Link from "next/link";
 import { AdminOauthForm } from "@/components/forms";
-import { decryptSecret } from "@/lib/security";
+import { AdminMigrationHealthPanel } from "@/components/admin-migration-health";
+import { getMigrationHealth, tryDecryptServerSetting } from "@/lib/migration-health";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
+function readSetting(
+  row: { encryptedValue: string } | null,
+  fallback = "",
+): string {
+  if (!row) return fallback;
+  return tryDecryptServerSetting(row.encryptedValue) ?? fallback;
+}
+
+function readBooleanSetting(row: { encryptedValue: string } | null): boolean {
+  return readSetting(row) === "true";
+}
+
 export default async function AdminSettingsPage() {
   await requireAdmin();
-  const [googleEnabledRow, googleIdRow, authentikEnabledRow, authentikIssuerRow, authentikIdRow] =
-    await Promise.all([
-      prisma.serverSetting.findUnique({ where: { key: "oauth.google.enabled" } }),
-      prisma.serverSetting.findUnique({ where: { key: "oauth.google.clientId" } }),
-      prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.enabled" } }),
-      prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.issuer" } }),
-      prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.clientId" } }),
-    ]);
+  const [
+    health,
+    googleEnabledRow,
+    googleIdRow,
+    authentikEnabledRow,
+    authentikIssuerRow,
+    authentikIdRow,
+  ] = await Promise.all([
+    getMigrationHealth(prisma),
+    prisma.serverSetting.findUnique({ where: { key: "oauth.google.enabled" } }),
+    prisma.serverSetting.findUnique({ where: { key: "oauth.google.clientId" } }),
+    prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.enabled" } }),
+    prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.issuer" } }),
+    prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.clientId" } }),
+  ]);
 
-  const googleEnabled = googleEnabledRow ? decryptSecret(googleEnabledRow.encryptedValue) === "true" : false;
-  const googleClientId = googleIdRow ? decryptSecret(googleIdRow.encryptedValue) : "";
-  const authentikEnabled = authentikEnabledRow ? decryptSecret(authentikEnabledRow.encryptedValue) === "true" : false;
-  const authentikIssuer = authentikIssuerRow ? decryptSecret(authentikIssuerRow.encryptedValue) : "";
-  const authentikClientId = authentikIdRow ? decryptSecret(authentikIdRow.encryptedValue) : "";
+  const googleEnabled = readBooleanSetting(googleEnabledRow);
+  const googleClientId = readSetting(googleIdRow);
+  const authentikEnabled = readBooleanSetting(authentikEnabledRow);
+  const authentikIssuer = readSetting(authentikIssuerRow);
+  const authentikClientId = readSetting(authentikIdRow);
   const authentikConfiguredViaEnv = Boolean(
     process.env.AUTHENTIK_ISSUER?.trim() &&
       process.env.AUTHENTIK_CLIENT_ID?.trim() &&
@@ -36,6 +56,7 @@ export default async function AdminSettingsPage() {
           Back to settings
         </Link>
       </div>
+      <AdminMigrationHealthPanel schema={health.schema} oauth={health.oauth} repair={health.repair} />
       <AdminOauthForm
         googleEnabled={googleEnabled}
         googleClientId={googleClientId}
