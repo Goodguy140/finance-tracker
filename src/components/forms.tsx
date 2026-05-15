@@ -33,11 +33,18 @@ import {
   upsertBudgetAction,
 } from "@/app/actions";
 import { BudgetAlertPreferences } from "@/components/budget-alert-preferences";
+import { ExpenseTitleAutocomplete } from "@/components/expense-title-autocomplete";
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_ORDER } from "@/lib/account-type-labels";
 import { parseImportedDate } from "@/lib/import-dates";
+import {
+  categoryIdForExpenseTitle,
+  type ExpenseTitleSuggestion,
+} from "@/lib/expense-title-suggestions";
 import { formatCurrency, parseStatementAmount } from "@/lib/money";
 
 type Option = { id: string; name: string };
+
+export type { ExpenseTitleSuggestion };
 
 function defaultExpenseAccountSelectValue(accounts: Option[], preferred?: string | null) {
   if (preferred && accounts.some((a) => a.id === preferred)) return preferred;
@@ -78,6 +85,68 @@ function getProfileInitials(displayName: string, email: string) {
   }
   const local = email.split("@")[0] ?? email;
   return local.slice(0, 2).toUpperCase();
+}
+
+export function ExpenseTitleAndCategoryFields({
+  expenseCategories,
+  titleSuggestions,
+  defaultTitle = "",
+  defaultCategoryId,
+  fieldIds,
+}: {
+  expenseCategories: Option[];
+  titleSuggestions: ExpenseTitleSuggestion[];
+  defaultTitle?: string;
+  defaultCategoryId?: string;
+  fieldIds: string;
+}) {
+  const initialCategoryId =
+    defaultCategoryId && expenseCategories.some((c) => c.id === defaultCategoryId)
+      ? defaultCategoryId
+      : (expenseCategories[0]?.id ?? "");
+  const [categoryId, setCategoryId] = useState(initialCategoryId);
+
+  function syncCategoryFromTitle(title: string) {
+    const match = categoryIdForExpenseTitle(titleSuggestions, title);
+    if (match && expenseCategories.some((c) => c.id === match)) {
+      setCategoryId(match);
+    }
+  }
+
+  return (
+    <>
+      <LabeledField
+        label="Title"
+        hint="Required. Pick a previous title or type a new one; category updates when you match a past entry."
+        className={spanFullSm}
+      >
+        <ExpenseTitleAutocomplete
+          inputId={`${fieldIds}-title`}
+          defaultValue={defaultTitle}
+          titleSuggestions={titleSuggestions}
+          expenseCategories={expenseCategories}
+          onTitleChange={syncCategoryFromTitle}
+          required
+        />
+      </LabeledField>
+      <LabeledField label="Category" hint="Expense category for budgeting and reports.">
+        <select
+          id={`${fieldIds}-category`}
+          name="categoryId"
+          className={selectClass}
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
+          required
+        >
+          {expenseCategories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </LabeledField>
+    </>
+  );
 }
 
 export function LabeledField({ label, hint, className, children }: { label: string; hint?: string; className?: string; children: ReactNode }) {
@@ -867,17 +936,18 @@ export function ExpenseForm({
   accounts,
   expenseCategories,
   defaultExpenseAccountId,
+  titleSuggestions = [],
 }: {
   accounts: Option[];
   expenseCategories: Option[];
   defaultExpenseAccountId?: string | null;
+  titleSuggestions?: ExpenseTitleSuggestion[];
 }) {
   const today = getTodayIsoDate();
   const fieldIds = useId();
   const accountSelectDefault = defaultExpenseAccountSelectValue(accounts, defaultExpenseAccountId);
   const [receiptBreakdown, setReceiptBreakdown] = useState(false);
   const [showPostedDate, setShowPostedDate] = useState(false);
-  const [showTitle, setShowTitle] = useState(true);
   const [showNote, setShowNote] = useState(false);
   const [amountValue, setAmountValue] = useState("");
   const [preCreditValue, setPreCreditValue] = useState("");
@@ -917,23 +987,11 @@ export function ExpenseForm({
 
   return (
     <ServerActionForm action={createExpenseAction} className={formGridResponsive}>
-      {showTitle ? (
-        <LabeledField
-          label="Title"
-          hint="Optional. Shown in your expense log (max 120 characters)."
-          className={spanFullSm}
-        >
-          <textarea
-            name="title"
-            rows={2}
-            maxLength={120}
-            className={textAreaClass}
-            placeholder="e.g. Weekly groceries, Shell fuel"
-          />
-        </LabeledField>
-      ) : (
-        <input type="hidden" name="title" value="" />
-      )}
+      <ExpenseTitleAndCategoryFields
+        fieldIds={fieldIds}
+        expenseCategories={expenseCategories}
+        titleSuggestions={titleSuggestions}
+      />
       <LabeledField label="Account" hint="Financial account this expense is charged to.">
         <select
           id={`${fieldIds}-account`}
@@ -944,15 +1002,6 @@ export function ExpenseForm({
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
-            </option>
-          ))}
-        </select>
-      </LabeledField>
-      <LabeledField label="Category" hint="Expense category for budgeting and reports.">
-        <select id={`${fieldIds}-category`} name="categoryId" className={selectClass}>
-          {expenseCategories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
             </option>
           ))}
         </select>
@@ -969,17 +1018,6 @@ export function ExpenseForm({
           }`}
         >
           Posted date
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowTitle((v) => !v)}
-          className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-            showTitle
-              ? "border-blue-500/40 bg-blue-500/15 text-blue-100"
-              : "border-slate-700/80 bg-slate-950/50 text-slate-300 hover:bg-slate-900/70"
-          }`}
-        >
-          Title
         </button>
         <button
           type="button"

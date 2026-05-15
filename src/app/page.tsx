@@ -29,6 +29,7 @@ import {
 } from "@/lib/budget-alerts";
 import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
+import { buildExpenseTitleSuggestions } from "@/lib/expense-title-suggestions";
 import { formatCurrency } from "@/lib/money";
 import { syncSubscriptionNextChargeDatesForUser } from "@/lib/subscription-next-charge";
 import { prisma } from "@/lib/prisma";
@@ -66,7 +67,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
   await syncSubscriptionNextChargeDatesForUser(user.id);
 
-  const [accounts, categories, budgets, subscriptions, periodExpenses, periodIncomes, incomeTotal] = await Promise.all([
+  const [accounts, categories, budgets, subscriptions, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory] =
+    await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
       orderBy: { createdAt: "asc" },
@@ -104,6 +106,17 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       },
       _sum: { amountCents: true },
     }),
+    prisma.transaction.findMany({
+      where: {
+        userId: user.id,
+        type: TransactionType.EXPENSE,
+        title: { not: null },
+        splitParts: { none: {} },
+      },
+      select: { title: true, categoryId: true },
+      orderBy: { date: "desc" },
+      take: 400,
+    }),
   ]);
 
   const expenseCategories = categories.filter((c) => c.kind === CategoryKind.EXPENSE);
@@ -114,6 +127,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   }));
   const expenseCategoryOptions = expenseCategories.map((c) => ({ id: c.id, name: c.name }));
   const incomeCategoryOptions = incomeCategories.map((c) => ({ id: c.id, name: c.name }));
+  const expenseTitleSuggestions = buildExpenseTitleSuggestions(titledExpenseHistory);
 
   const spendByCategory = new Map<string, number>();
   for (const expense of periodExpenses) {
@@ -402,6 +416,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                 accounts={accountOptions}
                 expenseCategories={expenseCategoryOptions}
                 defaultExpenseAccountId={user.defaultExpenseAccountId}
+                titleSuggestions={expenseTitleSuggestions}
               />
             </div>
             <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
@@ -411,7 +426,12 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                   {periodDescription} · {periodExpenses.length} transaction{periodExpenses.length === 1 ? "" : "s"}
                 </p>
               </div>
-              <ExpenseLogPanel entries={expenseLogEntries} accounts={accountOptions} categories={expenseCategoryOptions} />
+              <ExpenseLogPanel
+                entries={expenseLogEntries}
+                accounts={accountOptions}
+                categories={expenseCategoryOptions}
+                titleSuggestions={expenseTitleSuggestions}
+              />
             </div>
           </section>
 

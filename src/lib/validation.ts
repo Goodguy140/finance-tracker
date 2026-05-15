@@ -24,7 +24,7 @@ export const expenseBaseSchema = z.object({
   categoryId: z.string().min(1),
   date: z.string().min(1),
   postedDate: z.string().optional(),
-  title: z.string().trim().max(120).optional(),
+  title: z.string().trim().min(1, "Title is required.").max(120),
   note: z.string().max(250).optional(),
 });
 

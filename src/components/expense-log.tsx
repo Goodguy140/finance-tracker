@@ -1,21 +1,25 @@
 "use client";
 
-import { useActionState, useEffect, useId, useState, useSyncExternalStore } from "react";
+import { useActionState, useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { deleteExpenseTransactionAction, updateExpenseAction } from "@/app/actions";
 import { MetaChip } from "@/components/meta-chip";
-import { formatCurrency } from "@/lib/money";
 import {
   CurrencyAmountInput,
   DateField,
+  ExpenseTitleAndCategoryFields,
+  type ExpenseTitleSuggestion,
   LabeledField,
   formGridResponsive,
+  inputClass,
   primaryBtnClass,
   secondaryBtnClass,
   selectClass,
   spanFullSm,
   textAreaClass,
 } from "@/components/forms";
+import { expenseLogMatchesQuery } from "@/lib/expense-title-suggestions";
+import { formatCurrency } from "@/lib/money";
 
 type Option = { id: string; name: string };
 
@@ -133,10 +137,14 @@ function AmountPill({ cents, size = "default" }: { cents: number; size?: "defaul
   );
 }
 
+function expenseLogHeading(txn: ExpenseLogEntry) {
+  return txn.title?.trim() || txn.categoryLabel;
+}
+
 function ExpenseChipRow({ txn }: { txn: ExpenseLogEntry }) {
   return (
     <div className="mt-1 flex flex-wrap gap-1.5">
-      {txn.title ? <MetaChip label="Category">{txn.categoryLabel}</MetaChip> : null}
+      <MetaChip label="Category">{txn.categoryLabel}</MetaChip>
       <MetaChip label="Account">{txn.accountLabel}</MetaChip>
       <MetaChip label="Transaction">{txn.dateDisplay}</MetaChip>
       {txn.postedDateDisplay ? <MetaChip label="Posted">{txn.postedDateDisplay}</MetaChip> : null}
@@ -155,9 +163,7 @@ function ExpenseLogMeta({
   isSplit: boolean;
 }) {
   if (density === "compact") {
-    const parts: string[] = [];
-    if (txn.title) parts.push(txn.categoryLabel);
-    parts.push(txn.accountLabel, txn.dateDisplay);
+    const parts: string[] = [txn.categoryLabel, txn.accountLabel, txn.dateDisplay];
     if (txn.postedDateDisplay) parts.push(`posted ${txn.postedDateDisplay}`);
     if (txn.note) parts.push(txn.note);
     const line = parts.join(" · ");
@@ -224,11 +230,13 @@ function EditExpenseModal({
   entry,
   accounts,
   categories,
+  titleSuggestions,
   onClose,
 }: {
   entry: ExpenseLogEntry;
   accounts: Option[];
   categories: Option[];
+  titleSuggestions: ExpenseTitleSuggestion[];
   onClose: () => void;
 }) {
   function parseCreditRowsFromJson(raw: string | null, fallbackCreditDollars: string) {
@@ -252,7 +260,6 @@ function EditExpenseModal({
     entry.preCreditCents != null && entry.preCreditCents > 0,
   );
   const [showPostedDate, setShowPostedDate] = useState(entry.postedDateYmd != null);
-  const [showTitle, setShowTitle] = useState(Boolean(entry.title));
   const [showNote, setShowNote] = useState(Boolean(entry.note));
 
   const [state, formAction, isPending] = useActionState(
@@ -366,6 +373,13 @@ function EditExpenseModal({
         </h3>
         <form action={formAction} className={formGridResponsive}>
           <input type="hidden" name="transactionId" value={entry.id} />
+          <ExpenseTitleAndCategoryFields
+            fieldIds={fieldIds}
+            expenseCategories={categories}
+            titleSuggestions={titleSuggestions}
+            defaultTitle={entry.title ?? ""}
+            defaultCategoryId={entry.categoryId}
+          />
           <LabeledField label="Account" hint="Financial account this expense is charged to.">
             <select
               id={`${fieldIds}-account`}
@@ -386,15 +400,6 @@ function EditExpenseModal({
               ))}
             </select>
           </LabeledField>
-          <LabeledField label="Category" hint="Expense category for budgeting and reports.">
-            <select id={`${fieldIds}-category`} name="categoryId" className={selectClass} defaultValue={entry.categoryId}>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </LabeledField>
 
           <div className={`${spanFullSm} flex flex-wrap gap-2`}>
             <button
@@ -407,17 +412,6 @@ function EditExpenseModal({
               }`}
             >
               Posted date
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowTitle((v) => !v)}
-              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                showTitle
-                  ? "border-blue-500/40 bg-blue-500/15 text-blue-100"
-                  : "border-slate-700/80 bg-slate-950/50 text-slate-300 hover:bg-slate-900/70"
-              }`}
-            >
-              Title
             </button>
             <button
               type="button"
@@ -552,24 +546,6 @@ function EditExpenseModal({
           ) : (
             <input type="hidden" name="postedDate" value="" />
           )}
-          {showTitle ? (
-            <LabeledField
-              label="Title"
-              hint="Optional. Shown in your expense log (max 120 characters)."
-              className={spanFullSm}
-            >
-              <textarea
-                name="title"
-                rows={2}
-                maxLength={120}
-                className={textAreaClass}
-                placeholder="e.g. Weekly groceries, Shell fuel"
-                defaultValue={entry.title ?? ""}
-              />
-            </LabeledField>
-          ) : (
-            <input type="hidden" name="title" value="" />
-          )}
           {showNote ? (
             <LabeledField label="Note" hint="Optional details (max 250 characters)." className={spanFullSm}>
               <textarea
@@ -642,18 +618,26 @@ export function ExpenseLogPanel({
   entries,
   accounts,
   categories,
+  titleSuggestions,
 }: {
   entries: ExpenseLogEntry[];
   accounts: Option[];
   categories: Option[];
+  titleSuggestions: ExpenseTitleSuggestion[];
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const density = useSyncExternalStore(
     subscribeExpenseLogDensity,
     getExpenseLogDensitySnapshot,
     getExpenseLogDensityServerSnapshot,
   );
+  const filteredEntries = useMemo(
+    () => entries.filter((e) => expenseLogMatchesQuery(e, searchQuery, formatCurrency)),
+    [entries, searchQuery],
+  );
   const editing = editingId ? entries.find((e) => e.id === editingId) : null;
+  const trimmedSearch = searchQuery.trim();
 
   const cardPad = density === "compact" ? "p-2" : "p-2.5";
   const pillSize = density === "compact" ? "compact" : "default";
@@ -661,15 +645,35 @@ export function ExpenseLogPanel({
   return (
     <>
       {entries.length > 0 ? (
-        <div className="mb-2 flex justify-end">
-          <ExpenseLogDensityToggle density={density} onChange={persistExpenseLogDensity} />
+        <div className="mb-3 space-y-2">
+          <label className="block">
+            <span className="sr-only">Search expense log</span>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search title, category, account, note, amount…"
+              className={inputClass}
+              autoComplete="off"
+            />
+          </label>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500">
+              {trimmedSearch
+                ? `${filteredEntries.length} of ${entries.length} shown`
+                : `${entries.length} transaction${entries.length === 1 ? "" : "s"}`}
+            </p>
+            <ExpenseLogDensityToggle density={density} onChange={persistExpenseLogDensity} />
+          </div>
         </div>
       ) : null}
       <div className="max-h-[min(70vh,36rem)] space-y-2 overflow-y-auto pr-1">
         {entries.length === 0 ? (
           <p className="text-sm text-slate-400">No expenses in this period.</p>
+        ) : filteredEntries.length === 0 ? (
+          <p className="text-sm text-slate-400">No expenses match your search.</p>
         ) : (
-          entries.map((txn) => (
+          filteredEntries.map((txn) => (
             <div key={txn.id}>
               {txn.isSplit ? (
                 <div
@@ -678,7 +682,7 @@ export function ExpenseLogPanel({
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <span className="block font-semibold leading-snug text-slate-100">
-                        {txn.title || txn.categoryLabel}
+                        {expenseLogHeading(txn)}
                       </span>
                       <ExpenseLogMeta txn={txn} density={density} isSplit />
                     </div>
@@ -694,7 +698,7 @@ export function ExpenseLogPanel({
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <span className="block font-semibold leading-snug text-slate-100">
-                        {txn.title || txn.categoryLabel}
+                        {expenseLogHeading(txn)}
                       </span>
                       <ExpenseLogMeta txn={txn} density={density} isSplit={false} />
                     </div>
@@ -712,6 +716,7 @@ export function ExpenseLogPanel({
           entry={editing}
           accounts={accounts}
           categories={categories}
+          titleSuggestions={titleSuggestions}
           onClose={() => setEditingId(null)}
         />
       ) : null}
