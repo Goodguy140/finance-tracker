@@ -2,8 +2,8 @@ import { compare } from "bcryptjs";
 import type { NextAuthOptions } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
-import GoogleProvider from "next-auth/providers/google";
-import { decryptSecret } from "@/lib/security";
+import { getAuthentikProvider, getGoogleProvider } from "@/lib/oauth-provider-config";
+import { isOAuthAccountProvider, linkOAuthUser } from "@/lib/link-oauth-user";
 import { prisma } from "@/lib/prisma";
 import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
 
@@ -15,68 +15,51 @@ function getRequiredAuthSecret() {
   return secret;
 }
 
-function publicSignupAllowed() {
-  const value = process.env.ALLOW_PUBLIC_SIGNUP?.trim().toLowerCase();
-  if (value === undefined) {
-    return process.env.NODE_ENV !== "production";
-  }
-  return value === "true" || value === "1";
-}
-
-async function getServerSetting(key: string) {
-  const row = await prisma.serverSetting.findUnique({ where: { key } });
-  if (!row) return null;
-  try {
-    return decryptSecret(row.encryptedValue);
-  } catch {
-    // OAuth settings are optional; stale encrypted rows should not block password login.
-    return null;
-  }
-}
-
-async function getGoogleProvider() {
-  const [enabled, clientId, clientSecret] = await Promise.all([
-    getServerSetting("oauth.google.enabled"),
-    getServerSetting("oauth.google.clientId"),
-    getServerSetting("oauth.google.clientSecret"),
-  ]);
-
-  if (enabled !== "true" || !clientId || !clientSecret) return null;
-  return GoogleProvider({ clientId, clientSecret });
-}
+const OAUTH_DEFAULT_NAMES: Record<string, string> = {
+  google: "Google User",
+  authentik: "SSO User",
+};
 
 export async function getAuthOptions(): Promise<NextAuthOptions> {
-  const googleProvider = await getGoogleProvider();
-  const credentialsProvider = CredentialsProvider({
-      name: "Email and Password",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(credentials) {
-        const email = credentials?.email?.toLowerCase().trim();
-        const password = credentials?.password ?? "";
-        if (!email || !password) return null;
-        enforceSlidingWindowRateLimit(
-          `login:${email}`,
-          10,
-          15 * 60 * 1000,
-          "Too many login attempts. Please try again later.",
-        );
-        const user = await prisma.user.findUnique({ where: { email } });
-        if (!user?.passwordHash) return null;
-        const valid = await compare(password, user.passwordHash);
-        if (!valid) return null;
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.displayName,
-          role: user.role,
-        };
-      },
-    });
+  const [googleProvider, authentikProvider] = await Promise.all([
+    getGoogleProvider(),
+    getAuthentikProvider(),
+  ]);
 
-  const providers = [credentialsProvider, ...(googleProvider ? [googleProvider] : [])];
+  const credentialsProvider = CredentialsProvider({
+    name: "Email and Password",
+    credentials: {
+      email: { label: "Email", type: "email" },
+      password: { label: "Password", type: "password" },
+    },
+    async authorize(credentials) {
+      const email = credentials?.email?.toLowerCase().trim();
+      const password = credentials?.password ?? "";
+      if (!email || !password) return null;
+      enforceSlidingWindowRateLimit(
+        `login:${email}`,
+        10,
+        15 * 60 * 1000,
+        "Too many login attempts. Please try again later.",
+      );
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user?.passwordHash) return null;
+      const valid = await compare(password, user.passwordHash);
+      if (!valid) return null;
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.displayName,
+        role: user.role,
+      };
+    },
+  });
+
+  const providers = [
+    credentialsProvider,
+    ...(googleProvider ? [googleProvider] : []),
+    ...(authentikProvider ? [authentikProvider] : []),
+  ];
 
   return {
     session: { strategy: "jwt" },
@@ -87,41 +70,11 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
     callbacks: {
       async signIn({ user, account }) {
         if (!user.email) return false;
-        if (account?.provider === "google") {
-          const existing = await prisma.user.findUnique({
-            where: { email: user.email.toLowerCase() },
-          });
-          if (!existing && !publicSignupAllowed()) {
-            return false;
-          }
-          const currentCount = existing ? 1 : await prisma.user.count();
-          const dbUser =
-            existing ??
-            (await prisma.user.create({
-              data: {
-                email: user.email.toLowerCase(),
-                displayName: user.name ?? "Google User",
-                role: currentCount === 0 ? "SERVER_ADMIN" : "USER",
-                emailVerifiedAt: new Date(),
-              },
-            }));
-
-          await prisma.authAccount.upsert({
-            where: {
-              provider_providerAccountId: {
-                provider: "google",
-                providerAccountId: account.providerAccountId,
-              },
-            },
-            update: { userId: dbUser.id },
-            create: {
-              provider: "google",
-              providerAccountId: account.providerAccountId,
-              userId: dbUser.id,
-              accessToken: account.access_token,
-              refreshToken: account.refresh_token,
-              expiresAt: account.expires_at,
-            },
+        if (isOAuthAccountProvider(account?.provider)) {
+          return linkOAuthUser({
+            user,
+            account,
+            defaultDisplayName: OAUTH_DEFAULT_NAMES[account.provider] ?? "SSO User",
           });
         }
         return true;

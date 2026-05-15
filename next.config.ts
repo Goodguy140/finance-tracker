@@ -8,7 +8,9 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@prisma/client", "prisma"],
   // Allow tunnel/local dev hosts so client fetches (including NextAuth CSRF) are not blocked.
   allowedDevOrigins:
-    process.env.NODE_ENV === "production" ? undefined : ["127.0.0.1", "expenses.goodguy140.com"],
+    process.env.NODE_ENV === "production"
+      ? undefined
+      : ["127.0.0.1", "expenses.goodguy140.com", "beta.expenses.goodguy140.com"],
 };
 
 export default nextConfig;

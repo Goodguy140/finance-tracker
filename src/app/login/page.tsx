@@ -9,10 +9,12 @@ type SearchParams = Promise<{ error?: string | string[] }>;
 const oauthErrorMessages: Record<string, string> = {
   google:
     "Google sign-in is not available right now. Ask an admin to enable Google OAuth client settings in the app.",
-  OAuthSignin: "Google sign-in could not be started. Check NEXTAUTH_URL and Google OAuth redirect URIs.",
+  authentik:
+    "SSO sign-in is not available right now. Ask an admin to enable Authentik OIDC settings or set AUTHENTIK_* env vars.",
+  OAuthSignin: "SSO sign-in could not be started. Check NEXTAUTH_URL and your provider redirect URIs.",
   OAuthCallback:
-    "Google callback failed (often wrong redirect_uri or lost OAuth cookies). Retry sign-in; if you use a tunnel, set AUTH_TRUST_HOST=true and restart the dev server.",
-  OAuthCreateAccount: "Could not create your account from Google.",
+    "SSO callback failed (often wrong redirect_uri or lost OAuth cookies). Retry sign-in; if you use a tunnel, set AUTH_TRUST_HOST=true and restart.",
+  OAuthCreateAccount: "Could not create your account from SSO.",
   AccessDenied: "Sign-in was denied.",
   Configuration: "Auth is misconfigured (for example NEXTAUTH_SECRET or OAuth client settings).",
   Callback: "Something went wrong during the OAuth callback.",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveGoogleOauthSettings } from "./oauth-settings";
+import { normalizeAuthentikIssuer, resolveAuthentikOauthSettings, resolveGoogleOauthSettings } from "./oauth-settings";
 
 describe("resolveGoogleOauthSettings", () => {
   it("preserves existing client id/secret when form submits blanks", () => {
@@ -28,5 +28,32 @@ describe("resolveGoogleOauthSettings", () => {
     expect(resolved.enabled).toBe("false");
     expect(resolved.clientId).toBe("new-id");
     expect(resolved.clientSecret).toBe("new-secret");
+  });
+});
+
+describe("resolveAuthentikOauthSettings", () => {
+  it("preserves existing issuer and credentials when form submits blanks", () => {
+    const resolved = resolveAuthentikOauthSettings({
+      enabledRaw: "true",
+      issuerRaw: "",
+      clientIdRaw: "",
+      clientSecretRaw: "",
+      existingIssuer: "https://auth.example/application/o/app/",
+      existingClientId: "oidc-id",
+      existingClientSecret: "oidc-secret",
+    });
+
+    expect(resolved.enabled).toBe("true");
+    expect(resolved.issuer).toBe("https://auth.example/application/o/app/");
+    expect(resolved.clientId).toBe("oidc-id");
+    expect(resolved.clientSecret).toBe("oidc-secret");
+  });
+});
+
+describe("normalizeAuthentikIssuer", () => {
+  it("strips trailing slashes", () => {
+    expect(normalizeAuthentikIssuer("https://auth.example/application/o/app///")).toBe(
+      "https://auth.example/application/o/app",
+    );
   });
 });

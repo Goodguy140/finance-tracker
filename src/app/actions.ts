@@ -12,7 +12,7 @@ import { dateFromYmd } from "@/lib/date-only";
 import { parseImportedDate } from "@/lib/import-dates";
 import { decryptSecret, encryptSecret } from "@/lib/security";
 import { requireAdmin, requireUser } from "@/lib/session";
-import { resolveGoogleOauthSettings } from "@/lib/oauth-settings";
+import { resolveAuthentikOauthSettings, resolveGoogleOauthSettings } from "@/lib/oauth-settings";
 import { formatAccountDetachedLabel } from "@/lib/account-type-labels";
 import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
 import { mergeAccountDescriptionOnDetach } from "@/lib/transaction-account-detach";
@@ -1276,21 +1276,38 @@ export async function resetPasswordAction(formData: FormData) {
 
 export async function updateAdminOauthSettingsAction(formData: FormData) {
   const user = await requireAdmin();
-  const [clientIdRow, clientSecretRow] = await Promise.all([
-    prisma.serverSetting.findUnique({ where: { key: "oauth.google.clientId" } }),
-    prisma.serverSetting.findUnique({ where: { key: "oauth.google.clientSecret" } }),
-  ]);
-  const resolved = resolveGoogleOauthSettings({
+  const [googleClientIdRow, googleClientSecretRow, authentikIssuerRow, authentikClientIdRow, authentikClientSecretRow] =
+    await Promise.all([
+      prisma.serverSetting.findUnique({ where: { key: "oauth.google.clientId" } }),
+      prisma.serverSetting.findUnique({ where: { key: "oauth.google.clientSecret" } }),
+      prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.issuer" } }),
+      prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.clientId" } }),
+      prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.clientSecret" } }),
+    ]);
+  const googleResolved = resolveGoogleOauthSettings({
     enabledRaw: getFormValue(formData, "googleEnabled"),
     clientIdRaw: getFormValue(formData, "googleClientId"),
     clientSecretRaw: getFormValue(formData, "googleClientSecret"),
-    existingClientId: clientIdRow ? decryptSecret(clientIdRow.encryptedValue) : "",
-    existingClientSecret: clientSecretRow ? decryptSecret(clientSecretRow.encryptedValue) : "",
+    existingClientId: googleClientIdRow ? decryptSecret(googleClientIdRow.encryptedValue) : "",
+    existingClientSecret: googleClientSecretRow ? decryptSecret(googleClientSecretRow.encryptedValue) : "",
+  });
+  const authentikResolved = resolveAuthentikOauthSettings({
+    enabledRaw: getFormValue(formData, "authentikEnabled"),
+    issuerRaw: getFormValue(formData, "authentikIssuer"),
+    clientIdRaw: getFormValue(formData, "authentikClientId"),
+    clientSecretRaw: getFormValue(formData, "authentikClientSecret"),
+    existingIssuer: authentikIssuerRow ? decryptSecret(authentikIssuerRow.encryptedValue) : "",
+    existingClientId: authentikClientIdRow ? decryptSecret(authentikClientIdRow.encryptedValue) : "",
+    existingClientSecret: authentikClientSecretRow ? decryptSecret(authentikClientSecretRow.encryptedValue) : "",
   });
   const entries = [
-    { key: "oauth.google.enabled", value: resolved.enabled },
-    { key: "oauth.google.clientId", value: resolved.clientId },
-    { key: "oauth.google.clientSecret", value: resolved.clientSecret },
+    { key: "oauth.google.enabled", value: googleResolved.enabled },
+    { key: "oauth.google.clientId", value: googleResolved.clientId },
+    { key: "oauth.google.clientSecret", value: googleResolved.clientSecret },
+    { key: "oauth.authentik.enabled", value: authentikResolved.enabled },
+    { key: "oauth.authentik.issuer", value: authentikResolved.issuer },
+    { key: "oauth.authentik.clientId", value: authentikResolved.clientId },
+    { key: "oauth.authentik.clientSecret", value: authentikResolved.clientSecret },
   ];
 
   for (const entry of entries) {

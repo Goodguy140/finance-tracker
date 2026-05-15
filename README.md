@@ -86,6 +86,19 @@ Set these values in your deployment environment (TrueNAS custom app):
 - `AUTH_TRUST_HOST=true`
 - `ALLOW_PUBLIC_SIGNUP=false` (recommended for production)
 
+Optional **Authentik SSO** (OIDC via environment variables — overrides admin UI when all three are set):
+
+- `AUTHENTIK_ISSUER=https://authentik.example.com/application/o/<slug>/`
+- `AUTHENTIK_CLIENT_ID=<client-id>`
+- `AUTHENTIK_CLIENT_SECRET=<client-secret>`
+- `AUTHENTIK_ENABLED=false` (optional; set to disable env-based Authentik while keeping other vars)
+
+In Authentik, create an OAuth2/OIDC provider and application. Set the redirect URI to:
+
+`{NEXTAUTH_URL}/api/auth/callback/authentik`
+
+You can also configure Google and Authentik under **Settings → Server admin → OAuth** (stored encrypted in the database).
+
 `DATABASE_URL` is optional. If omitted, defaults are:
 
 - production: `file:/data/app.db`
