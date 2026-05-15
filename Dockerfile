@@ -25,6 +25,7 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/scripts/repair-sqlite-schema.cjs ./scripts/repair-sqlite-schema.cjs
+COPY --from=builder /app/scripts/repair-sqlite-schema-lib.cjs ./scripts/repair-sqlite-schema-lib.cjs
 # Merge pruned production node_modules so Prisma CLI gets hoisted peers (e.g. effect, c12) and full @prisma/*.
 COPY --from=builder /app/node_modules ./node_modules
 EXPOSE 3000
