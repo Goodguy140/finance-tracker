@@ -24,7 +24,8 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+COPY --from=builder /app/scripts/repair-sqlite-schema.cjs ./scripts/repair-sqlite-schema.cjs
 # Merge pruned production node_modules so Prisma CLI gets hoisted peers (e.g. effect, c12) and full @prisma/*.
 COPY --from=builder /app/node_modules ./node_modules
 EXPOSE 3000
-CMD ["sh", "-c", "set -e && ./node_modules/.bin/prisma migrate deploy && exec node server.js"]
+CMD ["sh", "-c", "set -e && ./node_modules/.bin/prisma migrate deploy && node scripts/repair-sqlite-schema.cjs && exec node server.js"]
