@@ -32,6 +32,7 @@ import {
   updateProfileAction,
   upsertBudgetAction,
 } from "@/app/actions";
+import { BudgetAlertPreferences } from "@/components/budget-alert-preferences";
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_ORDER } from "@/lib/account-type-labels";
 import { parseImportedDate } from "@/lib/import-dates";
 import { formatCurrency, parseStatementAmount } from "@/lib/money";
@@ -1564,6 +1565,7 @@ export function SettingsForms({
   expenseCategories,
   budgets,
   defaultExpenseAccountId,
+  budgetAlertEmailConfigured,
 }: {
   defaults: { displayName: string; countryCode: string; timezone: string };
   profileEmail: string;
@@ -1574,6 +1576,7 @@ export function SettingsForms({
   expenseCategories: Option[];
   budgets: Array<{ id: string; periodMonth: string; name: string | null; categoryName: string; limitCents: number }>;
   defaultExpenseAccountId: string | null;
+  budgetAlertEmailConfigured: boolean;
 }) {
   const [tab, setTab] = useState<SettingsTabId>("profile");
   const [editingAccount, setEditingAccount] = useState<{
@@ -2077,6 +2080,8 @@ export function SettingsForms({
                 </div>
               </dl>
             </header>
+
+            <BudgetAlertPreferences emailConfigured={budgetAlertEmailConfigured} />
 
             <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-5 shadow-lg sm:p-6">
               <div className="border-b border-slate-800/90 pb-4">

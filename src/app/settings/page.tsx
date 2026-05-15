@@ -1,6 +1,7 @@
 import { CategoryKind } from "@prisma/client";
 import Link from "next/link";
 import { SettingsForms } from "@/components/forms";
+import { isBudgetAlertEmailConfigured } from "@/lib/budget-alert-email";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 
@@ -67,6 +68,7 @@ export default async function SettingsPage() {
         expenseCategories={expenseCategoryOptions}
         budgets={budgetItems}
         defaultExpenseAccountId={user.defaultExpenseAccountId}
+        budgetAlertEmailConfigured={isBudgetAlertEmailConfigured()}
       />
     </main>
   );

@@ -99,6 +99,16 @@ In Authentik, create an OAuth2/OIDC provider and application. Set the redirect U
 
 You can also configure Google and Authentik under **Settings → Server admin → OAuth** (stored encrypted in the database).
 
+Optional **budget alert email** (not sent until SMTP delivery is implemented in `src/lib/budget-alert-email.ts`):
+
+- `SMTP_HOST`
+- `SMTP_PORT` (default `587`)
+- `SMTP_USER`
+- `SMTP_PASS`
+- `SMTP_FROM` (sender address, e.g. `alerts@example.com`)
+
+Enable email alerts under **Settings → Budgets** after these variables are set. Browser notifications use the Web Notifications API and are stored in browser localStorage (no server config).
+
 `DATABASE_URL` is optional. If omitted, defaults are:
 
 - production: `file:/data/app.db`

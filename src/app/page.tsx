@@ -7,6 +7,7 @@ import {
   LogoutButton,
 } from "@/components/forms";
 import { DashboardMonthFilter } from "@/components/dashboard-month-filter";
+import { BudgetAlertsPanel } from "@/components/budget-alerts-panel";
 import { CategorySpendPieChart } from "@/components/category-spend-pie";
 import { ExpenseLogPanel } from "@/components/expense-log";
 import { IncomeLogPanel } from "@/components/income-log";
@@ -15,8 +16,17 @@ import {
   budgetPeriodMonthInYtd,
   currentPeriodYm,
   describeDashboardPeriod,
+  endExclusiveOfMonthYm,
   parseDashboardSearchParams,
+  shiftYm,
+  startOfMonthYm,
 } from "@/lib/dashboard-period";
+import {
+  computeBudgetWarnings,
+  computeMonthOverMonthTrends,
+  computeOverBudgetTrends,
+  type BudgetProgressInput,
+} from "@/lib/budget-alerts";
 import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
 import { formatCurrency } from "@/lib/money";
@@ -34,6 +44,7 @@ const billingCycleLabels: Record<BillingCycle, string> = {
 
 type BudgetProgressRow = {
   id: string;
+  categoryId: string;
   categoryName: string;
   spentCents: number;
   limitCents: number;
@@ -139,6 +150,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           limitCents > 0 ? Math.min(Math.max((spentCents / limitCents) * 100, 0), 100) : 0;
         return {
           id: budget.id,
+          categoryId: budget.categoryId,
           categoryName: budget.category.name,
           spentCents,
           limitCents,
@@ -170,6 +182,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           limitCents > 0 ? Math.min(Math.max((spentCents / limitCents) * 100, 0), 100) : 0;
         return {
           id: categoryId,
+          categoryId,
           categoryName: nameByCategory.get(categoryId) ?? categoryName(categoryId),
           spentCents,
           limitCents,
@@ -200,6 +213,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           limitCents > 0 ? Math.min(Math.max((spentCents / limitCents) * 100, 0), 100) : 0;
         return {
           id: categoryId,
+          categoryId,
           categoryName: nameByCategory.get(categoryId) ?? categoryName(categoryId),
           spentCents,
           limitCents,
@@ -209,6 +223,76 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
     totalBudgetCents = budgetProgressItems.reduce((sum, row) => sum + row.limitCents, 0);
     configuredBudgetsCount = Array.from(limitSumByCategory.entries()).filter(([, cents]) => cents > 0).length;
+  }
+
+  let budgetWarnings: ReturnType<typeof computeBudgetWarnings> = [];
+  let budgetPaceTrends: ReturnType<typeof computeOverBudgetTrends> = [];
+  let budgetMomTrends: ReturnType<typeof computeMonthOverMonthTrends> = [];
+
+  if (period.range === "month") {
+    const progressInputs: BudgetProgressInput[] = budgetProgressItems.map((row) => ({
+      categoryId: row.categoryId,
+      categoryName: row.categoryName,
+      spentCents: row.spentCents,
+      limitCents: row.limitCents,
+    }));
+
+    budgetWarnings = computeBudgetWarnings(progressInputs, { ym: period.ym, reference: now });
+    budgetPaceTrends = computeOverBudgetTrends(progressInputs, { ym: period.ym, reference: now });
+
+    const priorYm = shiftYm(period.ym, -1);
+    const priorExpenses = await prisma.transaction.findMany({
+      where: {
+        userId: user.id,
+        type: TransactionType.EXPENSE,
+        date: {
+          gte: startOfMonthYm(priorYm),
+          lt: endExclusiveOfMonthYm(priorYm),
+        },
+      },
+      include: { splitParts: true },
+    });
+    const priorSpendByCategory = new Map<string, number>();
+    for (const expense of priorExpenses) {
+      if (expense.splitParts.length > 0) {
+        for (const part of expense.splitParts) {
+          priorSpendByCategory.set(
+            part.categoryId,
+            (priorSpendByCategory.get(part.categoryId) ?? 0) + part.amountCents,
+          );
+        }
+        continue;
+      }
+      priorSpendByCategory.set(
+        expense.categoryId,
+        (priorSpendByCategory.get(expense.categoryId) ?? 0) + expense.amountCents,
+      );
+    }
+
+    const priorActiveByCategory = new Map<string, (typeof budgets)[number]>();
+    for (const budget of budgets) {
+      if (budget.periodMonth > priorYm) continue;
+      const existing = priorActiveByCategory.get(budget.categoryId);
+      if (!existing || budget.periodMonth > existing.periodMonth) {
+        priorActiveByCategory.set(budget.categoryId, budget);
+      }
+    }
+    const priorByCategory = new Map<
+      string,
+      { categoryId: string; spentCents: number; limitCents: number }
+    >();
+    for (const [categoryId, budget] of priorActiveByCategory) {
+      priorByCategory.set(categoryId, {
+        categoryId,
+        spentCents: priorSpendByCategory.get(categoryId) ?? 0,
+        limitCents: budget.limitCents,
+      });
+    }
+
+    budgetMomTrends = computeMonthOverMonthTrends(progressInputs, priorByCategory, {
+      ym: period.ym,
+      reference: now,
+    });
   }
 
   const currentSpendCents = periodExpenses.reduce((sum, row) => sum + row.amountCents, 0);
@@ -351,6 +435,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                 </div>
               </div>
             ) : null}
+
+            <BudgetAlertsPanel
+              warnings={budgetWarnings}
+              paceTrends={budgetPaceTrends}
+              momTrends={budgetMomTrends}
+              periodLabel={periodDescription}
+            />
 
             <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
               <div className="flex items-center justify-between gap-3">
