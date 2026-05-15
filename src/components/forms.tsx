@@ -61,9 +61,9 @@ export const formGridResponsive =
 export const spanFullSm =
   "w-full sm:col-span-2";
 export const primaryBtnClass =
-  "touch-manipulation rounded-xl bg-blue-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-400";
+  "touch-manipulation inline-flex min-h-11 items-center justify-center rounded-xl bg-blue-500 px-3 py-3 text-sm font-medium text-white transition hover:bg-blue-400 sm:min-h-0 sm:py-2";
 export const secondaryBtnClass =
-  "touch-manipulation rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800";
+  "touch-manipulation inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800 sm:min-h-0 sm:py-2";
 const floatingFieldLabelClass =
   "pointer-events-none absolute left-3 -top-2 z-10 rounded bg-slate-900 px-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400";
 
@@ -93,12 +93,20 @@ export function ExpenseTitleAndCategoryFields({
   defaultTitle = "",
   defaultCategoryId,
   fieldIds,
+  accounts,
+  accountSelectDefault,
+  accountRemovedFallback,
 }: {
   expenseCategories: Option[];
   titleSuggestions: ExpenseTitleSuggestion[];
   defaultTitle?: string;
   defaultCategoryId?: string;
   fieldIds: string;
+  /** When provided, Account is shown beside Category from `sm` breakpoint up. */
+  accounts?: Option[];
+  accountSelectDefault?: string;
+  /** Edit flow: previous account was removed — allow empty selection until user picks one. */
+  accountRemovedFallback?: boolean;
 }) {
   const initialCategoryId =
     defaultCategoryId && expenseCategories.some((c) => c.id === defaultCategoryId)
@@ -112,6 +120,49 @@ export function ExpenseTitleAndCategoryFields({
       setCategoryId(match);
     }
   }
+
+  const categoryField = (
+    <LabeledField label="Category" hint="Expense category for budgeting and reports.">
+      <select
+        id={`${fieldIds}-category`}
+        name="categoryId"
+        className={selectClass}
+        value={categoryId}
+        onChange={(e) => setCategoryId(e.target.value)}
+        required
+      >
+        {expenseCategories.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+    </LabeledField>
+  );
+
+  const accountField =
+    accounts && accounts.length > 0 ? (
+      <LabeledField label="Account" hint="Financial account this expense is charged to.">
+        <select
+          id={`${fieldIds}-account`}
+          name="accountId"
+          className={selectClass}
+          defaultValue={accountSelectDefault ?? ""}
+          required
+        >
+          {accountRemovedFallback ? (
+            <option value="" disabled>
+              Choose account (previous account was removed)
+            </option>
+          ) : null}
+          {accounts.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
+      </LabeledField>
+    ) : null;
 
   return (
     <>
@@ -129,22 +180,14 @@ export function ExpenseTitleAndCategoryFields({
           required
         />
       </LabeledField>
-      <LabeledField label="Category" hint="Expense category for budgeting and reports.">
-        <select
-          id={`${fieldIds}-category`}
-          name="categoryId"
-          className={selectClass}
-          value={categoryId}
-          onChange={(e) => setCategoryId(e.target.value)}
-          required
-        >
-          {expenseCategories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </LabeledField>
+      {accountField ? (
+        <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3">
+          {categoryField}
+          {accountField}
+        </div>
+      ) : (
+        categoryField
+      )}
     </>
   );
 }
@@ -246,6 +289,7 @@ export function DateField({
           type="date"
           defaultValue={defaultValue}
           className={inputClass}
+          autoComplete="off"
           {...(required ? { required: true } : {})}
         />
       </div>
@@ -937,11 +981,15 @@ export function ExpenseForm({
   expenseCategories,
   defaultExpenseAccountId,
   titleSuggestions = [],
+  variant = "default",
+  onSuccess,
 }: {
   accounts: Option[];
   expenseCategories: Option[];
   defaultExpenseAccountId?: string | null;
   titleSuggestions?: ExpenseTitleSuggestion[];
+  variant?: "default" | "mobileSheet";
+  onSuccess?: () => void;
 }) {
   const today = getTodayIsoDate();
   const fieldIds = useId();
@@ -956,6 +1004,17 @@ export function ExpenseForm({
   const preCreditNumber = Number(preCreditValue);
   const hasValidPreCredit = Number.isFinite(preCreditNumber);
   const netPaidPreview = hasValidPreCredit ? preCreditNumber - creditSum : null;
+
+  const formLayoutClass =
+    variant === "mobileSheet" ? "flex flex-col gap-4" : formGridResponsive;
+
+  const amountOrder = variant === "mobileSheet" ? "order-1" : "max-sm:order-1 sm:order-4";
+  const titleCatOrder = variant === "mobileSheet" ? "order-2" : "max-sm:order-2 sm:order-1";
+  const togglesOrder = variant === "mobileSheet" ? "order-3" : "max-sm:order-3 sm:order-3";
+  const dateOrder = variant === "mobileSheet" ? "order-4" : "max-sm:order-4 sm:order-5";
+  const postedOrder = variant === "mobileSheet" ? "order-5" : "max-sm:order-5 sm:order-6";
+  const noteOrder = variant === "mobileSheet" ? "order-6" : "max-sm:order-6 sm:order-7";
+  const submitOrder = variant === "mobileSheet" ? "order-7" : "max-sm:order-7 sm:order-8";
 
   function sumCredits(rows: string[]) {
     return rows.reduce((sum, row) => {
@@ -986,32 +1045,116 @@ export function ExpenseForm({
   }
 
   return (
-    <ServerActionForm action={createExpenseAction} className={formGridResponsive}>
-      <ExpenseTitleAndCategoryFields
-        fieldIds={fieldIds}
-        expenseCategories={expenseCategories}
-        titleSuggestions={titleSuggestions}
-      />
-      <LabeledField label="Account" hint="Financial account this expense is charged to.">
-        <select
-          id={`${fieldIds}-account`}
-          name="accountId"
-          className={selectClass}
-          defaultValue={accountSelectDefault}
-        >
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-      </LabeledField>
+    <ServerActionForm action={createExpenseAction} className={formLayoutClass} onSuccess={onSuccess}>
+      <div className={`${amountOrder} ${spanFullSm}`}>
+        {!receiptBreakdown ? (
+          <>
+            <LabeledField label="Amount" hint="Tip: use a negative amount for full refunds or chargebacks.">
+              <CurrencyAmountInput
+                name="amount"
+                placeholder="0.00 (negative for credits)"
+                value={amountValue}
+                onChange={(e) => setAmountValue(e.target.value)}
+                required
+              />
+            </LabeledField>
+            <input type="hidden" name="preCreditTotal" value="" />
+            <input type="hidden" name="creditTotal" value="" />
+          </>
+        ) : (
+          <div
+            className={`space-y-4 rounded-xl border border-emerald-500/20 bg-gradient-to-br from-slate-950/80 to-slate-900/40 p-4 ring-1 ring-emerald-500/10 sm:p-5`}
+          >
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-slate-100">Totals from your receipt</p>
+              <p className="text-xs leading-relaxed text-slate-500">
+                Budgets and reports use the amount you actually paid (total minus credits). Points or cashback can go in
+                credits.
+              </p>
+            </div>
+            <div className={`${formGridResponsive} gap-4`}>
+              <CurrencyAmountInput
+                name="preCreditTotal"
+                label="Total before credits"
+                placeholder="0.00"
+                value={preCreditValue}
+                onChange={(e) => setPreCreditValue(e.target.value)}
+                required
+              />
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-slate-200">Credits & discounts</p>
+                <div className="space-y-2">
+                  {creditRows.map((value, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <CurrencyAmountInput
+                        name="creditTotal"
+                        label={undefined}
+                        placeholder={idx === 0 ? "0.00" : `Credit #${idx + 1}`}
+                        value={value}
+                        onChange={(e) =>
+                          setCreditRows((rows) => rows.map((r, i) => (i === idx ? e.target.value : r)))
+                        }
+                      />
+                      {creditRows.length > 1 ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCreditRows((rows) => rows.filter((_, i) => i !== idx))
+                          }
+                          className="shrink-0 min-h-11 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800 sm:min-h-0 sm:px-2 sm:py-1"
+                          aria-label={`Remove credit ${idx + 1}`}
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCreditRows((rows) => [...rows, ""])}
+                  className="min-h-11 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2.5 text-xs font-medium text-slate-200 transition hover:bg-slate-800 sm:min-h-0 sm:px-2.5 sm:py-1.5"
+                >
+                  Add another credit
+                </button>
+                <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">
+                  <p className="tabular-nums">
+                    Credit sum: <span className="font-medium text-emerald-300">{creditSum.toFixed(2)}</span>
+                  </p>
+                  <p className="mt-1 tabular-nums text-slate-400">
+                    Net paid preview:{" "}
+                    <span className="font-medium text-slate-200">
+                      {netPaidPreview !== null ? netPaidPreview.toFixed(2) : "--"}
+                    </span>
+                  </p>
+                </div>
+              </div>
+            </div>
+            <p className="border-t border-slate-800/90 pt-3 text-xs leading-relaxed text-slate-500">
+              Enter the full receipt total first, then add each reward, coupon, or statement credit separately. We
+              automatically sum all credits and save your paid amount as{" "}
+              <span className="font-medium text-slate-300">total minus combined credits</span>.
+            </p>
+            <input type="hidden" name="amount" value="" />
+          </div>
+        )}
+      </div>
 
-      <div className={`${spanFullSm} flex flex-wrap gap-2`}>
+      <div className={`${titleCatOrder} ${spanFullSm}`}>
+        <ExpenseTitleAndCategoryFields
+          fieldIds={fieldIds}
+          expenseCategories={expenseCategories}
+          titleSuggestions={titleSuggestions}
+          accounts={accounts}
+          accountSelectDefault={accountSelectDefault}
+        />
+      </div>
+
+      <div className={`${togglesOrder} ${spanFullSm} flex flex-wrap gap-2`}>
         <button
           type="button"
           onClick={() => setShowPostedDate((v) => !v)}
-          className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+          className={`min-h-11 rounded-full border px-3 py-2 text-xs font-medium transition touch-manipulation sm:min-h-0 sm:py-1.5 ${
             showPostedDate
               ? "border-blue-500/40 bg-blue-500/15 text-blue-100"
               : "border-slate-700/80 bg-slate-950/50 text-slate-300 hover:bg-slate-900/70"
@@ -1022,7 +1165,7 @@ export function ExpenseForm({
         <button
           type="button"
           onClick={() => setShowNote((v) => !v)}
-          className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+          className={`min-h-11 rounded-full border px-3 py-2 text-xs font-medium transition touch-manipulation sm:min-h-0 sm:py-1.5 ${
             showNote
               ? "border-blue-500/40 bg-blue-500/15 text-blue-100"
               : "border-slate-700/80 bg-slate-950/50 text-slate-300 hover:bg-slate-900/70"
@@ -1033,7 +1176,7 @@ export function ExpenseForm({
         <button
           type="button"
           onClick={toggleReceiptBreakdown}
-          className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+          className={`min-h-11 rounded-full border px-3 py-2 text-xs font-medium transition touch-manipulation sm:min-h-0 sm:py-1.5 ${
             receiptBreakdown
               ? "border-emerald-500/45 bg-emerald-500/15 text-emerald-100"
               : "border-slate-700/80 bg-slate-950/50 text-slate-300 hover:bg-slate-900/70"
@@ -1043,154 +1186,100 @@ export function ExpenseForm({
         </button>
       </div>
 
-      {!receiptBreakdown ? (
-        <>
-          <LabeledField label="Amount" hint="Tip: use a negative amount for full refunds or chargebacks.">
-            <CurrencyAmountInput
-              name="amount"
-              placeholder="0.00 (negative for credits)"
-              value={amountValue}
-              onChange={(e) => setAmountValue(e.target.value)}
-              required
-            />
-          </LabeledField>
-          <input type="hidden" name="preCreditTotal" value="" />
-          <input type="hidden" name="creditTotal" value="" />
-        </>
-      ) : (
-        <div
-          className={`${spanFullSm} space-y-4 rounded-xl border border-emerald-500/20 bg-gradient-to-br from-slate-950/80 to-slate-900/40 p-4 ring-1 ring-emerald-500/10 sm:p-5`}
-        >
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-slate-100">Totals from your receipt</p>
-            <p className="text-xs leading-relaxed text-slate-500">
-              Budgets and reports use the amount you actually paid (total minus credits). Points or cashback can go in
-              credits.
-            </p>
-          </div>
-          <div className={`${formGridResponsive} gap-4`}>
-            <CurrencyAmountInput
-              name="preCreditTotal"
-              label="Total before credits"
-              placeholder="0.00"
-              value={preCreditValue}
-              onChange={(e) => setPreCreditValue(e.target.value)}
-              required
-            />
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-slate-200">Credits & discounts</p>
-              <div className="space-y-2">
-                {creditRows.map((value, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <CurrencyAmountInput
-                      name="creditTotal"
-                      label={undefined}
-                      placeholder={idx === 0 ? "0.00" : `Credit #${idx + 1}`}
-                      value={value}
-                      onChange={(e) =>
-                        setCreditRows((rows) => rows.map((r, i) => (i === idx ? e.target.value : r)))
-                      }
-                    />
-                    {creditRows.length > 1 ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setCreditRows((rows) => rows.filter((_, i) => i !== idx))
-                        }
-                        className="shrink-0 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800"
-                        aria-label={`Remove credit ${idx + 1}`}
-                      >
-                        Remove
-                      </button>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={() => setCreditRows((rows) => [...rows, ""])}
-                className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-slate-800"
-              >
-                Add another credit
-              </button>
-              <div className="rounded-lg border border-slate-800/80 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">
-                <p className="tabular-nums">
-                  Credit sum: <span className="font-medium text-emerald-300">{creditSum.toFixed(2)}</span>
-                </p>
-                <p className="mt-1 tabular-nums text-slate-400">
-                  Net paid preview:{" "}
-                  <span className="font-medium text-slate-200">
-                    {netPaidPreview !== null ? netPaidPreview.toFixed(2) : "--"}
-                  </span>
-                </p>
-              </div>
-            </div>
-          </div>
-          <p className="border-t border-slate-800/90 pt-3 text-xs leading-relaxed text-slate-500">
-            Enter the full receipt total first, then add each reward, coupon, or statement credit separately. We
-            automatically sum all credits and save your paid amount as <span className="font-medium text-slate-300">total minus combined credits</span>.
-          </p>
-          <input type="hidden" name="amount" value="" />
-        </div>
-      )}
-
-      <DateField
-        name="date"
-        label="Transaction date"
-        hint="The date you assign to this purchase or charge."
-        defaultValue={today}
-      />
-      {showPostedDate ? (
+      <div className={`${dateOrder} ${spanFullSm}`}>
         <DateField
-          name="postedDate"
-          label="Posted date"
-          hint="Optional. When the transaction cleared on your statement, if different from the transaction date."
-          className={spanFullSm}
+          name="date"
+          label="Transaction date"
+          hint="The date you assign to this purchase or charge."
+          defaultValue={today}
+          required
         />
+      </div>
+
+      {showPostedDate ? (
+        <div className={`${postedOrder} ${spanFullSm}`}>
+          <DateField
+            name="postedDate"
+            label="Posted date"
+            hint="Optional. When the transaction cleared on your statement, if different from the transaction date."
+          />
+        </div>
       ) : (
         <input type="hidden" name="postedDate" value="" />
       )}
       {showNote ? (
-        <LabeledField label="Note" hint="Optional details (max 250 characters)." className={spanFullSm}>
+        <LabeledField
+          label="Note"
+          hint="Optional details (max 250 characters)."
+          className={`${noteOrder} ${spanFullSm}`}
+        >
           <textarea name="note" rows={4} maxLength={250} className={textAreaClass} placeholder="Extra context, memo, or split notes" />
         </LabeledField>
       ) : (
         <input type="hidden" name="note" value="" />
       )}
-      <button type="submit" className={`${spanFullSm} ${primaryBtnClass} py-2.5 sm:py-2`}>
+      <button type="submit" className={`${submitOrder} ${spanFullSm} ${primaryBtnClass} py-2.5 sm:py-2`}>
         Add expense
       </button>
     </ServerActionForm>
   );
 }
 
-export function IncomeForm({ accounts, incomeCategories }: { accounts: Option[]; incomeCategories: Option[] }) {
+export function IncomeForm({
+  accounts,
+  incomeCategories,
+  variant = "default",
+  onSuccess,
+}: {
+  accounts: Option[];
+  incomeCategories: Option[];
+  variant?: "default" | "mobileSheet";
+  onSuccess?: () => void;
+}) {
   const today = getTodayIsoDate();
   const fieldIds = useId();
 
+  const layout = variant === "mobileSheet" ? "flex flex-col gap-4" : formGridResponsive;
+
+  const oAcct = variant === "mobileSheet" ? "order-3" : "max-sm:order-3 sm:order-1";
+  const oSrc = variant === "mobileSheet" ? "order-2" : "max-sm:order-2 sm:order-2";
+  const oAmt = variant === "mobileSheet" ? "order-1" : "max-sm:order-1 sm:order-3";
+  const oDate = variant === "mobileSheet" ? "order-4" : "max-sm:order-4 sm:order-4";
+  const oTitle = variant === "mobileSheet" ? "order-5" : "max-sm:order-5 sm:order-5";
+  const oNote = variant === "mobileSheet" ? "order-6" : "max-sm:order-6 sm:order-6";
+  const oSubmit = variant === "mobileSheet" ? "order-7" : "max-sm:order-7 sm:order-7";
+
   return (
-    <ServerActionForm action={createIncomeAction} className={formGridResponsive}>
-      <LabeledField label="Account" hint="Account that received this income.">
-        <select id={`${fieldIds}-account`} name="accountId" className={selectClass}>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-      </LabeledField>
-      <LabeledField label="Source" hint="Income category (salary, interest, reimbursement, etc.).">
-        <select id={`${fieldIds}-category`} name="categoryId" className={selectClass}>
-          {incomeCategories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </LabeledField>
-      <CurrencyAmountInput name="amount" label="Amount" placeholder="0.00" />
-      <DateField name="date" label="Income date" hint="The date you assign to this income." defaultValue={today} />
-      <LabeledField label="Title" hint="Optional (max 120 characters)." className={spanFullSm}>
+    <ServerActionForm action={createIncomeAction} className={layout} onSuccess={onSuccess}>
+      <div className={oAcct}>
+        <LabeledField label="Account" hint="Account that received this income.">
+          <select id={`${fieldIds}-account`} name="accountId" className={selectClass}>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </LabeledField>
+      </div>
+      <div className={oSrc}>
+        <LabeledField label="Source" hint="Income category (salary, interest, reimbursement, etc.).">
+          <select id={`${fieldIds}-category`} name="categoryId" className={selectClass}>
+            {incomeCategories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </LabeledField>
+      </div>
+      <div className={`${oAmt} ${spanFullSm}`}>
+        <CurrencyAmountInput name="amount" label="Amount" placeholder="0.00" required />
+      </div>
+      <div className={`${oDate} ${spanFullSm}`}>
+        <DateField name="date" label="Income date" hint="The date you assign to this income." defaultValue={today} required />
+      </div>
+      <LabeledField label="Title" hint="Optional (max 120 characters)." className={`${oTitle} ${spanFullSm}`}>
         <textarea
           name="title"
           rows={2}
@@ -1199,10 +1288,10 @@ export function IncomeForm({ accounts, incomeCategories }: { accounts: Option[];
           placeholder="e.g. Paycheque, freelance invoice"
         />
       </LabeledField>
-      <LabeledField label="Note" hint="Optional (max 250 characters)." className={spanFullSm}>
+      <LabeledField label="Note" hint="Optional (max 250 characters)." className={`${oNote} ${spanFullSm}`}>
         <textarea name="note" rows={4} maxLength={250} className={textAreaClass} placeholder="Additional details" />
       </LabeledField>
-      <button type="submit" className={`${spanFullSm} ${primaryBtnClass} py-2.5 sm:py-2`}>
+      <button type="submit" className={`${oSubmit} ${spanFullSm} ${primaryBtnClass} py-2.5 sm:py-2`}>
         Add income
       </button>
     </ServerActionForm>

@@ -118,6 +118,34 @@ function IncomeLogMeta({ entry, density }: { entry: IncomeLogEntry; density: Inc
   return <IncomeChipRow entry={entry} />;
 }
 
+function IncomeLogMobileCard({
+  entry,
+  pillSize,
+}: {
+  entry: IncomeLogEntry;
+  pillSize: "default" | "compact";
+}) {
+  return (
+    <div className="flex flex-col gap-2 sm:hidden">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-400/85">Income source</p>
+          <span className="mt-0.5 block text-base font-semibold leading-snug text-slate-50">{entry.sourceLabel}</span>
+          {entry.title ? (
+            <span className="mt-1 block text-sm leading-snug text-slate-300">{entry.title}</span>
+          ) : null}
+        </div>
+        <ReceivedPill cents={entry.amountCents} size={pillSize} />
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <MetaChip label="Account">{entry.accountLabel}</MetaChip>
+        <MetaChip label="Date">{entry.dateDisplay}</MetaChip>
+      </div>
+      {entry.note ? <p className="text-xs leading-snug text-slate-400">{entry.note}</p> : null}
+    </div>
+  );
+}
+
 function IncomeLogDensityToggle({
   density,
   onChange,
@@ -410,7 +438,7 @@ export function IncomeLogPanel({
   return (
     <>
       {entries.length > 0 ? (
-        <div className="mb-2 flex justify-end">
+        <div className="mb-2 hidden justify-end sm:flex">
           <IncomeLogDensityToggle density={density} onChange={persistIncomeLogDensity} />
         </div>
       ) : null}
@@ -425,16 +453,19 @@ export function IncomeLogPanel({
               onClick={() => setEditingId(entry.id)}
               className={`w-full rounded-xl border border-slate-800 bg-slate-950/50 text-left text-sm text-slate-100 transition hover:border-emerald-500/35 hover:bg-slate-900/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 touch-manipulation ${cardPad}`}
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400/85">Income source</p>
-                  <span className="mt-0.5 block break-words font-semibold leading-snug text-slate-50">{entry.sourceLabel}</span>
-                  {entry.title ? (
-                    <span className="mt-1 block break-words text-sm leading-snug text-slate-300">{entry.title}</span>
-                  ) : null}
-                  <IncomeLogMeta entry={entry} density={density} />
+              <IncomeLogMobileCard entry={entry} pillSize={pillSize} />
+              <div className="hidden sm:block">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400/85">Income source</p>
+                    <span className="mt-0.5 block break-words font-semibold leading-snug text-slate-50">{entry.sourceLabel}</span>
+                    {entry.title ? (
+                      <span className="mt-1 block break-words text-sm leading-snug text-slate-300">{entry.title}</span>
+                    ) : null}
+                    <IncomeLogMeta entry={entry} density={density} />
+                  </div>
+                  <ReceivedPill cents={entry.amountCents} size={pillSize} />
                 </div>
-                <ReceivedPill cents={entry.amountCents} size={pillSize} />
               </div>
             </button>
           ))

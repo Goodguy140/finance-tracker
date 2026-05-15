@@ -14,7 +14,6 @@ import {
   inputClass,
   primaryBtnClass,
   secondaryBtnClass,
-  selectClass,
   spanFullSm,
   textAreaClass,
 } from "@/components/forms";
@@ -192,6 +191,61 @@ function ExpenseLogMeta({
       ) : null}
       <ExpenseChipRow txn={txn} />
     </>
+  );
+}
+
+function ExpenseLogMobileCard({
+  txn,
+  pillSize,
+  isSplit,
+}: {
+  txn: ExpenseLogEntry;
+  pillSize: "default" | "compact";
+  isSplit: boolean;
+}) {
+  const meta = showReceiptBreakdown(txn);
+  return (
+    <div className="flex flex-col gap-2 sm:hidden">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-300/90">Expense</p>
+          <p className="mt-0.5 text-base font-semibold leading-snug text-slate-50">{expenseLogHeading(txn)}</p>
+        </div>
+        <ExpenseAmountBlock txn={txn} size={pillSize} />
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <MetaChip label="Category">{txn.categoryLabel}</MetaChip>
+        {isSplit ? (
+          <span className="inline-flex items-center rounded-full border border-amber-500/35 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-100">
+            Split — view only
+          </span>
+        ) : null}
+      </div>
+      <p className="text-xs leading-snug text-slate-500">
+        <span className="font-medium text-slate-400">{txn.accountLabel}</span>
+        <span className="text-slate-600"> · </span>
+        <span>{txn.dateDisplay}</span>
+        {txn.postedDateDisplay ? (
+          <>
+            <span className="text-slate-600"> · </span>
+            <span>posted {txn.postedDateDisplay}</span>
+          </>
+        ) : null}
+      </p>
+      {txn.note ? <p className="text-xs leading-snug text-slate-400">{txn.note}</p> : null}
+      {meta ? (
+        <div className="text-[11px] text-slate-500">
+          <p className="tabular-nums">
+            Receipt total <span className="font-medium text-slate-300">{formatCurrency(txn.preCreditCents!)}</span>
+          </p>
+          {(txn.creditCents ?? 0) > 0 ? (
+            <p className="tabular-nums text-emerald-400/90">
+              Credits <span className="font-medium">{formatCurrency(-(txn.creditCents ?? 0))}</span>
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -379,27 +433,10 @@ function EditExpenseModal({
             titleSuggestions={titleSuggestions}
             defaultTitle={entry.title ?? ""}
             defaultCategoryId={entry.categoryId}
+            accounts={accounts}
+            accountSelectDefault={entry.accountId ?? ""}
+            accountRemovedFallback={!entry.accountId}
           />
-          <LabeledField label="Account" hint="Financial account this expense is charged to.">
-            <select
-              id={`${fieldIds}-account`}
-              name="accountId"
-              className={selectClass}
-              defaultValue={entry.accountId ?? ""}
-              required
-            >
-              {entry.accountId ? null : (
-                <option value="" disabled>
-                  Choose account (previous account was removed)
-                </option>
-              )}
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </LabeledField>
 
           <div className={`${spanFullSm} flex flex-wrap gap-2`}>
             <button
@@ -644,71 +681,81 @@ export function ExpenseLogPanel({
 
   return (
     <>
-      {entries.length > 0 ? (
-        <div className="mb-3 space-y-2">
-          <label className="block">
-            <span className="sr-only">Search expense log</span>
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search title, category, account, note, amount…"
-              className={inputClass}
-              autoComplete="off"
-            />
-          </label>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-slate-500">
-              {trimmedSearch
-                ? `${filteredEntries.length} of ${entries.length} shown`
-                : `${entries.length} transaction${entries.length === 1 ? "" : "s"}`}
-            </p>
-            <ExpenseLogDensityToggle density={density} onChange={persistExpenseLogDensity} />
-          </div>
-        </div>
-      ) : null}
-      <div className="max-h-[min(70vh,36rem)] space-y-2 overflow-y-auto pr-1">
-        {entries.length === 0 ? (
-          <p className="text-sm text-slate-400">No expenses in this period.</p>
-        ) : filteredEntries.length === 0 ? (
-          <p className="text-sm text-slate-400">No expenses match your search.</p>
-        ) : (
-          filteredEntries.map((txn) => (
-            <div key={txn.id}>
-              {txn.isSplit ? (
-                <div
-                  className={`rounded-xl border border-slate-800 bg-slate-950/50 text-sm opacity-90 ${cardPad}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <span className="block font-semibold leading-snug text-slate-100">
-                        {expenseLogHeading(txn)}
-                      </span>
-                      <ExpenseLogMeta txn={txn} density={density} isSplit />
-                    </div>
-                    <ExpenseAmountBlock txn={txn} size={pillSize} />
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setEditingId(txn.id)}
-                  className={`w-full rounded-xl border border-slate-800 bg-slate-950/50 text-left text-sm text-slate-100 transition hover:border-blue-500/40 hover:bg-slate-900/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 touch-manipulation ${cardPad}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <span className="block font-semibold leading-snug text-slate-100">
-                        {expenseLogHeading(txn)}
-                      </span>
-                      <ExpenseLogMeta txn={txn} density={density} isSplit={false} />
-                    </div>
-                    <ExpenseAmountBlock txn={txn} size={pillSize} />
-                  </div>
-                </button>
-              )}
+      <div className="max-h-[min(70vh,36rem)] overflow-y-auto overflow-x-hidden pr-1 [-webkit-overflow-scrolling:touch]">
+        {entries.length > 0 ? (
+          <div className="sticky top-0 z-[3] mb-2 space-y-2 border-b border-slate-800/70 bg-slate-900/95 py-2 backdrop-blur-md sm:static sm:z-auto sm:mb-3 sm:border-0 sm:bg-transparent sm:py-0 sm:backdrop-blur-none">
+            <label className="block">
+              <span className="sr-only">Search expense log</span>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search title, category, account, note, amount…"
+                className={inputClass}
+                autoComplete="off"
+              />
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-slate-500">
+                {trimmedSearch
+                  ? `${filteredEntries.length} of ${entries.length} shown`
+                  : `${entries.length} transaction${entries.length === 1 ? "" : "s"}`}
+              </p>
+              <div className="hidden sm:block">
+                <ExpenseLogDensityToggle density={density} onChange={persistExpenseLogDensity} />
+              </div>
             </div>
-          ))
-        )}
+          </div>
+        ) : null}
+        <div className="space-y-2">
+          {entries.length === 0 ? (
+            <p className="text-sm text-slate-400">No expenses in this period.</p>
+          ) : filteredEntries.length === 0 ? (
+            <p className="text-sm text-slate-400">No expenses match your search.</p>
+          ) : (
+            filteredEntries.map((txn) => (
+              <div key={txn.id}>
+                {txn.isSplit ? (
+                  <div
+                    className={`rounded-xl border border-slate-800 bg-slate-950/50 text-sm opacity-90 ${cardPad}`}
+                  >
+                    <ExpenseLogMobileCard txn={txn} pillSize={pillSize} isSplit />
+                    <div className="hidden sm:block">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <span className="block font-semibold leading-snug text-slate-100">
+                            {expenseLogHeading(txn)}
+                          </span>
+                          <ExpenseLogMeta txn={txn} density={density} isSplit />
+                        </div>
+                        <ExpenseAmountBlock txn={txn} size={pillSize} />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setEditingId(txn.id)}
+                    className={`w-full rounded-xl border border-slate-800 bg-slate-950/50 text-left text-sm text-slate-100 transition hover:border-blue-500/40 hover:bg-slate-900/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 touch-manipulation ${cardPad}`}
+                  >
+                    <ExpenseLogMobileCard txn={txn} pillSize={pillSize} isSplit={false} />
+                    <div className="hidden sm:block">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <span className="block font-semibold leading-snug text-slate-100">
+                            {expenseLogHeading(txn)}
+                          </span>
+                          <ExpenseLogMeta txn={txn} density={density} isSplit={false} />
+                        </div>
+                        <ExpenseAmountBlock txn={txn} size={pillSize} />
+                      </div>
+                    </div>
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </div>
       </div>
       {editing ? (
         <EditExpenseModal

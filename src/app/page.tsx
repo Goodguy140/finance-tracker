@@ -6,6 +6,7 @@ import {
   ExpenseForm,
   LogoutButton,
 } from "@/components/forms";
+import { DashboardMobileActions } from "@/components/dashboard-mobile-actions";
 import { DashboardMonthFilter } from "@/components/dashboard-month-filter";
 import { BudgetAlertsPanel } from "@/components/budget-alerts-panel";
 import { CategorySpendPieChart } from "@/components/category-spend-pie";
@@ -380,7 +381,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const showDashboardIncomeCard = periodIncomes.length > 0 || incomeSumCents > 0;
 
   return (
-    <main className="min-h-screen bg-slate-950 p-4 text-slate-100">
+    <main className="min-h-screen bg-slate-950 p-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] text-slate-100 lg:pb-4">
       <div className="mx-auto max-w-7xl space-y-4">
         <header className="relative z-40 flex flex-col gap-3 rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900/90 to-slate-900/70 p-4 shadow-xl backdrop-blur sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -408,54 +409,16 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           </div>
         </header>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-          <section className="space-y-4 lg:col-span-7">
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg sm:p-4">
-              <h2 className="mb-3 text-lg font-semibold">Add Expense</h2>
-              <ExpenseForm
-                accounts={accountOptions}
-                expenseCategories={expenseCategoryOptions}
-                defaultExpenseAccountId={user.defaultExpenseAccountId}
-                titleSuggestions={expenseTitleSuggestions}
-              />
-            </div>
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
-              <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
-                <h2 className="text-lg font-semibold">Expense Log</h2>
-                <p className="text-xs text-slate-400">
-                  {periodDescription} · {periodExpenses.length} transaction{periodExpenses.length === 1 ? "" : "s"}
-                </p>
-              </div>
-              <ExpenseLogPanel
-                entries={expenseLogEntries}
-                accounts={accountOptions}
-                categories={expenseCategoryOptions}
-                titleSuggestions={expenseTitleSuggestions}
-              />
-            </div>
-          </section>
+        <DashboardMobileActions
+          accounts={accountOptions}
+          expenseCategories={expenseCategoryOptions}
+          incomeCategories={incomeCategoryOptions}
+          defaultExpenseAccountId={user.defaultExpenseAccountId}
+          titleSuggestions={expenseTitleSuggestions}
+        />
 
-          <aside className="space-y-4 lg:col-span-5">
-            {showDashboardIncomeCard ? (
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
-                <div className="flex flex-col gap-3 border-b border-slate-800/80 pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-                  <div className="min-w-0">
-                    <h2 className="text-lg font-semibold text-slate-100">Income</h2>
-                    <p className="text-xs text-slate-400">{periodDescription}</p>
-                    <p className="mt-2 text-xs tabular-nums text-slate-500">
-                      {periodIncomes.length} deposit{periodIncomes.length === 1 ? "" : "s"}
-                    </p>
-                  </div>
-                  <p className="shrink-0 text-2xl font-bold tabular-nums text-emerald-200 sm:text-right">
-                    {formatCurrency(incomeSumCents)}
-                  </p>
-                </div>
-                <div className="pt-4">
-                  <IncomeLogPanel entries={incomeLogEntries} accounts={accountOptions} categories={incomeCategoryOptions} />
-                </div>
-              </div>
-            ) : null}
-
+        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:gap-4">
+          <div className="order-1 flex flex-col gap-4 lg:order-none lg:col-span-5 lg:col-start-8">
             <BudgetAlertsPanel
               warnings={budgetWarnings}
               paceTrends={budgetPaceTrends}
@@ -522,7 +485,68 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                 ))}
               </div>
             </div>
+          </div>
 
+          <div className="order-2 flex flex-col gap-4 lg:order-none lg:col-span-7 lg:row-start-1">
+            <section className="hidden rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg sm:p-4 lg:block">
+              <h2 className="mb-3 text-lg font-semibold">Add Expense</h2>
+              <ExpenseForm
+                accounts={accountOptions}
+                expenseCategories={expenseCategoryOptions}
+                defaultExpenseAccountId={user.defaultExpenseAccountId}
+                titleSuggestions={expenseTitleSuggestions}
+              />
+            </section>
+            <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
+              <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+                <h2 className="text-lg font-semibold">Expense Log</h2>
+                <p className="text-xs text-slate-400">
+                  {periodDescription} · {periodExpenses.length} transaction{periodExpenses.length === 1 ? "" : "s"}
+                </p>
+              </div>
+              <ExpenseLogPanel
+                entries={expenseLogEntries}
+                accounts={accountOptions}
+                categories={expenseCategoryOptions}
+                titleSuggestions={expenseTitleSuggestions}
+              />
+            </section>
+          </div>
+
+          {showDashboardIncomeCard ? (
+            <div className="order-3 lg:order-none lg:col-span-5 lg:col-start-8">
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
+                <div className="flex flex-col gap-3 border-b border-slate-800/80 pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-semibold text-slate-100">Income</h2>
+                    <p className="text-xs text-slate-400">{periodDescription}</p>
+                    <p className="mt-2 text-xs tabular-nums text-slate-500">
+                      {periodIncomes.length} deposit{periodIncomes.length === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                  <p className="shrink-0 text-2xl font-bold tabular-nums text-emerald-200 sm:text-right">
+                    {formatCurrency(incomeSumCents)}
+                  </p>
+                </div>
+                <div className="pt-4">
+                  <IncomeLogPanel entries={incomeLogEntries} accounts={accountOptions} categories={incomeCategoryOptions} />
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="order-4 lg:order-none lg:col-span-5 lg:col-start-8">
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
+              <h2 className="text-lg font-semibold">Spending by category</h2>
+              <p className="mt-1 text-xs text-slate-400">
+                Net expense per category for this period ({periodDescription}). Slice size uses the absolute amount so
+                categories with credits stay visible; the tooltip shows the signed total.
+              </p>
+              <CategorySpendPieChart data={categoryPieSlices} />
+            </div>
+          </div>
+
+          <div className="order-5 lg:order-none lg:col-span-5 lg:col-start-8">
             <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg sm:p-4">
               <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
                 <h2 className="text-lg font-semibold">Subscriptions</h2>
@@ -532,16 +556,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
               </div>
               <SubscriptionsPanel items={subscriptionListItems} accounts={accountOptions} expenseCategories={expenseCategoryOptions} />
             </div>
-
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
-              <h2 className="text-lg font-semibold">Spending by category</h2>
-              <p className="mt-1 text-xs text-slate-400">
-                Net expense per category for this period ({periodDescription}). Slice size uses the absolute amount so
-                categories with credits stay visible; the tooltip shows the signed total.
-              </p>
-              <CategorySpendPieChart data={categoryPieSlices} />
-            </div>
-          </aside>
+          </div>
         </div>
       </div>
     </main>
