@@ -1,5 +1,6 @@
 export const BUDGET_ALERT_PREFS_KEY = "finance-tracker:budget-alert-prefs";
 export const BUDGET_ALERT_NOTIFIED_KEY = "finance-tracker:budget-alert-notified";
+export const BUDGET_ALERT_DISMISSED_KEY = "finance-tracker:budget-alert-dismissed";
 
 export type BudgetAlertPreferences = {
   browserEnabled: boolean;
@@ -61,4 +62,39 @@ export function shouldNotifyBrowser(
   if (!prev) return true;
   if (severity === "critical" && prev === "warning") return true;
   return false;
+}
+
+export type BudgetWarningDismissalInput = {
+  periodKey: string;
+  categoryId: string;
+  severity: BudgetWarningSeverityStored;
+};
+
+export type DismissedBudgetWarningMap = Record<string, true>;
+
+export function budgetWarningDismissalKey({
+  periodKey,
+  categoryId,
+  severity,
+}: BudgetWarningDismissalInput): string {
+  return `${periodKey}|${categoryId}|${severity}`;
+}
+
+export function readDismissedBudgetWarnings(): DismissedBudgetWarningMap {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(BUDGET_ALERT_DISMISSED_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, value]) => value === true),
+    ) as DismissedBudgetWarningMap;
+  } catch {
+    return {};
+  }
+}
+
+export function writeDismissedBudgetWarnings(map: DismissedBudgetWarningMap): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(BUDGET_ALERT_DISMISSED_KEY, JSON.stringify(map));
 }

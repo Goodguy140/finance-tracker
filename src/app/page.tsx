@@ -424,6 +424,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
               paceTrends={budgetPaceTrends}
               momTrends={budgetMomTrends}
               periodLabel={periodDescription}
+              periodKey={period.ym}
             />
 
             <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
