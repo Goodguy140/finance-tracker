@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Finance Tracker",
-  description: "Track expenses, budgets, subscriptions, income, and investment contributions.",
+  description: "Track expenses, budgets, recurring transactions, income, and investment contributions.",
 };
 
 export default function RootLayout({

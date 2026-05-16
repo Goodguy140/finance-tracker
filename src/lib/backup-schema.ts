@@ -97,6 +97,26 @@ export const userBackupSchema = z.object({
       updatedAt: isoDate,
     }),
   ),
+  recurringTransactions: z
+    .array(
+      z.object({
+        accountId: z.string().min(1),
+        categoryId: z.string().min(1),
+        type: z.enum(["EXPENSE", "INCOME"]),
+        name: z.string().min(1).max(80),
+        amountCents: z.number().int().positive(),
+        cadence: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "BIENNIAL"]),
+        nextExpectedDate: isoDate,
+        endDate: isoDate.nullable(),
+        postMode: z.enum(["REVIEW", "AUTO"]),
+        enabled: z.boolean(),
+        note: z.string().max(250).nullable(),
+        createdAt: isoDate,
+        updatedAt: isoDate,
+      }),
+    )
+    .default([]),
+  /** Backward-compatible import for backups exported before recurring transactions replaced subscriptions. */
   subscriptions: z.array(
     z.object({
       accountId: z.string().min(1),
@@ -108,7 +128,7 @@ export const userBackupSchema = z.object({
       createdAt: isoDate,
       updatedAt: isoDate,
     }),
-  ),
+  ).optional(),
   investmentFlows: z.array(
     z.object({
       accountId: z.string().min(1),

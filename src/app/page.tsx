@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { BillingCycle, CategoryKind, TransactionType } from "@prisma/client";
+import { CategoryKind, RecurringCadence, TransactionType } from "@prisma/client";
 import Link from "next/link";
 import {
   AddFormsDropdown,
@@ -12,7 +12,7 @@ import { BudgetAlertsPanel } from "@/components/budget-alerts-panel";
 import { CategorySpendPieChart } from "@/components/category-spend-pie";
 import { ExpenseLogPanel } from "@/components/expense-log";
 import { IncomeLogPanel } from "@/components/income-log";
-import { SubscriptionsPanel } from "@/components/subscriptions-panel";
+import { RecurringTransactionsPanel } from "@/components/recurring-transactions-panel";
 import {
   budgetPeriodMonthInYtd,
   currentPeriodYm,
@@ -20,6 +20,7 @@ import {
   endExclusiveOfMonthYm,
   parseDashboardSearchParams,
   shiftYm,
+  startOfCalendarYearForYm,
   startOfMonthYm,
 } from "@/lib/dashboard-period";
 import {
@@ -32,12 +33,13 @@ import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
 import { buildExpenseTitleSuggestions } from "@/lib/expense-title-suggestions";
 import { formatCurrency } from "@/lib/money";
-import { syncSubscriptionNextChargeDatesForUser } from "@/lib/subscription-next-charge";
+import { computeRecurringCashFlowSummary, getRecurringDateStatus } from "@/lib/recurring-transactions";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 
-const billingCycleLabels: Record<BillingCycle, string> = {
+const cadenceLabels: Record<RecurringCadence, string> = {
   WEEKLY: "Weekly",
+  BIWEEKLY: "Biweekly",
   MONTHLY: "Monthly",
   QUARTERLY: "Quarterly",
   YEARLY: "Yearly",
@@ -66,9 +68,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const periodDescription = describeDashboardPeriod(period);
   const transactionDateFilter = period.transactionDateFilter;
 
-  await syncSubscriptionNextChargeDatesForUser(user.id);
-
-  const [accounts, categories, budgets, subscriptions, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory] =
+  const [accounts, categories, budgets, recurringTransactions, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -76,10 +76,10 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     }),
     prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" } }),
     prisma.budget.findMany({ where: { userId: user.id }, include: { category: true }, orderBy: { updatedAt: "desc" } }),
-    prisma.subscription.findMany({
+    prisma.recurringTransaction.findMany({
       where: { userId: user.id },
       include: { category: true, account: true },
-      orderBy: { nextChargeDate: "asc" },
+      orderBy: [{ enabled: "desc" }, { nextExpectedDate: "asc" }],
     }),
     prisma.transaction.findMany({
       where: {
@@ -356,19 +356,34 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       : (txn.accountDescription ?? "Removed account"),
   }));
 
-  const subscriptionListItems = subscriptions.map((sub) => ({
-    id: sub.id,
-    name: sub.name,
-    amountCents: sub.amountCents,
-    accountId: sub.accountId,
-    accountLabel: `${sub.account.name} (${formatAccountTypeLabel(sub.account.type)})`,
-    categoryId: sub.categoryId,
-    categoryLabel: sub.category.name,
-    billingCycle: sub.billingCycle,
-    billingCycleLabel: billingCycleLabels[sub.billingCycle],
-    nextChargeDateYmd: ymdFromDateUtc(sub.nextChargeDate),
-    nextChargeDateDisplay: formatDateOnlyUtc(sub.nextChargeDate),
+  const recurringListItems = recurringTransactions.map((rule) => ({
+    id: rule.id,
+    type: rule.type,
+    typeLabel: rule.type === TransactionType.INCOME ? "Income" : "Expense",
+    name: rule.name,
+    amountCents: rule.amountCents,
+    accountId: rule.accountId,
+    accountLabel: `${rule.account.name} (${formatAccountTypeLabel(rule.account.type)})`,
+    categoryId: rule.categoryId,
+    categoryLabel: rule.category.name,
+    cadence: rule.cadence,
+    cadenceLabel: cadenceLabels[rule.cadence],
+    nextExpectedDateYmd: ymdFromDateUtc(rule.nextExpectedDate),
+    nextExpectedDateDisplay: formatDateOnlyUtc(rule.nextExpectedDate),
+    endDateYmd: rule.endDate ? ymdFromDateUtc(rule.endDate) : null,
+    endDateDisplay: rule.endDate ? formatDateOnlyUtc(rule.endDate) : null,
+    note: rule.note,
+    enabled: rule.enabled,
+    status: rule.enabled ? getRecurringDateStatus(rule.nextExpectedDate, now) : ("disabled" as const),
   }));
+
+  const recurringForecastPeriod =
+    period.range === "ytd"
+      ? { start: startOfCalendarYearForYm(period.ym), endExclusive: endExclusiveOfMonthYm(period.ym), label: periodDescription }
+      : period.range === "month"
+        ? { start: startOfMonthYm(period.ym), endExclusive: endExclusiveOfMonthYm(period.ym), label: periodDescription }
+        : { start: startOfMonthYm(anchorYm), endExclusive: endExclusiveOfMonthYm(anchorYm), label: "Current month" };
+  const recurringCashFlow = computeRecurringCashFlowSummary(recurringTransactions, recurringForecastPeriod);
 
   const spendVsBudgetLabel =
     period.range === "month"
@@ -550,12 +565,34 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           <div className="order-5 lg:order-none lg:col-span-5 lg:col-start-8">
             <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg sm:p-4">
               <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
-                <h2 className="text-lg font-semibold">Subscriptions</h2>
+                <h2 className="text-lg font-semibold">Recurring transactions</h2>
                 <p className="text-xs text-slate-400">
-                  {subscriptions.length} subscription{subscriptions.length === 1 ? "" : "s"} · next charge soonest first
+                  {recurringTransactions.length} rule{recurringTransactions.length === 1 ? "" : "s"} · due and upcoming first
                 </p>
               </div>
-              <SubscriptionsPanel items={subscriptionListItems} accounts={accountOptions} expenseCategories={expenseCategoryOptions} />
+              <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Expected income</p>
+                  <p className="text-sm font-semibold text-emerald-200">{formatCurrency(recurringCashFlow.incomeCents)}</p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Expected expenses</p>
+                  <p className="text-sm font-semibold text-blue-100">{formatCurrency(recurringCashFlow.expenseCents)}</p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Net cash flow</p>
+                  <p className={`text-sm font-semibold ${recurringCashFlow.netCents >= 0 ? "text-emerald-200" : "text-red-200"}`}>
+                    {formatCurrency(recurringCashFlow.netCents)}
+                  </p>
+                </div>
+              </div>
+              <p className="mb-3 text-xs text-slate-500">Forecast: {recurringForecastPeriod.label}</p>
+              <RecurringTransactionsPanel
+                items={recurringListItems}
+                accounts={accountOptions}
+                expenseCategories={expenseCategoryOptions}
+                incomeCategories={incomeCategoryOptions}
+              />
             </div>
           </div>
         </div>

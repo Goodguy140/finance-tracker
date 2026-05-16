@@ -39,12 +39,18 @@ enum TransactionType {
   INCOME
 }
 
-enum BillingCycle {
+enum RecurringCadence {
   WEEKLY
+  BIWEEKLY
   MONTHLY
   QUARTERLY
   YEARLY
   BIENNIAL
+}
+
+enum RecurringPostMode {
+  REVIEW
+  AUTO
 }
 
 enum InvestmentFlowDirection {
@@ -53,34 +59,36 @@ enum InvestmentFlowDirection {
 }
 
 model User {
-  id              String    @id @default(cuid())
-  email           String    @unique
-  passwordHash    String?
-  displayName     String
-  timezone        String    @default("America/Toronto")
-  countryCode     String    @default("CA")
-  emailVerifiedAt DateTime?
-  role            UserRole  @default(USER)
-  /** When set, the Add Expense form preselects this account (must be one of the user's accounts). */
+  id                      String    @id @default(cuid())
+  email                   String    @unique
+  passwordHash            String?
+  displayName             String
+  timezone                String    @default("America/Toronto")
+  countryCode             String    @default("CA")
+  emailVerifiedAt         DateTime?
+  role                    UserRole  @default(USER)
+  /**
+   * When set, the Add Expense form preselects this account (must be one of the user's accounts).
+   */
   defaultExpenseAccountId String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   defaultExpenseAccount Account? @relation("UserDefaultExpenseAccount", fields: [defaultExpenseAccountId], references: [id], onDelete: SetNull)
 
-  authAccounts        AuthAccount[]
-  sessions            Session[]
-  resetTokens         PasswordResetToken[]
-  accounts            Account[]
-  categories          Category[]
-  transactions        Transaction[]
-  splitTransaction    SplitTransactionPart[]
-  budgets             Budget[]
-  subscriptions       Subscription[]
-  investmentFlows     InvestmentFlow[]
-  portfolioSnapshots  PortfolioSnapshot[]
-  updatedServerConfig ServerSetting[] @relation("ServerSettingUpdatedBy")
-  auditLogs           AuditLog[]
+  authAccounts          AuthAccount[]
+  sessions              Session[]
+  resetTokens           PasswordResetToken[]
+  accounts              Account[]
+  categories            Category[]
+  transactions          Transaction[]
+  splitTransaction      SplitTransactionPart[]
+  budgets               Budget[]
+  recurringTransactions RecurringTransaction[]
+  investmentFlows       InvestmentFlow[]
+  portfolioSnapshots    PortfolioSnapshot[]
+  updatedServerConfig   ServerSetting[]        @relation("ServerSettingUpdatedBy")
+  auditLogs             AuditLog[]
 }
 
 model AuditLog {
@@ -113,7 +121,7 @@ model Session {
 }
 
 model AuthAccount {
-  id                String  @id @default(cuid())
+  id                String   @id @default(cuid())
   userId            String
   provider          String
   providerAccountId String
@@ -132,12 +140,12 @@ model AuthAccount {
 }
 
 model PasswordResetToken {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
   tokenHash String
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -162,17 +170,19 @@ model Account {
   currency    String      @default("CAD")
   countryCode String      @default("CA")
   provider    String?
-  /** Hidden from pickers on the dashboard and in import defaults; past data unchanged. */
+  /**
+   * Hidden from pickers on the dashboard and in import defaults; past data unchanged.
+   */
   archived    Boolean     @default(false)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
-  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  defaultExpenseForUsers User[]        @relation("UserDefaultExpenseAccount")
-  transactions       Transaction[]
-  subscriptions      Subscription[]
-  investmentFlows    InvestmentFlow[]
-  portfolioSnapshots PortfolioSnapshot[]
+  user                   User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultExpenseForUsers User[]                 @relation("UserDefaultExpenseAccount")
+  transactions           Transaction[]
+  recurringTransactions  RecurringTransaction[]
+  investmentFlows        InvestmentFlow[]
+  portfolioSnapshots     PortfolioSnapshot[]
 }
 
 model Category {
@@ -184,44 +194,54 @@ model Category {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions      Transaction[]
-  splitParts        SplitTransactionPart[]
-  budgets           Budget[]
-  subscriptions     Subscription[]
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions          Transaction[]
+  splitParts            SplitTransactionPart[]
+  budgets               Budget[]
+  recurringTransactions RecurringTransaction[]
 
   @@unique([userId, name, kind])
 }
 
 model Transaction {
-  id          String          @id @default(cuid())
-  userId      String
-  accountId   String?
-  categoryId  String
-  type        TransactionType
-  amountCents Int
-  /** Purchase total before credits/rewards (optional; net outflow stays in amountCents). */
-  preCreditCents Int?
-  /** Credits, rewards, or discounts applied (positive cents; subtracted from pre-credit total). */
-  creditCents    Int?
-  /** Optional JSON array of per-credit cents to preserve distinct credit lines across edits. */
-  creditBreakdownJson String?
-  title       String?
-  date        DateTime
-  postedDate  DateTime?
-  accountDescription String?
-  note        String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id                     String          @id @default(cuid())
+  userId                 String
+  accountId              String?
+  categoryId             String
+  type                   TransactionType
+  amountCents            Int
+  /**
+   * Purchase total before credits/rewards (optional; net outflow stays in amountCents).
+   */
+  preCreditCents         Int?
+  /**
+   * Credits, rewards, or discounts applied (positive cents; subtracted from pre-credit total).
+   */
+  creditCents            Int?
+  /**
+   * Optional JSON array of per-credit cents to preserve distinct credit lines across edits.
+   */
+  creditBreakdownJson    String?
+  title                  String?
+  date                   DateTime
+  postedDate             DateTime?
+  accountDescription     String?
+  note                   String?
+  recurringTransactionId String?
+  recurringExpectedDate  DateTime?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
 
   user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   account    Account?               @relation(fields: [accountId], references: [id], onDelete: SetNull)
   category   Category               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   splitParts SplitTransactionPart[]
+
+  @@unique([userId, recurringTransactionId, recurringExpectedDate])
 }
 
 model SplitTransactionPart {
-  id            String   @id @default(cuid())
+  id            String @id @default(cuid())
   userId        String
   transactionId String
   categoryId    String
@@ -248,21 +268,29 @@ model Budget {
   @@unique([userId, categoryId, periodMonth])
 }
 
-model Subscription {
-  id             String       @id @default(cuid())
-  userId         String
-  accountId      String
-  categoryId     String
-  name           String
-  amountCents    Int
-  billingCycle   BillingCycle
-  nextChargeDate DateTime
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+model RecurringTransaction {
+  id               String            @id @default(cuid())
+  userId           String
+  accountId        String
+  categoryId       String
+  type             TransactionType
+  name             String
+  amountCents      Int
+  cadence          RecurringCadence
+  nextExpectedDate DateTime
+  endDate          DateTime?
+  postMode         RecurringPostMode @default(REVIEW)
+  enabled          Boolean           @default(true)
+  note             String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   account  Account  @relation(fields: [accountId], references: [id], onDelete: Restrict)
   category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([userId, enabled, nextExpectedDate])
+  @@index([userId, type])
 }
 
 model InvestmentFlow {

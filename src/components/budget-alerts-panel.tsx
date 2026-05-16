@@ -1,13 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { formatCurrency } from "@/lib/money";
 import {
   budgetWarningDismissalKey,
+  getServerDismissedBudgetWarningsSnapshot,
   readDismissedBudgetWarnings,
   readBudgetAlertPreferences,
   readNotifiedMap,
   shouldNotifyBrowser,
+  subscribeDismissedBudgetWarnings,
   writeDismissedBudgetWarnings,
   writeNotifiedMap,
   type BudgetWarningSeverityStored,
@@ -40,8 +42,10 @@ export function BudgetAlertsPanel({
   periodLabel,
   periodKey,
 }: BudgetAlertsPanelProps) {
-  const [dismissedWarnings, setDismissedWarnings] = useState<DismissedBudgetWarningMap>(() =>
-    readDismissedBudgetWarnings(),
+  const dismissedWarnings = useSyncExternalStore(
+    subscribeDismissedBudgetWarnings,
+    readDismissedBudgetWarnings,
+    getServerDismissedBudgetWarningsSnapshot,
   );
   const [showDismissed, setShowDismissed] = useState(false);
 
@@ -71,11 +75,7 @@ export function BudgetAlertsPanel({
 
   const updateDismissedWarnings = useCallback(
     (update: (prev: DismissedBudgetWarningMap) => DismissedBudgetWarningMap) => {
-      setDismissedWarnings((prev) => {
-        const next = update(prev);
-        writeDismissedBudgetWarnings(next);
-        return next;
-      });
+      writeDismissedBudgetWarnings(update(readDismissedBudgetWarnings()));
     },
     [],
   );

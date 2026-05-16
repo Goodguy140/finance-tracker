@@ -86,21 +86,34 @@ export const deleteBudgetSchema = z.object({
   budgetId: z.string().min(1),
 });
 
-export const subscriptionSchema = z.object({
+export const recurringTransactionSchema = z.object({
+  type: z.enum(["EXPENSE", "INCOME"]),
   accountId: z.string().min(1),
   categoryId: z.string().min(1),
   name: z.string().trim().min(2).max(80),
   amount: z.coerce.number().positive(),
-  billingCycle: z.enum(["WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "BIENNIAL"]),
-  nextChargeDate: z.string().min(1),
+  cadence: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "BIENNIAL"]),
+  nextExpectedDate: z.string().min(1),
+  endDate: z.string().optional(),
+  note: z.string().trim().max(250).optional(),
 });
 
-export const updateSubscriptionSchema = subscriptionSchema.extend({
-  subscriptionId: z.string().min(1),
+export const updateRecurringTransactionSchema = recurringTransactionSchema.extend({
+  recurringTransactionId: z.string().min(1),
 });
 
-export const deleteSubscriptionSchema = z.object({
-  subscriptionId: z.string().min(1),
+export const deleteRecurringTransactionSchema = z.object({
+  recurringTransactionId: z.string().min(1),
+});
+
+export const setRecurringTransactionEnabledSchema = z.object({
+  recurringTransactionId: z.string().min(1),
+  enabled: z.enum(["true", "false"]),
+});
+
+export const postRecurringTransactionSchema = z.object({
+  recurringTransactionId: z.string().min(1),
+  expectedDate: z.string().min(1),
 });
 
 export const investmentFlowSchema = z.object({

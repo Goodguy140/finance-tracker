@@ -15,8 +15,8 @@ import {
   createIncomeAction,
   createInvestmentFlowAction,
   createPortfolioSnapshotAction,
+  createRecurringTransactionAction,
   createSplitExpenseAction,
-  createSubscriptionAction,
   deleteBudgetAction,
   deleteFinancialAccountAction,
   updateDefaultExpenseAccountAction,
@@ -855,7 +855,7 @@ export function LogoutButton() {
   );
 }
 
-type AddMenuFormKey = "income" | "splitExpense" | "subscription" | "investment";
+type AddMenuFormKey = "income" | "splitExpense" | "recurring" | "investment";
 
 export function AddFormsDropdown({
   accounts,
@@ -921,12 +921,12 @@ export function AddFormsDropdown({
             </button>
             <button
               type="button"
-              onClick={() => setActiveForm("subscription")}
+              onClick={() => setActiveForm("recurring")}
               className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                activeForm === "subscription" ? "bg-blue-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                activeForm === "recurring" ? "bg-blue-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
               }`}
             >
-              Subscription
+              Recurring
             </button>
             <button
               type="button"
@@ -949,10 +949,11 @@ export function AddFormsDropdown({
               defaultExpenseAccountId={defaultExpenseAccountId}
             />
           ) : null}
-          {activeForm === "subscription" ? (
-            <SubscriptionForm
+          {activeForm === "recurring" ? (
+            <RecurringTransactionForm
               accounts={accounts}
               expenseCategories={expenseCategories}
+              incomeCategories={incomeCategories}
               defaultExpenseAccountId={defaultExpenseAccountId}
             />
           ) : null}
@@ -1520,31 +1521,47 @@ export function BudgetForm({ expenseCategories }: { expenseCategories: Option[] 
   );
 }
 
-export function SubscriptionForm({
+export function RecurringTransactionForm({
   accounts,
   expenseCategories,
+  incomeCategories,
   defaultExpenseAccountId,
 }: {
   accounts: Option[];
   expenseCategories: Option[];
+  incomeCategories: Option[];
   defaultExpenseAccountId?: string | null;
 }) {
   const today = getTodayIsoDate();
   const fieldIds = useId();
   const accountSelectDefault = defaultExpenseAccountSelectValue(accounts, defaultExpenseAccountId);
+  const [type, setType] = useState<"EXPENSE" | "INCOME">("EXPENSE");
+  const categoryOptions = type === "INCOME" ? incomeCategories : expenseCategories;
 
   return (
-    <ServerActionForm action={createSubscriptionAction} className={formGridResponsive}>
-      <LabeledField label="Subscription name" hint="Shown in your subscription list." className={spanFullSm}>
+    <ServerActionForm action={createRecurringTransactionAction} className={formGridResponsive}>
+      <LabeledField label="Recurring transaction name" hint="Shown in your recurring transactions list." className={spanFullSm}>
         <textarea
           name="name"
           rows={2}
           maxLength={80}
           className={textAreaClass}
-          placeholder="e.g. Netflix, gym membership"
+          placeholder="e.g. Paycheque, rent, gym membership"
         />
       </LabeledField>
-      <LabeledField label="Account" hint="Account charged for this subscription.">
+      <LabeledField label="Type" hint="Whether this repeats as income or an expense.">
+        <select
+          id={`${fieldIds}-type`}
+          name="type"
+          className={selectClass}
+          value={type}
+          onChange={(event) => setType(event.target.value as "EXPENSE" | "INCOME")}
+        >
+          <option value="EXPENSE">Expense</option>
+          <option value="INCOME">Income</option>
+        </select>
+      </LabeledField>
+      <LabeledField label="Account" hint="Account for this recurring transaction.">
         <select
           id={`${fieldIds}-account`}
           name="accountId"
@@ -1558,19 +1575,20 @@ export function SubscriptionForm({
           ))}
         </select>
       </LabeledField>
-      <LabeledField label="Category" hint="Expense category for budgeting.">
+      <LabeledField label="Category" hint={type === "INCOME" ? "Income category for this deposit." : "Expense category for budgeting."}>
         <select id={`${fieldIds}-category`} name="categoryId" className={selectClass}>
-          {expenseCategories.map((c) => (
+          {categoryOptions.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
           ))}
         </select>
       </LabeledField>
-      <CurrencyAmountInput name="amount" label="Amount per charge" placeholder="0.00" />
-      <LabeledField label="Billing cycle" hint="How often you are charged.">
-        <select id={`${fieldIds}-cycle`} name="billingCycle" className={selectClass}>
+      <CurrencyAmountInput name="amount" label="Amount each time" placeholder="0.00" />
+      <LabeledField label="Cadence" hint="How often this transaction is expected.">
+        <select id={`${fieldIds}-cadence`} name="cadence" className={selectClass}>
           <option value="WEEKLY">Weekly</option>
+          <option value="BIWEEKLY">Biweekly</option>
           <option value="MONTHLY">Monthly</option>
           <option value="QUARTERLY">Quarterly</option>
           <option value="YEARLY">Yearly</option>
@@ -1578,14 +1596,17 @@ export function SubscriptionForm({
         </select>
       </LabeledField>
       <DateField
-        name="nextChargeDate"
-        label="Next charge date"
-        hint="The next date you expect this charge to post."
+        name="nextExpectedDate"
+        label="Next expected date"
+        hint="The next date you expect this transaction."
         defaultValue={today}
-        className={spanFullSm}
       />
+      <DateField name="endDate" label="End date" hint="Optional final expected date." />
+      <LabeledField label="Note" hint="Optional note copied to posted transactions." className={spanFullSm}>
+        <textarea name="note" rows={2} maxLength={250} className={textAreaClass} placeholder="Optional details" />
+      </LabeledField>
       <button type="submit" className={`${spanFullSm} ${primaryBtnClass} py-2.5 sm:py-2`}>
-        Add subscription
+        Add recurring transaction
       </button>
     </ServerActionForm>
   );
@@ -1972,7 +1993,7 @@ export function SettingsForms({
                 <div className="min-w-0 space-y-1">
                   <h3 className="text-lg font-semibold tracking-tight text-slate-100 lg:text-xl">Your accounts</h3>
                   <p className="max-w-prose text-sm leading-relaxed text-slate-400">
-                    Accounts back expenses, income, subscriptions, and CSV imports. Active accounts appear in dashboard
+                    Accounts back expenses, income, recurring transactions, and CSV imports. Active accounts appear in dashboard
                     pickers; archived ones stay out of the way until you restore them.
                   </p>
                 </div>
@@ -2385,7 +2406,7 @@ export function SettingsForms({
               <h3 className="text-base font-semibold text-amber-200 lg:text-lg">Clear financial data</h3>
               <p className="text-sm text-amber-100/85">
                 Permanently removes transactions (including splits), budgets, financial accounts, categories,
-                subscriptions, investment flows, and portfolio snapshots for your login. Your email, password, OAuth
+                recurring transactions, investment flows, and portfolio snapshots for your login. Your email, password, OAuth
                 links, profile fields (name, country, timezone), and sessions are kept. Default expense/income
                 categories and starter accounts are recreated so you can keep using the app.
               </p>

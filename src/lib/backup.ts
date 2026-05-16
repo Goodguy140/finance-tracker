@@ -85,13 +85,18 @@ export type UserBackupPayload = {
     createdAt: IsoString;
     updatedAt: IsoString;
   }>;
-  subscriptions: Array<{
+  recurringTransactions: Array<{
     accountId: string;
     categoryId: string;
+    type: "EXPENSE" | "INCOME";
     name: string;
     amountCents: number;
-    billingCycle: "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL";
-    nextChargeDate: IsoString;
+    cadence: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL";
+    nextExpectedDate: IsoString;
+    endDate: IsoString | null;
+    postMode: "REVIEW" | "AUTO";
+    enabled: boolean;
+    note: string | null;
     createdAt: IsoString;
     updatedAt: IsoString;
   }>;
@@ -126,7 +131,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       categories: true,
       transactions: { include: { splitParts: true } },
       budgets: true,
-      subscriptions: true,
+      recurringTransactions: true,
       investmentFlows: true,
       portfolioSnapshots: true,
     },
@@ -213,13 +218,18 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     })),
-    subscriptions: user.subscriptions.map((row) => ({
+    recurringTransactions: user.recurringTransactions.map((row) => ({
       accountId: row.accountId,
       categoryId: row.categoryId,
+      type: row.type,
       name: row.name,
       amountCents: row.amountCents,
-      billingCycle: row.billingCycle,
-      nextChargeDate: row.nextChargeDate.toISOString(),
+      cadence: row.cadence,
+      nextExpectedDate: row.nextExpectedDate.toISOString(),
+      endDate: toIso(row.endDate),
+      postMode: row.postMode,
+      enabled: row.enabled,
+      note: row.note,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     })),
