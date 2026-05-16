@@ -152,6 +152,12 @@ Confirm:
 
 ## Backup and Restore Runbook (SQLite)
 
+### Admin JSON export (per-user snapshot)
+
+Users with the `SERVER_ADMIN` role can download their own data from **Settings → Server admin** (JSON via `/api/backup/export`). The export is **highly sensitive** (OAuth tokens, password hash field, reset token hashes, and all finance rows for that user). Store it encrypted and treat it like a credential.
+
+Successful downloads and the other admin-account actions listed in the in-app **Audit log** panel are recorded as scrubbed audit events (never full payloads or secrets).
+
 ### Daily backup
 
 1. Stop writes (maintenance mode or brief restart window).

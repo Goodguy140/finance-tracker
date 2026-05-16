@@ -80,6 +80,25 @@ model User {
   investmentFlows     InvestmentFlow[]
   portfolioSnapshots  PortfolioSnapshot[]
   updatedServerConfig ServerSetting[] @relation("ServerSettingUpdatedBy")
+  auditLogs           AuditLog[]
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String?
+  action       String
+  targetType   String?
+  targetId     String?
+  metadataJson String?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([action])
 }
 
 model Session {

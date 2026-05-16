@@ -1,6 +1,12 @@
 import Link from "next/link";
-import { AdminOauthForm } from "@/components/forms";
+import { AdminAuditLog } from "@/components/admin-audit-log";
+import { AdminBackupPanel } from "@/components/admin-backup-panel";
 import { AdminMigrationHealthPanel } from "@/components/admin-migration-health";
+import { AdminOauthWarnings } from "@/components/admin-oauth-warnings";
+import { AdminSystemHealthPanel } from "@/components/admin-system-health";
+import { AdminOauthForm } from "@/components/forms";
+import { getAdminOauthStatus } from "@/lib/admin-oauth-status";
+import { getAdminSystemHealth } from "@/lib/admin-system-health";
 import { getMigrationHealth, tryDecryptServerSetting } from "@/lib/migration-health";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/session";
@@ -21,21 +27,17 @@ function readBooleanSetting(row: { encryptedValue: string } | null): boolean {
 
 export default async function AdminSettingsPage() {
   await requireAdmin();
-  const [
-    health,
-    googleEnabledRow,
-    googleIdRow,
-    authentikEnabledRow,
-    authentikIssuerRow,
-    authentikIdRow,
-  ] = await Promise.all([
-    getMigrationHealth(prisma),
-    prisma.serverSetting.findUnique({ where: { key: "oauth.google.enabled" } }),
-    prisma.serverSetting.findUnique({ where: { key: "oauth.google.clientId" } }),
-    prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.enabled" } }),
-    prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.issuer" } }),
-    prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.clientId" } }),
-  ]);
+  const [health, systemHealth, oauthStatus, googleEnabledRow, googleIdRow, authentikEnabledRow, authentikIssuerRow, authentikIdRow] =
+    await Promise.all([
+      getMigrationHealth(prisma),
+      getAdminSystemHealth(prisma),
+      getAdminOauthStatus(prisma),
+      prisma.serverSetting.findUnique({ where: { key: "oauth.google.enabled" } }),
+      prisma.serverSetting.findUnique({ where: { key: "oauth.google.clientId" } }),
+      prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.enabled" } }),
+      prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.issuer" } }),
+      prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.clientId" } }),
+    ]);
 
   const googleEnabled = readBooleanSetting(googleEnabledRow);
   const googleClientId = readSetting(googleIdRow);
@@ -56,7 +58,9 @@ export default async function AdminSettingsPage() {
           Back to settings
         </Link>
       </div>
+      <AdminSystemHealthPanel health={systemHealth} />
       <AdminMigrationHealthPanel schema={health.schema} oauth={health.oauth} repair={health.repair} />
+      <AdminOauthWarnings status={oauthStatus} />
       <AdminOauthForm
         googleEnabled={googleEnabled}
         googleClientId={googleClientId}
@@ -65,6 +69,8 @@ export default async function AdminSettingsPage() {
         authentikClientId={authentikClientId}
         authentikConfiguredViaEnv={authentikConfiguredViaEnv}
       />
+      <AdminBackupPanel />
+      <AdminAuditLog />
     </main>
   );
 }

@@ -3,6 +3,7 @@
 import { hash, compare } from "bcryptjs";
 import crypto from "crypto";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { AccountType, CategoryKind, TransactionType, UserRole } from "@prisma/client";
 import { getDefaultTimezone } from "@/lib/country-config";
 import { ensureDefaultDataForUser } from "@/lib/defaults";
@@ -12,6 +13,7 @@ import { dateFromYmd } from "@/lib/date-only";
 import { parseImportedDate } from "@/lib/import-dates";
 import { decryptSecret, encryptSecret } from "@/lib/security";
 import { requireAdmin, requireUser } from "@/lib/session";
+import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { resolveAuthentikOauthSettings, resolveGoogleOauthSettings } from "@/lib/oauth-settings";
 import { formatAccountDetachedLabel } from "@/lib/account-type-labels";
 import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
@@ -743,6 +745,12 @@ export async function changePasswordAction(formData: FormData) {
     where: { id: user.id },
     data: { passwordHash: await hash(payload.newPassword, 12) },
   });
+  const h = await headers();
+  await recordAuditLog(prisma, {
+    userId: user.id,
+    action: AUDIT_ACTIONS.user_password_changed,
+    headers: h,
+  });
 }
 
 export async function updateProfileAction(formData: FormData) {
@@ -765,7 +773,7 @@ export async function createFinancialAccountAction(formData: FormData) {
     type: getFormValue(formData, "type"),
   });
 
-  await prisma.account.create({
+  const created = await prisma.account.create({
     data: {
       userId: user.id,
       name: payload.name,
@@ -773,6 +781,15 @@ export async function createFinancialAccountAction(formData: FormData) {
       countryCode: user.countryCode,
       archived: false,
     },
+    select: { id: true },
+  });
+  const h = await headers();
+  await recordAuditLog(prisma, {
+    userId: user.id,
+    action: AUDIT_ACTIONS.financial_account_created,
+    targetType: "Account",
+    targetId: created.id,
+    headers: h,
   });
   revalidatePath("/");
   revalidatePath("/settings");
@@ -877,6 +894,15 @@ export async function deleteFinancialAccountAction(formData: FormData) {
     await tx.account.delete({ where: { id: account.id } });
   });
 
+  const h = await headers();
+  await recordAuditLog(prisma, {
+    userId: user.id,
+    action: AUDIT_ACTIONS.financial_account_deleted,
+    targetType: "Account",
+    targetId: account.id,
+    headers: h,
+  });
+
   revalidatePath("/");
   revalidatePath("/settings");
 }
@@ -914,6 +940,16 @@ export async function setFinancialAccountArchivedAction(formData: FormData) {
       data: { defaultExpenseAccountId: null },
     });
   }
+
+  const h = await headers();
+  await recordAuditLog(prisma, {
+    userId: user.id,
+    action: archived ? AUDIT_ACTIONS.financial_account_archived : AUDIT_ACTIONS.financial_account_unarchived,
+    targetType: "Account",
+    targetId: payload.accountId,
+    metadata: { archived },
+    headers: h,
+  });
 
   revalidatePath("/");
   revalidatePath("/settings");
@@ -1196,6 +1232,18 @@ export async function importUserBackupAction(formData: FormData) {
     }
   });
 
+  const h = await headers();
+  const fileMeta =
+    raw instanceof File
+      ? { fileName: raw.name || "upload", sizeBytes: raw.size }
+      : { fileName: "unknown", sizeBytes: 0 };
+  await recordAuditLog(prisma, {
+    userId: user.id,
+    action: AUDIT_ACTIONS.user_backup_imported,
+    metadata: fileMeta,
+    headers: h,
+  });
+
   revalidatePath("/");
   revalidatePath("/settings");
 }
@@ -1204,6 +1252,14 @@ export async function deleteAccountAction(formData: FormData) {
   const user = await requireUser();
   const confirmation = getFormValue(formData, "confirmation");
   if (confirmation !== "DELETE") throw new Error("Type DELETE to confirm.");
+  const h = await headers();
+  await recordAuditLog(prisma, {
+    userId: user.id,
+    action: AUDIT_ACTIONS.user_account_deleted,
+    targetType: "User",
+    targetId: user.id,
+    headers: h,
+  });
   await prisma.user.delete({ where: { id: user.id } });
 }
 
@@ -1324,5 +1380,15 @@ export async function updateAdminOauthSettingsAction(formData: FormData) {
       },
     });
   }
+  const h = await headers();
+  await recordAuditLog(prisma, {
+    userId: user.id,
+    action: AUDIT_ACTIONS.admin_oauth_settings_updated,
+    metadata: {
+      googleEnabled: googleResolved.enabled,
+      authentikEnabled: authentikResolved.enabled,
+    },
+    headers: h,
+  });
   revalidatePath("/settings/admin");
 }
