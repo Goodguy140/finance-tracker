@@ -31,7 +31,7 @@ export const countryConfigMap: Record<string, CountryConfig> = {
       "Fun",
       "Utilities",
       "Rent",
-      "Subscriptions",
+      "Recurring Services",
       "Transport",
       "Dining",
       "Health",

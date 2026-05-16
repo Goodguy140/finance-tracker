@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   // Keep Prisma out of the Turbopack server bundle so the client always matches
-  // `schema.prisma` (avoids stale embedded enums like BillingCycle after `prisma generate`).
+  // `schema.prisma` (avoids stale embedded enums after `prisma generate`).
   serverExternalPackages: ["@prisma/client", "prisma"],
   // Allow tunnel/local dev hosts so client fetches (including NextAuth CSRF) are not blocked.
   allowedDevOrigins:

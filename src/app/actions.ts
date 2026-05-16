@@ -4,12 +4,12 @@ import { hash, compare } from "bcryptjs";
 import crypto from "crypto";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { AccountType, CategoryKind, TransactionType, UserRole } from "@prisma/client";
+import { AccountType, CategoryKind, Prisma, TransactionType, UserRole } from "@prisma/client";
 import { getDefaultTimezone } from "@/lib/country-config";
 import { ensureDefaultDataForUser } from "@/lib/defaults";
 import { parseStatementAmount, toCents } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
-import { dateFromYmd } from "@/lib/date-only";
+import { dateFromYmd, ymdFromDateUtc } from "@/lib/date-only";
 import { parseImportedDate } from "@/lib/import-dates";
 import { decryptSecret, encryptSecret } from "@/lib/security";
 import { requireAdmin, requireUser } from "@/lib/session";
@@ -17,6 +17,7 @@ import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { resolveAuthentikOauthSettings, resolveGoogleOauthSettings } from "@/lib/oauth-settings";
 import { formatAccountDetachedLabel } from "@/lib/account-type-labels";
 import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
+import { advanceRecurringDate } from "@/lib/recurring-transactions";
 import { mergeAccountDescriptionOnDetach } from "@/lib/transaction-account-detach";
 import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
 import { userBackupSchema } from "@/lib/backup-schema";
@@ -32,16 +33,18 @@ import {
   loginSchema,
   passwordChangeSchema,
   portfolioSnapshotSchema,
+  postRecurringTransactionSchema,
+  recurringTransactionSchema,
   signupSchema,
   splitExpenseSchema,
-  subscriptionSchema,
   deleteBudgetSchema,
-  deleteSubscriptionSchema,
+  deleteRecurringTransactionSchema,
+  setRecurringTransactionEnabledSchema,
   setAccountArchivedSchema,
   updateAccountSchema,
   updateBudgetSchema,
   updateDefaultExpenseAccountSchema,
-  updateSubscriptionSchema,
+  updateRecurringTransactionSchema,
 } from "@/lib/validation";
 
 function getFormValue(formData: FormData, key: string) {
@@ -75,6 +78,16 @@ async function assertUserOwnsAccount(userId: string, accountId: string) {
   }
 }
 
+async function assertUserOwnsActiveAccount(userId: string, accountId: string) {
+  const account = await prisma.account.findFirst({
+    where: { id: accountId, userId, archived: false },
+    select: { id: true },
+  });
+  if (!account) {
+    throw new Error("Selected account was not found or is archived.");
+  }
+}
+
 async function assertUserOwnsCategory(userId: string, categoryId: string, kind?: CategoryKind) {
   const category = await prisma.category.findFirst({
     where: { id: categoryId, userId, ...(kind ? { kind } : {}) },
@@ -83,6 +96,10 @@ async function assertUserOwnsCategory(userId: string, categoryId: string, kind?:
   if (!category) {
     throw new Error("Selected category was not found.");
   }
+}
+
+function categoryKindForTransactionType(type: TransactionType): CategoryKind {
+  return type === TransactionType.INCOME ? CategoryKind.INCOME : CategoryKind.EXPENSE;
 }
 
 export async function signupAction(formData: FormData) {
@@ -598,88 +615,210 @@ export async function deleteBudgetAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
-export async function createSubscriptionAction(formData: FormData) {
+export async function createRecurringTransactionAction(formData: FormData) {
   const user = await requireUser();
-  const payload = subscriptionSchema.parse({
+  const payload = recurringTransactionSchema.parse({
+    type: getFormValue(formData, "type"),
     accountId: getFormValue(formData, "accountId"),
     categoryId: getFormValue(formData, "categoryId"),
     name: getFormValue(formData, "name"),
     amount: getFormValue(formData, "amount"),
-    billingCycle: getFormValue(formData, "billingCycle"),
-    nextChargeDate: getFormValue(formData, "nextChargeDate"),
+    cadence: getFormValue(formData, "cadence"),
+    nextExpectedDate: getFormValue(formData, "nextExpectedDate"),
+    endDate: getFormValue(formData, "endDate") || undefined,
+    note: getFormValue(formData, "note") || undefined,
   });
+  const type = payload.type as TransactionType;
   await Promise.all([
-    assertUserOwnsAccount(user.id, payload.accountId),
-    assertUserOwnsCategory(user.id, payload.categoryId, CategoryKind.EXPENSE),
+    assertUserOwnsActiveAccount(user.id, payload.accountId),
+    assertUserOwnsCategory(user.id, payload.categoryId, categoryKindForTransactionType(type)),
   ]);
+  const nextExpectedDate = dateFromYmd(payload.nextExpectedDate);
+  const endDate = payload.endDate ? dateFromYmd(payload.endDate) : null;
+  if (endDate && endDate.getTime() < nextExpectedDate.getTime()) {
+    throw new Error("End date must be on or after the next expected date.");
+  }
 
-  await prisma.subscription.create({
+  await prisma.recurringTransaction.create({
     data: {
       userId: user.id,
       accountId: payload.accountId,
       categoryId: payload.categoryId,
+      type,
       name: payload.name,
       amountCents: toCents(payload.amount),
-      billingCycle: payload.billingCycle,
-      nextChargeDate: dateFromYmd(payload.nextChargeDate),
+      cadence: payload.cadence,
+      nextExpectedDate,
+      endDate,
+      note: payload.note || null,
     },
   });
   revalidatePath("/");
 }
 
-export async function updateSubscriptionAction(formData: FormData) {
+export async function updateRecurringTransactionAction(formData: FormData) {
   const user = await requireUser();
-  const parsed = updateSubscriptionSchema.safeParse({
-    subscriptionId: getFormValue(formData, "subscriptionId"),
+  const parsed = updateRecurringTransactionSchema.safeParse({
+    recurringTransactionId: getFormValue(formData, "recurringTransactionId"),
+    type: getFormValue(formData, "type"),
     accountId: getFormValue(formData, "accountId"),
     categoryId: getFormValue(formData, "categoryId"),
     name: getFormValue(formData, "name"),
     amount: getFormValue(formData, "amount"),
-    billingCycle: getFormValue(formData, "billingCycle"),
-    nextChargeDate: getFormValue(formData, "nextChargeDate"),
+    cadence: getFormValue(formData, "cadence"),
+    nextExpectedDate: getFormValue(formData, "nextExpectedDate"),
+    endDate: getFormValue(formData, "endDate") || undefined,
+    note: getFormValue(formData, "note") || undefined,
   });
   if (!parsed.success) {
-    throw new Error("Subscription name, amount, billing cycle, account, and next charge date are required.");
+    throw new Error("Recurring transaction name, amount, cadence, account, category, and next date are required.");
   }
   const payload = parsed.data;
+  const type = payload.type as TransactionType;
   await Promise.all([
-    assertUserOwnsAccount(user.id, payload.accountId),
-    assertUserOwnsCategory(user.id, payload.categoryId, CategoryKind.EXPENSE),
+    assertUserOwnsActiveAccount(user.id, payload.accountId),
+    assertUserOwnsCategory(user.id, payload.categoryId, categoryKindForTransactionType(type)),
   ]);
+  const nextExpectedDate = dateFromYmd(payload.nextExpectedDate);
+  const endDate = payload.endDate ? dateFromYmd(payload.endDate) : null;
+  if (endDate && endDate.getTime() < nextExpectedDate.getTime()) {
+    throw new Error("End date must be on or after the next expected date.");
+  }
 
-  const existing = await prisma.subscription.findFirst({
-    where: { id: payload.subscriptionId, userId: user.id },
+  const existing = await prisma.recurringTransaction.findFirst({
+    where: { id: payload.recurringTransactionId, userId: user.id },
     select: { id: true },
   });
-  if (!existing) throw new Error("Subscription not found.");
+  if (!existing) throw new Error("Recurring transaction not found.");
 
-  await prisma.subscription.update({
+  await prisma.recurringTransaction.update({
     where: { id: existing.id },
     data: {
       accountId: payload.accountId,
       categoryId: payload.categoryId,
+      type,
       name: payload.name.trim(),
       amountCents: toCents(payload.amount),
-      billingCycle: payload.billingCycle,
-      nextChargeDate: dateFromYmd(payload.nextChargeDate),
+      cadence: payload.cadence,
+      nextExpectedDate,
+      endDate,
+      note: payload.note || null,
     },
   });
   revalidatePath("/");
 }
 
-export async function deleteSubscriptionAction(formData: FormData) {
+export async function setRecurringTransactionEnabledAction(formData: FormData) {
   const user = await requireUser();
-  const payload = deleteSubscriptionSchema.parse({
-    subscriptionId: getFormValue(formData, "subscriptionId"),
+  const payload = setRecurringTransactionEnabledSchema.parse({
+    recurringTransactionId: getFormValue(formData, "recurringTransactionId"),
+    enabled: getFormValue(formData, "enabled"),
   });
 
-  const existing = await prisma.subscription.findFirst({
-    where: { id: payload.subscriptionId, userId: user.id },
+  const existing = await prisma.recurringTransaction.findFirst({
+    where: { id: payload.recurringTransactionId, userId: user.id },
     select: { id: true },
   });
-  if (!existing) throw new Error("Subscription not found.");
+  if (!existing) throw new Error("Recurring transaction not found.");
 
-  await prisma.subscription.delete({ where: { id: existing.id } });
+  await prisma.recurringTransaction.update({
+    where: { id: existing.id },
+    data: { enabled: payload.enabled === "true" },
+  });
+  revalidatePath("/");
+}
+
+export async function deleteRecurringTransactionAction(formData: FormData) {
+  const user = await requireUser();
+  const payload = deleteRecurringTransactionSchema.parse({
+    recurringTransactionId: getFormValue(formData, "recurringTransactionId"),
+  });
+
+  const existing = await prisma.recurringTransaction.findFirst({
+    where: { id: payload.recurringTransactionId, userId: user.id },
+    select: { id: true },
+  });
+  if (!existing) throw new Error("Recurring transaction not found.");
+
+  await prisma.recurringTransaction.delete({ where: { id: existing.id } });
+  revalidatePath("/");
+}
+
+export async function postRecurringTransactionAction(formData: FormData) {
+  const user = await requireUser();
+  const payload = postRecurringTransactionSchema.parse({
+    recurringTransactionId: getFormValue(formData, "recurringTransactionId"),
+    expectedDate: getFormValue(formData, "expectedDate"),
+  });
+  const expectedDate = dateFromYmd(payload.expectedDate);
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const rule = await tx.recurringTransaction.findFirst({
+        where: { id: payload.recurringTransactionId, userId: user.id },
+        include: { account: true, category: true },
+      });
+      if (!rule) throw new Error("Recurring transaction not found.");
+
+      if (ymdFromDateUtc(rule.nextExpectedDate) !== payload.expectedDate) {
+        const posted = await tx.transaction.findFirst({
+          where: {
+            userId: user.id,
+            recurringTransactionId: rule.id,
+            recurringExpectedDate: expectedDate,
+          },
+          select: { id: true },
+        });
+        if (posted) return;
+        throw new Error("This recurring transaction has already moved to a different expected date.");
+      }
+      if (!rule.enabled) throw new Error("Recurring transaction is disabled.");
+      if (rule.account.archived) throw new Error("Cannot post a recurring transaction to an archived account.");
+      if (rule.category.kind !== categoryKindForTransactionType(rule.type)) {
+        throw new Error("Recurring transaction category does not match its income/expense type.");
+      }
+      if (rule.endDate && ymdFromDateUtc(expectedDate) > ymdFromDateUtc(rule.endDate)) {
+        throw new Error("Recurring transaction has passed its end date.");
+      }
+
+      const nextExpectedDate = advanceRecurringDate(rule.nextExpectedDate, rule.cadence);
+      const stillEnabled = !rule.endDate || ymdFromDateUtc(nextExpectedDate) <= ymdFromDateUtc(rule.endDate);
+      const updated = await tx.recurringTransaction.updateMany({
+        where: {
+          id: rule.id,
+          userId: user.id,
+          enabled: true,
+          nextExpectedDate: rule.nextExpectedDate,
+        },
+        data: {
+          nextExpectedDate,
+          enabled: stillEnabled,
+        },
+      });
+      if (updated.count === 0) return;
+
+      await tx.transaction.create({
+        data: {
+          userId: user.id,
+          accountId: rule.accountId,
+          categoryId: rule.categoryId,
+          type: rule.type,
+          amountCents: rule.amountCents,
+          title: rule.name,
+          date: expectedDate,
+          note: rule.note,
+          recurringTransactionId: rule.id,
+          recurringExpectedDate: expectedDate,
+        },
+      });
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return;
+    }
+    throw error;
+  }
+
   revalidatePath("/");
 }
 
@@ -856,12 +995,12 @@ export async function deleteFinancialAccountAction(formData: FormData) {
   const accountId = getFormValue(formData, "accountId");
   if (!accountId) throw new Error("Account id is required.");
 
-  const subscriptionCount = await prisma.subscription.count({ where: { userId: user.id, accountId } });
+  const recurringTransactionCount = await prisma.recurringTransaction.count({ where: { userId: user.id, accountId } });
   const investmentFlowCount = await prisma.investmentFlow.count({ where: { userId: user.id, accountId } });
   const snapshotCount = await prisma.portfolioSnapshot.count({ where: { userId: user.id, accountId } });
-  if (subscriptionCount + investmentFlowCount + snapshotCount > 0) {
+  if (recurringTransactionCount + investmentFlowCount + snapshotCount > 0) {
     throw new Error(
-      "This account still has subscriptions, investment flows, or portfolio snapshots. Remove or reassign them first, then try again.",
+      "This account still has recurring transactions, investment flows, or portfolio snapshots. Remove or reassign them first, then try again.",
     );
   }
 
@@ -916,14 +1055,14 @@ export async function setFinancialAccountArchivedAction(formData: FormData) {
   const archived = payload.archived === "true";
 
   if (archived) {
-    const [subscriptionCount, investmentFlowCount, snapshotCount] = await Promise.all([
-      prisma.subscription.count({ where: { userId: user.id, accountId: payload.accountId } }),
+    const [recurringTransactionCount, investmentFlowCount, snapshotCount] = await Promise.all([
+      prisma.recurringTransaction.count({ where: { userId: user.id, accountId: payload.accountId } }),
       prisma.investmentFlow.count({ where: { userId: user.id, accountId: payload.accountId } }),
       prisma.portfolioSnapshot.count({ where: { userId: user.id, accountId: payload.accountId } }),
     ]);
-    if (subscriptionCount + investmentFlowCount + snapshotCount > 0) {
+    if (recurringTransactionCount + investmentFlowCount + snapshotCount > 0) {
       throw new Error(
-        "Cannot archive while this account is used by a subscription, investment flow, or portfolio snapshot. Reassign or remove those first.",
+        "Cannot archive while this account is used by a recurring transaction, investment flow, or portfolio snapshot. Reassign or remove those first.",
       );
     }
   }
@@ -968,7 +1107,7 @@ export async function clearUserFinancialDataAction(formData: FormData) {
       data: { defaultExpenseAccountId: null },
     });
     await tx.budget.deleteMany({ where: { userId: user.id } });
-    await tx.subscription.deleteMany({ where: { userId: user.id } });
+    await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
     await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
     await tx.portfolioSnapshot.deleteMany({ where: { userId: user.id } });
     await tx.transaction.deleteMany({ where: { userId: user.id } });
@@ -1007,7 +1146,7 @@ export async function importUserBackupAction(formData: FormData) {
     await tx.passwordResetToken.deleteMany({ where: { userId: user.id } });
     await tx.authAccount.deleteMany({ where: { userId: user.id } });
     await tx.budget.deleteMany({ where: { userId: user.id } });
-    await tx.subscription.deleteMany({ where: { userId: user.id } });
+    await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
     await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
     await tx.portfolioSnapshot.deleteMany({ where: { userId: user.id } });
     await tx.transaction.deleteMany({ where: { userId: user.id } });
@@ -1145,21 +1284,48 @@ export async function importUserBackupAction(formData: FormData) {
       });
     }
 
-    for (const row of parsed.subscriptions) {
+    for (const row of parsed.recurringTransactions) {
       const mappedCategoryId = categoryIdMap.get(row.categoryId);
       const mappedAccountId = accountIdMap.get(row.accountId);
       if (!mappedCategoryId || !mappedAccountId) {
-        throw new Error("Backup references unknown subscription account or category.");
+        throw new Error("Backup references unknown recurring transaction account or category.");
       }
-      await tx.subscription.create({
+      await tx.recurringTransaction.create({
         data: {
           userId: user.id,
           accountId: mappedAccountId,
           categoryId: mappedCategoryId,
+          type: row.type,
           name: row.name,
           amountCents: row.amountCents,
-          billingCycle: row.billingCycle,
-          nextChargeDate: new Date(row.nextChargeDate),
+          cadence: row.cadence,
+          nextExpectedDate: new Date(row.nextExpectedDate),
+          endDate: row.endDate ? new Date(row.endDate) : null,
+          postMode: row.postMode,
+          enabled: row.enabled,
+          note: row.note,
+          createdAt: new Date(row.createdAt),
+          updatedAt: new Date(row.updatedAt),
+        },
+      });
+    }
+
+    for (const row of parsed.subscriptions ?? []) {
+      const mappedCategoryId = categoryIdMap.get(row.categoryId);
+      const mappedAccountId = accountIdMap.get(row.accountId);
+      if (!mappedCategoryId || !mappedAccountId) {
+        throw new Error("Backup references unknown legacy recurring account or category.");
+      }
+      await tx.recurringTransaction.create({
+        data: {
+          userId: user.id,
+          accountId: mappedAccountId,
+          categoryId: mappedCategoryId,
+          type: TransactionType.EXPENSE,
+          name: row.name,
+          amountCents: row.amountCents,
+          cadence: row.billingCycle,
+          nextExpectedDate: new Date(row.nextChargeDate),
           createdAt: new Date(row.createdAt),
           updatedAt: new Date(row.updatedAt),
         },

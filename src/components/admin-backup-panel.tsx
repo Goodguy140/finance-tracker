@@ -24,7 +24,7 @@ export function AdminBackupPanel() {
         <ul className="list-disc pl-4 space-y-1">
           <li>User profile, role, password hash field, email verification</li>
           <li>Linked OAuth accounts (access/refresh tokens)</li>
-          <li>Financial accounts, categories, transactions (including splits), budgets, subscriptions</li>
+          <li>Financial accounts, categories, transactions (including splits), budgets, recurring transactions</li>
           <li>Investment flows and portfolio snapshots</li>
           <li>Password reset token metadata</li>
         </ul>
