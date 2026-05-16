@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   deleteRecurringTransactionAction,
   postRecurringTransactionAction,
@@ -146,10 +146,10 @@ export function RecurringTransactionsPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const editingItem = items.find((item) => item.id === editingId) ?? null;
   const [editingType, setEditingType] = useState<"EXPENSE" | "INCOME">("EXPENSE");
-
-  useEffect(() => {
-    if (editingItem) setEditingType(editingItem.type);
-  }, [editingItem]);
+  const startEditing = (item: RecurringTransactionListItem) => {
+    setEditingType(item.type);
+    setEditingId(item.id);
+  };
 
   const groups = useMemo(
     () => [
@@ -182,7 +182,7 @@ export function RecurringTransactionsPanel({
             <section key={group.key} className="space-y-2">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">{group.title}</h3>
               {group.items.map((item) => (
-                <RecurringCard key={item.id} item={item} onEdit={(selected) => setEditingId(selected.id)} />
+                <RecurringCard key={item.id} item={item} onEdit={startEditing} />
               ))}
             </section>
           ) : null,

@@ -374,7 +374,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     endDateDisplay: rule.endDate ? formatDateOnlyUtc(rule.endDate) : null,
     note: rule.note,
     enabled: rule.enabled,
-    status: rule.enabled ? getRecurringDateStatus(rule.nextExpectedDate, now) : "disabled",
+    status: rule.enabled ? getRecurringDateStatus(rule.nextExpectedDate, now) : ("disabled" as const),
   }));
 
   const recurringForecastPeriod =
