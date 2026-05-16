@@ -169,7 +169,7 @@ export function ExpenseTitleAndCategoryFields({
       <LabeledField
         label="Title"
         hint="Required. Pick a previous title or type a new one; category updates when you match a past entry."
-        className={spanFullSm}
+        className={`${spanFullSm} mb-3`}
       >
         <ExpenseTitleAutocomplete
           inputId={`${fieldIds}-title`}
