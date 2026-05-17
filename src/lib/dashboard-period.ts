@@ -54,6 +54,14 @@ export function shiftYm(ym: string, deltaMonths: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+export function formatMonthYearYm(ym: string): string {
+  return startOfMonthYm(ym).toLocaleString(undefined, {
+    timeZone: "UTC",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 /** First `YYYY-MM` of the calendar year of `ym`. */
 export function ytdFirstMonthYm(ym: string): string {
   return `${ym.slice(0, 4)}-01`;
@@ -132,16 +140,13 @@ export function parseDashboardSearchParams(
 export function describeDashboardPeriod(parsed: ParsedDashboardPeriod): string {
   if (parsed.range === "lifetime") return "Lifetime";
   if (parsed.range === "month") {
-    return new Date(startOfMonthYm(parsed.ym)).toLocaleString(undefined, {
-      month: "long",
-      year: "numeric",
-    });
+    return formatMonthYearYm(parsed.ym);
   }
   const y = Number(parsed.ym.slice(0, 4));
   const m = Number(parsed.ym.slice(5, 7)) - 1;
   const start = new Date(Date.UTC(y, 0, 1));
   const end = new Date(Date.UTC(y, m, 1));
-  const from = start.toLocaleString(undefined, { month: "short" });
-  const to = end.toLocaleString(undefined, { month: "short", year: "numeric" });
+  const from = start.toLocaleString(undefined, { timeZone: "UTC", month: "short" });
+  const to = end.toLocaleString(undefined, { timeZone: "UTC", month: "short", year: "numeric" });
   return `Year to date (${from}–${to})`;
 }

@@ -3,6 +3,7 @@ import {
   budgetPeriodMonthInYtd,
   describeDashboardPeriod,
   endExclusiveOfMonthYm,
+  formatMonthYearYm,
   parseDashboardSearchParams,
   shiftYm,
   startOfCalendarYearForYm,
@@ -11,6 +12,17 @@ import {
 } from "./dashboard-period";
 
 const ref = new Date(Date.UTC(2025, 4, 15, 12, 0, 0, 0)); // May 2025
+
+function withTimezone<T>(tz: string, callback: () => T): T {
+  const original = process.env.TZ;
+  process.env.TZ = tz;
+  try {
+    return callback();
+  } finally {
+    if (original === undefined) delete process.env.TZ;
+    else process.env.TZ = original;
+  }
+}
 
 describe("parseDashboardSearchParams", () => {
   it("defaults to current month when params missing", () => {
@@ -131,5 +143,49 @@ describe("describeDashboardPeriod", () => {
         transactionDateFilter: {},
       }),
     ).toBe("Lifetime");
+  });
+
+  it("formats month labels from the UTC month instead of local previous day", () => {
+    withTimezone("America/Sao_Paulo", () => {
+      const mayStart = startOfMonthYm("2026-05");
+      const localLabel = mayStart.toLocaleString(undefined, { month: "long", year: "numeric" });
+      const utcLabel = mayStart.toLocaleString(undefined, {
+        timeZone: "UTC",
+        month: "long",
+        year: "numeric",
+      });
+
+      expect(localLabel).not.toBe(utcLabel);
+      expect(formatMonthYearYm("2026-05")).toBe(utcLabel);
+      expect(
+        describeDashboardPeriod({
+          range: "month",
+          ym: "2026-05",
+          transactionDateFilter: {},
+        }),
+      ).toBe(utcLabel);
+    });
+  });
+
+  it("formats YTD through the UTC anchor month", () => {
+    withTimezone("America/Sao_Paulo", () => {
+      const from = startOfCalendarYearForYm("2026-05").toLocaleString(undefined, {
+        timeZone: "UTC",
+        month: "short",
+      });
+      const to = startOfMonthYm("2026-05").toLocaleString(undefined, {
+        timeZone: "UTC",
+        month: "short",
+        year: "numeric",
+      });
+
+      expect(
+        describeDashboardPeriod({
+          range: "ytd",
+          ym: "2026-05",
+          transactionDateFilter: {},
+        }),
+      ).toBe(`Year to date (${from}–${to})`);
+    });
   });
 });

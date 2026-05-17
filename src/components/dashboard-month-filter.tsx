@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { parseDashboardRangeParam, shiftYm, startOfMonthYm } from "@/lib/dashboard-period";
+import { formatMonthYearYm, parseDashboardRangeParam, shiftYm } from "@/lib/dashboard-period";
 
 const chipClass =
   "touch-manipulation rounded-full border px-3 py-1.5 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40";
@@ -36,10 +36,7 @@ function pushQuery(
 }
 
 function formatYmHeading(ym: string): string {
-  return new Date(startOfMonthYm(ym)).toLocaleString(undefined, {
-    month: "long",
-    year: "numeric",
-  });
+  return formatMonthYearYm(ym);
 }
 
 export function DashboardMonthFilter({ anchorYm }: { anchorYm: string }) {
