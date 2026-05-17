@@ -55,7 +55,7 @@ type BudgetProgressRow = {
   progressPct: number;
 };
 
-type SearchParams = Promise<{ month?: string | string[]; range?: string | string[] }>;
+type SearchParams = Promise<{ month?: string | string[]; range?: string | string[]; preset?: string | string[] }>;
 
 export const dynamic = "force-dynamic";
 

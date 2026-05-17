@@ -151,9 +151,54 @@ describe("recurring transaction actions", () => {
         type: TransactionType.EXPENSE,
         amountCents: 150_000,
         title: "Rent",
+        date: dateFromYmd("2026-01-31"),
         note: "Apartment",
         recurringTransactionId: "rule-1",
         recurringExpectedDate: dateFromYmd("2026-01-31"),
+      }),
+    });
+  });
+
+  it("posts an automatic recurring expense into its expected month", async () => {
+    const tx = {
+      recurringTransaction: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "rule-1",
+          userId: "user-1",
+          accountId: "account-1",
+          categoryId: "category-1",
+          type: TransactionType.EXPENSE,
+          name: "Storage",
+          amountCents: 8_500,
+          cadence: "MONTHLY",
+          nextExpectedDate: dateFromYmd("2026-04-30"),
+          endDate: null,
+          note: null,
+          enabled: true,
+          account: { id: "account-1", archived: false },
+          category: { id: "category-1", kind: CategoryKind.EXPENSE },
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      transaction: {
+        findFirst: vi.fn(),
+        create: vi.fn(),
+      },
+    };
+    mockPrisma.$transaction.mockImplementation(async (callback: (arg: typeof tx) => Promise<void>) => callback(tx));
+
+    await postRecurringTransactionAction(
+      form({
+        recurringTransactionId: "rule-1",
+        expectedDate: "2026-04-30",
+      }),
+    );
+
+    expect(tx.transaction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: TransactionType.EXPENSE,
+        date: dateFromYmd("2026-04-30"),
+        recurringExpectedDate: dateFromYmd("2026-04-30"),
       }),
     });
   });
