@@ -16,15 +16,20 @@ function pushQuery(
   pathname: string,
   router: ReturnType<typeof useRouter>,
   searchParams: URLSearchParams,
-  updates: { range?: string; month?: string },
+  updates: { range?: string | null; month?: string | null; preset?: string | null },
 ) {
   const next = new URLSearchParams(searchParams.toString());
   if (updates.range !== undefined) {
-    if (updates.range === "month") next.delete("range");
+    if (updates.range === null || updates.range === "month") next.delete("range");
     else next.set("range", updates.range);
   }
   if (updates.month !== undefined) {
-    next.set("month", updates.month);
+    if (updates.month === null) next.delete("month");
+    else next.set("month", updates.month);
+  }
+  if (updates.preset !== undefined) {
+    if (updates.preset === null) next.delete("preset");
+    else next.set("preset", updates.preset);
   }
   const q = next.toString();
   router.push(q ? `${pathname}?${q}` : pathname);
@@ -43,12 +48,23 @@ export function DashboardMonthFilter({ anchorYm }: { anchorYm: string }) {
   const searchParams = useSearchParams();
 
   const rawMonth = searchParams.get("month");
+  const preset = searchParams.get("preset");
   const legacyAll = rawMonth === "all";
-  const selectedYm =
-    rawMonth && /^\d{4}-\d{2}$/.test(rawMonth) ? rawMonth : anchorYm;
-  const range = legacyAll ? "lifetime" : parseDashboardRangeParam(searchParams.get("range") ?? undefined);
-
   const previousCalendarYm = shiftYm(anchorYm, -1);
+  const selectedYm =
+    !legacyAll && preset === "previous-month"
+      ? previousCalendarYm
+      : rawMonth && /^\d{4}-\d{2}$/.test(rawMonth)
+        ? rawMonth
+        : anchorYm;
+  const range =
+    legacyAll || preset === null
+      ? legacyAll
+        ? "lifetime"
+        : parseDashboardRangeParam(searchParams.get("range") ?? undefined)
+      : preset === "previous-month"
+        ? "month"
+        : parseDashboardRangeParam(searchParams.get("range") ?? undefined);
   const isCurrentMonth =
     !legacyAll && range === "month" && selectedYm === anchorYm;
   const isPreviousMonth =
@@ -65,7 +81,7 @@ export function DashboardMonthFilter({ anchorYm }: { anchorYm: string }) {
           type="button"
           className={`${chipClass} ${isCurrentMonth ? chipActive : chipInactive}`}
           aria-pressed={isCurrentMonth}
-          onClick={() => pushQuery(pathname, router, searchParams, { range: "month", month: anchorYm })}
+          onClick={() => pushQuery(pathname, router, searchParams, { range: "month", month: null, preset: null })}
         >
           Current month
         </button>
@@ -74,7 +90,7 @@ export function DashboardMonthFilter({ anchorYm }: { anchorYm: string }) {
           className={`${chipClass} ${isPreviousMonth ? chipActive : chipInactive}`}
           aria-pressed={isPreviousMonth}
           onClick={() =>
-            pushQuery(pathname, router, searchParams, { range: "month", month: previousCalendarYm })
+            pushQuery(pathname, router, searchParams, { range: "month", month: null, preset: "previous-month" })
           }
         >
           Previous month
@@ -83,7 +99,7 @@ export function DashboardMonthFilter({ anchorYm }: { anchorYm: string }) {
           type="button"
           className={`${chipClass} ${isYtdThroughCurrent ? chipActive : chipInactive}`}
           aria-pressed={isYtdThroughCurrent}
-          onClick={() => pushQuery(pathname, router, searchParams, { range: "ytd", month: anchorYm })}
+          onClick={() => pushQuery(pathname, router, searchParams, { range: "ytd", month: null, preset: null })}
         >
           YTD
         </button>
@@ -94,7 +110,8 @@ export function DashboardMonthFilter({ anchorYm }: { anchorYm: string }) {
           onClick={() =>
             pushQuery(pathname, router, searchParams, {
               range: "lifetime",
-              month: legacyAll ? anchorYm : selectedYm,
+              month: null,
+              preset: null,
             })
           }
         >
@@ -112,7 +129,7 @@ export function DashboardMonthFilter({ anchorYm }: { anchorYm: string }) {
           className={navBtnClass}
           aria-label="One month earlier"
           onClick={() =>
-            pushQuery(pathname, router, searchParams, { month: shiftYm(selectedYm, -1) })
+            pushQuery(pathname, router, searchParams, { month: shiftYm(selectedYm, -1), preset: null })
           }
         >
           <span aria-hidden className="leading-none">
@@ -127,7 +144,7 @@ export function DashboardMonthFilter({ anchorYm }: { anchorYm: string }) {
           className={navBtnClass}
           aria-label="One month later"
           onClick={() =>
-            pushQuery(pathname, router, searchParams, { month: shiftYm(selectedYm, 1) })
+            pushQuery(pathname, router, searchParams, { month: shiftYm(selectedYm, 1), preset: null })
           }
         >
           <span aria-hidden className="leading-none">

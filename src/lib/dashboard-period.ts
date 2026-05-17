@@ -9,6 +9,8 @@ export type ParsedDashboardPeriod = {
   transactionDateFilter: { date: { gte: Date; lt: Date } } | Record<string, never>;
 };
 
+type DashboardRelativePreset = "previous-month";
+
 export function currentPeriodYm(reference = new Date()): string {
   return `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}`;
 }
@@ -21,6 +23,11 @@ function firstParam(v: string | string[] | undefined): string | undefined {
 export function parseDashboardRangeParam(raw: string | undefined): DashboardRange {
   if (raw === "ytd" || raw === "lifetime" || raw === "month") return raw;
   return "month";
+}
+
+function parseDashboardRelativePreset(raw: string | undefined): DashboardRelativePreset | null {
+  if (raw === "previous-month") return raw;
+  return null;
 }
 
 export function startOfMonthYm(ym: string): Date {
@@ -60,11 +67,12 @@ export function budgetPeriodMonthInYtd(periodMonth: string, anchorYm: string): b
 }
 
 export function parseDashboardSearchParams(
-  params: { month?: string | string[]; range?: string | string[] },
+  params: { month?: string | string[]; range?: string | string[]; preset?: string | string[] },
   reference = new Date(),
 ): ParsedDashboardPeriod {
   const monthRaw = firstParam(params.month);
   const rangeRaw = firstParam(params.range);
+  const presetRaw = firstParam(params.preset);
   const defaultYm = currentPeriodYm(reference);
 
   if (monthRaw === "all") {
@@ -72,6 +80,21 @@ export function parseDashboardSearchParams(
       range: "lifetime",
       ym: defaultYm,
       transactionDateFilter: {},
+    };
+  }
+
+  const preset = parseDashboardRelativePreset(presetRaw);
+  if (preset === "previous-month") {
+    const ym = shiftYm(defaultYm, -1);
+    return {
+      range: "month",
+      ym,
+      transactionDateFilter: {
+        date: {
+          gte: startOfMonthYm(ym),
+          lt: endExclusiveOfMonthYm(ym),
+        },
+      },
     };
   }
 

@@ -37,6 +37,36 @@ describe("parseDashboardSearchParams", () => {
     });
   });
 
+  it("resolves the previous month preset relative to the reference month", () => {
+    const may = parseDashboardSearchParams({ preset: "previous-month" }, ref);
+    const june = parseDashboardSearchParams({ preset: "previous-month" }, new Date(Date.UTC(2025, 5, 1, 12)));
+
+    expect(may.range).toBe("month");
+    expect(may.ym).toBe("2025-04");
+    expect(may.transactionDateFilter).toEqual({
+      date: {
+        gte: startOfMonthYm("2025-04"),
+        lt: endExclusiveOfMonthYm("2025-04"),
+      },
+    });
+    expect(june.ym).toBe("2025-05");
+  });
+
+  it("keeps YTD without an explicit month tied to the current reference month", () => {
+    const may = parseDashboardSearchParams({ range: "ytd" }, ref);
+    const june = parseDashboardSearchParams({ range: "ytd" }, new Date(Date.UTC(2025, 5, 1, 12)));
+
+    expect(may.range).toBe("ytd");
+    expect(may.ym).toBe("2025-05");
+    expect(june.ym).toBe("2025-06");
+    expect(june.transactionDateFilter).toEqual({
+      date: {
+        gte: startOfCalendarYearForYm("2025-06"),
+        lt: endExclusiveOfMonthYm("2025-06"),
+      },
+    });
+  });
+
   it("ytd uses Jan 1 through end of anchor month", () => {
     const p = parseDashboardSearchParams({ month: "2024-08", range: "ytd" }, ref);
     expect(p.range).toBe("ytd");
