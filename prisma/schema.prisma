@@ -319,3 +319,9 @@ model PortfolioSnapshot {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
 }
+
+model RateLimitEntry {
+  key     String   @id
+  count   Int
+  resetAt DateTime
+}
