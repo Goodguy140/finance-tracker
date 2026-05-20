@@ -1,11 +1,16 @@
 import Link from "next/link";
+import { AdminAnalyticsPanel } from "@/components/admin-analytics-panel";
 import { AdminAuditLog } from "@/components/admin-audit-log";
 import { AdminBackupPanel } from "@/components/admin-backup-panel";
+import { AdminEnvConfigPanel } from "@/components/admin-env-config";
 import { AdminMigrationHealthPanel } from "@/components/admin-migration-health";
 import { AdminOauthWarnings } from "@/components/admin-oauth-warnings";
+import { AdminRuntimeMetricsPanel } from "@/components/admin-runtime-metrics";
 import { AdminSystemHealthPanel } from "@/components/admin-system-health";
 import { AdminOauthForm } from "@/components/forms";
+import { getAdminAnalytics } from "@/lib/admin-analytics";
 import { getAdminOauthStatus } from "@/lib/admin-oauth-status";
+import { getAdminRuntimeMetrics } from "@/lib/admin-runtime-metrics";
 import { getAdminSystemHealth } from "@/lib/admin-system-health";
 import { getMigrationHealth, tryDecryptServerSetting } from "@/lib/migration-health";
 import { prisma } from "@/lib/prisma";
@@ -27,10 +32,12 @@ function readBooleanSetting(row: { encryptedValue: string } | null): boolean {
 
 export default async function AdminSettingsPage() {
   await requireAdmin();
-  const [health, systemHealth, oauthStatus, googleEnabledRow, googleIdRow, authentikEnabledRow, authentikIssuerRow, authentikIdRow] =
+  const runtimeMetrics = getAdminRuntimeMetrics();
+  const [health, systemHealth, analytics, oauthStatus, googleEnabledRow, googleIdRow, authentikEnabledRow, authentikIssuerRow, authentikIdRow] =
     await Promise.all([
       getMigrationHealth(prisma),
       getAdminSystemHealth(prisma),
+      getAdminAnalytics(prisma),
       getAdminOauthStatus(prisma),
       prisma.serverSetting.findUnique({ where: { key: "oauth.google.enabled" } }),
       prisma.serverSetting.findUnique({ where: { key: "oauth.google.clientId" } }),
@@ -59,6 +66,9 @@ export default async function AdminSettingsPage() {
         </Link>
       </div>
       <AdminSystemHealthPanel health={systemHealth} />
+      <AdminRuntimeMetricsPanel metrics={runtimeMetrics} />
+      <AdminAnalyticsPanel analytics={analytics} />
+      <AdminEnvConfigPanel />
       <AdminMigrationHealthPanel schema={health.schema} oauth={health.oauth} repair={health.repair} />
       <AdminOauthWarnings status={oauthStatus} />
       <AdminOauthForm
