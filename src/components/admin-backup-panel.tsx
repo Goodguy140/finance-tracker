@@ -15,18 +15,18 @@ export function AdminBackupPanel() {
         </a>
       </p>
       <div className="text-xs text-slate-400 space-y-2">
-        <p className="font-medium text-amber-200/90">Highly sensitive</p>
+        <p className="font-medium text-amber-200/90">Sensitive financial data</p>
         <p>
-          The file can include OAuth tokens, password hashes, reset token hashes, and full transaction history. Store it
-          encrypted and never commit it to git.
+          Exports omit password hashes, OAuth tokens, and password-reset token metadata. The file still contains your
+          full transaction history and account structure. Store it encrypted and never commit it to git.
         </p>
         <p className="font-medium text-slate-200">Included (high level)</p>
         <ul className="list-disc pl-4 space-y-1">
-          <li>User profile, role, password hash field, email verification</li>
-          <li>Linked OAuth accounts (access/refresh tokens)</li>
+          <li>User profile, role, email verification (no password hash)</li>
+          <li>Linked OAuth accounts (provider ids only; tokens stripped)</li>
           <li>Financial accounts, categories, transactions (including splits), budgets, recurring transactions</li>
           <li>Investment flows and portfolio snapshots</li>
-          <li>Password reset token metadata</li>
+          <li>Password reset tokens (not exported)</li>
         </ul>
         <p className="font-medium text-slate-200">Not included</p>
         <ul className="list-disc pl-4 space-y-1">
