@@ -75,7 +75,7 @@ export function BudgetAlertPreferences({ emailConfigured }: { emailConfigured: b
           <span className="font-medium text-slate-200">Email alerts</span>
           <span className="mt-0.5 block text-xs text-slate-500">
             {emailConfigured
-              ? "Sends to your account email when SMTP is configured on the server (delivery pending implementation)."
+              ? "Sends to your account email when SMTP is configured on the server."
               : "Requires SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM on the server."}
           </span>
         </span>
