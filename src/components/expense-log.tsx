@@ -203,7 +203,6 @@ function ExpenseLogMobileCard({
   pillSize: "default" | "compact";
   isSplit: boolean;
 }) {
-  const meta = showReceiptBreakdown(txn);
   return (
     <div className="flex flex-col gap-2 sm:hidden">
       <div className="flex items-start justify-between gap-3">
@@ -233,18 +232,6 @@ function ExpenseLogMobileCard({
         ) : null}
       </p>
       {txn.note ? <p className="text-xs leading-snug text-slate-400">{txn.note}</p> : null}
-      {meta ? (
-        <div className="text-[11px] text-slate-500">
-          <p className="tabular-nums">
-            Receipt total <span className="font-medium text-slate-300">{formatCurrency(txn.preCreditCents!)}</span>
-          </p>
-          {(txn.creditCents ?? 0) > 0 ? (
-            <p className="tabular-nums text-emerald-400/90">
-              Credits <span className="font-medium">{formatCurrency(-(txn.creditCents ?? 0))}</span>
-            </p>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   );
 }
