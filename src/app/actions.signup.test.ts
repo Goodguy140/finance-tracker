@@ -14,7 +14,7 @@ vi.mock("@/lib/rate-limit", () => ({ enforceSlidingWindowRateLimit: vi.fn() }));
 vi.mock("@/lib/defaults", () => ({ ensureDefaultDataForUser: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
 
-const { signupAction } = await import("./actions");
+const { signupAction } = await import("./actions/auth");
 
 function signupForm(email: string) {
   const data = new FormData();
