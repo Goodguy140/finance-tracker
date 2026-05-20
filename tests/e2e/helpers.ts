@@ -1,5 +1,23 @@
 import { expect, type Page } from "@playwright/test";
 
+export function expenseLogLocator(page: Page) {
+  return page.getByRole("heading", { name: "Expense Log" }).locator("..").locator("..");
+}
+
+export async function expectExpenseInLog(page: Page, title: string) {
+  const expenseLog = expenseLogLocator(page);
+  const titles = expenseLog.getByText(title, { exact: true });
+  await expect
+    .poll(async () => {
+      const count = await titles.count();
+      for (let i = 0; i < count; i++) {
+        if (await titles.nth(i).isVisible()) return true;
+      }
+      return false;
+    })
+    .toBe(true);
+}
+
 export async function openSettingsAdvancedTab(page: Page) {
   await page.goto("/settings");
   await page.getByRole("tab", { name: "Advanced" }).click();
@@ -27,5 +45,5 @@ export async function addExpenseOnDashboard(
     await section.locator('input[name="amount"]').fill(amount);
     await section.getByRole("button", { name: "Add expense" }).click();
   }
-  await expect(page.getByText(title, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+  await expectExpenseInLog(page, title);
 }

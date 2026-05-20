@@ -6,10 +6,10 @@ import { join } from "path";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { addExpenseOnDashboard, openSettingsAdvancedTab } from "./helpers";
+import { addExpenseOnDashboard, expectExpenseInLog, openSettingsAdvancedTab } from "./helpers";
 
 test("user can export and re-import sanitized backup", async ({ page }, testInfo) => {
-  const stamp = Date.now();
+  const stamp = `${Date.now()}-${testInfo.parallelIndex}`;
   const email = `e2e-backup-roundtrip-${stamp}@example.com`;
   const password = "e2e-password-123";
   const title = `Roundtrip ${stamp}`;
@@ -56,7 +56,7 @@ test("user can export and re-import sanitized backup", async ({ page }, testInfo
     }).toBeGreaterThan(0);
 
     await page.goto("/");
-    await expect(page.getByText(title, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    await expectExpenseInLog(page, title);
 
     const dbUser = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     expect(dbUser.role).toBe("USER");
