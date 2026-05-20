@@ -11,6 +11,7 @@ export const AUDIT_ACTIONS = {
   financial_account_deleted: "financial_account_deleted",
   user_account_deleted: "user_account_deleted",
   admin_backup_exported: "admin_backup_exported",
+  user_backup_exported: "user_backup_exported",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
