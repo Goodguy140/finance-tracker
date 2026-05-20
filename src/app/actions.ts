@@ -22,6 +22,10 @@ import { mergeAccountDescriptionOnDetach } from "@/lib/transaction-account-detac
 import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
 import { userBackupSchema } from "@/lib/backup-schema";
 import {
+  resolveBackupUserProfileFields,
+  sanitizeAuthAccountsForImport,
+} from "@/lib/backup-restore";
+import {
   budgetSchema,
   accountSchema,
   expenseCsvImportSchema,
@@ -1157,16 +1161,13 @@ export async function importUserBackupAction(formData: FormData) {
     const categoryIdMap = new Map<string, string>();
     const transactionIdMap = new Map<string, string>();
 
+    const profileFields = resolveBackupUserProfileFields({
+      currentUser: { role: user.role, passwordHash: user.passwordHash },
+      parsedUser: parsed.user,
+    });
     await tx.user.update({
       where: { id: user.id },
-      data: {
-        displayName: parsed.user.displayName,
-        timezone: parsed.user.timezone,
-        countryCode: parsed.user.countryCode,
-        role: parsed.user.role,
-        passwordHash: parsed.user.passwordHash,
-        emailVerifiedAt: parsed.user.emailVerifiedAt ? new Date(parsed.user.emailVerifiedAt) : null,
-      },
+      data: profileFields,
     });
 
     for (const account of parsed.accounts) {
@@ -1367,7 +1368,7 @@ export async function importUserBackupAction(formData: FormData) {
       });
     }
 
-    for (const row of parsed.authAccounts) {
+    for (const row of sanitizeAuthAccountsForImport(parsed.authAccounts)) {
       await tx.authAccount.create({
         data: {
           userId: user.id,
