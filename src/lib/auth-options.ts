@@ -36,7 +36,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
       const email = credentials?.email?.toLowerCase().trim();
       const password = credentials?.password ?? "";
       if (!email || !password) return null;
-      enforceSlidingWindowRateLimit(
+      await enforceSlidingWindowRateLimit(
         `login:${email}`,
         10,
         15 * 60 * 1000,

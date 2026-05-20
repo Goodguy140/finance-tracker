@@ -120,7 +120,7 @@ export async function signupAction(formData: FormData) {
   if (!publicSignupAllowed()) {
     throw new Error("Public sign up is disabled.");
   }
-  enforceSlidingWindowRateLimit(
+  await enforceSlidingWindowRateLimit(
     `signup:${payload.email.toLowerCase()}`,
     5,
     15 * 60 * 1000,
@@ -1436,7 +1436,7 @@ export async function requestPasswordResetAction(formData: FormData) {
     email: getFormValue(formData, "email"),
     password: "12345678",
   }).email;
-  enforceSlidingWindowRateLimit(
+  await enforceSlidingWindowRateLimit(
     `password-reset-request:${email.toLowerCase()}`,
     5,
     15 * 60 * 1000,
@@ -1469,7 +1469,7 @@ export async function resetPasswordAction(formData: FormData) {
   const email = getFormValue(formData, "email").toLowerCase();
   const token = getFormValue(formData, "token");
   const newPassword = getFormValue(formData, "newPassword");
-  enforceSlidingWindowRateLimit(
+  await enforceSlidingWindowRateLimit(
     `password-reset:${email}`,
     10,
     15 * 60 * 1000,
