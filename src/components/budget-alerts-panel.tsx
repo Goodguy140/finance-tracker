@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
 import { formatCurrency } from "@/lib/money";
 import {
   budgetWarningDismissalKey,
@@ -16,6 +16,44 @@ import {
   type DismissedBudgetWarningMap,
 } from "@/lib/budget-alert-preferences";
 import type { BudgetTrendAlert, BudgetWarning } from "@/lib/budget-alerts";
+
+const BUDGET_ALERTS_PANEL_EXPANDED_KEY = "finance-tracker:budget-alerts-panel-expanded";
+
+const budgetAlertsPanelExpandedListeners = new Set<() => void>();
+
+function subscribeBudgetAlertsPanelExpanded(listener: () => void) {
+  budgetAlertsPanelExpandedListeners.add(listener);
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === BUDGET_ALERTS_PANEL_EXPANDED_KEY || e.key === null) listener();
+  };
+  window.addEventListener("storage", onStorage);
+  return () => {
+    budgetAlertsPanelExpandedListeners.delete(listener);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+function emitBudgetAlertsPanelExpanded() {
+  budgetAlertsPanelExpandedListeners.forEach((l) => l());
+}
+
+function readBudgetAlertsPanelExpanded(): boolean {
+  if (typeof window === "undefined") return true;
+  return window.localStorage.getItem(BUDGET_ALERTS_PANEL_EXPANDED_KEY) !== "false";
+}
+
+function getBudgetAlertsPanelExpandedServerSnapshot(): boolean {
+  return true;
+}
+
+function persistBudgetAlertsPanelExpanded(expanded: boolean) {
+  try {
+    window.localStorage.setItem(BUDGET_ALERTS_PANEL_EXPANDED_KEY, expanded ? "true" : "false");
+  } catch {
+    /* private mode */
+  }
+  emitBudgetAlertsPanelExpanded();
+}
 
 export type BudgetAlertsPanelProps = {
   warnings: BudgetWarning[];
@@ -48,6 +86,12 @@ export function BudgetAlertsPanel({
     getServerDismissedBudgetWarningsSnapshot,
   );
   const [showDismissed, setShowDismissed] = useState(false);
+  const panelContentId = useId();
+  const expanded = useSyncExternalStore(
+    subscribeBudgetAlertsPanelExpanded,
+    readBudgetAlertsPanelExpanded,
+    getBudgetAlertsPanelExpandedServerSnapshot,
+  );
 
   const warningRows = useMemo(
     () =>
@@ -72,6 +116,11 @@ export function BudgetAlertsPanel({
   );
   const hasWarningContent = activeWarnings.length > 0 || dismissedWarningRows.length > 0;
   const hasContent = hasWarningContent || paceTrends.length > 0 || momTrends.length > 0;
+  const insightCount = activeWarnings.length + paceTrends.length + momTrends.length;
+
+  const toggleExpanded = useCallback(() => {
+    persistBudgetAlertsPanelExpanded(!expanded);
+  }, [expanded]);
 
   const updateDismissedWarnings = useCallback(
     (update: (prev: DismissedBudgetWarningMap) => DismissedBudgetWarningMap) => {
@@ -144,11 +193,37 @@ export function BudgetAlertsPanel({
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
-      <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
-        <h2 className="text-lg font-semibold text-slate-100">Budget alerts &amp; insights</h2>
-        <p className="text-xs text-slate-400">{periodLabel}</p>
-      </div>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={panelContentId}
+        onClick={toggleExpanded}
+        className={`-mx-1 flex w-[calc(100%+0.5rem)] touch-manipulation items-start justify-between gap-3 rounded-xl px-1 py-0.5 text-left transition hover:bg-slate-800/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500/60 ${expanded ? "mb-3" : ""}`}
+      >
+        <div className="min-w-0 flex-1">
+          <h2 className="text-lg font-semibold text-slate-100">Budget alerts &amp; insights</h2>
+          <p className="mt-0.5 text-xs text-slate-400">
+            {periodLabel}
+            {!expanded && insightCount > 0 ? (
+              <span className="text-slate-500">
+                {" "}
+                · {insightCount} {insightCount === 1 ? "insight" : "insights"}
+              </span>
+            ) : null}
+          </p>
+        </div>
+        <span
+          className={`mt-1 shrink-0 text-slate-400 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+          aria-hidden
+        >
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </span>
+      </button>
 
+      {expanded ? (
+      <div id={panelContentId}>
       {activeWarnings.length > 0 ? (
         <section className="space-y-2" aria-label="Budget warnings">
           <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">Warnings</h3>
@@ -281,6 +356,8 @@ export function BudgetAlertsPanel({
         </a>
         .
       </p>
+      </div>
+      ) : null}
     </div>
   );
 }
