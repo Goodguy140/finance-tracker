@@ -432,7 +432,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           titleSuggestions={expenseTitleSuggestions}
         />
 
-        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:gap-4">
+        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
           <div className="order-1 flex flex-col gap-4 lg:order-none lg:col-span-5 lg:col-start-8">
             <BudgetAlertsPanel
               warnings={budgetWarnings}
