@@ -1,16 +1,18 @@
 import { expect, test } from "@playwright/test";
 import { hash } from "bcryptjs";
-import { readFileSync, writeFileSync, unlinkSync } from "fs";
+import { writeFileSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
+import { addExpenseOnDashboard, openSettingsAdvancedTab } from "./helpers";
 
-test("user can export and re-import sanitized backup", async ({ page, request }) => {
+test("user can export and re-import sanitized backup", async ({ page }, testInfo) => {
   const stamp = Date.now();
   const email = `e2e-backup-roundtrip-${stamp}@example.com`;
   const password = "e2e-password-123";
+  const title = `Roundtrip ${stamp}`;
 
   const user = await prisma.user.create({
     data: {
@@ -24,13 +26,6 @@ test("user can export and re-import sanitized backup", async ({ page, request })
   });
   await ensureDefaultDataForUser(user);
 
-  const category = await prisma.category.findFirstOrThrow({
-    where: { userId: user.id, kind: "EXPENSE" },
-  });
-  const account = await prisma.account.findFirstOrThrow({
-    where: { userId: user.id, archived: false },
-  });
-
   await page.goto("/login");
   await page.getByPlaceholder("Email").fill(email);
   await page.getByPlaceholder("Password").fill(password);
@@ -38,13 +33,9 @@ test("user can export and re-import sanitized backup", async ({ page, request })
   await expectDashboardHome(page);
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Add expense" }).click();
-  await page.getByLabel("Title").fill(`Roundtrip ${stamp}`);
-  await page.getByLabel("Amount").fill("12.50");
-  await page.getByRole("button", { name: "Save expense" }).click();
-  await expect(page.getByText(`Roundtrip ${stamp}`)).toBeVisible();
+  await addExpenseOnDashboard(page, testInfo.project.name, title, "12.50");
 
-  const exportRes = await request.get("/api/backup/export/me");
+  const exportRes = await page.request.get("/api/backup/export/me");
   expect(exportRes.ok()).toBeTruthy();
   const backup = await exportRes.json();
   expect(backup.user.passwordHash).toBeNull();
@@ -53,20 +44,23 @@ test("user can export and re-import sanitized backup", async ({ page, request })
   writeFileSync(backupPath, JSON.stringify(backup));
 
   try {
-    await page.goto("/settings");
-    await page.getByRole("button", { name: "Advanced" }).click();
+    await openSettingsAdvancedTab(page);
     await page.locator('input[name="backupJson"]').setInputFiles(backupPath);
     await page.getByRole("button", { name: "Import backup JSON" }).click();
 
+    await expect.poll(async () => {
+      const count = await prisma.transaction.count({
+        where: { userId: user.id, title },
+      });
+      return count;
+    }).toBeGreaterThan(0);
+
     await page.goto("/");
-    await expect(page.getByText(`Roundtrip ${stamp}`)).toBeVisible();
+    await expect(page.getByText(title, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
 
     const dbUser = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     expect(dbUser.role).toBe("USER");
   } finally {
     unlinkSync(backupPath);
   }
-
-  void category;
-  void account;
 });
