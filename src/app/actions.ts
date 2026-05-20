@@ -73,6 +73,13 @@ function publicSignupAllowed() {
   return value === "true" || value === "1";
 }
 
+function resolveSignupRole(email: string, existingUserCount: number): UserRole {
+  if (existingUserCount > 0) return UserRole.USER;
+  const initialAdmin = process.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase();
+  if (!initialAdmin) return UserRole.SERVER_ADMIN;
+  return email.toLowerCase() === initialAdmin ? UserRole.SERVER_ADMIN : UserRole.USER;
+}
+
 async function assertUserOwnsAccount(userId: string, accountId: string) {
   const account = await prisma.account.findFirst({
     where: { id: accountId, userId },
@@ -131,14 +138,15 @@ export async function signupAction(formData: FormData) {
   if (existing) throw new Error("An account with this email already exists.");
 
   const count = await prisma.user.count();
+  const email = payload.email.toLowerCase();
   const user = await prisma.user.create({
     data: {
-      email: payload.email.toLowerCase(),
+      email,
       passwordHash: await hash(payload.password, 12),
       displayName: payload.displayName,
       countryCode: payload.countryCode,
       timezone: payload.timezone,
-      role: count === 0 ? UserRole.SERVER_ADMIN : UserRole.USER,
+      role: resolveSignupRole(email, count),
     },
   });
 
