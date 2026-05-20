@@ -501,6 +501,15 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                 ))}
               </div>
             </div>
+
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
+              <h2 className="text-lg font-semibold">Spending by category</h2>
+              <p className="mt-1 text-xs text-slate-400">
+                Net expense per category for this period ({periodDescription}). Slice size uses the absolute amount so
+                categories with credits stay visible; the tooltip shows the signed total.
+              </p>
+              <CategorySpendPieChart data={categoryPieSlices} />
+            </div>
           </div>
 
           <div className="order-2 flex flex-col gap-4 lg:order-none lg:col-span-7 lg:row-start-1">
@@ -552,17 +561,6 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           ) : null}
 
           <div className="order-4 lg:order-none lg:col-span-5 lg:col-start-8">
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
-              <h2 className="text-lg font-semibold">Spending by category</h2>
-              <p className="mt-1 text-xs text-slate-400">
-                Net expense per category for this period ({periodDescription}). Slice size uses the absolute amount so
-                categories with credits stay visible; the tooltip shows the signed total.
-              </p>
-              <CategorySpendPieChart data={categoryPieSlices} />
-            </div>
-          </div>
-
-          <div className="order-5 lg:order-none lg:col-span-5 lg:col-start-8">
             <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg sm:p-4">
               <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
                 <h2 className="text-lg font-semibold">Recurring transactions</h2>
