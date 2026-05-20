@@ -20,6 +20,14 @@ const OAUTH_DEFAULT_NAMES: Record<string, string> = {
   authentik: "SSO User",
 };
 
+/** Re-query role from DB at most once per this interval (ms). */
+const ROLE_REFRESH_MS = 5 * 60 * 1000;
+
+type AppJwt = JWT & {
+  role?: "SERVER_ADMIN" | "USER";
+  roleRefreshedAt?: number;
+};
+
 export async function getAuthOptions(): Promise<NextAuthOptions> {
   const [googleProvider, authentikProvider] = await Promise.all([
     getGoogleProvider(),
@@ -80,8 +88,14 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         return true;
       },
       async jwt({ token }) {
-        const typedToken = token as JWT & { role?: "SERVER_ADMIN" | "USER" };
-        if (token.email) {
+        const typedToken = token as AppJwt;
+        if (!token.email) return typedToken;
+
+        const now = Date.now();
+        const stale =
+          typedToken.roleRefreshedAt == null || now - typedToken.roleRefreshedAt > ROLE_REFRESH_MS;
+
+        if (stale) {
           const dbUser = await prisma.user.findUnique({
             where: { email: token.email.toLowerCase() },
             select: { id: true, role: true, displayName: true },
@@ -90,6 +104,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
             typedToken.sub = dbUser.id;
             typedToken.role = dbUser.role;
             typedToken.name = dbUser.displayName;
+            typedToken.roleRefreshedAt = now;
           }
         }
         return typedToken;
