@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
+import { expectDashboardHome } from "./expect-dashboard-home";
 
 test("desktop: create and post a recurring expense", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium", "Desktop add menu flow is covered by the chromium project");
@@ -27,7 +28,7 @@ test("desktop: create and post a recurring expense", async ({ page }, testInfo) 
   await page.getByPlaceholder("Password").fill(password);
   await page.getByRole("button", { name: "Login" }).click();
 
-  await expect(page).toHaveURL("/");
+  await expectDashboardHome(page);
 
   await page.getByRole("button", { name: "Add", exact: true }).click();
   const addDialog = page.getByRole("dialog", { name: "Add transaction" });

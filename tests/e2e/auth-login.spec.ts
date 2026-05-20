@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
+import { expectDashboardHome } from "./expect-dashboard-home";
 
 test("user can login with email/password", async ({ page }) => {
   const stamp = Date.now();
@@ -25,7 +26,7 @@ test("user can login with email/password", async ({ page }) => {
   await page.getByPlaceholder("Password").fill(password);
   await page.getByRole("button", { name: "Login" }).click();
 
-  await expect(page).toHaveURL("/");
+  await expectDashboardHome(page);
   await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
 });
 
@@ -61,7 +62,7 @@ test("user can login with email/password when optional Google settings are unrea
   await page.getByPlaceholder("Password").fill(password);
   await page.getByRole("button", { name: "Login" }).click();
 
-  await expect(page).toHaveURL("/");
+  await expectDashboardHome(page);
   await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
 });
 
@@ -87,7 +88,7 @@ test("user can logout and is redirected to login", async ({ page }) => {
   await page.getByPlaceholder("Password").fill(password);
   await page.getByRole("button", { name: "Login" }).click();
 
-  await expect(page).toHaveURL("/");
+  await expectDashboardHome(page);
   await page.getByRole("button", { name: "Logout" }).click();
 
   await expect(page).toHaveURL(/\/login/);
