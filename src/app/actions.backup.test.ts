@@ -42,7 +42,7 @@ vi.mock("@/lib/audit-log", () => ({
   recordAuditLog: vi.fn(),
 }));
 
-const { importUserBackupAction } = await import("./actions");
+const { importUserBackupAction } = await import("./actions/backup");
 
 function minimalBackup(email: string) {
   const iso = "2026-01-01T00:00:00.000Z";
