@@ -4,11 +4,11 @@ export function AdminBackupPanel() {
       <h2 className="font-semibold text-slate-100">Backup &amp; restore</h2>
       <p className="text-xs text-slate-500">
         Download a JSON snapshot of <strong>your own</strong> user record and related finance data. Only{" "}
-        <code className="text-slate-400">SERVER_ADMIN</code> accounts can use this export endpoint.
+        any signed-in account can download from this link (same sanitized export as Settings → Advanced).
       </p>
       <p>
         <a
-          href="/api/backup/export"
+          href="/api/backup/export/me"
           className="inline-flex rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-700"
         >
           Download JSON backup

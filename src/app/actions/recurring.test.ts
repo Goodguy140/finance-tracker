@@ -32,7 +32,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: mockPrisma,
 }));
 
-const { createRecurringTransactionAction, postRecurringTransactionAction } = await import("./actions");
+const { createRecurringTransactionAction, postRecurringTransactionAction } = await import("./recurring");
 
 function form(entries: Record<string, string>) {
   const data = new FormData();
