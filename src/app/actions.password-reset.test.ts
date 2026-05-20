@@ -16,7 +16,7 @@ vi.mock("@/lib/email", () => ({
 
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
 
-const { requestPasswordResetAction } = await import("./actions");
+const { requestPasswordResetAction } = await import("./actions/auth");
 const { sendEmail } = await import("@/lib/email");
 
 describe("requestPasswordResetAction", () => {

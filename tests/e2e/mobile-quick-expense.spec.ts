@@ -3,6 +3,7 @@ import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
+import { expectExpenseInLog } from "./helpers";
 
 test("mobile viewport: quick add expense appears in log", async ({ page }, testInfo) => {
   test.skip(
@@ -10,7 +11,7 @@ test("mobile viewport: quick add expense appears in log", async ({ page }, testI
     "Quick add FAB is only rendered below the lg breakpoint",
   );
 
-  const stamp = Date.now();
+  const stamp = `${Date.now()}-${testInfo.parallelIndex}`;
   const email = `e2e-mobile-${stamp}@example.com`;
   const password = "e2e-password-123";
 
@@ -43,6 +44,5 @@ test("mobile viewport: quick add expense appears in log", async ({ page }, testI
   await sheet.locator('input[name="amount"]').fill("12.34");
   await sheet.getByRole("button", { name: "Add expense" }).click();
 
-  // Log row renders the title twice (mobile card + desktop markup); assert any visible match.
-  await expect(page.getByText(title, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+  await expectExpenseInLog(page, title);
 });

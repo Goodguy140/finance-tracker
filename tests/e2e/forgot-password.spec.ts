@@ -4,7 +4,7 @@ import { prisma } from "../../src/lib/prisma";
 
 test("forgot password creates a reset token", async ({ page }) => {
   const stamp = Date.now();
-  const email = `e2e-forgot-${stamp}@example.com";
+  const email = "e2e-forgot-" + stamp + "@example.com";
 
   await prisma.user.create({
     data: {
@@ -21,8 +21,7 @@ test("forgot password creates a reset token", async ({ page }) => {
   await page.getByPlaceholder("Email").fill(email);
   await page.getByRole("button", { name: "Request reset" }).click();
 
-  const tokens = await prisma.passwordResetToken.findMany({
-    where: { user: { email } },
-  });
-  expect(tokens.length).toBeGreaterThan(0);
+  await expect.poll(async () => {
+    return prisma.passwordResetToken.count({ where: { user: { email } } });
+  }).toBeGreaterThan(0);
 });
