@@ -20,6 +20,7 @@ import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
 import { advanceRecurringDate } from "@/lib/recurring-transactions";
 import { mergeAccountDescriptionOnDetach } from "@/lib/transaction-account-detach";
 import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
+import { sendEmail } from "@/lib/email";
 import { userBackupSchema } from "@/lib/backup-schema";
 import {
   resolveBackupUserProfileFields,
@@ -1453,7 +1454,15 @@ export async function requestPasswordResetAction(formData: FormData) {
     },
   });
 
-  // TODO: Wire email delivery. Intentionally not logged to avoid credential leakage.
+  const baseUrl = process.env.NEXTAUTH_URL?.replace(/\/$/, "");
+  if (baseUrl) {
+    const resetUrl = `${baseUrl}/reset-password?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
+    await sendEmail({
+      to: user.email,
+      subject: "Reset your Finance Tracker password",
+      text: `Use this link within 30 minutes to reset your password:\n\n${resetUrl}\n`,
+    });
+  }
 }
 
 export async function resetPasswordAction(formData: FormData) {
