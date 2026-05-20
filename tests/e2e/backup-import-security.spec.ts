@@ -6,6 +6,7 @@ import { join } from "path";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
+import { openSettingsAdvancedTab } from "./helpers";
 
 test("backup import cannot escalate user to server admin", async ({ page }) => {
   const stamp = Date.now();
@@ -60,10 +61,14 @@ test("backup import cannot escalate user to server admin", async ({ page }) => {
     await page.getByRole("button", { name: "Login" }).click();
     await expectDashboardHome(page);
 
-    await page.goto("/settings");
-    await page.getByRole("button", { name: "Advanced" }).click();
+    await openSettingsAdvancedTab(page);
     await page.locator('input[name="backupJson"]').setInputFiles(backupPath);
     await page.getByRole("button", { name: "Import backup JSON" }).click();
+
+    await expect.poll(async () => {
+      const row = await prisma.user.findUnique({ where: { id: user.id } });
+      return row?.displayName ?? "";
+    }).toBe("Escalated Name");
 
     await expect(page.getByRole("link", { name: "Server admin" })).toHaveCount(0);
 
