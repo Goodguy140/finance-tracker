@@ -1,7 +1,13 @@
 "use client";
 
+import { useEffect, useSyncExternalStore } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { formatMonthYearYm, parseDashboardRangeParam, shiftYm } from "@/lib/dashboard-period";
+import {
+  currentPeriodYm,
+  formatYmLongLabel,
+  parseDashboardRangeParam,
+  shiftYm,
+} from "@/lib/dashboard-period";
 
 const chipClass =
   "touch-manipulation rounded-full border px-3 py-1.5 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40";
@@ -11,6 +17,14 @@ const chipActive = "border-blue-400/70 bg-blue-500/15 text-blue-100 ring-1 ring-
 
 const navBtnClass =
   "touch-manipulation flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-600 bg-slate-900/80 text-sm text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40";
+
+function subscribeClientAnchorYm() {
+  return () => {};
+}
+
+function readClientAnchorYm(): string {
+  return currentPeriodYm(new Date());
+}
 
 function pushQuery(
   pathname: string,
@@ -35,25 +49,36 @@ function pushQuery(
   router.push(q ? `${pathname}?${q}` : pathname);
 }
 
-function formatYmHeading(ym: string): string {
-  return formatMonthYearYm(ym);
+function parseSelectedYm(
+  rawMonth: string | null,
+  preset: string | null,
+  legacyAll: boolean,
+  clientAnchorYm: string,
+): string {
+  if (!legacyAll && preset === "previous-month") {
+    return shiftYm(clientAnchorYm, -1);
+  }
+  if (rawMonth && /^\d{4}-\d{2}$/.test(rawMonth)) {
+    return rawMonth;
+  }
+  return clientAnchorYm;
 }
 
-export function DashboardMonthFilter({ anchorYm }: { anchorYm: string }) {
+export function DashboardMonthFilter({ serverAnchorYm }: { serverAnchorYm: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const clientAnchorYm = useSyncExternalStore(
+    subscribeClientAnchorYm,
+    readClientAnchorYm,
+    () => serverAnchorYm,
+  );
 
   const rawMonth = searchParams.get("month");
   const preset = searchParams.get("preset");
   const legacyAll = rawMonth === "all";
-  const previousCalendarYm = shiftYm(anchorYm, -1);
-  const selectedYm =
-    !legacyAll && preset === "previous-month"
-      ? previousCalendarYm
-      : rawMonth && /^\d{4}-\d{2}$/.test(rawMonth)
-        ? rawMonth
-        : anchorYm;
+  const previousCalendarYm = shiftYm(clientAnchorYm, -1);
+  const selectedYm = parseSelectedYm(rawMonth, preset, legacyAll, clientAnchorYm);
   const range =
     legacyAll || preset === null
       ? legacyAll
@@ -63,13 +88,55 @@ export function DashboardMonthFilter({ anchorYm }: { anchorYm: string }) {
         ? "month"
         : parseDashboardRangeParam(searchParams.get("range") ?? undefined);
   const isCurrentMonth =
-    !legacyAll && range === "month" && selectedYm === anchorYm;
+    !legacyAll && range === "month" && selectedYm === clientAnchorYm;
   const isPreviousMonth =
     !legacyAll && range === "month" && selectedYm === previousCalendarYm;
-  const isYtdThroughCurrent = !legacyAll && range === "ytd" && selectedYm === anchorYm;
+  const isYtdThroughCurrent = !legacyAll && range === "ytd" && selectedYm === clientAnchorYm;
   const isLifetime = !legacyAll && range === "lifetime";
 
-  const monthHeading = formatYmHeading(selectedYm);
+  const monthHeading = formatYmLongLabel(selectedYm);
+
+  const rangeParam = searchParams.get("range");
+
+  useEffect(() => {
+    if (legacyAll) return;
+
+    if (preset === "previous-month") {
+      pushQuery(pathname, router, searchParams, {
+        range: "month",
+        month: previousCalendarYm,
+        preset: null,
+      });
+      return;
+    }
+
+    const hasExplicitMonth = Boolean(rawMonth && /^\d{4}-\d{2}$/.test(rawMonth));
+    if (hasExplicitMonth) return;
+
+    const parsedRange = parseDashboardRangeParam(rangeParam ?? undefined);
+    if (parsedRange === "lifetime") return;
+
+    const targetRange = parsedRange === "ytd" ? "ytd" : "month";
+    if (rawMonth === clientAnchorYm && (rangeParam ?? "month") === targetRange) {
+      return;
+    }
+
+    pushQuery(pathname, router, searchParams, {
+      range: parsedRange === "ytd" ? "ytd" : null,
+      month: clientAnchorYm,
+      preset: null,
+    });
+  }, [
+    clientAnchorYm,
+    legacyAll,
+    pathname,
+    preset,
+    previousCalendarYm,
+    rangeParam,
+    rawMonth,
+    router,
+    searchParams,
+  ]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -78,7 +145,13 @@ export function DashboardMonthFilter({ anchorYm }: { anchorYm: string }) {
           type="button"
           className={`${chipClass} ${isCurrentMonth ? chipActive : chipInactive}`}
           aria-pressed={isCurrentMonth}
-          onClick={() => pushQuery(pathname, router, searchParams, { range: "month", month: null, preset: null })}
+          onClick={() =>
+            pushQuery(pathname, router, searchParams, {
+              range: "month",
+              month: clientAnchorYm,
+              preset: null,
+            })
+          }
         >
           Current month
         </button>
@@ -87,7 +160,11 @@ export function DashboardMonthFilter({ anchorYm }: { anchorYm: string }) {
           className={`${chipClass} ${isPreviousMonth ? chipActive : chipInactive}`}
           aria-pressed={isPreviousMonth}
           onClick={() =>
-            pushQuery(pathname, router, searchParams, { range: "month", month: null, preset: "previous-month" })
+            pushQuery(pathname, router, searchParams, {
+              range: "month",
+              month: previousCalendarYm,
+              preset: null,
+            })
           }
         >
           Previous month
@@ -96,7 +173,13 @@ export function DashboardMonthFilter({ anchorYm }: { anchorYm: string }) {
           type="button"
           className={`${chipClass} ${isYtdThroughCurrent ? chipActive : chipInactive}`}
           aria-pressed={isYtdThroughCurrent}
-          onClick={() => pushQuery(pathname, router, searchParams, { range: "ytd", month: null, preset: null })}
+          onClick={() =>
+            pushQuery(pathname, router, searchParams, {
+              range: "ytd",
+              month: clientAnchorYm,
+              preset: null,
+            })
+          }
         >
           YTD
         </button>

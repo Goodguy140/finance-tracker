@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   budgetPeriodMonthInYtd,
+  currentPeriodYm,
   describeDashboardPeriod,
   endExclusiveOfMonthYm,
-  formatMonthYearYm,
+  formatYmLongLabel,
   parseDashboardSearchParams,
   shiftYm,
   startOfCalendarYearForYm,
@@ -12,6 +13,9 @@ import {
 } from "./dashboard-period";
 
 const ref = new Date(Date.UTC(2025, 4, 15, 12, 0, 0, 0)); // May 2025
+
+/** Late April 30 local; UTC month is May on negative-offset hosts. */
+const localAprilBoundaryRef = new Date(2025, 3, 30, 23, 0, 0);
 
 function withTimezone<T>(tz: string, callback: () => T): T {
   const original = process.env.TZ;
@@ -24,7 +28,37 @@ function withTimezone<T>(tz: string, callback: () => T): T {
   }
 }
 
+function utcPeriodYm(reference: Date): string {
+  return `${reference.getUTCFullYear()}-${String(reference.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+describe("currentPeriodYm", () => {
+  it("uses local calendar fields, not UTC, at a month boundary", () => {
+    expect(localAprilBoundaryRef.getFullYear()).toBe(2025);
+    expect(localAprilBoundaryRef.getMonth()).toBe(3);
+    expect(currentPeriodYm(localAprilBoundaryRef)).toBe("2025-04");
+
+    const utcYm = utcPeriodYm(localAprilBoundaryRef);
+    if (utcYm !== "2025-04") {
+      expect(currentPeriodYm(localAprilBoundaryRef)).not.toBe(utcYm);
+    }
+  });
+});
+
 describe("parseDashboardSearchParams", () => {
+  it("defaults ym to currentPeriodYm(reference) when params are empty", () => {
+    const p = parseDashboardSearchParams({}, localAprilBoundaryRef);
+    expect(p.range).toBe("month");
+    expect(p.ym).toBe(currentPeriodYm(localAprilBoundaryRef));
+    expect(p.ym).toBe("2025-04");
+    expect(p.transactionDateFilter).toEqual({
+      date: {
+        gte: startOfMonthYm("2025-04"),
+        lt: endExclusiveOfMonthYm("2025-04"),
+      },
+    });
+  });
+
   it("defaults to current month when params missing", () => {
     const p = parseDashboardSearchParams({}, ref);
     expect(p.range).toBe("month");
@@ -134,6 +168,25 @@ describe("shiftYm", () => {
   });
 });
 
+describe("formatYmLongLabel", () => {
+  it("formats the YM calendar month in UTC (not local TZ shift)", () => {
+    const ym = "2026-05";
+    const utcExpected = startOfMonthYm(ym).toLocaleString(undefined, {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+    const localWithoutUtc = startOfMonthYm(ym).toLocaleString(undefined, {
+      month: "long",
+      year: "numeric",
+    });
+    expect(formatYmLongLabel(ym)).toBe(utcExpected);
+    if (localWithoutUtc !== utcExpected) {
+      expect(formatYmLongLabel(ym)).not.toBe(localWithoutUtc);
+    }
+  });
+});
+
 describe("describeDashboardPeriod", () => {
   it("returns Lifetime for lifetime range", () => {
     expect(
@@ -143,6 +196,18 @@ describe("describeDashboardPeriod", () => {
         transactionDateFilter: {},
       }),
     ).toBe("Lifetime");
+  });
+
+  it("formats month range with UTC calendar month", () => {
+    expect(
+      describeDashboardPeriod({
+        range: "month",
+        ym: "2026-05",
+        transactionDateFilter: {
+          date: { gte: startOfMonthYm("2026-05"), lt: endExclusiveOfMonthYm("2026-05") },
+        },
+      }),
+    ).toBe(formatYmLongLabel("2026-05"));
   });
 
   it("formats month labels from the UTC month instead of local previous day", () => {
@@ -156,7 +221,7 @@ describe("describeDashboardPeriod", () => {
       });
 
       expect(localLabel).not.toBe(utcLabel);
-      expect(formatMonthYearYm("2026-05")).toBe(utcLabel);
+      expect(formatYmLongLabel("2026-05")).toBe(utcLabel);
       expect(
         describeDashboardPeriod({
           range: "month",

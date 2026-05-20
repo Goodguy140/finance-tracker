@@ -411,7 +411,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                 </span>
               }
             >
-              <DashboardMonthFilter anchorYm={anchorYm} />
+              <DashboardMonthFilter serverAnchorYm={anchorYm} />
             </Suspense>
             <AddFormsDropdown
               accounts={accountOptions}
