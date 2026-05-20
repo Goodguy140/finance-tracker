@@ -4,29 +4,29 @@ export function AdminBackupPanel() {
       <h2 className="font-semibold text-slate-100">Backup &amp; restore</h2>
       <p className="text-xs text-slate-500">
         Download a JSON snapshot of <strong>your own</strong> user record and related finance data. Only{" "}
-        <code className="text-slate-400">SERVER_ADMIN</code> accounts can use this export endpoint.
+        any signed-in account can download from this link (same sanitized export as Settings → Advanced).
       </p>
       <p>
         <a
-          href="/api/backup/export"
+          href="/api/backup/export/me"
           className="inline-flex rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-700"
         >
           Download JSON backup
         </a>
       </p>
       <div className="text-xs text-slate-400 space-y-2">
-        <p className="font-medium text-amber-200/90">Highly sensitive</p>
+        <p className="font-medium text-amber-200/90">Sensitive financial data</p>
         <p>
-          The file can include OAuth tokens, password hashes, reset token hashes, and full transaction history. Store it
-          encrypted and never commit it to git.
+          Exports omit password hashes, OAuth tokens, and password-reset token metadata. The file still contains your
+          full transaction history and account structure. Store it encrypted and never commit it to git.
         </p>
         <p className="font-medium text-slate-200">Included (high level)</p>
         <ul className="list-disc pl-4 space-y-1">
-          <li>User profile, role, password hash field, email verification</li>
-          <li>Linked OAuth accounts (access/refresh tokens)</li>
+          <li>User profile, role, email verification (no password hash)</li>
+          <li>Linked OAuth accounts (provider ids only; tokens stripped)</li>
           <li>Financial accounts, categories, transactions (including splits), budgets, recurring transactions</li>
           <li>Investment flows and portfolio snapshots</li>
-          <li>Password reset token metadata</li>
+          <li>Password reset tokens (not exported)</li>
         </ul>
         <p className="font-medium text-slate-200">Not included</p>
         <ul className="list-disc pl-4 space-y-1">

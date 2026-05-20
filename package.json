@@ -22,6 +22,7 @@
     "lucide-react": "^1.8.0",
     "next": "16.2.6",
     "next-auth": "^4.24.14",
+    "nodemailer": "^7.0.13",
     "prisma": "^6.19.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -29,9 +30,10 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
-    "@playwright/test": "^1.55.0",
+    "@types/nodemailer": "^8.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

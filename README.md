@@ -1,178 +1,113 @@
 # Finance Tracker
 
-## Development
+Self-hosted personal finance app (expenses, income, budgets, recurring transactions, investments). Next.js + SQLite + Docker.
+
+## Quick start (development)
 
 ```bash
 npm ci
 npm run dev
 ```
 
-## Installation
+## Required environment (production)
 
-### TrueNAS Custom App
+| Variable | Purpose |
+|----------|---------|
+| `NEXTAUTH_URL` | Public app URL (e.g. `https://finance.example.com`) |
+| `NEXTAUTH_SECRET` | Session signing secret (`openssl rand -base64 48`) |
+| `SERVER_SETTINGS_ENCRYPTION_KEY` | Encrypts OAuth admin settings in DB (min 32 chars) |
+| `AUTH_TRUST_HOST` | Set `true` behind reverse proxies |
+| `ALLOW_PUBLIC_SIGNUP` | `false` recommended on public deployments |
 
-1. Build and publish an image using the repository `Dockerfile`.
-2. In TrueNAS, go to **Apps** -> **Discover Apps** -> **Custom App**.
-3. Set the image reference to your published image.
-4. Set container port `3000` and expose it through your preferred TrueNAS networking method.
-5. Add a persistent storage mount:
-   - Host path or dataset: your persistent dataset path
-   - Container path: `/data`
-6. Set environment variables:
-   - `NEXTAUTH_URL=https://your-public-domain.example`
-   - `NEXTAUTH_SECRET=<strong-random-secret>`
-   - `SERVER_SETTINGS_ENCRYPTION_KEY=<strong-random-secret-min-32-chars>`
-   - `AUTH_TRUST_HOST=true`
-   - `ALLOW_PUBLIC_SIGNUP=false` (recommended)
-   - Optional: `DATABASE_URL=file:/data/app.db` (defaults automatically if omitted)
-7. Deploy the app.
-8. Verify health:
+`DATABASE_URL` defaults to `file:/data/app.db` (production) or `file:./dev.db` (development).
 
-```bash
-curl -fsS http://<truenas-app-host>:3000/api/health
-```
+<details>
+<summary><strong>Deploy on TrueNAS</strong></summary>
 
-If you publish behind a reverse proxy/TLS endpoint, set `NEXTAUTH_URL` to the final public HTTPS URL.
+1. Build/publish the image from the repo `Dockerfile`.
+2. **Apps → Discover Apps → Custom App** — set image and container port `3000`.
+3. Mount persistent storage: host path → container `/data`.
+4. Set the required env vars above (use your public HTTPS URL for `NEXTAUTH_URL`).
+5. Deploy and verify: `curl -fsS http://<host>:3000/api/health`
 
-### Linux (native install)
+The container runs `prisma migrate deploy` before `node server.js` on each start.
 
-Prerequisites:
+</details>
 
-- Node.js 22.x
-- npm 10+ (or npm bundled with Node 22)
-- OpenSSL
+<details>
+<summary><strong>Install on Linux</strong></summary>
 
-Install and run:
+Prerequisites: Node.js 22.x, npm, OpenSSL.
 
 ```bash
 git clone <your-repo-url>
 cd "finances tracker"
 npm ci
-```
-
-Set environment variables (example):
-
-```bash
 export NEXTAUTH_URL="http://localhost:3000"
 export NEXTAUTH_SECRET="$(openssl rand -base64 48)"
 export SERVER_SETTINGS_ENCRYPTION_KEY="$(openssl rand -base64 48)"
 export AUTH_TRUST_HOST="true"
-export ALLOW_PUBLIC_SIGNUP="true"
-# Optional: defaults to file:./dev.db in non-production if omitted
-# export DATABASE_URL="file:./dev.db"
-```
-
-Run migrations and start:
-
-```bash
 npm run db:deploy
-npm run dev
+npm run dev   # or: npm run build && npm run start
 ```
 
-For a production-like local start:
+</details>
+
+<details>
+<summary><strong>Optional configuration</strong></summary>
+
+<details>
+<summary>Authentik SSO (env overrides admin UI)</summary>
+
+- `AUTHENTIK_ISSUER`, `AUTHENTIK_CLIENT_ID`, `AUTHENTIK_CLIENT_SECRET`
+- `AUTHENTIK_ENABLED=false` to disable while keeping other vars
+- Redirect URI: `{NEXTAUTH_URL}/api/auth/callback/authentik`
+
+</details>
+
+<details>
+<summary>Google / Authentik via admin UI</summary>
+
+Configure under **Settings → Server admin → OAuth** (encrypted in the database). Env-based Authentik vars take precedence when all three are set.
+
+</details>
+
+<details>
+<summary>SMTP (password reset & budget alert email)</summary>
+
+Requires `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (optional `SMTP_PORT`, default `587`). Enable budget email alerts under **Settings → Budgets** when configured.
+
+</details>
+
+<details>
+<summary>Signup admin guard</summary>
+
+- `INITIAL_ADMIN_EMAIL` — when set, only this email becomes `SERVER_ADMIN` on the first signup; others get `USER`.
+- When unset, the first signup is `SERVER_ADMIN` (self-host default).
+
+</details>
+
+</details>
+
+<details>
+<summary><strong>Release checklist</strong></summary>
 
 ```bash
-npm run build
-npm run start
-```
-
-## Environment Variables
-
-Set these values in your deployment environment (TrueNAS custom app):
-
-- `NEXTAUTH_URL=https://your-public-domain.example`
-- `NEXTAUTH_SECRET=<strong-random-secret>`
-- `SERVER_SETTINGS_ENCRYPTION_KEY=<strong-random-secret-min-32-chars>`
-- `AUTH_TRUST_HOST=true`
-- `ALLOW_PUBLIC_SIGNUP=false` (recommended for production)
-
-Optional **Authentik SSO** (OIDC via environment variables — overrides admin UI when all three are set):
-
-- `AUTHENTIK_ISSUER=https://authentik.example.com/application/o/<slug>/`
-- `AUTHENTIK_CLIENT_ID=<client-id>`
-- `AUTHENTIK_CLIENT_SECRET=<client-secret>`
-- `AUTHENTIK_ENABLED=false` (optional; set to disable env-based Authentik while keeping other vars)
-
-In Authentik, create an OAuth2/OIDC provider and application. Set the redirect URI to:
-
-`{NEXTAUTH_URL}/api/auth/callback/authentik`
-
-You can also configure Google and Authentik under **Settings → Server admin → OAuth** (stored encrypted in the database).
-
-Optional **budget alert email** (not sent until SMTP delivery is implemented in `src/lib/budget-alert-email.ts`):
-
-- `SMTP_HOST`
-- `SMTP_PORT` (default `587`)
-- `SMTP_USER`
-- `SMTP_PASS`
-- `SMTP_FROM` (sender address, e.g. `alerts@example.com`)
-
-Enable email alerts under **Settings → Budgets** after these variables are set. Browser notifications use the Web Notifications API and are stored in browser localStorage (no server config).
-
-`DATABASE_URL` is optional. If omitted, defaults are:
-
-- production: `file:/data/app.db`
-- non-production: `file:./dev.db`
-
-Generate secure values with:
-
-```bash
-openssl rand -base64 48
-```
-
-## Production Deployment (TrueNAS Custom App)
-
-1. Build and publish image from the included `Dockerfile`.
-2. Mount persistent storage to `/data` in the container.
-3. Provide production env vars listed above.
-4. Deploy container and verify health:
-
-```bash
-curl -fsS http://<host>:3000/api/health
-```
-
-The container startup command runs `prisma migrate deploy` (via `./node_modules/.bin/prisma`) before starting the app server, so migrations apply automatically on every start.
-
-## Release Preflight Checklist
-
-Run before pushing a production image:
-
-```bash
-npm run lint
-npm run test
-npm run build
+npm run lint && npm test && npm run build
 npx prisma migrate status
 ```
 
-Confirm:
+Confirm production env vars are set, `DATABASE_URL` uses persistent `/data`, and no `.db` files are committed.
 
-- Required non-database env vars are present and non-placeholder values are used.
-- `DATABASE_URL` points to persistent storage (`/data/app.db`).
-- No local `.db` files are committed.
+</details>
 
-## Backup and Restore Runbook (SQLite)
+<details>
+<summary><strong>Backup and restore</strong></summary>
 
-### Admin JSON export (per-user snapshot)
+**Per-user JSON** — **Settings → Advanced**: export via `/api/backup/export/me` (sanitized: no password hash, OAuth tokens, or reset tokens). Import replaces data for the same email only; role and password are never restored from the file.
 
-Users with the `SERVER_ADMIN` role can download their own data from **Settings → Server admin** (JSON via `/api/backup/export`). The export is **highly sensitive** (OAuth tokens, password hash field, reset token hashes, and all finance rows for that user). Store it encrypted and treat it like a credential.
+**Full database** — stop traffic, copy `/data/app.db`, store encrypted off-host. Restore by replacing the file and restarting the container.
 
-Successful downloads and the other admin-account actions listed in the in-app **Audit log** panel are recorded as scrubbed audit events (never full payloads or secrets).
+Always back up `app.db` before deploying migrations.
 
-### Daily backup
-
-1. Stop writes (maintenance mode or brief restart window).
-2. Copy `/data/app.db` to a timestamped file.
-3. Compress and store an encrypted off-host copy.
-4. Retain daily backups (minimum 7-14 days).
-
-### Pre-migration backup
-
-Always back up `/data/app.db` immediately before deploying migrations.
-
-### Restore verification drill
-
-At least once before launch:
-
-1. Restore a backup into a fresh environment.
-2. Start the app against restored DB.
-3. Validate login, dashboard load, and transaction create/edit/delete flow.
+</details>

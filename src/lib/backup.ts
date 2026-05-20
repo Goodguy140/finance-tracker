@@ -117,6 +117,24 @@ export type UserBackupPayload = {
   }>;
 };
 
+/** Remove secrets before writing backup JSON to disk or HTTP responses. */
+export function sanitizeBackupPayload(payload: UserBackupPayload): UserBackupPayload {
+  return {
+    ...payload,
+    user: {
+      ...payload.user,
+      passwordHash: null,
+    },
+    authAccounts: payload.authAccounts.map((row) => ({
+      ...row,
+      accessToken: null,
+      refreshToken: null,
+      idToken: null,
+    })),
+    passwordResetTokens: [],
+  };
+}
+
 function toIso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
@@ -137,7 +155,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
     },
   });
 
-  return {
+  return sanitizeBackupPayload({
     version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
     user: {
@@ -248,5 +266,5 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       note: row.note,
       createdAt: row.createdAt.toISOString(),
     })),
-  };
+  });
 }
