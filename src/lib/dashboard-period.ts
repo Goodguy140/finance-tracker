@@ -11,6 +11,7 @@ export type ParsedDashboardPeriod = {
 
 type DashboardRelativePreset = "previous-month";
 
+/** Calendar month (`YYYY-MM`) for `reference` in the host environment's local timezone. */
 export function currentPeriodYm(reference = new Date()): string {
   return `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}`;
 }
@@ -54,17 +55,29 @@ export function shiftYm(ym: string, deltaMonths: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-export function formatMonthYearYm(ym: string): string {
-  return startOfMonthYm(ym).toLocaleString(undefined, {
-    timeZone: "UTC",
-    month: "long",
-    year: "numeric",
-  });
-}
-
 /** First `YYYY-MM` of the calendar year of `ym`. */
 export function ytdFirstMonthYm(ym: string): string {
   return `${ym.slice(0, 4)}-01`;
+}
+
+const ymUtcLocale = { timeZone: "UTC" } as const;
+
+/** Human-readable calendar month for `YYYY-MM` (uses UTC; avoids local TZ shifting the label). */
+export function formatYmLongLabel(ym: string): string {
+  return startOfMonthYm(ym).toLocaleString(undefined, {
+    month: "long",
+    year: "numeric",
+    ...ymUtcLocale,
+  });
+}
+
+/** Short month label for `YYYY-MM`, optionally including the year. */
+export function formatYmShortLabel(ym: string, withYear = true): string {
+  return startOfMonthYm(ym).toLocaleString(undefined, {
+    month: "short",
+    ...(withYear ? { year: "numeric" as const } : {}),
+    ...ymUtcLocale,
+  });
 }
 
 /** Whether a budget `periodMonth` counts toward YTD sums for anchor `ym` (same calendar year, Jan through `ym`). */
@@ -140,13 +153,12 @@ export function parseDashboardSearchParams(
 export function describeDashboardPeriod(parsed: ParsedDashboardPeriod): string {
   if (parsed.range === "lifetime") return "Lifetime";
   if (parsed.range === "month") {
-    return formatMonthYearYm(parsed.ym);
+    return formatYmLongLabel(parsed.ym);
   }
-  const y = Number(parsed.ym.slice(0, 4));
-  const m = Number(parsed.ym.slice(5, 7)) - 1;
-  const start = new Date(Date.UTC(y, 0, 1));
-  const end = new Date(Date.UTC(y, m, 1));
-  const from = start.toLocaleString(undefined, { timeZone: "UTC", month: "short" });
-  const to = end.toLocaleString(undefined, { timeZone: "UTC", month: "short", year: "numeric" });
+  const from = startOfCalendarYearForYm(parsed.ym).toLocaleString(undefined, {
+    month: "short",
+    ...ymUtcLocale,
+  });
+  const to = formatYmShortLabel(parsed.ym);
   return `Year to date (${from}–${to})`;
 }

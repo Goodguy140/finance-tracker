@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
+import { expectDashboardHome } from "./expect-dashboard-home";
 
 test("mobile viewport: quick add expense appears in log", async ({ page }, testInfo) => {
   test.skip(
@@ -30,7 +31,7 @@ test("mobile viewport: quick add expense appears in log", async ({ page }, testI
   await page.getByPlaceholder("Password").fill(password);
   await page.getByRole("button", { name: "Login" }).click();
 
-  await expect(page).toHaveURL("/");
+  await expectDashboardHome(page);
 
   await page.getByRole("button", { name: "Quick add expense" }).click();
 
