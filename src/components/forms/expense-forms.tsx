@@ -482,6 +482,16 @@ export function ExpenseCsvImportForm({
 }
 
 
+function subscribeMobileViewport(onStoreChange: () => void) {
+  const mediaQuery = window.matchMedia("(max-width: 639px)");
+  mediaQuery.addEventListener("change", onStoreChange);
+  return () => mediaQuery.removeEventListener("change", onStoreChange);
+}
+
+function readMobileViewport() {
+  return window.matchMedia("(max-width: 639px)").matches;
+}
+
 export function AddFormsDropdown({
   accounts,
   expenseCategories,
@@ -495,6 +505,83 @@ export function AddFormsDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const [activeForm, setActiveForm] = useState<AddMenuFormKey>("income");
+  const isMobileViewport = useSyncExternalStore(subscribeMobileViewport, readMobileViewport, () => true);
+
+  const menuPanel = (
+    <>
+      <h2 id="add-menu-title" className="sr-only">
+        Add transaction
+      </h2>
+      <div className="mb-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setActiveForm("income")}
+          className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+            activeForm === "income" ? "bg-blue-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+          }`}
+        >
+          Income
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveForm("splitExpense")}
+          className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+            activeForm === "splitExpense" ? "bg-blue-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+          }`}
+        >
+          Split Expense
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveForm("recurring")}
+          className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+            activeForm === "recurring" ? "bg-blue-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+          }`}
+        >
+          Recurring
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveForm("investment")}
+          className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+            activeForm === "investment" ? "bg-blue-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+          }`}
+        >
+          Investments
+        </button>
+      </div>
+
+      {activeForm === "income" ? (
+        <IncomeForm accounts={accounts} incomeCategories={incomeCategories} />
+      ) : null}
+      {activeForm === "splitExpense" ? (
+        <SplitExpenseForm
+          accounts={accounts}
+          expenseCategories={expenseCategories}
+          defaultExpenseAccountId={defaultExpenseAccountId}
+        />
+      ) : null}
+      {activeForm === "recurring" ? (
+        <RecurringTransactionForm
+          accounts={accounts}
+          expenseCategories={expenseCategories}
+          incomeCategories={incomeCategories}
+          defaultExpenseAccountId={defaultExpenseAccountId}
+        />
+      ) : null}
+      {activeForm === "investment" ? <InvestmentForms accounts={accounts} /> : null}
+
+      <div className="mt-4 flex justify-end sm:mt-3">
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="w-full touch-manipulation rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-slate-800 sm:w-auto sm:rounded-lg sm:px-2.5 sm:py-1.5 sm:text-xs"
+        >
+          Close
+        </button>
+      </div>
+    </>
+  );
 
   return (
     <div className="relative z-50">
@@ -507,97 +594,38 @@ export function AddFormsDropdown({
       >
         Add
       </button>
-      {open && typeof document !== "undefined"
-        ? createPortal(
-            <>
-              <button
-                type="button"
-                className="fixed inset-0 z-[55] bg-black/50 sm:hidden"
-                aria-label="Close add menu"
-                onClick={() => setOpen(false)}
-              />
-              <div
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="add-menu-title"
-                className="fixed z-[60] overflow-y-auto overscroll-contain border border-slate-700 bg-slate-950/98 shadow-2xl backdrop-blur max-sm:inset-x-0 max-sm:bottom-0 max-sm:left-0 max-sm:right-0 max-sm:max-h-[min(calc(100dvh-env(safe-area-inset-top,0px)-12px),42rem)] max-sm:rounded-t-2xl max-sm:p-4 max-sm:pb-[max(1rem,env(safe-area-inset-bottom))] sm:inset-auto sm:right-3 sm:top-[4.75rem] sm:mt-0 sm:max-h-[min(85vh,40rem)] sm:w-[min(92vw,32rem)] sm:rounded-2xl sm:p-4 sm:pb-4 md:right-4 md:top-24"
-              >
-          <h2 id="add-menu-title" className="sr-only">
-            Add transaction
-          </h2>
-          <div className="mb-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveForm("income")}
-              className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                activeForm === "income" ? "bg-blue-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-              }`}
-            >
-              Income
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveForm("splitExpense")}
-              className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                activeForm === "splitExpense" ? "bg-blue-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-              }`}
-            >
-              Split Expense
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveForm("recurring")}
-              className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                activeForm === "recurring" ? "bg-blue-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-              }`}
-            >
-              Recurring
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveForm("investment")}
-              className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-                activeForm === "investment" ? "bg-blue-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-              }`}
-            >
-              Investments
-            </button>
-          </div>
-
-          {activeForm === "income" ? (
-            <IncomeForm accounts={accounts} incomeCategories={incomeCategories} />
-          ) : null}
-          {activeForm === "splitExpense" ? (
-            <SplitExpenseForm
-              accounts={accounts}
-              expenseCategories={expenseCategories}
-              defaultExpenseAccountId={defaultExpenseAccountId}
-            />
-          ) : null}
-          {activeForm === "recurring" ? (
-            <RecurringTransactionForm
-              accounts={accounts}
-              expenseCategories={expenseCategories}
-              incomeCategories={incomeCategories}
-              defaultExpenseAccountId={defaultExpenseAccountId}
-            />
-          ) : null}
-          {activeForm === "investment" ? <InvestmentForms accounts={accounts} /> : null}
-
-              <div className="mt-4 flex justify-end sm:mt-3">
+      {open ? (
+        isMobileViewport && typeof document !== "undefined"
+          ? createPortal(
+              <>
                 <button
                   type="button"
+                  className="fixed inset-0 z-[55] bg-black/50"
+                  aria-label="Close add menu"
                   onClick={() => setOpen(false)}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-slate-800 sm:w-auto sm:rounded-lg sm:px-2.5 sm:py-1.5 sm:text-xs touch-manipulation"
+                />
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="add-menu-title"
+                  className="fixed inset-x-0 bottom-0 z-[60] max-h-[min(calc(100dvh-env(safe-area-inset-top,0px)-12px),42rem)] overflow-y-auto overscroll-contain rounded-t-2xl border border-slate-700 bg-slate-950/98 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl backdrop-blur"
                 >
-                  Close
-                </button>
-              </div>
+                  {menuPanel}
+                </div>
+              </>,
+              document.body,
+            )
+          : (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="add-menu-title"
+              className="absolute right-0 top-full z-[60] mt-2 max-h-[min(85vh,40rem)] w-[min(92vw,32rem)] overflow-y-auto overscroll-contain rounded-2xl border border-slate-700 bg-slate-950/98 p-4 shadow-2xl backdrop-blur"
+            >
+              {menuPanel}
             </div>
-            </>,
-            document.body,
           )
-        : null}
+      ) : null}
     </div>
   );
 }
