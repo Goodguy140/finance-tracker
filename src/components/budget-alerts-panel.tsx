@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { formatCurrency } from "@/lib/money";
+import { MOBILE_OVERLAY_ROOT_Z_CLASS, MOBILE_OVERLAY_SHEET_Z_CLASS } from "@/lib/mobile-z-index";
 import {
   budgetWarningDismissalKey,
   getServerDismissedBudgetWarningsSnapshot,
@@ -378,7 +379,7 @@ export function BudgetAlertsPanel({
       {open
         ? isMobileViewport && typeof document !== "undefined"
           ? createPortal(
-              <div className="fixed inset-0 z-[84] lg:hidden" role="presentation">
+              <div className={`fixed inset-0 ${MOBILE_OVERLAY_ROOT_Z_CLASS} lg:hidden`} role="presentation">
                 <button
                   type="button"
                   className="absolute inset-0 bg-black/65 backdrop-blur-[2px]"
@@ -386,7 +387,7 @@ export function BudgetAlertsPanel({
                   onClick={() => setOpen(false)}
                 />
                 <div
-                  className="fixed inset-x-0 bottom-0 z-[85] flex max-h-[min(92dvh,calc(100dvh-env(safe-area-inset-top)))] flex-col rounded-t-3xl border border-slate-700 border-b-0 bg-slate-900 shadow-2xl"
+                  className={`fixed inset-x-0 bottom-0 ${MOBILE_OVERLAY_SHEET_Z_CLASS} flex max-h-[min(92dvh,calc(100dvh-env(safe-area-inset-top)))] flex-col rounded-t-3xl border border-slate-700 border-b-0 bg-slate-900 shadow-2xl`}
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby={panelTitleId}

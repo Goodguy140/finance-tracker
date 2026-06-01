@@ -10,6 +10,7 @@ import {
 import { ServerActionForm } from "@/components/server-action-form";
 import { MetaChip } from "@/components/meta-chip";
 import { formatCurrency } from "@/lib/money";
+import { MOBILE_OVERLAY_ROOT_Z_CLASS } from "@/lib/mobile-z-index";
 
 export type RecurringTransactionListItem = {
   id: string;
@@ -189,7 +190,7 @@ export function RecurringTransactionsPanel({
         )}
       </div>
       {editingItem ? (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-3">
+        <div className={`fixed inset-0 ${MOBILE_OVERLAY_ROOT_Z_CLASS} flex items-center justify-center bg-black/60 p-3`}>
           <div className="max-h-[min(92vh,44rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 p-4 shadow-2xl">
             <h3 className="text-lg font-semibold text-slate-100">Edit recurring transaction</h3>
             <ServerActionForm
