@@ -118,8 +118,6 @@ function MobileSwipePanels(props: DashboardBudgetsSpendSectionProps) {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const touchAxisRef = useRef<"horizontal" | "vertical" | null>(null);
 
-  activeIndexRef.current = activeIndex;
-
   const measureSlideHeights = useCallback(() => {
     contentRefs.current.forEach((node, index) => {
       if (!node) return;
@@ -139,6 +137,10 @@ function MobileSwipePanels(props: DashboardBudgetsSpendSectionProps) {
       return prev === next ? prev : next;
     });
   }, []);
+
+  useEffect(() => {
+    activeIndexRef.current = activeIndex;
+  }, [activeIndex]);
 
   useLayoutEffect(() => {
     measureSlideHeights();
