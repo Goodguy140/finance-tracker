@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { formatCurrency } from "@/lib/money";
 import {
   budgetWarningDismissalKey,
@@ -17,42 +18,14 @@ import {
 } from "@/lib/budget-alert-preferences";
 import type { BudgetTrendAlert, BudgetWarning } from "@/lib/budget-alerts";
 
-const BUDGET_ALERTS_PANEL_EXPANDED_KEY = "finance-tracker:budget-alerts-panel-expanded";
-
-const budgetAlertsPanelExpandedListeners = new Set<() => void>();
-
-function subscribeBudgetAlertsPanelExpanded(listener: () => void) {
-  budgetAlertsPanelExpandedListeners.add(listener);
-  const onStorage = (e: StorageEvent) => {
-    if (e.key === BUDGET_ALERTS_PANEL_EXPANDED_KEY || e.key === null) listener();
-  };
-  window.addEventListener("storage", onStorage);
-  return () => {
-    budgetAlertsPanelExpandedListeners.delete(listener);
-    window.removeEventListener("storage", onStorage);
-  };
+function subscribeMobileViewport(onStoreChange: () => void) {
+  const mediaQuery = window.matchMedia("(max-width: 639px)");
+  mediaQuery.addEventListener("change", onStoreChange);
+  return () => mediaQuery.removeEventListener("change", onStoreChange);
 }
 
-function emitBudgetAlertsPanelExpanded() {
-  budgetAlertsPanelExpandedListeners.forEach((l) => l());
-}
-
-function readBudgetAlertsPanelExpanded(): boolean {
-  if (typeof window === "undefined") return true;
-  return window.localStorage.getItem(BUDGET_ALERTS_PANEL_EXPANDED_KEY) !== "false";
-}
-
-function getBudgetAlertsPanelExpandedServerSnapshot(): boolean {
-  return true;
-}
-
-function persistBudgetAlertsPanelExpanded(expanded: boolean) {
-  try {
-    window.localStorage.setItem(BUDGET_ALERTS_PANEL_EXPANDED_KEY, expanded ? "true" : "false");
-  } catch {
-    /* private mode */
-  }
-  emitBudgetAlertsPanelExpanded();
+function readMobileViewport() {
+  return window.matchMedia("(max-width: 639px)").matches;
 }
 
 export type BudgetAlertsPanelProps = {
@@ -73,6 +46,24 @@ function severityDot(severity: BudgetWarning["severity"]) {
   return severity === "critical" ? "bg-red-400" : "bg-amber-400";
 }
 
+function BellIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75} aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"
+      />
+    </svg>
+  );
+}
+
+const triggerClassName =
+  "relative touch-manipulation inline-flex min-h-9 min-w-9 items-center justify-center rounded-lg border border-slate-700/80 bg-slate-900/90 text-slate-200 transition hover:border-slate-600 hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500/60 lg:min-h-0 lg:rounded-xl lg:px-2.5 lg:py-1.5";
+
+const panelShellClassName =
+  "max-h-[min(85vh,28rem)] overflow-y-auto overscroll-contain rounded-2xl border border-slate-700 bg-slate-950/98 p-4 shadow-2xl backdrop-blur";
+
 export function BudgetAlertsPanel({
   warnings,
   paceTrends,
@@ -85,13 +76,12 @@ export function BudgetAlertsPanel({
     readDismissedBudgetWarnings,
     getServerDismissedBudgetWarningsSnapshot,
   );
+  const [open, setOpen] = useState(false);
   const [showDismissed, setShowDismissed] = useState(false);
   const panelContentId = useId();
-  const expanded = useSyncExternalStore(
-    subscribeBudgetAlertsPanelExpanded,
-    readBudgetAlertsPanelExpanded,
-    getBudgetAlertsPanelExpandedServerSnapshot,
-  );
+  const panelTitleId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const isMobileViewport = useSyncExternalStore(subscribeMobileViewport, readMobileViewport, () => true);
 
   const warningRows = useMemo(
     () =>
@@ -117,10 +107,6 @@ export function BudgetAlertsPanel({
   const hasWarningContent = activeWarnings.length > 0 || dismissedWarningRows.length > 0;
   const hasContent = hasWarningContent || paceTrends.length > 0 || momTrends.length > 0;
   const insightCount = activeWarnings.length + paceTrends.length + momTrends.length;
-
-  const toggleExpanded = useCallback(() => {
-    persistBudgetAlertsPanelExpanded(!expanded);
-  }, [expanded]);
 
   const updateDismissedWarnings = useCallback(
     (update: (prev: DismissedBudgetWarningMap) => DismissedBudgetWarningMap) => {
@@ -189,50 +175,39 @@ export function BudgetAlertsPanel({
     void run();
   }, [notifyPayload]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || isMobileViewport) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (rootRef.current?.contains(event.target as Node)) return;
+      setOpen(false);
+    };
+
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open, isMobileViewport]);
+
   if (!hasContent) return null;
 
-  return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        aria-controls={panelContentId}
-        onClick={toggleExpanded}
-        className={`-mx-1 flex w-[calc(100%+0.5rem)] touch-manipulation items-start justify-between gap-3 rounded-xl px-1 py-0.5 text-left transition hover:bg-slate-800/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500/60 ${expanded ? "mb-3" : ""}`}
-      >
-        <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-semibold text-slate-100">Budget alerts &amp; insights</h2>
-          <p className="mt-0.5 text-xs text-slate-400">
-            {periodLabel}
-            {!expanded && insightCount > 0 ? (
-              <span className="text-slate-500">
-                {" "}
-                · {insightCount} {insightCount === 1 ? "insight" : "insights"}
-              </span>
-            ) : null}
-          </p>
-        </div>
-        <span
-          className={`mt-1 shrink-0 text-slate-400 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
-          aria-hidden
-        >
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </span>
-      </button>
-
-      {expanded ? (
-      <div id={panelContentId}>
+  const panelBody = (
+    <div id={panelContentId}>
       {activeWarnings.length > 0 ? (
         <section className="space-y-2" aria-label="Budget warnings">
           <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">Warnings</h3>
           <ul className="space-y-2">
             {activeWarnings.map(({ warning: w, dismissalKey }) => (
-              <li
-                key={w.categoryId}
-                className={`rounded-xl border p-3 ${severityBorder(w.severity)}`}
-              >
+              <li key={w.categoryId} className={`rounded-xl border p-3 ${severityBorder(w.severity)}`}>
                 <div className="flex items-start gap-2">
                   <span
                     className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${severityDot(w.severity)}`}
@@ -264,9 +239,7 @@ export function BudgetAlertsPanel({
           aria-label="Dismissed budget warnings"
         >
           <div className="flex items-center justify-between gap-3">
-            <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              Dismissed warnings
-            </h3>
+            <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">Dismissed warnings</h3>
             <button
               type="button"
               aria-expanded={showDismissed}
@@ -315,9 +288,7 @@ export function BudgetAlertsPanel({
 
       {paceTrends.length > 0 ? (
         <section className={`space-y-2 ${hasWarningContent ? "mt-4" : ""}`} aria-label="Over-budget pace">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Over-budget pace
-          </h3>
+          <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">Over-budget pace</h3>
           <ul className="space-y-2">
             {paceTrends.map((t) => (
               <li
@@ -333,15 +304,10 @@ export function BudgetAlertsPanel({
 
       {momTrends.length > 0 ? (
         <section className="mt-4 space-y-2" aria-label="Month-over-month trends">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            vs last month
-          </h3>
+          <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">vs last month</h3>
           <ul className="space-y-2">
             {momTrends.map((t) => (
-              <li
-                key={`mom-${t.categoryId}`}
-                className="rounded-xl border border-slate-700 bg-slate-950/50 p-3"
-              >
+              <li key={`mom-${t.categoryId}`} className="rounded-xl border border-slate-700 bg-slate-950/50 p-3">
                 <p className="text-sm text-slate-300">{t.message}</p>
               </li>
             ))}
@@ -356,8 +322,96 @@ export function BudgetAlertsPanel({
         </a>
         .
       </p>
-      </div>
+    </div>
+  );
+
+  const panelHeader = (
+    <div className="mb-3 border-b border-slate-800/90 pb-3">
+      <h2 id={panelTitleId} className="text-base font-semibold text-slate-100">
+        Budget alerts &amp; insights
+      </h2>
+      <p className="mt-0.5 text-xs text-slate-400">{periodLabel}</p>
+    </div>
+  );
+
+  const panel = (
+    <>
+      {panelHeader}
+      {panelBody}
+      {isMobileViewport ? (
+        <div className="mt-4 flex justify-end border-t border-slate-800/90 pt-3">
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="touch-manipulation rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
+          >
+            Close
+          </button>
+        </div>
       ) : null}
+    </>
+  );
+
+  return (
+    <div ref={rootRef} className="relative shrink-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={open ? panelContentId : undefined}
+        aria-haspopup="dialog"
+        aria-label={
+          insightCount > 0
+            ? `Budget alerts and insights, ${insightCount} ${insightCount === 1 ? "item" : "items"}`
+            : "Budget alerts and insights"
+        }
+        onClick={() => setOpen((prev) => !prev)}
+        className={triggerClassName}
+      >
+        <BellIcon className="h-5 w-5" />
+        {insightCount > 0 ? (
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold leading-none text-slate-950">
+            {insightCount > 9 ? "9+" : insightCount}
+          </span>
+        ) : null}
+      </button>
+
+      {open
+        ? isMobileViewport && typeof document !== "undefined"
+          ? createPortal(
+              <div className="fixed inset-0 z-[84] lg:hidden" role="presentation">
+                <button
+                  type="button"
+                  className="absolute inset-0 bg-black/65 backdrop-blur-[2px]"
+                  aria-label="Close budget alerts"
+                  onClick={() => setOpen(false)}
+                />
+                <div
+                  className="fixed inset-x-0 bottom-0 z-[85] flex max-h-[min(92dvh,calc(100dvh-env(safe-area-inset-top)))] flex-col rounded-t-3xl border border-slate-700 border-b-0 bg-slate-900 shadow-2xl"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby={panelTitleId}
+                >
+                  <div className="flex shrink-0 justify-center pt-2 pb-1">
+                    <span className="h-1 w-10 rounded-full bg-slate-600" aria-hidden />
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-1">
+                    {panel}
+                  </div>
+                </div>
+              </div>,
+              document.body,
+            )
+          : (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={panelTitleId}
+              className={`absolute right-0 top-full z-[60] mt-2 w-[min(92vw,22rem)] ${panelShellClassName}`}
+            >
+              {panel}
+            </div>
+          )
+        : null}
     </div>
   );
 }

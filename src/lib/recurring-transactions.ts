@@ -1,4 +1,5 @@
 import type { RecurringCadence, TransactionType } from "@prisma/client";
+import { shiftYm } from "./dashboard-period";
 import { ymdFromDateUtc } from "./date-only";
 
 /** Add calendar months in UTC, clamping the day (e.g. Jan 31 + 1 month -> Feb 28). */
@@ -73,11 +74,40 @@ export type RecurringCashFlowSummary = {
   netCents: number;
 };
 
+/** The `count` calendar months immediately before `anchorYm` (not including `anchorYm`). */
+export function getPastMonthYmsBefore(anchorYm: string, count: number): string[] {
+  return Array.from({ length: count }, (_, index) => shiftYm(anchorYm, index - count));
+}
+
+export function bucketIncomeCentsByYm(
+  transactions: ReadonlyArray<{ amountCents: number; date: Date }>,
+): Map<string, number> {
+  const totals = new Map<string, number>();
+  for (const txn of transactions) {
+    const ym = ymdFromDateUtc(txn.date).slice(0, 7);
+    totals.set(ym, (totals.get(ym) ?? 0) + txn.amountCents);
+  }
+  return totals;
+}
+
+export function computeThreeMonthAverageIncomeCents(
+  monthYms: readonly string[],
+  incomeByYm: ReadonlyMap<string, number>,
+): number {
+  if (monthYms.length === 0) return 0;
+  let sum = 0;
+  for (const ym of monthYms) {
+    sum += incomeByYm.get(ym) ?? 0;
+  }
+  return Math.round(sum / monthYms.length);
+}
+
 export function computeRecurringCashFlowSummary(
   rules: RecurringForecastRule[],
   period: { start: Date; endExclusive: Date },
+  options?: { expectedIncomeCents: number },
 ): RecurringCashFlowSummary {
-  let incomeCents = 0;
+  let incomeFromRulesCents = 0;
   let expenseCents = 0;
   const periodEndYmd = ymdFromDateUtc(period.endExclusive);
 
@@ -89,7 +119,7 @@ export function computeRecurringCashFlowSummary(
     while (ymdFromDateUtc(occurrence) < periodEndYmd && guard < 1040) {
       if (rule.endDate && ymdFromDateUtc(occurrence) > ymdFromDateUtc(rule.endDate)) break;
       if (rule.type === "INCOME") {
-        incomeCents += rule.amountCents;
+        incomeFromRulesCents += rule.amountCents;
       } else {
         expenseCents += rule.amountCents;
       }
@@ -97,6 +127,8 @@ export function computeRecurringCashFlowSummary(
       guard++;
     }
   }
+
+  const incomeCents = options?.expectedIncomeCents ?? incomeFromRulesCents;
 
   return {
     incomeCents,
