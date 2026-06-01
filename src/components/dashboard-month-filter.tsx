@@ -64,7 +64,13 @@ function parseSelectedYm(
   return clientAnchorYm;
 }
 
-export function DashboardMonthFilter({ serverAnchorYm }: { serverAnchorYm: string }) {
+export function DashboardMonthFilter({
+  serverAnchorYm,
+  className = "",
+}: {
+  serverAnchorYm: string;
+  className?: string;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -139,8 +145,12 @@ export function DashboardMonthFilter({ serverAnchorYm }: { serverAnchorYm: strin
   ]);
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Quick period">
+    <div className={`flex min-w-0 flex-col gap-2 xl:flex-row xl:items-center xl:gap-3 ${className}`.trim()}>
+      <div
+        className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] xl:flex-wrap xl:overflow-visible [&::-webkit-scrollbar]:hidden"
+        role="group"
+        aria-label="Quick period"
+      >
         <button
           type="button"
           className={`${chipClass} ${isCurrentMonth ? chipActive : chipInactive}`}
@@ -200,7 +210,7 @@ export function DashboardMonthFilter({ serverAnchorYm }: { serverAnchorYm: strin
       </div>
 
       <div
-        className="flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-700/80 bg-slate-950/50 px-1.5 py-0.5"
+        className="flex w-full items-center gap-1.5 rounded-lg border border-slate-700/80 bg-slate-950/50 px-1.5 py-0.5 sm:w-auto xl:shrink-0"
         role="group"
         aria-label="Selected month"
       >
