@@ -486,19 +486,78 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         />
 
         <div className="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
-          <div className="order-1 flex flex-col gap-4 lg:order-none lg:col-span-5 lg:col-start-8">
-            <DashboardBudgetsSpendSection
-              periodDescription={periodDescription}
-              periodRange={period.range}
-              spendVsBudgetLabel={spendVsBudgetLabel}
-              currentSpendCents={currentSpendCents}
-              totalBudgetCents={totalBudgetCents}
-              budgetProgressItems={budgetProgressItems}
-              categoryPieSlices={categoryPieSlices}
-            />
+          <div className="contents lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:flex lg:flex-col lg:gap-4">
+            <div className="order-1">
+              <DashboardBudgetsSpendSection
+                periodDescription={periodDescription}
+                periodRange={period.range}
+                spendVsBudgetLabel={spendVsBudgetLabel}
+                currentSpendCents={currentSpendCents}
+                totalBudgetCents={totalBudgetCents}
+                budgetProgressItems={budgetProgressItems}
+                categoryPieSlices={categoryPieSlices}
+              />
+            </div>
+
+            {showDashboardIncomeCard ? (
+              <div className="order-3">
+                <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
+                  <div className="flex flex-col gap-3 border-b border-slate-800/80 pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+                    <div className="min-w-0">
+                      <h2 className="text-lg font-semibold text-slate-100">Income</h2>
+                      <p className="text-xs text-slate-400">{periodDescription}</p>
+                      <p className="mt-2 text-xs tabular-nums text-slate-500">
+                        {periodIncomes.length} deposit{periodIncomes.length === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-2xl font-bold tabular-nums text-emerald-200 sm:text-right">
+                      {formatCurrency(incomeSumCents)}
+                    </p>
+                  </div>
+                  <div className="pt-4">
+                    <IncomeLogPanel entries={incomeLogEntries} accounts={accountOptions} categories={incomeCategoryOptions} />
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="order-4">
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg sm:p-4">
+                <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+                  <h2 className="text-lg font-semibold">Recurring transactions</h2>
+                  <p className="text-xs text-slate-400">
+                    {recurringTransactions.length} rule{recurringTransactions.length === 1 ? "" : "s"} · due and upcoming first
+                  </p>
+                </div>
+                <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
+                    <p className="text-[10px] uppercase tracking-wide text-slate-400">Expected income</p>
+                    <p className="text-sm font-semibold text-emerald-200">{formatCurrency(recurringCashFlow.incomeCents)}</p>
+                    <p className="mt-0.5 text-[10px] text-slate-500">3-month average</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
+                    <p className="text-[10px] uppercase tracking-wide text-slate-400">Expected expenses</p>
+                    <p className="text-sm font-semibold text-blue-100">{formatCurrency(recurringCashFlow.expenseCents)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
+                    <p className="text-[10px] uppercase tracking-wide text-slate-400">Net cash flow</p>
+                    <p className={`text-sm font-semibold ${recurringCashFlow.netCents >= 0 ? "text-emerald-200" : "text-red-200"}`}>
+                      {formatCurrency(recurringCashFlow.netCents)}
+                    </p>
+                  </div>
+                </div>
+                <p className="mb-3 text-xs text-slate-500">Forecast: {recurringForecastPeriod.label}</p>
+                <RecurringTransactionsPanel
+                  items={recurringListItems}
+                  accounts={accountOptions}
+                  expenseCategories={expenseCategoryOptions}
+                  incomeCategories={incomeCategoryOptions}
+                />
+              </div>
+            </div>
           </div>
 
-          <div className="order-2 flex flex-col gap-4 lg:order-none lg:col-span-7 lg:row-start-1">
+          <div className="order-2 flex flex-col gap-4 lg:col-span-7 lg:row-start-1">
             <section className="hidden rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg sm:p-4 lg:block">
               <h2 className="mb-3 text-lg font-semibold">Add Expense</h2>
               <ExpenseForm
@@ -522,63 +581,6 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                 titleSuggestions={expenseTitleSuggestions}
               />
             </section>
-          </div>
-
-          {showDashboardIncomeCard ? (
-            <div className="order-3 lg:order-none lg:col-span-5 lg:col-start-8">
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
-                <div className="flex flex-col gap-3 border-b border-slate-800/80 pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-                  <div className="min-w-0">
-                    <h2 className="text-lg font-semibold text-slate-100">Income</h2>
-                    <p className="text-xs text-slate-400">{periodDescription}</p>
-                    <p className="mt-2 text-xs tabular-nums text-slate-500">
-                      {periodIncomes.length} deposit{periodIncomes.length === 1 ? "" : "s"}
-                    </p>
-                  </div>
-                  <p className="shrink-0 text-2xl font-bold tabular-nums text-emerald-200 sm:text-right">
-                    {formatCurrency(incomeSumCents)}
-                  </p>
-                </div>
-                <div className="pt-4">
-                  <IncomeLogPanel entries={incomeLogEntries} accounts={accountOptions} categories={incomeCategoryOptions} />
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          <div className="order-4 lg:order-none lg:col-span-5 lg:col-start-8">
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg sm:p-4">
-              <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
-                <h2 className="text-lg font-semibold">Recurring transactions</h2>
-                <p className="text-xs text-slate-400">
-                  {recurringTransactions.length} rule{recurringTransactions.length === 1 ? "" : "s"} · due and upcoming first
-                </p>
-              </div>
-              <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Expected income</p>
-                  <p className="text-sm font-semibold text-emerald-200">{formatCurrency(recurringCashFlow.incomeCents)}</p>
-                  <p className="mt-0.5 text-[10px] text-slate-500">3-month average</p>
-                </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Expected expenses</p>
-                  <p className="text-sm font-semibold text-blue-100">{formatCurrency(recurringCashFlow.expenseCents)}</p>
-                </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-400">Net cash flow</p>
-                  <p className={`text-sm font-semibold ${recurringCashFlow.netCents >= 0 ? "text-emerald-200" : "text-red-200"}`}>
-                    {formatCurrency(recurringCashFlow.netCents)}
-                  </p>
-                </div>
-              </div>
-              <p className="mb-3 text-xs text-slate-500">Forecast: {recurringForecastPeriod.label}</p>
-              <RecurringTransactionsPanel
-                items={recurringListItems}
-                accounts={accountOptions}
-                expenseCategories={expenseCategoryOptions}
-                incomeCategories={incomeCategoryOptions}
-              />
-            </div>
           </div>
         </div>
       </div>

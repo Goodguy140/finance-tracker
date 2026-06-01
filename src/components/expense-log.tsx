@@ -18,6 +18,7 @@ import {
   textAreaClass,
 } from "@/components/forms";
 import { expenseLogMatchesQuery } from "@/lib/expense-title-suggestions";
+import { MOBILE_OVERLAY_ROOT_Z_CLASS } from "@/lib/mobile-z-index";
 import { formatCurrency } from "@/lib/money";
 
 type Option = { id: string; name: string };
@@ -396,7 +397,7 @@ function EditExpenseModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4"
+      className={`fixed inset-0 ${MOBILE_OVERLAY_ROOT_Z_CLASS} flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4`}
       role="presentation"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();

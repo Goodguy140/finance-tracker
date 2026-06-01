@@ -4,11 +4,15 @@ import { useId, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ExpenseForm, IncomeForm } from "@/components/forms";
 import type { ExpenseTitleSuggestion } from "@/lib/expense-title-suggestions";
+import {
+  MOBILE_FAB_Z_CLASS,
+  MOBILE_OVERLAY_ROOT_Z_CLASS,
+  MOBILE_OVERLAY_SHEET_Z_CLASS,
+} from "@/lib/mobile-z-index";
 
 type Option = { id: string; name: string };
 
-const sheetShellClass =
-  "fixed inset-x-0 bottom-0 z-[85] flex max-h-[min(92dvh,calc(100dvh-env(safe-area-inset-top)))] flex-col rounded-t-3xl border border-slate-700 border-b-0 bg-slate-900 shadow-2xl lg:hidden";
+const sheetShellClass = `fixed inset-x-0 bottom-0 ${MOBILE_OVERLAY_SHEET_Z_CLASS} flex max-h-[min(92dvh,calc(100dvh-env(safe-area-inset-top)))] flex-col rounded-t-3xl border border-slate-700 border-b-0 bg-slate-900 shadow-2xl lg:hidden`;
 
 const sheetBodyClass =
   "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]";
@@ -28,7 +32,7 @@ function MobileFormSheet({
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[84] lg:hidden" role="presentation">
+    <div className={`fixed inset-0 ${MOBILE_OVERLAY_ROOT_Z_CLASS} lg:hidden`} role="presentation">
       <button
         type="button"
         className="absolute inset-0 bg-black/65 backdrop-blur-[2px]"
@@ -76,7 +80,9 @@ export function DashboardMobileActions({
 
   return (
     <>
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[70] flex justify-center gap-2 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 lg:hidden">
+      <div
+        className={`pointer-events-none fixed inset-x-0 bottom-0 ${MOBILE_FAB_Z_CLASS} flex justify-center gap-2 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 lg:hidden`}
+      >
         <button
           type="button"
           aria-label="Quick add expense"

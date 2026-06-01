@@ -11,6 +11,7 @@ import { ExpenseTitleAutocomplete } from "@/components/expense-title-autocomplet
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_ORDER } from "@/lib/account-type-labels";
 import { parseImportedDate } from "@/lib/import-dates";
 import { formatCurrency, parseStatementAmount } from "@/lib/money";
+import { MOBILE_OVERLAY_ROOT_Z_CLASS, MOBILE_OVERLAY_SHEET_Z_CLASS } from "@/lib/mobile-z-index";
 import {
   inputClass,
   selectClass,
@@ -600,7 +601,7 @@ export function AddFormsDropdown({
               <>
                 <button
                   type="button"
-                  className="fixed inset-0 z-[55] bg-black/50"
+                  className={`fixed inset-0 ${MOBILE_OVERLAY_ROOT_Z_CLASS} bg-black/50`}
                   aria-label="Close add menu"
                   onClick={() => setOpen(false)}
                 />
@@ -608,7 +609,7 @@ export function AddFormsDropdown({
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="add-menu-title"
-                  className="fixed inset-x-0 bottom-0 z-[60] max-h-[min(calc(100dvh-env(safe-area-inset-top,0px)-12px),42rem)] overflow-y-auto overscroll-contain rounded-t-2xl border border-slate-700 bg-slate-950/98 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl backdrop-blur"
+                  className={`fixed inset-x-0 bottom-0 ${MOBILE_OVERLAY_SHEET_Z_CLASS} max-h-[min(calc(100dvh-env(safe-area-inset-top,0px)-12px),42rem)] overflow-y-auto overscroll-contain rounded-t-2xl border border-slate-700 bg-slate-950/98 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl backdrop-blur`}
                 >
                   {menuPanel}
                 </div>
