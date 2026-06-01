@@ -9,7 +9,7 @@ import {
 import { DashboardMobileActions } from "@/components/dashboard-mobile-actions";
 import { DashboardMonthFilter } from "@/components/dashboard-month-filter";
 import { BudgetAlertsPanel } from "@/components/budget-alerts-panel";
-import { CategorySpendPieChart } from "@/components/category-spend-pie";
+import { DashboardBudgetsSpendSection } from "@/components/dashboard-budgets-spend-section";
 import { ExpenseLogPanel } from "@/components/expense-log";
 import { IncomeLogPanel } from "@/components/income-log";
 import { RecurringTransactionsPanel } from "@/components/recurring-transactions-panel";
@@ -146,7 +146,6 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
   let budgetProgressItems: BudgetProgressRow[];
   let totalBudgetCents: number;
-  let configuredBudgetsCount: number;
 
   if (period.range === "month") {
     const activeBudgetsByCategory = new Map<string, (typeof budgets)[number]>();
@@ -174,7 +173,6 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       })
       .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
     totalBudgetCents = budgetProgressItems.reduce((sum, row) => sum + row.limitCents, 0);
-    configuredBudgetsCount = activeBudgetsByCategory.size;
   } else if (period.range === "ytd") {
     const limitSumByCategory = new Map<string, number>();
     const nameByCategory = new Map<string, string>();
@@ -206,7 +204,6 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       })
       .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
     totalBudgetCents = budgetProgressItems.reduce((sum, row) => sum + row.limitCents, 0);
-    configuredBudgetsCount = Array.from(limitSumByCategory.entries()).filter(([, cents]) => cents > 0).length;
   } else {
     const limitSumByCategory = new Map<string, number>();
     const nameByCategory = new Map<string, string>();
@@ -237,7 +234,6 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       })
       .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
     totalBudgetCents = budgetProgressItems.reduce((sum, row) => sum + row.limitCents, 0);
-    configuredBudgetsCount = Array.from(limitSumByCategory.entries()).filter(([, cents]) => cents > 0).length;
   }
 
   let budgetWarnings: ReturnType<typeof computeBudgetWarnings> = [];
@@ -434,81 +430,24 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
         <div className="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
           <div className="order-1 flex flex-col gap-4 lg:order-none lg:col-span-5 lg:col-start-8">
-            <BudgetAlertsPanel
-              warnings={budgetWarnings}
-              paceTrends={budgetPaceTrends}
-              momTrends={budgetMomTrends}
-              periodLabel={periodDescription}
-              periodKey={period.ym}
+            <DashboardBudgetsSpendSection
+              periodDescription={periodDescription}
+              periodRange={period.range}
+              spendVsBudgetLabel={spendVsBudgetLabel}
+              currentSpendCents={currentSpendCents}
+              totalBudgetCents={totalBudgetCents}
+              budgetProgressItems={budgetProgressItems}
+              categoryPieSlices={categoryPieSlices}
             />
 
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold">Budgets</h2>
-                <Link
-                  href="/settings#budgets"
-                  className="text-sm font-medium text-blue-300 underline-offset-4 transition hover:text-blue-200 hover:underline"
-                >
-                  Manage budgets
-                </Link>
-              </div>
-              {period.range === "ytd" ? (
-                <p className="mt-1 text-xs text-slate-400">
-                  Budget limits are the sum of your saved monthly budgets from January through the selected month, compared
-                  to spending in the same period.
-                </p>
-              ) : null}
-              {period.range === "lifetime" ? (
-                <p className="mt-1 text-xs text-slate-400">
-                  Budget limits are the sum of every saved monthly budget per category (not a single monthly envelope).
-                  Spending is all-time in the same categories.
-                </p>
-              ) : null}
-              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
-                  <p className="text-xs uppercase tracking-wide text-slate-400">{spendVsBudgetLabel}</p>
-                  <p className="text-base font-semibold">
-                    {formatCurrency(currentSpendCents)} / {formatCurrency(totalBudgetCents)}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
-                  <p className="text-xs uppercase tracking-wide text-slate-400">
-                    {period.range === "month" ? "Total budgeted" : "Total budgeted (summed)"}
-                  </p>
-                  <p className="text-base font-semibold">{formatCurrency(totalBudgetCents)}</p>
-                </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5 sm:col-span-2">
-                  <p className="text-xs uppercase tracking-wide text-slate-400">Configured budgets</p>
-                  <p className="text-base font-semibold">{configuredBudgetsCount}</p>
-                </div>
-              </div>
-              <div className="mt-3 space-y-2">
-                {budgetProgressItems.map((item) => (
-                  <div key={item.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
-                    <div className="mb-1 flex items-center justify-between text-sm">
-                      <span className="font-medium text-slate-200">{item.categoryName}</span>
-                      <span className="text-slate-300">
-                        {formatCurrency(item.spentCents)} / {formatCurrency(item.limitCents)}
-                      </span>
-                    </div>
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
-                      <div
-                        className={`h-full rounded-full ${item.progressPct >= 100 ? "bg-red-500" : item.progressPct >= 80 ? "bg-amber-400" : "bg-emerald-500"}`}
-                        style={{ width: `${item.progressPct}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
-              <h2 className="text-lg font-semibold">Spending by category</h2>
-              <p className="mt-1 text-xs text-slate-400">
-                Net expense per category for this period ({periodDescription}). Slice size uses the absolute amount so
-                categories with credits stay visible; the tooltip shows the signed total.
-              </p>
-              <CategorySpendPieChart data={categoryPieSlices} />
+            <div className="order-2 lg:order-1">
+              <BudgetAlertsPanel
+                warnings={budgetWarnings}
+                paceTrends={budgetPaceTrends}
+                momTrends={budgetMomTrends}
+                periodLabel={periodDescription}
+                periodKey={period.ym}
+              />
             </div>
           </div>
 
