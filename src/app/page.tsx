@@ -33,7 +33,13 @@ import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
 import { buildExpenseTitleSuggestions } from "@/lib/expense-title-suggestions";
 import { formatCurrency } from "@/lib/money";
-import { computeRecurringCashFlowSummary, getRecurringDateStatus } from "@/lib/recurring-transactions";
+import {
+  bucketIncomeCentsByYm,
+  computeRecurringCashFlowSummary,
+  computeThreeMonthAverageIncomeCents,
+  getPastMonthYmsBefore,
+  getRecurringDateStatus,
+} from "@/lib/recurring-transactions";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 
@@ -67,8 +73,10 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const period = parseDashboardSearchParams(sp, now);
   const periodDescription = describeDashboardPeriod(period);
   const transactionDateFilter = period.transactionDateFilter;
+  const recurringIncomeAnchorYm = period.range === "lifetime" ? anchorYm : period.ym;
+  const pastIncomeMonthsYm = getPastMonthYmsBefore(recurringIncomeAnchorYm, 3);
 
-  const [accounts, categories, budgets, recurringTransactions, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory] =
+  const [accounts, categories, budgets, recurringTransactions, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -117,6 +125,17 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       select: { title: true, categoryId: true },
       orderBy: { date: "desc" },
       take: 400,
+    }),
+    prisma.transaction.findMany({
+      where: {
+        userId: user.id,
+        type: TransactionType.INCOME,
+        date: {
+          gte: startOfMonthYm(pastIncomeMonthsYm[0]),
+          lt: endExclusiveOfMonthYm(recurringIncomeAnchorYm),
+        },
+      },
+      select: { amountCents: true, date: true },
     }),
   ]);
 
@@ -379,7 +398,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       : period.range === "month"
         ? { start: startOfMonthYm(period.ym), endExclusive: endExclusiveOfMonthYm(period.ym), label: periodDescription }
         : { start: startOfMonthYm(anchorYm), endExclusive: endExclusiveOfMonthYm(anchorYm), label: "Current month" };
-  const recurringCashFlow = computeRecurringCashFlowSummary(recurringTransactions, recurringForecastPeriod);
+  const expectedIncomeCents = computeThreeMonthAverageIncomeCents(
+    pastIncomeMonthsYm,
+    bucketIncomeCentsByYm(pastIncomeTransactions),
+  );
+  const recurringCashFlow = computeRecurringCashFlowSummary(recurringTransactions, recurringForecastPeriod, {
+    expectedIncomeCents,
+  });
 
   const spendVsBudgetLabel =
     period.range === "month"
@@ -425,6 +450,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                 <DashboardMonthFilter serverAnchorYm={anchorYm} className="w-full sm:max-w-md lg:max-w-none" />
               </Suspense>
               <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto">
+                <BudgetAlertsPanel
+                  warnings={budgetWarnings}
+                  paceTrends={budgetPaceTrends}
+                  momTrends={budgetMomTrends}
+                  periodLabel={periodDescription}
+                  periodKey={period.ym}
+                />
                 <AddFormsDropdown
                   accounts={accountOptions}
                   expenseCategories={expenseCategoryOptions}
@@ -464,16 +496,6 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
               budgetProgressItems={budgetProgressItems}
               categoryPieSlices={categoryPieSlices}
             />
-
-            <div className="order-2 lg:order-1">
-              <BudgetAlertsPanel
-                warnings={budgetWarnings}
-                paceTrends={budgetPaceTrends}
-                momTrends={budgetMomTrends}
-                periodLabel={periodDescription}
-                periodKey={period.ym}
-              />
-            </div>
           </div>
 
           <div className="order-2 flex flex-col gap-4 lg:order-none lg:col-span-7 lg:row-start-1">
@@ -536,6 +558,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                 <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
                   <p className="text-[10px] uppercase tracking-wide text-slate-400">Expected income</p>
                   <p className="text-sm font-semibold text-emerald-200">{formatCurrency(recurringCashFlow.incomeCents)}</p>
+                  <p className="mt-0.5 text-[10px] text-slate-500">3-month average</p>
                 </div>
                 <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
                   <p className="text-[10px] uppercase tracking-wide text-slate-400">Expected expenses</p>

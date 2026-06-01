@@ -3,7 +3,10 @@ import { dateFromYmd, ymdFromDateUtc } from "./date-only";
 import {
   advanceRecurringDate,
   advanceRecurringDateOnOrAfter,
+  bucketIncomeCentsByYm,
   computeRecurringCashFlowSummary,
+  computeThreeMonthAverageIncomeCents,
+  getPastMonthYmsBefore,
   getRecurringDateStatus,
 } from "./recurring-transactions";
 
@@ -63,7 +66,62 @@ describe("getRecurringDateStatus", () => {
   });
 });
 
+describe("getPastMonthYmsBefore", () => {
+  it("returns the three calendar months before the anchor month", () => {
+    expect(getPastMonthYmsBefore("2026-06", 3)).toEqual(["2026-03", "2026-04", "2026-05"]);
+  });
+});
+
+describe("computeThreeMonthAverageIncomeCents", () => {
+  it("averages monthly income totals across the requested months", () => {
+    const incomeByYm = bucketIncomeCentsByYm([
+      { amountCents: 100_000, date: dateFromYmd("2026-03-01") },
+      { amountCents: 50_000, date: dateFromYmd("2026-03-15") },
+      { amountCents: 300_000, date: dateFromYmd("2026-04-10") },
+      { amountCents: 0, date: dateFromYmd("2026-06-01") },
+    ]);
+
+    expect(
+      computeThreeMonthAverageIncomeCents(["2026-03", "2026-04", "2026-05"], incomeByYm),
+    ).toBe(150_000);
+  });
+});
+
 describe("computeRecurringCashFlowSummary", () => {
+  it("uses expected income override when provided", () => {
+    const summary = computeRecurringCashFlowSummary(
+      [
+        {
+          type: "INCOME",
+          amountCents: 999_999,
+          cadence: "MONTHLY",
+          nextExpectedDate: dateFromYmd("2026-05-01"),
+          endDate: null,
+          enabled: true,
+        },
+        {
+          type: "EXPENSE",
+          amountCents: 2_000,
+          cadence: "MONTHLY",
+          nextExpectedDate: dateFromYmd("2026-05-01"),
+          endDate: null,
+          enabled: true,
+        },
+      ],
+      {
+        start: dateFromYmd("2026-05-01"),
+        endExclusive: dateFromYmd("2026-06-01"),
+      },
+      { expectedIncomeCents: 120_000 },
+    );
+
+    expect(summary).toEqual({
+      incomeCents: 120_000,
+      expenseCents: 2_000,
+      netCents: 118_000,
+    });
+  });
+
   it("sums enabled recurring income and expenses inside the dashboard period", () => {
     const summary = computeRecurringCashFlowSummary(
       [
