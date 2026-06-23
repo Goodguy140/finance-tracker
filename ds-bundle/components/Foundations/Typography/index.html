@@ -1,0 +1,72 @@
+<!-- @dsCard group="Foundations" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Typography</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#020617;color:#e2e8f0;font-family:"Inter","Segoe UI",Roboto,sans-serif;padding:1.25rem;line-height:1.5}
+.row{display:flex;flex-direction:column;gap:1rem}
+.type-row{display:flex;align-items:baseline;gap:1.5rem;padding:.625rem 0;border-bottom:1px solid rgb(30 41 59/.6)}
+.type-row:last-child{border-bottom:none}
+.type-meta{width:9rem;flex-shrink:0;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#64748b}
+.mono-note{font-family:monospace;font-size:10px;color:#475569;margin-top:.125rem}
+</style>
+</head>
+<body>
+<div class="row">
+  <div class="type-row">
+    <div class="type-meta">H1<div class="mono-note">text-2xl font-bold tracking-tight</div></div>
+    <span style="font-size:1.5rem;font-weight:700;letter-spacing:-.025em;color:#f1f5f9">Finance Tracker</span>
+  </div>
+  <div class="type-row">
+    <div class="type-meta">H2<div class="mono-note">text-xl font-bold tracking-tight</div></div>
+    <span style="font-size:1.25rem;font-weight:700;letter-spacing:-.025em;color:#f1f5f9">Dashboard Overview</span>
+  </div>
+  <div class="type-row">
+    <div class="type-meta">H3<div class="mono-note">text-lg font-semibold</div></div>
+    <span style="font-size:1.125rem;font-weight:600;color:#f1f5f9">Expense Log</span>
+  </div>
+  <div class="type-row">
+    <div class="type-meta">Body<div class="mono-note">text-sm text-slate-200</div></div>
+    <span style="font-size:.875rem;color:#e2e8f0">Track your monthly expenses and stay within budget.</span>
+  </div>
+  <div class="type-row">
+    <div class="type-meta">Body-sm<div class="mono-note">text-xs text-slate-200</div></div>
+    <span style="font-size:.75rem;color:#e2e8f0">3 transactions this month</span>
+  </div>
+  <div class="type-row">
+    <div class="type-meta">Caption<div class="mono-note">text-xs text-slate-400</div></div>
+    <span style="font-size:.75rem;color:#94a3b8">June 2026 · Current month</span>
+  </div>
+  <div class="type-row">
+    <div class="type-meta">Dim<div class="mono-note">text-xs text-slate-500</div></div>
+    <span style="font-size:.75rem;color:#64748b">Last updated a moment ago</span>
+  </div>
+  <div class="type-row">
+    <div class="type-meta">Overline<div class="mono-note">text-[10px] uppercase tracking-wide font-semibold text-slate-400</div></div>
+    <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8">Expected income</span>
+  </div>
+  <div class="type-row">
+    <div class="type-meta">Amount · income<div class="mono-note">tabular-nums text-emerald-200</div></div>
+    <span style="font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;color:#a7f3d0">$4,250.00</span>
+  </div>
+  <div class="type-row">
+    <div class="type-meta">Amount · expense<div class="mono-note">tabular-nums text-blue-100</div></div>
+    <span style="font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;color:#bfdbfe">$1,840.00</span>
+  </div>
+  <div class="type-row">
+    <div class="type-meta">Amount · negative<div class="mono-note">tabular-nums text-red-200</div></div>
+    <span style="font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;color:#fecaca">−$320.00</span>
+  </div>
+  <div class="type-row">
+    <div class="type-meta">Mono<div class="mono-note">font-mono text-sm</div></div>
+    <span style="font-family:'SFMono-Regular',Menlo,Monaco,Consolas,monospace;font-size:.875rem;color:#e2e8f0">2026-06-23</span>
+  </div>
+  <div class="type-row">
+    <div class="type-meta">Link<div class="mono-note">text-blue-300 underline-offset-4 hover:underline</div></div>
+    <a href="#" style="color:#93c5fd;text-underline-offset:4px;text-decoration:none">Manage budgets →</a>
+  </div>
+</div>
+</body>
+</html>

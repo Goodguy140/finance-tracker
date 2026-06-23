@@ -1,0 +1,115 @@
+<!-- @dsCard group="Patterns" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>AlertRow</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#020617;color:#e2e8f0;font-family:"Inter","Segoe UI",Roboto,sans-serif;font-size:14px;padding:1.25rem;line-height:1.5}
+.label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:.5rem;margin-top:1.25rem}
+.label:first-child{margin-top:0}
+.alert{border-radius:.75rem;border:1px solid;padding:.75rem;margin-bottom:.5rem}
+.alert:last-child{margin-bottom:0}
+.alert-critical{border-color:rgb(239 68 68/.4);background:rgb(69 10 10/.3)}
+.alert-warning{border-color:rgb(245 158 11/.35);background:rgb(120 53 15/.25)}
+.alert-pace{border-color:rgb(249 115 22/.3);background:rgb(124 45 18/.2)}
+.alert-neutral{border-color:#1e293b;background:rgb(2 6 23/.5)}
+.alert-inner{display:flex;align-items:flex-start;gap:.5rem}
+.dot{width:.5rem;height:.5rem;border-radius:9999px;flex-shrink:0;margin-top:.375rem}
+.dot-red{background:#f87171}
+.dot-amber{background:#fbbf24}
+.alert-body{flex:1;min-width:0}
+.alert-msg{font-size:.875rem;font-weight:500;color:#f1f5f9}
+.alert-sub{font-size:.75rem;font-variant-numeric:tabular-nums;color:#94a3b8;margin-top:.25rem}
+.dismiss-btn{flex-shrink:0;border-radius:.5rem;border:1px solid rgb(51 65 85/.8);padding:.25rem .5rem;font-size:.75rem;font-weight:500;color:#cbd5e1;background:none;cursor:pointer}
+.section-hdr{font-size:.625rem;font-weight:500;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:.5rem}
+/* Full panel */
+.panel{border-radius:1rem;border:1px solid #334155;background:rgb(2 6 23/.98);padding:1rem;backdrop-filter:blur(8px);box-shadow:0 20px 25px -5px rgb(0 0 0/.5)}
+.panel-hdr{border-bottom:1px solid rgb(30 41 59/.9);padding-bottom:.75rem;margin-bottom:.75rem}
+.panel-title{font-size:1rem;font-weight:600;color:#f1f5f9}
+.panel-period{font-size:.75rem;color:#94a3b8;margin-top:.125rem}
+</style>
+</head>
+<body>
+
+<div class="label">Critical alert</div>
+<div class="alert alert-critical">
+  <div class="alert-inner">
+    <span class="dot dot-red"></span>
+    <div class="alert-body">
+      <p class="alert-msg">Entertainment is over budget</p>
+      <p class="alert-sub">$150.00 / $100.00</p>
+    </div>
+    <button class="dismiss-btn">Dismiss</button>
+  </div>
+</div>
+
+<div class="label">Warning alert</div>
+<div class="alert alert-warning">
+  <div class="alert-inner">
+    <span class="dot dot-amber"></span>
+    <div class="alert-body">
+      <p class="alert-msg">Dining Out is at 85% of budget</p>
+      <p class="alert-sub">$170.00 / $200.00</p>
+    </div>
+    <button class="dismiss-btn">Dismiss</button>
+  </div>
+</div>
+
+<div class="label">Over-budget pace alert</div>
+<div class="alert alert-pace">
+  <div class="alert-inner">
+    <div class="alert-body">
+      <p class="alert-msg" style="color:#e2e8f0">Groceries is on pace to exceed budget by month-end</p>
+    </div>
+  </div>
+</div>
+
+<div class="label">Month-over-month trend</div>
+<div class="alert alert-neutral">
+  <div class="alert-inner">
+    <div class="alert-body">
+      <p class="alert-msg" style="color:#cbd5e1">Dining Out spending is +$42 vs last month</p>
+    </div>
+  </div>
+</div>
+
+<div class="label">Full budget alerts panel</div>
+<div class="panel" style="max-width:22rem">
+  <div class="panel-hdr">
+    <div class="panel-title">Budget alerts &amp; insights</div>
+    <div class="panel-period">June 2026</div>
+  </div>
+  <div class="section-hdr">Warnings</div>
+  <div class="alert alert-critical" style="margin-bottom:.5rem">
+    <div class="alert-inner">
+      <span class="dot dot-red"></span>
+      <div class="alert-body">
+        <p class="alert-msg">Entertainment is over budget</p>
+        <p class="alert-sub">$150.00 / $100.00</p>
+      </div>
+      <button class="dismiss-btn">Dismiss</button>
+    </div>
+  </div>
+  <div class="alert alert-warning" style="margin-bottom:1rem">
+    <div class="alert-inner">
+      <span class="dot dot-amber"></span>
+      <div class="alert-body">
+        <p class="alert-msg">Dining Out is at 85% of budget</p>
+        <p class="alert-sub">$170.00 / $200.00</p>
+      </div>
+      <button class="dismiss-btn">Dismiss</button>
+    </div>
+  </div>
+  <div class="section-hdr">Over-budget pace</div>
+  <div class="alert alert-pace" style="margin-bottom:1rem">
+    <p style="font-size:.875rem;color:#e2e8f0">Groceries is on pace to exceed budget by month-end</p>
+  </div>
+  <div class="section-hdr">vs last month</div>
+  <div class="alert alert-neutral">
+    <p style="font-size:.875rem;color:#cbd5e1">Dining Out spending is +$42 vs last month</p>
+  </div>
+  <p style="font-size:.75rem;color:#64748b;margin-top:.75rem">Enable browser or email alerts in <a href="#" style="color:#93c5fd;text-underline-offset:4px">Settings → Budgets</a>.</p>
+</div>
+</body>
+</html>

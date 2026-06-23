@@ -1,0 +1,95 @@
+<!-- @dsCard group="Primitives" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Input</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#020617;color:#e2e8f0;font-family:"Inter","Segoe UI",Roboto,sans-serif;font-size:14px;padding:1.25rem;line-height:1.5}
+.label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:.5rem;margin-top:1rem}
+.label:first-child{margin-top:0}
+.field{display:flex;flex-direction:column;gap:.375rem;margin-bottom:.75rem}
+.field-label{font-size:.875rem;font-weight:500;color:#e2e8f0}
+.field-hint{font-size:.75rem;color:#64748b;line-height:1.4}
+.inp,.sel,.ta{width:100%;min-height:2.75rem;border-radius:.75rem;border:1px solid #334155;background:rgb(2 6 23/.7);padding:.625rem .75rem;font-size:.875rem;color:#f1f5f9;outline:none;font-family:inherit;line-height:1.5}
+.inp::placeholder,.ta::placeholder{color:#64748b}
+.ta{min-height:5rem;resize:vertical}
+.inp-focus{border-color:#60a5fa;box-shadow:0 0 0 2px rgb(59 130 246/.2)}
+/* currency prefix */
+.amount-wrap{position:relative}
+.amount-prefix{pointer-events:none;position:absolute;inset-y:0;left:.75rem;display:flex;align-items:center;font-size:.75rem;font-weight:500;letter-spacing:.025em;color:#93c5fd}
+.inp-pl{padding-left:4rem}
+/* floating label */
+.fl-wrap{position:relative}
+.fl-label{pointer-events:none;position:absolute;left:.75rem;top:-.5rem;z-index:10;border-radius:.25rem;background:#0f172a;padding:0 .25rem;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+</style>
+</head>
+<body>
+
+<div class="label">Text input</div>
+<div class="field">
+  <label class="field-label" for="ex1">Transaction title</label>
+  <input class="inp" id="ex1" placeholder="e.g. Groceries" value="Tim Hortons">
+</div>
+
+<div class="label">Focused state</div>
+<div class="field">
+  <label class="field-label" for="ex2">Category</label>
+  <input class="inp inp-focus" id="ex2" placeholder="Select a category" value="">
+</div>
+
+<div class="label">Currency amount</div>
+<div class="field">
+  <label class="field-label" for="ex3">Amount</label>
+  <div class="amount-wrap">
+    <span class="amount-prefix">CAD $</span>
+    <input class="inp inp-pl" id="ex3" type="number" step="0.01" placeholder="0.00" value="42.50">
+  </div>
+</div>
+
+<div class="label">Date field</div>
+<div class="field">
+  <label class="field-label" for="ex4">Date</label>
+  <input class="inp" id="ex4" type="date" value="2026-06-23">
+</div>
+
+<div class="label">Select</div>
+<div class="field">
+  <label class="field-label" for="ex5">Account</label>
+  <select class="sel" id="ex5">
+    <option>Chequing (Chequing)</option>
+    <option>Visa (Credit Card)</option>
+  </select>
+</div>
+
+<div class="label">Textarea</div>
+<div class="field">
+  <label class="field-label" for="ex6">Note</label>
+  <textarea class="ta" id="ex6" placeholder="Optional note…"></textarea>
+</div>
+
+<div class="label">Floating label variant</div>
+<div class="field">
+  <div class="fl-wrap">
+    <span class="fl-label">Category</span>
+    <input class="inp" style="background:#0f172a" value="Groceries">
+  </div>
+</div>
+
+<div class="label">Two-column form grid</div>
+<div class="grid2">
+  <div class="field" style="margin:0">
+    <label class="field-label" for="ex7">Amount</label>
+    <div class="amount-wrap">
+      <span class="amount-prefix">CAD $</span>
+      <input class="inp inp-pl" id="ex7" type="number" step="0.01" placeholder="0.00">
+    </div>
+  </div>
+  <div class="field" style="margin:0">
+    <label class="field-label" for="ex8">Date</label>
+    <input class="inp" id="ex8" type="date" value="2026-06-23">
+  </div>
+</div>
+</body>
+</html>

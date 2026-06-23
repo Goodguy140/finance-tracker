@@ -1,0 +1,69 @@
+<!-- @dsCard group="Primitives" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Button</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#020617;color:#e2e8f0;font-family:"Inter","Segoe UI",Roboto,sans-serif;font-size:14px;padding:1.25rem;line-height:1.5}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:.75rem;margin-bottom:1.25rem}
+.label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:.5rem}
+/* Primary */
+.btn-p{display:inline-flex;align-items:center;justify-content:center;border-radius:.75rem;background:#3b82f6;padding:.5rem .75rem;font-size:.875rem;font-weight:500;color:#fff;border:none;cursor:pointer;min-height:2.75rem;touch-action:manipulation}
+/* Secondary */
+.btn-s{display:inline-flex;align-items:center;justify-content:center;border-radius:.75rem;background:#0f172a;border:1px solid #334155;padding:.5rem .75rem;font-size:.875rem;font-weight:500;color:#e2e8f0;cursor:pointer;min-height:2.75rem;touch-action:manipulation}
+/* Icon (compact) */
+.btn-i{display:inline-flex;align-items:center;justify-content:center;border-radius:.5rem;background:rgb(15 23 42/.9);border:1px solid rgb(51 65 85/.8);padding:.375rem .625rem;color:#e2e8f0;cursor:pointer;min-height:2.25rem;min-width:2.25rem;touch-action:manipulation}
+/* Link-style */
+.btn-link{background:none;border:none;color:#93c5fd;font-size:.875rem;font-weight:500;cursor:pointer;text-underline-offset:4px;padding:0}
+/* Disabled */
+.btn-disabled{display:inline-flex;align-items:center;justify-content:center;border-radius:.75rem;background:#1e293b;padding:.5rem .75rem;font-size:.875rem;font-weight:500;color:#475569;border:none;cursor:not-allowed;min-height:2.75rem;opacity:.6}
+/* Danger */
+.btn-danger{display:inline-flex;align-items:center;justify-content:center;border-radius:.75rem;background:rgb(239 68 68/.15);border:1px solid rgb(239 68 68/.35);padding:.5rem .75rem;font-size:.875rem;font-weight:500;color:#fca5a5;cursor:pointer;min-height:2.75rem}
+/* Tabs */
+.btn-tab-active{display:inline-flex;align-items:center;border-radius:9999px;background:rgb(59 130 246/.2);color:#93c5fd;padding:.375rem .75rem;font-size:.75rem;font-weight:500;ring:1px solid rgb(59 130 246/.4);border:1px solid rgb(59 130 246/.4)}
+.btn-tab{display:inline-flex;align-items:center;border-radius:9999px;color:#94a3b8;padding:.375rem .75rem;font-size:.75rem;font-weight:500;background:none;border:1px solid transparent;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="label">Primary</div>
+<div class="row">
+  <button class="btn-p">Add expense</button>
+  <button class="btn-p">Save changes</button>
+</div>
+
+<div class="label">Secondary</div>
+<div class="row">
+  <button class="btn-s">Settings</button>
+  <button class="btn-s">Cancel</button>
+  <button class="btn-s">Dismiss</button>
+</div>
+
+<div class="label">Icon / Compact</div>
+<div class="row">
+  <button class="btn-i" aria-label="Bell">
+    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"/></svg>
+  </button>
+  <button class="btn-i" aria-label="Plus">
+    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+  </button>
+  <button class="btn-i" style="padding:.375rem .625rem;min-height:0;gap:.375rem;font-size:.75rem;min-width:auto">
+    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+    Add
+  </button>
+</div>
+
+<div class="label">Pill tabs (carousel nav)</div>
+<div class="row">
+  <button class="btn-tab-active">Categories</button>
+  <button class="btn-tab">Budgets</button>
+</div>
+
+<div class="label">Link &amp; Danger</div>
+<div class="row">
+  <button class="btn-link">Manage budgets</button>
+  <button class="btn-danger">Delete account</button>
+  <button class="btn-disabled" disabled>Processing…</button>
+</div>
+</body>
+</html>

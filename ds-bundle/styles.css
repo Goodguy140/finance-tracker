@@ -1,0 +1,19 @@
+/* Finance Tracker — root stylesheet */
+/* Designs receive this file and its transitive imports. */
+
+@import "./_ds_bundle.css";
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  background: var(--ft-bg);
+  color: var(--ft-fg);
+  font-family: var(--ft-font);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+* { border-color: var(--ft-border); }
+
+::selection { background: #334155; color: #f8fafc; }
