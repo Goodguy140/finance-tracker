@@ -1,0 +1,77 @@
+<!-- @dsCard group="Patterns" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>NavTab</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#020617;color:#e2e8f0;font-family:"Inter","Segoe UI",Roboto,sans-serif;font-size:14px;padding:1.25rem;line-height:1.5}
+.label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:.75rem;margin-top:1.5rem}
+.label:first-child{margin-top:0}
+/* Pill nav (used as primary section switcher) */
+.nav{display:flex;flex-wrap:wrap;gap:5px}
+.tab{padding:6px 14px;border-radius:9999px;font-size:13px;font-weight:400;border:1px solid transparent;background:transparent;color:#94a3b8;cursor:pointer}
+.tab-active{background:rgb(59 130 246/.15);border-color:rgb(59 130 246/.4);color:#93c5fd;font-weight:500}
+/* Segment tabs (for within-section panels) */
+.seg-nav{display:flex;gap:4px;background:rgb(30 41 59/.5);border-radius:9999px;padding:3px;border:1px solid #1e293b;width:fit-content}
+.seg{padding:5px 14px;border-radius:9999px;font-size:12px;font-weight:400;color:#94a3b8;cursor:pointer;border:none;background:transparent}
+.seg-active{background:#0f172a;color:#e2e8f0;font-weight:500;box-shadow:0 1px 3px rgb(0 0 0/.3)}
+/* Header bar */
+.header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #1e293b;padding-bottom:1rem;margin-bottom:1.25rem}
+.header-left{}
+.header-eyebrow{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin-bottom:2px}
+.header-title{font-size:20px;font-weight:700;letter-spacing:-.02em;color:#f1f5f9}
+.header-actions{display:flex;gap:8px;align-items:center}
+.header-btn{padding:6px 12px;border-radius:10px;font-size:12px;font-weight:500;border:1px solid #334155;background:#0f172a;color:#94a3b8;cursor:pointer}
+</style>
+</head>
+<body>
+
+<div class="label">Section switcher — pill nav (top-level)</div>
+<div class="nav">
+  <button class="tab tab-active">Overview</button>
+  <button class="tab">Money</button>
+  <button class="tab">Net worth</button>
+  <button class="tab">Career</button>
+  <button class="tab">Goals</button>
+  <button class="tab">Skills</button>
+  <button class="tab">Habits</button>
+  <button class="tab">Driving</button>
+</div>
+
+<div class="label">Segment control — within-section toggle</div>
+<div class="seg-nav">
+  <button class="seg seg-active">This month</button>
+  <button class="seg">YTD</button>
+  <button class="seg">All time</button>
+</div>
+
+<div class="label" style="margin-top:1.5rem">Carousel dot tabs (mobile swipe panels)</div>
+<div style="display:flex;align-items:center;justify-content:center;gap:8px">
+  <button style="border-radius:9999px;padding:5px 14px;font-size:12px;font-weight:500;background:rgb(59 130 246/.2);color:#93c5fd;border:1px solid rgb(59 130 246/.4)">Categories</button>
+  <button style="border-radius:9999px;padding:5px 14px;font-size:12px;font-weight:400;color:#94a3b8;border:1px solid transparent;background:transparent">Budgets</button>
+</div>
+
+<div class="label">Full dashboard header + nav</div>
+<div>
+  <div class="header">
+    <div class="header-left">
+      <div class="header-eyebrow">Life Dashboard</div>
+      <div class="header-title">Christian's future</div>
+    </div>
+    <div class="header-actions">
+      <button class="header-btn">☀ Light</button>
+      <button class="header-btn">Compact</button>
+    </div>
+  </div>
+  <div class="nav">
+    <button class="tab tab-active">Overview</button>
+    <button class="tab">Money</button>
+    <button class="tab">Net worth</button>
+    <button class="tab">Career</button>
+    <button class="tab">Goals</button>
+    <button class="tab">Habits</button>
+  </div>
+</div>
+</body>
+</html>

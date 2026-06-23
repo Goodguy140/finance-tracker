@@ -1,0 +1,121 @@
+<!-- @dsCard group="Patterns" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Timeline</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#020617;color:#e2e8f0;font-family:"Inter","Segoe UI",Roboto,sans-serif;font-size:14px;padding:1.25rem;line-height:1.5}
+.label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:.75rem;margin-top:1.5rem}
+.label:first-child{margin-top:0}
+.tl{position:relative;padding-left:8px}
+.tl-item{display:flex;gap:14px;padding-bottom:18px;position:relative}
+.tl-item:last-child{padding-bottom:0}
+.tl-line{position:absolute;left:7px;top:16px;width:2px;height:calc(100% - 8px);background:rgb(107 92 231/.3)}
+.tl-dot{width:16px;height:16px;border-radius:50%;flex-shrink:0;margin-top:2px;position:relative;z-index:1;display:flex;align-items:center;justify-content:center;border:2px solid}
+.tl-dot-violet{border-color:#6B5CE7;background:#6B5CE7}
+.tl-dot-empty{border-color:#6B5CE7;background:#020617}
+.tl-dot-fork{border-color:#6B5CE7;background:#020617}
+.tl-dot-done{border-color:#1D9E75;background:#1D9E75}
+.tl-body{flex:1;min-width:0}
+.tl-phase{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px}
+.tl-title{font-size:13px;font-weight:500;color:#e2e8f0;margin:0 0 2px;line-height:1.35}
+.tl-note{font-size:11px;color:#94a3b8;margin:0;line-height:1.65}
+.income-tag{display:inline-flex;align-items:center;border-radius:9999px;border:1px solid;padding:1px 8px;font-size:10px;font-weight:600;margin-left:6px}
+.cb{width:18px;height:18px;border-radius:5px;flex-shrink:0;margin-top:1px;border:1.5px solid #334155;background:transparent;display:flex;align-items:center;justify-content:center}
+.cb-done{border-color:#1D9E75;background:#1D9E75}
+</style>
+</head>
+<body>
+
+<div class="label">Career path timeline (violet)</div>
+<div class="tl">
+  <!-- item 1 — done -->
+  <div class="tl-item">
+    <div class="tl-line"></div>
+    <div class="tl-dot tl-dot-done">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#020617" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="tl-body" style="opacity:.5">
+      <div class="tl-phase" style="color:#1D9E75">Phase 0</div>
+      <p class="tl-title" style="text-decoration:line-through">Foundation — current role</p>
+      <p class="tl-note">Staff software engineer at current company. Save aggressively.</p>
+    </div>
+    <div class="cb cb-done">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#f1f5f9" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+  </div>
+  <!-- item 2 — active -->
+  <div class="tl-item">
+    <div class="tl-line"></div>
+    <div class="tl-dot tl-dot-violet"></div>
+    <div class="tl-body">
+      <div style="display:flex;align-items:center;flex-wrap:wrap;margin-bottom:3px">
+        <span class="tl-phase" style="color:#6B5CE7">Phase 1</span>
+        <span class="income-tag" style="border-color:rgb(107 92 231/.3);background:rgb(107 92 231/.15);color:#6B5CE7">$85K–$110K</span>
+      </div>
+      <p class="tl-title">Senior Engineer role — target employer</p>
+      <p class="tl-note">Land a senior IC role at a company with FAANG-adjacent TC. Build system design depth.</p>
+    </div>
+    <div class="cb"></div>
+  </div>
+  <!-- item 3 — fork/decision -->
+  <div class="tl-item">
+    <div class="tl-line"></div>
+    <div class="tl-dot tl-dot-fork">
+      <div style="width:6px;height:6px;border-radius:50%;background:#6B5CE7"></div>
+    </div>
+    <div class="tl-body">
+      <div class="tl-phase" style="color:#6B5CE7">Fork — Decision point</div>
+      <p class="tl-title">Choose IC vs EM track</p>
+      <p class="tl-note">Evaluate team-management appetite vs deep-IC interest. Either path leads to L6+.</p>
+    </div>
+    <div class="cb"></div>
+  </div>
+  <!-- item 4 -->
+  <div class="tl-item">
+    <div class="tl-dot tl-dot-empty"></div>
+    <div class="tl-body">
+      <div style="display:flex;align-items:center;flex-wrap:wrap;margin-bottom:3px">
+        <span class="tl-phase" style="color:#6B5CE7">Phase 2</span>
+        <span class="income-tag" style="border-color:rgb(107 92 231/.3);background:rgb(107 92 231/.15);color:#6B5CE7">$130K+</span>
+      </div>
+      <p class="tl-title">Staff / Principal or EM promotion</p>
+      <p class="tl-note">Drive a cross-org initiative. Hit FIRE threshold.</p>
+    </div>
+    <div class="cb"></div>
+  </div>
+</div>
+
+<div class="label">Goals timeline (green)</div>
+<div class="tl">
+  <div class="tl-item">
+    <div class="tl-line" style="background:rgb(29 158 117/.3)"></div>
+    <div class="tl-dot" style="border-color:#1D9E75;background:#1D9E75">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#020617" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="tl-body" style="opacity:.5">
+      <span class="tl-phase" style="color:#1D9E75">2024</span>
+      <p class="tl-title" style="text-decoration:line-through">Emergency fund — 3 months expenses</p>
+    </div>
+  </div>
+  <div class="tl-item">
+    <div class="tl-line" style="background:rgb(29 158 117/.3)"></div>
+    <div class="tl-dot" style="border-color:#1D9E75;background:#020617"></div>
+    <div class="tl-body">
+      <span class="tl-phase" style="color:#1D9E75">2025-Q3</span>
+      <p class="tl-title">Japan Working Holiday fund</p>
+      <p class="tl-note">CAD $12,000 saved and committed</p>
+    </div>
+  </div>
+  <div class="tl-item">
+    <div class="tl-dot" style="border-color:#1D9E75;background:#020617"></div>
+    <div class="tl-body">
+      <span class="tl-phase" style="color:#1D9E75">2026</span>
+      <p class="tl-title">FIRE target — $600K net worth</p>
+      <p class="tl-note">Enough invested to sustain living expenses indefinitely.</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

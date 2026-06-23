@@ -1,0 +1,56 @@
+<!-- @dsCard group="Primitives" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Tag</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#020617;color:#e2e8f0;font-family:"Inter","Segoe UI",Roboto,sans-serif;font-size:14px;padding:1.25rem;line-height:1.5}
+.label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:.625rem;margin-top:1.25rem}
+.label:first-child{margin-top:0}
+.row{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.tag{display:inline-flex;align-items:center;border-radius:9999px;border:1px solid;padding:2px 10px;font-size:11px;font-weight:600;letter-spacing:.025em;white-space:nowrap;flex-shrink:0}
+</style>
+</head>
+<body>
+
+<div class="label">Accent color tags</div>
+<div class="row">
+  <span class="tag" style="border-color:rgb(201 164 76/.35);background:rgb(201 164 76/.15);color:#C9A44C">Gold Path</span>
+  <span class="tag" style="border-color:rgb(217 79 61/.35);background:rgb(217 79 61/.15);color:#D94F3D">High Risk</span>
+  <span class="tag" style="border-color:rgb(29 158 117/.35);background:rgb(29 158 117/.15);color:#1D9E75">On Track</span>
+  <span class="tag" style="border-color:rgb(58 130 196/.35);background:rgb(58 130 196/.15);color:#3A82C4">Remote</span>
+  <span class="tag" style="border-color:rgb(107 92 231/.35);background:rgb(107 92 231/.15);color:#6B5CE7">Learning</span>
+  <span class="tag" style="border-color:rgb(249 115 22/.35);background:rgb(249 115 22/.15);color:#F97316">Hybrid</span>
+</div>
+
+<div class="label">Status / phase tags</div>
+<div class="row">
+  <span class="tag" style="border-color:rgb(16 185 129/.35);background:rgb(16 185 129/.1);color:#a7f3d0">Active</span>
+  <span class="tag" style="border-color:rgb(245 158 11/.35);background:rgb(245 158 11/.1);color:#fbbf24">In Progress</span>
+  <span class="tag" style="border-color:rgb(239 68 68/.35);background:rgb(239 68 68/.1);color:#fca5a5">Overdue</span>
+  <span class="tag" style="border-color:#334155;background:rgb(51 65 85/.2);color:#94a3b8">Paused</span>
+  <span class="tag" style="border-color:rgb(16 185 129/.35);background:rgb(16 185 129/.1);color:#a7f3d0">✓ Done</span>
+</div>
+
+<div class="label">Income labels on timeline events</div>
+<div class="row">
+  <span class="tag" style="border-color:rgb(29 158 117/.3);background:rgb(29 158 117/.15);color:#1D9E75">$75K–$95K</span>
+  <span class="tag" style="border-color:rgb(58 130 196/.3);background:rgb(58 130 196/.15);color:#3A82C4">$85K–$110K</span>
+  <span class="tag" style="border-color:rgb(107 92 231/.3);background:rgb(107 92 231/.15);color:#6B5CE7">$120K+</span>
+</div>
+
+<div class="label">Combined — tag + chip in a row</div>
+<div class="row">
+  <span class="tag" style="border-color:rgb(107 92 231/.35);background:rgb(107 92 231/.15);color:#6B5CE7">B5 Path</span>
+  <span style="display:inline-flex;align-items:center;gap:.25rem;border-radius:9999px;border:1px solid rgb(51 65 85/.8);background:rgb(30 41 59/.5);padding:.25rem .625rem;font-size:11px">
+    <span style="color:#64748b;font-weight:500">Goal</span>
+    <span style="color:#f1f5f9;font-weight:500">Senior Engineer</span>
+  </span>
+  <span style="display:inline-flex;align-items:center;gap:.25rem;border-radius:9999px;border:1px solid rgb(51 65 85/.8);background:rgb(30 41 59/.5);padding:.25rem .625rem;font-size:11px">
+    <span style="color:#64748b;font-weight:500">By</span>
+    <span style="color:#f1f5f9;font-weight:500">2027-Q2</span>
+  </span>
+</div>
+</body>
+</html>
