@@ -1,0 +1,87 @@
+<!-- @dsCard group="Layouts" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Card</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#020617;color:#e2e8f0;font-family:"Inter","Segoe UI",Roboto,sans-serif;font-size:14px;padding:1.25rem;line-height:1.5}
+.label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:.75rem;margin-top:1.5rem}
+.label:first-child{margin-top:0}
+/* Panel shell */
+.panel{border-radius:1rem;border:1px solid #1e293b;background:rgb(15 23 42/.8);padding:1rem;box-shadow:0 10px 15px -3px rgb(0 0 0/.4),0 4px 6px -4px rgb(0 0 0/.3)}
+/* Panel header */
+.panel-header{border-bottom:1px solid rgb(30 41 59/.8);padding-bottom:1rem;margin-bottom:1rem}
+.panel-header-row{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem}
+.panel-title{font-size:1.125rem;font-weight:600;color:#f1f5f9}
+.panel-subtitle{font-size:.75rem;color:#94a3b8;margin-top:.25rem}
+.panel-amount{font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums;color:#a7f3d0}
+/* Glassmorphism header variant */
+.header-glass{background:linear-gradient(to bottom,rgb(15 23 42/.95),rgb(15 23 42/.8));border-bottom:1px solid rgb(30 41 59/.9);padding:1rem;backdrop-filter:blur(8px);box-shadow:0 10px 15px -3px rgb(0 0 0/.3)}
+/* Simple empty card */
+.card-simple{border-radius:1rem;border:1px solid #1e293b;background:rgb(15 23 42/.8);padding:1rem}
+/* Compact inner card */
+.card-inner{border-radius:.75rem;border:1px solid #1e293b;background:rgb(2 6 23/.5);padding:.625rem}
+</style>
+</head>
+<body>
+
+<div class="label">Standard panel shell</div>
+<div class="panel">
+  <div class="panel-title">Expense Log</div>
+  <div class="panel-subtitle">June 2026 · 12 transactions</div>
+  <div style="margin-top:.75rem;color:#94a3b8;font-size:.875rem">Panel content goes here.</div>
+</div>
+
+<div class="label">Panel with header + amount summary</div>
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-header-row">
+      <div>
+        <div class="panel-title">Income</div>
+        <div class="panel-subtitle">June 2026</div>
+        <div style="margin-top:.5rem;font-size:.75rem;font-variant-numeric:tabular-nums;color:#64748b">4 deposits</div>
+      </div>
+      <div class="panel-amount">$8,500.00</div>
+    </div>
+  </div>
+  <div style="color:#94a3b8;font-size:.875rem">Transaction list goes here.</div>
+</div>
+
+<div class="label">Header / navigation bar (glassmorphism)</div>
+<div style="border-radius:1rem;border:1px solid rgb(30 41 59/.9);overflow:hidden">
+  <div class="header-glass">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem">
+      <div>
+        <h1 style="font-size:1.5rem;font-weight:700;letter-spacing:-.025em;color:#f1f5f9">Finance Tracker</h1>
+        <p style="font-size:.75rem;color:#94a3b8">Welcome, Christian (CA)</p>
+      </div>
+      <div style="display:flex;gap:.5rem">
+        <button style="display:inline-flex;align-items:center;border-radius:.75rem;border:1px solid #334155;background:#0f172a;padding:.375rem .75rem;font-size:.75rem;color:#e2e8f0;cursor:pointer">Settings</button>
+        <button style="display:inline-flex;align-items:center;border-radius:.75rem;border:1px solid #334155;background:#0f172a;padding:.375rem .75rem;font-size:.75rem;color:#e2e8f0;cursor:pointer">Logout</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="label">Inner stat card (nested inside a panel)</div>
+<div class="panel">
+  <div style="font-size:1.125rem;font-weight:600;margin-bottom:.75rem;color:#f1f5f9">Recurring transactions</div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem">
+    <div class="card-inner">
+      <p style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8">Expected income</p>
+      <p style="font-size:.875rem;font-weight:600;color:#a7f3d0;font-variant-numeric:tabular-nums">$4,250.00</p>
+      <p style="font-size:10px;color:#64748b;margin-top:.125rem">3-month average</p>
+    </div>
+    <div class="card-inner">
+      <p style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8">Expected expenses</p>
+      <p style="font-size:.875rem;font-weight:600;color:#bfdbfe;font-variant-numeric:tabular-nums">$1,840.00</p>
+    </div>
+    <div class="card-inner">
+      <p style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8">Net cash flow</p>
+      <p style="font-size:.875rem;font-weight:600;color:#a7f3d0;font-variant-numeric:tabular-nums">$2,410.00</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

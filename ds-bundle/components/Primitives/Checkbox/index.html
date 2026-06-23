@@ -1,0 +1,101 @@
+<!-- @dsCard group="Primitives" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Checkbox</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#020617;color:#e2e8f0;font-family:"Inter","Segoe UI",Roboto,sans-serif;font-size:14px;padding:1.25rem;line-height:1.5}
+.label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:.75rem;margin-top:1.25rem}
+.label:first-child{margin-top:0}
+.row{display:flex;flex-direction:column;gap:.375rem}
+.item{display:flex;align-items:center;gap:.625rem;padding:.375rem 0}
+.cb{width:18px;height:18px;border-radius:5px;flex-shrink:0;border:1.5px solid;display:flex;align-items:center;justify-content:center}
+.cb-unchecked{border-color:#334155;background:transparent}
+.cb-checked-green{border-color:#1D9E75;background:#1D9E75}
+.cb-checked-blue{border-color:#3b82f6;background:#3b82f6}
+.cb-checked-violet{border-color:#6B5CE7;background:#6B5CE7}
+.item-text{font-size:13px;color:#e2e8f0}
+.item-done{text-decoration:line-through;opacity:.55;color:#94a3b8}
+/* habit grid row */
+.habit-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #1e293b}
+.habit-row:last-child{border-bottom:none}
+.habit-name{font-size:13px;color:#e2e8f0;flex:1;min-width:0}
+.habit-cells{display:flex;gap:3px}
+.hcell{width:20px;height:20px;border-radius:5px;border:1px solid;display:inline-block;cursor:pointer}
+.hcell-done{border-color:#1D9E75;background:#1D9E75}
+.hcell-empty{border-color:#334155;background:transparent}
+.streak{font-size:12px;font-weight:500;color:#1D9E75;min-width:1.5rem;text-align:center}
+</style>
+</head>
+<body>
+
+<div class="label">Checklist — unchecked / checked states</div>
+<div class="row">
+  <div class="item">
+    <div class="cb cb-unchecked"></div>
+    <span class="item-text">Complete driving lesson 14</span>
+  </div>
+  <div class="item">
+    <div class="cb cb-checked-green">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <span class="item-text item-done">Research TFSA contribution room</span>
+  </div>
+  <div class="item">
+    <div class="cb cb-unchecked"></div>
+    <span class="item-text">Update net worth snapshot</span>
+  </div>
+  <div class="item">
+    <div class="cb cb-checked-violet">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <span class="item-text item-done">Pass G1 theory test</span>
+  </div>
+</div>
+
+<div class="label">Habit tracker grid (7-day view)</div>
+<div style="border-radius:1rem;border:1px solid #1e293b;background:rgb(15 23 42/.8);padding:1rem">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:.625rem">
+    <div style="flex:1;min-width:150px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#64748b">Habit</div>
+    <div class="habit-cells" style="font-size:10px;color:#64748b;gap:3px">
+      <span style="width:20px;text-align:center">M</span>
+      <span style="width:20px;text-align:center">T</span>
+      <span style="width:20px;text-align:center">W</span>
+      <span style="width:20px;text-align:center">T</span>
+      <span style="width:20px;text-align:center">F</span>
+      <span style="width:20px;text-align:center">S</span>
+      <span style="width:20px;font-weight:700;color:#e2e8f0;text-align:center">S</span>
+    </div>
+    <div class="streak">🔥</div>
+  </div>
+  <div class="habit-row">
+    <div class="habit-name">Morning run</div>
+    <div class="habit-cells">
+      <div class="hcell hcell-done"></div><div class="hcell hcell-done"></div><div class="hcell hcell-done"></div>
+      <div class="hcell hcell-done"></div><div class="hcell hcell-done"></div><div class="hcell hcell-empty"></div>
+      <div class="hcell hcell-done"></div>
+    </div>
+    <div class="streak">5</div>
+  </div>
+  <div class="habit-row">
+    <div class="habit-name">Read 30 min</div>
+    <div class="habit-cells">
+      <div class="hcell hcell-done"></div><div class="hcell hcell-empty"></div><div class="hcell hcell-done"></div>
+      <div class="hcell hcell-done"></div><div class="hcell hcell-empty"></div><div class="hcell hcell-done"></div>
+      <div class="hcell hcell-done"></div>
+    </div>
+    <div class="streak">2</div>
+  </div>
+  <div class="habit-row">
+    <div class="habit-name">No alcohol</div>
+    <div class="habit-cells">
+      <div class="hcell hcell-done"></div><div class="hcell hcell-done"></div><div class="hcell hcell-done"></div>
+      <div class="hcell hcell-done"></div><div class="hcell hcell-done"></div><div class="hcell hcell-done"></div>
+      <div class="hcell hcell-done"></div>
+    </div>
+    <div class="streak">7</div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,89 @@
+<!-- @dsCard group="Layouts" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>StatBox</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#020617;color:#e2e8f0;font-family:"Inter","Segoe UI",Roboto,sans-serif;font-size:14px;padding:1.25rem;line-height:1.5}
+.label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:.75rem;margin-top:1.25rem}
+.label:first-child{margin-top:0}
+.stat{border-radius:.75rem;border:1px solid #1e293b;background:rgb(2 6 23/.5);padding:.625rem}
+.stat-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8}
+.stat-value{font-size:.875rem;font-weight:600;font-variant-numeric:tabular-nums}
+.stat-note{font-size:10px;color:#64748b;margin-top:.125rem}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem}
+.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:.5rem}
+.grid1{display:grid;grid-template-columns:1fr;gap:.5rem}
+/* Large stat */
+.stat-lg{border-radius:.75rem;border:1px solid #1e293b;background:rgb(2 6 23/.5);padding:.625rem}
+.stat-lg-label{font-size:.625rem;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8;margin-bottom:.125rem}
+.stat-lg-value{font-size:1rem;font-weight:600;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+
+<div class="label">Cash flow summary (3-col)</div>
+<div class="grid3">
+  <div class="stat">
+    <div class="stat-label">Expected income</div>
+    <div class="stat-value" style="color:#a7f3d0">$4,250.00</div>
+    <div class="stat-note">3-month average</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Expected expenses</div>
+    <div class="stat-value" style="color:#bfdbfe">$1,840.00</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Net cash flow</div>
+    <div class="stat-value" style="color:#a7f3d0">$2,410.00</div>
+  </div>
+</div>
+
+<div class="label">Negative net cash flow variant</div>
+<div class="grid3">
+  <div class="stat">
+    <div class="stat-label">Expected income</div>
+    <div class="stat-value" style="color:#a7f3d0">$2,100.00</div>
+    <div class="stat-note">3-month average</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Expected expenses</div>
+    <div class="stat-value" style="color:#bfdbfe">$2,640.00</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Net cash flow</div>
+    <div class="stat-value" style="color:#fecaca">−$540.00</div>
+  </div>
+</div>
+
+<div class="label">Spend vs budget (1-col, large)</div>
+<div class="grid1">
+  <div class="stat">
+    <div class="stat-label">Spend vs budgeted</div>
+    <div class="stat-lg-value" style="font-size:1rem;font-weight:600;font-variant-numeric:tabular-nums">$560.00 / $700.00</div>
+  </div>
+</div>
+
+<div class="label">Two-col summary pair</div>
+<div class="grid2">
+  <div class="stat">
+    <div class="stat-label">Total income</div>
+    <div class="stat-value" style="color:#a7f3d0;font-size:1.125rem">$8,500.00</div>
+    <div class="stat-note">June 2026</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Total expenses</div>
+    <div class="stat-value" style="color:#bfdbfe;font-size:1.125rem">$3,420.00</div>
+    <div class="stat-note">June 2026</div>
+  </div>
+</div>
+
+<div class="label">Standalone metric card</div>
+<div class="stat" style="max-width:12rem">
+  <div class="stat-label">Upcoming this month</div>
+  <div class="stat-value" style="font-size:1rem;color:#e2e8f0">5 payments</div>
+  <div class="stat-note">Next: Rent in 3 days</div>
+</div>
+</body>
+</html>

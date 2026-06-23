@@ -1,0 +1,118 @@
+<!-- @dsCard group="Patterns" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>DataCard</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#020617;color:#e2e8f0;font-family:"Inter","Segoe UI",Roboto,sans-serif;font-size:14px;padding:1.25rem;line-height:1.5}
+.label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:.75rem;margin-top:1.5rem}
+.label:first-child{margin-top:0}
+.panel{border-radius:1rem;border:1px solid #1e293b;background:rgb(15 23 42/.8);padding:1rem;box-shadow:0 10px 15px -3px rgb(0 0 0/.4);margin-bottom:1rem}
+.panel-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;flex-wrap:wrap;gap:.5rem}
+.panel-title{font-size:.75rem;color:#94a3b8}
+.add-btn{font-size:11px;font-weight:600;padding:5px 12px;border-radius:9px;border:1px solid;background:transparent;cursor:pointer}
+/* editable row */
+.erow{display:flex;align-items:center;gap:.625rem;padding:6px 0;border-bottom:1px solid #1e293b}
+.erow:last-child{border-bottom:none}
+.einp{font-size:13px;color:#e2e8f0;background:rgb(2 6 23/.5);border:1px solid #334155;border-radius:9px;padding:4px 9px;outline:none}
+.einp-wide{flex:1}
+.einp-num{width:96px;font-variant-numeric:tabular-nums}
+.del-btn{background:none;border:none;color:#64748b;font-size:16px;cursor:pointer;padding:0 4px;line-height:1}
+/* totals row */
+.total-row{display:flex;justify-content:space-between;padding:10px 0 0;font-size:13px;font-weight:600}
+/* info banner */
+.banner{border-radius:.75rem;padding:10px 12px;font-size:12px;line-height:1.7}
+.banner-succ{border:1px solid rgb(16 185 129/.35);background:rgb(16 185 129/.1);color:#a7f3d0}
+.banner-warn{border:1px solid rgb(245 158 11/.35);background:rgb(120 53 15/.25);color:#fbbf24}
+/* snapshot card (read-only stat) */
+.snap-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:.5rem;margin-bottom:.75rem}
+.snap{border-radius:.75rem;border:1px solid #1e293b;background:rgb(2 6 23/.5);padding:.625rem}
+.snap-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:2px}
+.snap-val{font-size:.875rem;font-weight:600;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+
+<div class="label">Editable budget list card</div>
+<div class="panel">
+  <div class="panel-header">
+    <span class="panel-title">Monthly budget</span>
+    <button class="add-btn" style="border-color:rgb(29 158 117/.4);color:#1D9E75">+ Add row</button>
+  </div>
+  <div class="erow">
+    <input class="einp einp-wide" value="Rent">
+    <span style="font-size:12px;font-weight:500;color:#94a3b8">$</span>
+    <input class="einp einp-num" type="number" value="1350">
+    <button class="del-btn">×</button>
+  </div>
+  <div class="erow">
+    <input class="einp einp-wide" value="Groceries">
+    <span style="font-size:12px;font-weight:500;color:#94a3b8">$</span>
+    <input class="einp einp-num" type="number" value="400">
+    <button class="del-btn">×</button>
+  </div>
+  <div class="erow">
+    <input class="einp einp-wide" value="Transit">
+    <span style="font-size:12px;font-weight:500;color:#94a3b8">$</span>
+    <input class="einp einp-num" type="number" value="156">
+    <button class="del-btn">×</button>
+  </div>
+  <div class="total-row">
+    <span>Total outflows</span>
+    <span style="font-variant-numeric:tabular-nums">$1,906/mo</span>
+  </div>
+  <div class="banner banner-succ" style="margin-top:.625rem">
+    <span style="font-weight:500">Savings room:</span> at $5,200/mo income minus $1,906/mo outflows you have $3,294/mo of headroom.
+  </div>
+</div>
+
+<div class="label">Snapshot + editable KPI cards</div>
+<div class="snap-grid">
+  <div class="snap">
+    <div class="snap-lbl">Current savings</div>
+    <input class="einp" style="width:100%;font-size:.875rem;font-weight:600;background:transparent;border-color:transparent;padding:2px 0" value="$24,500">
+  </div>
+  <div class="snap">
+    <div class="snap-lbl">Monthly savings</div>
+    <input class="einp" style="width:100%;font-size:.875rem;font-weight:600;background:transparent;border-color:transparent;padding:2px 0" value="$1,200/mo">
+  </div>
+  <div class="snap" style="border-left:3px solid #1D9E75">
+    <div class="snap-lbl">Income − outflows</div>
+    <div class="snap-val" style="color:#1D9E75">$3,294/mo</div>
+  </div>
+  <div class="snap">
+    <div class="snap-lbl">Gross income</div>
+    <input class="einp" style="width:100%;font-size:.875rem;font-weight:600;background:transparent;border-color:transparent;padding:2px 0" value="$5,200/mo">
+  </div>
+</div>
+
+<div class="label">Pre-departure fund with checkable rows</div>
+<div class="panel" style="border-left:3px solid #D94F3D">
+  <div class="panel-header">
+    <span class="panel-title">Japan WHV — pre-departure fund</span>
+    <button class="add-btn" style="border-color:rgb(217 79 61/.4);color:#D94F3D">+ Add</button>
+  </div>
+  <div style="margin-bottom:.75rem">
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;margin-bottom:4px"><span>$3,800 of $12,000 covered</span><span>32%</span></div>
+    <div style="height:8px;background:#1e293b;border-radius:9999px;overflow:hidden"><div style="width:32%;height:100%;background:#D94F3D;border-radius:9999px"></div></div>
+  </div>
+  <div class="erow">
+    <div style="width:18px;height:18px;border-radius:5px;border:1.5px solid #D94F3D;background:#D94F3D;flex-shrink:0;display:flex;align-items:center;justify-content:center">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#020617" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <input class="einp einp-wide" value="Flight YYZ→NRT" style="text-decoration:line-through;opacity:.6">
+    <span style="font-size:12px;font-weight:500;color:#94a3b8">$</span>
+    <input class="einp einp-num" type="number" value="1200" style="text-decoration:line-through;opacity:.6">
+    <button class="del-btn">×</button>
+  </div>
+  <div class="erow">
+    <div style="width:18px;height:18px;border-radius:5px;border:1.5px solid #334155;background:transparent;flex-shrink:0"></div>
+    <input class="einp einp-wide" value="First month housing deposit">
+    <span style="font-size:12px;font-weight:500;color:#94a3b8">$</span>
+    <input class="einp einp-num" type="number" value="2500">
+    <button class="del-btn">×</button>
+  </div>
+</div>
+</body>
+</html>

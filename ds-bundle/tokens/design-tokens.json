@@ -1,0 +1,31 @@
+{
+  "color": {
+    "background": { "value": "#020617", "comment": "slate-950 — page background" },
+    "surface": { "value": "#0f172a", "comment": "slate-900 — card / panel" },
+    "border": { "value": "#1e293b", "comment": "slate-800 — default border" },
+    "borderSubtle": { "value": "#334155", "comment": "slate-700 — input / button border" },
+    "fg": { "value": "#e2e8f0", "comment": "slate-200 — primary text" },
+    "fgMuted": { "value": "#94a3b8", "comment": "slate-400 — secondary text" },
+    "fgDim": { "value": "#64748b", "comment": "slate-500 — tertiary text" },
+    "blue": { "value": "#3b82f6", "comment": "primary action" },
+    "blueHover": { "value": "#60a5fa", "comment": "hover / focus accent" },
+    "blueLink": { "value": "#93c5fd", "comment": "inline links" },
+    "emerald": { "value": "#10b981", "comment": "income / healthy budget progress" },
+    "emeraldText": { "value": "#a7f3d0", "comment": "income amount text" },
+    "amber": { "value": "#f59e0b", "comment": "warning badge" },
+    "amberBar": { "value": "#fbbf24", "comment": "budget 80-100% progress bar" },
+    "red": { "value": "#ef4444", "comment": "over-budget / critical" },
+    "redText": { "value": "#fecaca", "comment": "negative amount text" }
+  },
+  "borderRadius": {
+    "sm": { "value": "0.5rem",   "comment": "rounded-lg — icon buttons" },
+    "md": { "value": "0.75rem",  "comment": "rounded-xl — cards, inputs, buttons" },
+    "lg": { "value": "1rem",     "comment": "rounded-2xl — panel shells" },
+    "xl": { "value": "1.5rem",   "comment": "rounded-3xl — mobile bottom sheets" },
+    "full": { "value": "9999px", "comment": "rounded-full — pills, chips, progress bars" }
+  },
+  "typography": {
+    "fontSans": { "value": "\"Inter\", \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif" },
+    "fontMono": { "value": "\"SFMono-Regular\", Menlo, Monaco, Consolas, \"Liberation Mono\", monospace" }
+  }
+}

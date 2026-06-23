@@ -1,0 +1,82 @@
+<!-- @dsCard group="Primitives" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>ProgressBar</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#020617;color:#e2e8f0;font-family:"Inter","Segoe UI",Roboto,sans-serif;font-size:14px;padding:1.25rem;line-height:1.5}
+.label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#64748b;margin-bottom:.75rem;margin-top:1.25rem}
+.label:first-child{margin-top:0}
+.budget-card{border-radius:.75rem;border:1px solid #1e293b;background:rgb(2 6 23/.5);padding:.625rem;margin-bottom:.5rem}
+.budget-header{display:flex;align-items:center;justify-content:space-between;font-size:.875rem;margin-bottom:.25rem}
+.budget-name{font-weight:500;color:#e2e8f0}
+.budget-nums{color:#cbd5e1;font-variant-numeric:tabular-nums}
+.track{height:.5rem;width:100%;overflow:hidden;border-radius:9999px;background:#1e293b}
+.fill{height:100%;border-radius:9999px;transition:width 300ms ease}
+.fill-ok{background:#10b981}
+.fill-warn{background:#fbbf24}
+.fill-crit{background:#ef4444}
+.pct-note{font-size:10px;color:#64748b;margin-top:.25rem;text-align:right}
+</style>
+</head>
+<body>
+
+<div class="label">Healthy (&lt; 80%)</div>
+<div class="budget-card">
+  <div class="budget-header">
+    <span class="budget-name">Groceries</span>
+    <span class="budget-nums">$240.00 / $400.00</span>
+  </div>
+  <div class="track"><div class="fill fill-ok" style="width:60%"></div></div>
+  <div class="pct-note">60%</div>
+</div>
+
+<div class="label">Warning (80–99%)</div>
+<div class="budget-card">
+  <div class="budget-header">
+    <span class="budget-name">Dining Out</span>
+    <span class="budget-nums">$170.00 / $200.00</span>
+  </div>
+  <div class="track"><div class="fill fill-warn" style="width:85%"></div></div>
+  <div class="pct-note">85%</div>
+</div>
+
+<div class="label">Critical (100%)</div>
+<div class="budget-card">
+  <div class="budget-header">
+    <span class="budget-name">Entertainment</span>
+    <span class="budget-nums">$150.00 / $100.00</span>
+  </div>
+  <div class="track"><div class="fill fill-crit" style="width:100%"></div></div>
+  <div class="pct-note" style="color:#fca5a5">150% — over budget</div>
+</div>
+
+<div class="label">Empty (0%)</div>
+<div class="budget-card">
+  <div class="budget-header">
+    <span class="budget-name">Travel</span>
+    <span class="budget-nums">$0.00 / $500.00</span>
+  </div>
+  <div class="track"><div class="fill fill-ok" style="width:0%"></div></div>
+  <div class="pct-note">0%</div>
+</div>
+
+<div class="label">Multiple — full budget panel view</div>
+<div style="border-radius:1rem;border:1px solid #1e293b;background:rgb(15 23 42/.8);padding:1rem;box-shadow:0 10px 15px -3px rgb(0 0 0/.4)">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
+    <h2 style="font-size:1.125rem;font-weight:600;color:#f1f5f9">Budgets</h2>
+    <a href="#" style="color:#93c5fd;font-size:.875rem;font-weight:500;text-decoration:none">Manage budgets</a>
+  </div>
+  <div style="border-radius:.75rem;border:1px solid #1e293b;background:rgb(2 6 23/.5);padding:.625rem;margin-bottom:.75rem">
+    <p style="font-size:.625rem;text-transform:uppercase;letter-spacing:.1em;color:#94a3b8">Spend vs budgeted</p>
+    <p style="font-size:1rem;font-weight:600;font-variant-numeric:tabular-nums">$560.00 / $700.00</p>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:.5rem">
+    <div class="budget-card" style="margin:0"><div class="budget-header"><span class="budget-name">Groceries</span><span class="budget-nums">$240 / $400</span></div><div class="track"><div class="fill fill-ok" style="width:60%"></div></div></div>
+    <div class="budget-card" style="margin:0"><div class="budget-header"><span class="budget-name">Dining Out</span><span class="budget-nums">$170 / $200</span></div><div class="track"><div class="fill fill-warn" style="width:85%"></div></div></div>
+    <div class="budget-card" style="margin:0"><div class="budget-header"><span class="budget-name">Entertainment</span><span class="budget-nums">$150 / $100</span></div><div class="track"><div class="fill fill-crit" style="width:100%"></div></div></div>
+  </div>
+</div>
+</body>
+</html>
