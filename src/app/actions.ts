@@ -24,6 +24,13 @@ export {
   deleteRecurringTransactionAction,
   postRecurringTransactionAction,
 } from "./actions/recurring";
+export {
+  createSubscriptionMemberAction,
+  updateSubscriptionMemberAction,
+  deleteSubscriptionMemberAction,
+  setSubscriptionShareStatusAction,
+  skipRecurringOccurrenceAction,
+} from "./actions/subscriptions";
 export { createInvestmentFlowAction, createPortfolioSnapshotAction } from "./actions/investments";
 export {
   createFinancialAccountAction,

@@ -116,6 +116,36 @@ export const postRecurringTransactionSchema = z.object({
   expectedDate: z.string().min(1),
 });
 
+export const skipRecurringOccurrenceSchema = z.object({
+  recurringTransactionId: z.string().min(1),
+  expectedDate: z.string().min(1),
+  reason: z.enum(["skip_once", "already_logged"]),
+  transactionId: z.string().min(1).optional(),
+});
+
+export const subscriptionMemberSchema = z.object({
+  recurringTransactionId: z.string().min(1),
+  name: z.string().trim().min(1).max(80),
+  share: z.coerce.number().positive(),
+});
+
+export const updateSubscriptionMemberSchema = z.object({
+  memberId: z.string().min(1),
+  name: z.string().trim().min(1).max(80),
+  share: z.coerce.number().positive(),
+});
+
+export const deleteSubscriptionMemberSchema = z.object({
+  memberId: z.string().min(1),
+});
+
+export const setSubscriptionShareStatusSchema = z.object({
+  memberId: z.string().min(1),
+  expectedDate: z.string().min(1),
+  field: z.enum(["billSent", "paid"]),
+  value: z.enum(["true", "false"]),
+});
+
 export const investmentFlowSchema = z.object({
   accountId: z.string().min(1),
   direction: z.enum(["CONTRIBUTION", "WITHDRAWAL"]),

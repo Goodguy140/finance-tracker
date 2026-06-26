@@ -18,6 +18,7 @@ import { resolveAuthentikOauthSettings, resolveGoogleOauthSettings } from "@/lib
 import { formatAccountDetachedLabel } from "@/lib/account-type-labels";
 import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
 import { advanceRecurringDate } from "@/lib/recurring-transactions";
+import { recomputeSubscriptionTransactionCredits } from "@/lib/subscription-credit";
 import { mergeAccountDescriptionOnDetach } from "@/lib/transaction-account-detach";
 import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
 import { sendEmail } from "@/lib/email";
@@ -255,6 +256,13 @@ export async function postRecurringTransactionAction(formData: FormData) {
           recurringTransactionId: rule.id,
           recurringExpectedDate: expectedDate,
         },
+      });
+
+      // Apply credits for any shared-subscription members already marked paid for this occurrence.
+      await recomputeSubscriptionTransactionCredits(tx, {
+        userId: user.id,
+        recurringTransactionId: rule.id,
+        expectedDate,
       });
     });
   } catch (error) {

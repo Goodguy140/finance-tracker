@@ -1,18 +1,42 @@
-import { CategoryKind } from "@prisma/client";
+import { CategoryKind, RecurringCadence, TransactionType } from "@prisma/client";
 import Link from "next/link";
 import { SettingsForms } from "@/components/forms";
+import type { SubscriptionView } from "@/components/subscriptions-panel";
 import { isBudgetAlertEmailConfigured } from "@/lib/budget-alert-email";
+import { formatAccountTypeLabel } from "@/lib/account-type-labels";
+import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
+const cadenceLabels: Record<RecurringCadence, string> = {
+  WEEKLY: "Weekly",
+  BIWEEKLY: "Biweekly",
+  MONTHLY: "Monthly",
+  QUARTERLY: "Quarterly",
+  YEARLY: "Yearly",
+  BIENNIAL: "Every 2 years",
+};
+
 export default async function SettingsPage() {
   const user = await requireUser();
-  const [accounts, categories, budgets] = await Promise.all([
+  const [accounts, categories, budgets, subscriptionRules] = await Promise.all([
     prisma.account.findMany({ where: { userId: user.id }, orderBy: { name: "asc" } }),
     prisma.category.findMany({ where: { userId: user.id, kind: CategoryKind.EXPENSE }, orderBy: { name: "asc" } }),
     prisma.budget.findMany({ where: { userId: user.id }, include: { category: true }, orderBy: [{ periodMonth: "desc" }, { category: { name: "asc" } }] }),
+    prisma.recurringTransaction.findMany({
+      where: { userId: user.id, type: TransactionType.EXPENSE },
+      include: {
+        account: true,
+        category: true,
+        subscriptionMembers: {
+          orderBy: { createdAt: "asc" },
+          include: { shareStatuses: { select: { expectedDate: true, billSent: true, paid: true } } },
+        },
+      },
+      orderBy: [{ enabled: "desc" }, { nextExpectedDate: "asc" }],
+    }),
   ]);
 
   const activeAccounts = accounts.filter((a) => !a.archived);
@@ -32,6 +56,36 @@ export default async function SettingsPage() {
     categoryName: budget.category.name,
     limitCents: budget.limitCents,
   }));
+
+  const subscriptions: SubscriptionView[] = subscriptionRules.map((rule) => {
+    const nextYmd = ymdFromDateUtc(rule.nextExpectedDate);
+    return {
+      id: rule.id,
+      name: rule.name,
+      amountCents: rule.amountCents,
+      accountId: rule.accountId,
+      accountLabel: `${rule.account.name} (${formatAccountTypeLabel(rule.account.type)})`,
+      categoryId: rule.categoryId,
+      categoryLabel: rule.category.name,
+      cadence: rule.cadence,
+      cadenceLabel: cadenceLabels[rule.cadence],
+      nextExpectedDateYmd: nextYmd,
+      nextExpectedDateDisplay: formatDateOnlyUtc(rule.nextExpectedDate),
+      endDateYmd: rule.endDate ? ymdFromDateUtc(rule.endDate) : null,
+      note: rule.note,
+      enabled: rule.enabled,
+      members: rule.subscriptionMembers.map((member) => {
+        const status = member.shareStatuses.find((s) => ymdFromDateUtc(s.expectedDate) === nextYmd);
+        return {
+          id: member.id,
+          name: member.name,
+          shareCents: member.shareCents,
+          billSent: status?.billSent ?? false,
+          paid: status?.paid ?? false,
+        };
+      }),
+    };
+  });
 
   return (
     <main className="mx-auto my-6 max-w-6xl space-y-5 px-4 pb-10 pt-2 text-slate-100 sm:px-5 lg:my-10 lg:space-y-6 lg:px-8">
@@ -67,6 +121,7 @@ export default async function SettingsPage() {
         accountItems={accountItems}
         expenseCategories={expenseCategoryOptions}
         budgets={budgetItems}
+        subscriptions={subscriptions}
         defaultExpenseAccountId={user.defaultExpenseAccountId}
         budgetAlertEmailConfigured={isBudgetAlertEmailConfigured()}
       />

@@ -76,7 +76,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const recurringIncomeAnchorYm = period.range === "lifetime" ? anchorYm : period.ym;
   const pastIncomeMonthsYm = getPastMonthYmsBefore(recurringIncomeAnchorYm, 3);
 
-  const [accounts, categories, budgets, recurringTransactions, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions] =
+  const [accounts, categories, budgets, recurringTransactions, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions, recentUnlinkedExpenses] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -136,6 +136,17 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         },
       },
       select: { amountCents: true, date: true },
+    }),
+    prisma.transaction.findMany({
+      where: {
+        userId: user.id,
+        type: TransactionType.EXPENSE,
+        recurringTransactionId: null,
+        date: { gte: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000) },
+      },
+      select: { id: true, title: true, date: true, amountCents: true },
+      orderBy: { date: "desc" },
+      take: 100,
     }),
   ]);
 
@@ -392,6 +403,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     status: rule.enabled ? getRecurringDateStatus(rule.nextExpectedDate, now) : ("disabled" as const),
   }));
 
+  const recentUnlinkedExpenseOptions = recentUnlinkedExpenses.map((txn) => ({
+    id: txn.id,
+    title: txn.title ?? "",
+    dateDisplay: formatDateOnlyUtc(txn.date),
+    amountCents: txn.amountCents,
+  }));
+
   const recurringForecastPeriod =
     period.range === "ytd"
       ? { start: startOfCalendarYearForYm(period.ym), endExclusive: endExclusiveOfMonthYm(period.ym), label: periodDescription }
@@ -552,6 +570,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                   accounts={accountOptions}
                   expenseCategories={expenseCategoryOptions}
                   incomeCategories={incomeCategoryOptions}
+                  recentExpenses={recentUnlinkedExpenseOptions}
                 />
               </div>
             </div>

@@ -253,7 +253,7 @@ export async function importUserBackupAction(formData: FormData) {
       if (!mappedCategoryId || !mappedAccountId) {
         throw new Error("Backup references unknown recurring transaction account or category.");
       }
-      await tx.recurringTransaction.create({
+      const createdRule = await tx.recurringTransaction.create({
         data: {
           userId: user.id,
           accountId: mappedAccountId,
@@ -270,7 +270,37 @@ export async function importUserBackupAction(formData: FormData) {
           createdAt: new Date(row.createdAt),
           updatedAt: new Date(row.updatedAt),
         },
+        select: { id: true },
       });
+
+      for (const member of row.members ?? []) {
+        const createdMember = await tx.subscriptionMember.create({
+          data: {
+            userId: user.id,
+            recurringTransactionId: createdRule.id,
+            name: member.name,
+            shareCents: member.shareCents,
+            createdAt: new Date(member.createdAt),
+            updatedAt: new Date(member.updatedAt),
+          },
+          select: { id: true },
+        });
+        for (const status of member.shareStatuses ?? []) {
+          await tx.subscriptionShareStatus.create({
+            data: {
+              userId: user.id,
+              memberId: createdMember.id,
+              recurringTransactionId: createdRule.id,
+              expectedDate: new Date(status.expectedDate),
+              billSent: status.billSent,
+              paid: status.paid,
+              paidAt: status.paidAt ? new Date(status.paidAt) : null,
+              createdAt: new Date(status.createdAt),
+              updatedAt: new Date(status.updatedAt),
+            },
+          });
+        }
+      }
     }
 
     for (const row of parsed.subscriptions ?? []) {
