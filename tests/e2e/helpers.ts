@@ -19,8 +19,10 @@ export async function expectExpenseInLog(page: Page, title: string) {
 }
 
 export async function openSettingsAdvancedTab(page: Page) {
-  await page.goto("/settings");
-  await page.getByRole("tab", { name: "Advanced" }).click();
+  // Deep-link via hash (supported by the settings tab sync) rather than clicking the tab:
+  // robust against the horizontally scrolling mobile tab strip where the last tab can sit
+  // off the viewport edge.
+  await page.goto("/settings#advanced");
   await expect(page.getByRole("tabpanel", { name: "Advanced" })).toBeVisible();
 }
 
