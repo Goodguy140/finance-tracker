@@ -5,6 +5,7 @@ import {
   deleteRecurringTransactionAction,
   postRecurringTransactionAction,
   setRecurringTransactionEnabledAction,
+  skipRecurringOccurrenceAction,
   updateRecurringTransactionAction,
 } from "@/app/actions";
 import { ServerActionForm } from "@/components/server-action-form";
@@ -34,6 +35,13 @@ export type RecurringTransactionListItem = {
 };
 
 type Option = { id: string; name: string };
+
+export type RecentExpenseOption = {
+  id: string;
+  title: string;
+  dateDisplay: string;
+  amountCents: number;
+};
 
 const inputClass =
   "w-full min-h-[2.75rem] rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2.5 text-base leading-normal text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 sm:text-sm";
@@ -69,9 +77,11 @@ function statusClass(status: RecurringTransactionListItem["status"]) {
 function RecurringCard({
   item,
   onEdit,
+  onSkip,
 }: {
   item: RecurringTransactionListItem;
   onEdit: (item: RecurringTransactionListItem) => void;
+  onSkip: (item: RecurringTransactionListItem) => void;
 }) {
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5 text-left text-sm text-slate-100">
@@ -112,6 +122,11 @@ function RecurringCard({
             </button>
           </ServerActionForm>
         ) : null}
+        {item.enabled ? (
+          <button type="button" className={secondaryBtnClass} onClick={() => onSkip(item)}>
+            Skip
+          </button>
+        ) : null}
         <button type="button" className={secondaryBtnClass} onClick={() => onEdit(item)}>
           Edit
         </button>
@@ -138,19 +153,24 @@ export function RecurringTransactionsPanel({
   accounts,
   expenseCategories,
   incomeCategories,
+  recentExpenses = [],
 }: {
   items: RecurringTransactionListItem[];
   accounts: Option[];
   expenseCategories: Option[];
   incomeCategories: Option[];
+  recentExpenses?: RecentExpenseOption[];
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const editingItem = items.find((item) => item.id === editingId) ?? null;
   const [editingType, setEditingType] = useState<"EXPENSE" | "INCOME">("EXPENSE");
+  const [skippingId, setSkippingId] = useState<string | null>(null);
+  const skippingItem = items.find((item) => item.id === skippingId) ?? null;
   const startEditing = (item: RecurringTransactionListItem) => {
     setEditingType(item.type);
     setEditingId(item.id);
   };
+  const startSkipping = (item: RecurringTransactionListItem) => setSkippingId(item.id);
 
   const groups = useMemo(
     () => [
@@ -183,7 +203,7 @@ export function RecurringTransactionsPanel({
             <section key={group.key} className="space-y-2">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">{group.title}</h3>
               {group.items.map((item) => (
-                <RecurringCard key={item.id} item={item} onEdit={startEditing} />
+                <RecurringCard key={item.id} item={item} onEdit={startEditing} onSkip={startSkipping} />
               ))}
             </section>
           ) : null,
@@ -276,6 +296,167 @@ export function RecurringTransactionsPanel({
           </div>
         </div>
       ) : null}
+      {skippingItem ? (
+        <SkipModal
+          item={skippingItem}
+          recentExpenses={recentExpenses}
+          onClose={() => setSkippingId(null)}
+        />
+      ) : null}
     </>
+  );
+}
+
+type SkipReason = "skip_once" | "already_logged" | "canceled";
+
+function SkipModal({
+  item,
+  recentExpenses,
+  onClose,
+}: {
+  item: RecurringTransactionListItem;
+  recentExpenses: RecentExpenseOption[];
+  onClose: () => void;
+}) {
+  const [reason, setReason] = useState<SkipReason | null>(null);
+  const [logMode, setLogMode] = useState<"auto" | "pick">("auto");
+  const [pickedTransactionId, setPickedTransactionId] = useState<string>("");
+
+  const reasonChoices: { id: SkipReason; title: string; hint: string }[] = [
+    { id: "skip_once", title: "Skip just this time", hint: "Advance to the next due date without logging anything." },
+    {
+      id: "already_logged",
+      title: "It's already in the expense log",
+      hint: "Link the existing expense, then advance to the next due date.",
+    },
+    { id: "canceled", title: "Canceled subscription", hint: "Stop tracking this subscription entirely." },
+  ];
+
+  return (
+    <div className={`fixed inset-0 ${MOBILE_OVERLAY_ROOT_Z_CLASS} flex items-center justify-center bg-black/60 p-3`}>
+      <div className="max-h-[min(92vh,44rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 p-4 shadow-2xl">
+        <h3 className="text-lg font-semibold text-slate-100">Skip {item.name}</h3>
+        <p className="mt-1 text-sm text-slate-400">
+          Due {item.nextExpectedDateDisplay}. Why are you skipping this one?
+        </p>
+
+        <div className="mt-3 space-y-2">
+          {reasonChoices.map((choice) => (
+            <button
+              key={choice.id}
+              type="button"
+              onClick={() => setReason(choice.id)}
+              className={`block w-full rounded-xl border px-3 py-2.5 text-left transition ${
+                reason === choice.id
+                  ? "border-blue-400 bg-blue-500/15 text-slate-50"
+                  : "border-slate-700 bg-slate-900/60 text-slate-200 hover:border-slate-600"
+              }`}
+            >
+              <span className="block text-sm font-medium">{choice.title}</span>
+              <span className="mt-0.5 block text-xs text-slate-400">{choice.hint}</span>
+            </button>
+          ))}
+        </div>
+
+        {reason === "already_logged" ? (
+          <div className="mt-3 space-y-2 rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+            <label className="flex items-start gap-2 text-sm text-slate-200">
+              <input
+                type="radio"
+                name="logMode"
+                checked={logMode === "auto"}
+                onChange={() => setLogMode("auto")}
+                className="mt-1"
+              />
+              <span>
+                Auto-match by title
+                <span className="mt-0.5 block text-xs text-slate-400">
+                  Finds an unlinked expense titled “{item.name}” near {item.nextExpectedDateDisplay}.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm text-slate-200">
+              <input
+                type="radio"
+                name="logMode"
+                checked={logMode === "pick"}
+                onChange={() => setLogMode("pick")}
+                className="mt-1"
+              />
+              <span className="flex-1">
+                Pick the transaction
+                {logMode === "pick" ? (
+                  <select
+                    value={pickedTransactionId}
+                    onChange={(event) => setPickedTransactionId(event.target.value)}
+                    className={`${selectClass} mt-2`}
+                  >
+                    <option value="">Select an expense…</option>
+                    {recentExpenses.map((expense) => (
+                      <option key={expense.id} value={expense.id}>
+                        {expense.dateDisplay} · {formatCurrency(expense.amountCents)} · {expense.title || "Untitled"}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+              </span>
+            </label>
+            {recentExpenses.length === 0 ? (
+              <p className="text-xs text-slate-500">No recent unlinked expenses found to pick from.</p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {reason === "canceled" ? (
+          <p className="mt-3 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-100">
+            This removes the subscription and stops all future reminders. Past transactions stay in your log.
+          </p>
+        ) : null}
+
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <button type="button" className={secondaryBtnClass} onClick={onClose}>
+            Cancel
+          </button>
+          {reason === "skip_once" ? (
+            <ServerActionForm action={skipRecurringOccurrenceAction} onSuccess={onClose}>
+              <input type="hidden" name="recurringTransactionId" value={item.id} />
+              <input type="hidden" name="expectedDate" value={item.nextExpectedDateYmd} />
+              <input type="hidden" name="reason" value="skip_once" />
+              <button type="submit" className={primaryBtnClass}>
+                Skip this occurrence
+              </button>
+            </ServerActionForm>
+          ) : null}
+          {reason === "already_logged" ? (
+            <ServerActionForm action={skipRecurringOccurrenceAction} onSuccess={onClose}>
+              <input type="hidden" name="recurringTransactionId" value={item.id} />
+              <input type="hidden" name="expectedDate" value={item.nextExpectedDateYmd} />
+              <input type="hidden" name="reason" value="already_logged" />
+              {logMode === "pick" && pickedTransactionId ? (
+                <input type="hidden" name="transactionId" value={pickedTransactionId} />
+              ) : null}
+              <button
+                type="submit"
+                className={`${primaryBtnClass} disabled:pointer-events-none disabled:opacity-50`}
+                disabled={logMode === "pick" && !pickedTransactionId}
+              >
+                Link &amp; advance
+              </button>
+            </ServerActionForm>
+          ) : null}
+          {reason === "canceled" ? (
+            <ServerActionForm action={deleteRecurringTransactionAction} onSuccess={onClose}>
+              <input type="hidden" name="recurringTransactionId" value={item.id} />
+              <button
+                type="submit"
+                className="touch-manipulation rounded-xl bg-red-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-red-400"
+              >
+                Remove subscription
+              </button>
+            </ServerActionForm>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }

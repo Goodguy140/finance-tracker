@@ -38,6 +38,7 @@ import {
   importUserBackupAction, updateBudgetAction, updateProfileAction, upsertBudgetAction,
 } from "@/app/actions";
 import { ExpenseCsvImportForm } from "./expense-forms";
+import { SubscriptionsPanel, type SubscriptionView } from "@/components/subscriptions-panel";
 
 export function BudgetForm({ expenseCategories }: { expenseCategories: Option[] }) {
   const [isPastOverride, setIsPastOverride] = useState(false);
@@ -275,7 +276,7 @@ export function InvestmentForms({ accounts }: { accounts: Option[] }) {
   );
 }
 
-type SettingsTabId = "profile" | "data" | "budgets" | "advanced";
+type SettingsTabId = "profile" | "data" | "subscriptions" | "budgets" | "advanced";
 
 const SETTINGS_TAB_META: { id: SettingsTabId; label: string; labelCompact: string; hint: string }[] = [
   {
@@ -289,6 +290,12 @@ const SETTINGS_TAB_META: { id: SettingsTabId; label: string; labelCompact: strin
     label: "Import & accounts",
     labelCompact: "Import",
     hint: "CSV import and financial accounts",
+  },
+  {
+    id: "subscriptions",
+    label: "Subscriptions",
+    labelCompact: "Subs",
+    hint: "Shared subscriptions and who has paid",
   },
   {
     id: "budgets",
@@ -314,6 +321,7 @@ export function SettingsForms({
   accountItems,
   expenseCategories,
   budgets,
+  subscriptions,
   defaultExpenseAccountId,
   budgetAlertEmailConfigured,
 }: {
@@ -325,6 +333,7 @@ export function SettingsForms({
   accountItems: Array<{ id: string; name: string; type: string; archived: boolean; currency: string }>;
   expenseCategories: Option[];
   budgets: Array<{ id: string; periodMonth: string; name: string | null; categoryName: string; limitCents: number }>;
+  subscriptions: SubscriptionView[];
   defaultExpenseAccountId: string | null;
   budgetAlertEmailConfigured: boolean;
 }) {
@@ -348,6 +357,7 @@ export function SettingsForms({
       if (typeof window === "undefined") return;
       const h = window.location.hash.toLowerCase();
       if (h === "#budgets") setTab("budgets");
+      else if (h === "#subscriptions" || h === "#subs") setTab("subscriptions");
       else if (h === "#data" || h === "#import" || h === "#accounts") setTab("data");
       else if (h === "#advanced") setTab("advanced");
       else if (h === "#profile") setTab("profile");
@@ -801,6 +811,30 @@ export function SettingsForms({
                   document.body,
                 )
               : null}
+          </div>
+        ) : null}
+
+        {tab === "subscriptions" ? (
+          <div
+            id="subscriptions"
+            className="scroll-mt-24 mx-auto max-w-3xl space-y-6"
+            role="tabpanel"
+            aria-label="Subscriptions"
+          >
+            <header className="space-y-2 border-b border-slate-800/80 pb-6">
+              <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Subscriptions</h2>
+              <p className="max-w-prose text-sm leading-relaxed text-slate-400">
+                Add and edit your recurring subscriptions, split them with other people, and track who has been sent the
+                bill and who has paid. When you mark someone paid, their share is credited to that subscription&rsquo;s
+                expense in your log. Post or skip each charge from the dashboard.
+              </p>
+            </header>
+            <SubscriptionsPanel
+              subscriptions={subscriptions}
+              accounts={accounts}
+              expenseCategories={expenseCategories}
+              defaultExpenseAccountId={defaultExpenseAccountId}
+            />
           </div>
         ) : null}
 

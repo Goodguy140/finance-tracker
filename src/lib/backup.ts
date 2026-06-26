@@ -99,6 +99,20 @@ export type UserBackupPayload = {
     note: string | null;
     createdAt: IsoString;
     updatedAt: IsoString;
+    members: Array<{
+      name: string;
+      shareCents: number;
+      createdAt: IsoString;
+      updatedAt: IsoString;
+      shareStatuses: Array<{
+        expectedDate: IsoString;
+        billSent: boolean;
+        paid: boolean;
+        paidAt: IsoString | null;
+        createdAt: IsoString;
+        updatedAt: IsoString;
+      }>;
+    }>;
   }>;
   investmentFlows: Array<{
     accountId: string;
@@ -149,7 +163,9 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       categories: true,
       transactions: { include: { splitParts: true } },
       budgets: true,
-      recurringTransactions: true,
+      recurringTransactions: {
+        include: { subscriptionMembers: { include: { shareStatuses: true } } },
+      },
       investmentFlows: true,
       portfolioSnapshots: true,
     },
@@ -250,6 +266,20 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       note: row.note,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
+      members: row.subscriptionMembers.map((member) => ({
+        name: member.name,
+        shareCents: member.shareCents,
+        createdAt: member.createdAt.toISOString(),
+        updatedAt: member.updatedAt.toISOString(),
+        shareStatuses: member.shareStatuses.map((status) => ({
+          expectedDate: status.expectedDate.toISOString(),
+          billSent: status.billSent,
+          paid: status.paid,
+          paidAt: toIso(status.paidAt),
+          createdAt: status.createdAt.toISOString(),
+          updatedAt: status.updatedAt.toISOString(),
+        })),
+      })),
     })),
     investmentFlows: user.investmentFlows.map((row) => ({
       accountId: row.accountId,

@@ -159,6 +159,49 @@ describe("recurring transaction actions", () => {
     });
   });
 
+  it("applies credits for members already marked paid when posting", async () => {
+    const tx = {
+      recurringTransaction: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "rule-1",
+          userId: "user-1",
+          accountId: "account-1",
+          categoryId: "category-1",
+          type: TransactionType.EXPENSE,
+          name: "Netflix",
+          amountCents: 2_000,
+          cadence: "MONTHLY",
+          nextExpectedDate: dateFromYmd("2026-07-01"),
+          endDate: null,
+          note: null,
+          enabled: true,
+          account: { id: "account-1", archived: false },
+          category: { id: "category-1", kind: CategoryKind.EXPENSE },
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      transaction: {
+        // Expected date equals the rule's next date, so the idempotency branch is skipped and
+        // findFirst is only called once, by the credit recompute, to locate the posted transaction.
+        findFirst: vi.fn().mockResolvedValue({ id: "t1", amountCents: 2_000, preCreditCents: null }),
+        create: vi.fn().mockResolvedValue({ id: "t1" }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      subscriptionShareStatus: {
+        findMany: vi.fn().mockResolvedValue([{ member: { shareCents: 500 } }]),
+      },
+    };
+    mockPrisma.$transaction.mockImplementation(async (callback: (arg: typeof tx) => Promise<void>) => callback(tx));
+
+    await postRecurringTransactionAction(form({ recurringTransactionId: "rule-1", expectedDate: "2026-07-01" }));
+
+    expect(tx.transaction.create).toHaveBeenCalled();
+    expect(tx.transaction.update).toHaveBeenCalledWith({
+      where: { id: "t1" },
+      data: { amountCents: 1_500, preCreditCents: 2_000, creditCents: 500, creditBreakdownJson: "[500]" },
+    });
+  });
+
   it("posts an automatic recurring expense into its expected month", async () => {
     const tx = {
       recurringTransaction: {

@@ -113,6 +113,28 @@ export const userBackupSchema = z.object({
         note: z.string().max(250).nullable(),
         createdAt: isoDate,
         updatedAt: isoDate,
+        members: z
+          .array(
+            z.object({
+              name: z.string().min(1).max(80),
+              shareCents: z.number().int().positive(),
+              createdAt: isoDate,
+              updatedAt: isoDate,
+              shareStatuses: z
+                .array(
+                  z.object({
+                    expectedDate: isoDate,
+                    billSent: z.boolean(),
+                    paid: z.boolean(),
+                    paidAt: isoDate.nullable(),
+                    createdAt: isoDate,
+                    updatedAt: isoDate,
+                  }),
+                )
+                .default([]),
+            }),
+          )
+          .default([]),
       }),
     )
     .default([]),
