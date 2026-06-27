@@ -21,7 +21,7 @@ const cadenceLabels: Record<RecurringCadence, string> = {
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const [accounts, categories, budgets, subscriptionRules] = await Promise.all([
+  const [accounts, categories, budgets, subscriptionRules, apiTokenRecords] = await Promise.all([
     prisma.account.findMany({ where: { userId: user.id }, orderBy: { name: "asc" } }),
     prisma.category.findMany({ where: { userId: user.id, kind: CategoryKind.EXPENSE }, orderBy: { name: "asc" } }),
     prisma.budget.findMany({ where: { userId: user.id }, include: { category: true }, orderBy: [{ periodMonth: "desc" }, { category: { name: "asc" } }] }),
@@ -37,7 +37,21 @@ export default async function SettingsPage() {
       },
       orderBy: [{ enabled: "desc" }, { nextExpectedDate: "asc" }],
     }),
+    prisma.personalAccessToken.findMany({
+      where: { userId: user.id, revokedAt: null },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, name: true, tokenPrefix: true, scopes: true, createdAt: true, lastUsedAt: true },
+    }),
   ]);
+
+  const apiTokens = apiTokenRecords.map((token) => ({
+    id: token.id,
+    name: token.name,
+    tokenPrefix: token.tokenPrefix,
+    scopes: token.scopes,
+    createdAt: token.createdAt.toISOString(),
+    lastUsedAt: token.lastUsedAt ? token.lastUsedAt.toISOString() : null,
+  }));
 
   const activeAccounts = accounts.filter((a) => !a.archived);
   const accountOptions = activeAccounts.map((account) => ({ id: account.id, name: account.name }));
@@ -88,7 +102,7 @@ export default async function SettingsPage() {
   });
 
   return (
-    <main className="mx-auto my-6 max-w-6xl space-y-5 px-4 pb-10 pt-2 text-slate-100 sm:px-5 lg:my-10 lg:space-y-6 lg:px-8">
+    <main className="mx-auto my-6 w-full max-w-6xl space-y-5 px-4 pb-10 pt-2 text-slate-100 sm:px-5 lg:my-10 lg:space-y-6 lg:px-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Settings</h1>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -124,6 +138,7 @@ export default async function SettingsPage() {
         subscriptions={subscriptions}
         defaultExpenseAccountId={user.defaultExpenseAccountId}
         budgetAlertEmailConfigured={isBudgetAlertEmailConfigured()}
+        apiTokens={apiTokens}
       />
     </main>
   );

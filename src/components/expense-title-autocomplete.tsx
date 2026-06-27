@@ -184,6 +184,15 @@ export function ExpenseTitleAutocomplete({
             setOpen(true);
           }
         }}
+        onBlur={(e) => {
+          // Close when focus leaves the field (e.g. tabbing to the next input). Keep it
+          // open if focus moved into the listbox itself. Option clicks preventDefault on
+          // mousedown so they never blur the input and still select correctly.
+          const next = e.relatedTarget as Node | null;
+          if (next && listRef.current?.contains(next)) return;
+          setOpen(false);
+          setActiveIndex(-1);
+        }}
         onChange={(e) => {
           handleInputChange(e.target.value);
           if (titleSuggestions.length > 0) syncAnchor();

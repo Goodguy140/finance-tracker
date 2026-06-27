@@ -12,6 +12,9 @@ export const AUDIT_ACTIONS = {
   user_account_deleted: "user_account_deleted",
   admin_backup_exported: "admin_backup_exported",
   user_backup_exported: "user_backup_exported",
+  api_token_created: "api_token_created",
+  api_token_revoked: "api_token_revoked",
+  api_budgets_read: "api_budgets_read",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

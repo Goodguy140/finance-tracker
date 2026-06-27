@@ -17,6 +17,14 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html {
+  /* Always reserve the vertical scrollbar gutter so switching between short and
+     tall settings sections (or any page) doesn't change the viewport width. That
+     width change would otherwise re-center the `mx-auto` page container and make
+     the sticky section tabs appear to jump sideways. */
+  scrollbar-gutter: stable;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

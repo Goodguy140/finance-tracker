@@ -652,6 +652,9 @@ export function ExpenseForm({
   const [receiptBreakdown, setReceiptBreakdown] = useState(false);
   const [showPostedDate, setShowPostedDate] = useState(false);
   const [showNote, setShowNote] = useState(false);
+  // Controlled so the chosen date sticks across entries instead of snapping back to
+  // today on React's automatic form reset — handy for batch-entering past transactions.
+  const [dateValue, setDateValue] = useState(today);
   const [amountValue, setAmountValue] = useState("");
   const [preCreditValue, setPreCreditValue] = useState("");
   const [creditRows, setCreditRows] = useState<string[]>([""]);
@@ -701,6 +704,16 @@ export function ExpenseForm({
 
   return (
     <ServerActionForm action={createExpenseAction} className={formLayoutClass} onSuccess={onSuccess}>
+      <div className={`${titleCatOrder} ${spanFullSm}`}>
+        <ExpenseTitleAndCategoryFields
+          fieldIds={fieldIds}
+          expenseCategories={expenseCategories}
+          titleSuggestions={titleSuggestions}
+          accounts={accounts}
+          accountSelectDefault={accountSelectDefault}
+        />
+      </div>
+
       <div className={`${amountOrder} ${spanFullSm}`}>
         {!receiptBreakdown ? (
           <>
@@ -795,13 +808,14 @@ export function ExpenseForm({
         )}
       </div>
 
-      <div className={`${titleCatOrder} ${spanFullSm}`}>
-        <ExpenseTitleAndCategoryFields
-          fieldIds={fieldIds}
-          expenseCategories={expenseCategories}
-          titleSuggestions={titleSuggestions}
-          accounts={accounts}
-          accountSelectDefault={accountSelectDefault}
+      <div className={`${dateOrder} ${spanFullSm}`}>
+        <DateField
+          name="date"
+          label="Transaction date"
+          hint="The date you assign to this purchase or charge."
+          value={dateValue}
+          onChange={setDateValue}
+          required
         />
       </div>
 
@@ -839,16 +853,6 @@ export function ExpenseForm({
         >
           Receipt breakdown
         </button>
-      </div>
-
-      <div className={`${dateOrder} ${spanFullSm}`}>
-        <DateField
-          name="date"
-          label="Transaction date"
-          hint="The date you assign to this purchase or charge."
-          defaultValue={today}
-          required
-        />
       </div>
 
       {showPostedDate ? (

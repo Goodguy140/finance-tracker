@@ -117,6 +117,8 @@ export function DateField({
   label,
   hint,
   defaultValue,
+  value,
+  onChange,
   className = "",
   id,
   required,
@@ -125,12 +127,17 @@ export function DateField({
   label: string;
   hint?: string;
   defaultValue?: string;
+  /** Controlled value. When provided, the input is controlled and survives React's
+      automatic form reset after a server action — useful for a "sticky" date. */
+  value?: string;
+  onChange?: (value: string) => void;
   className?: string;
   id?: string;
   required?: boolean;
 }) {
   const autoId = useId();
   const fieldId = id ?? `date-${name}-${autoId}`;
+  const controlled = value !== undefined;
   return (
     <div className={className}>
       <div className="flex flex-col gap-1.5">
@@ -142,9 +149,11 @@ export function DateField({
           id={fieldId}
           name={name}
           type="date"
-          defaultValue={defaultValue}
           className={inputClass}
           autoComplete="off"
+          {...(controlled
+            ? { value, onChange: (e) => onChange?.(e.target.value) }
+            : { defaultValue })}
           {...(required ? { required: true } : {})}
         />
       </div>
