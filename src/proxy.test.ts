@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { __authProxyInternals, config } from "./middleware";
+import { __authProxyInternals, config } from "./proxy";
 
 describe("auth proxy path rules", () => {
   it("does not skip synthetic forwarded headers for csrf endpoint", () => {
@@ -12,7 +12,7 @@ describe("auth proxy path rules", () => {
   });
 });
 
-describe("middleware matcher", () => {
+describe("proxy matcher", () => {
   const matcher = new RegExp(`^${config.matcher[0]}$`);
 
   it("excludes token-authenticated /api/v1 routes from the session gate", () => {
