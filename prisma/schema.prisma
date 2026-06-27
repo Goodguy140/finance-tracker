@@ -79,6 +79,7 @@ model User {
   authAccounts          AuthAccount[]
   sessions              Session[]
   resetTokens           PasswordResetToken[]
+  personalAccessTokens  PersonalAccessToken[]
   accounts              Account[]
   categories            Category[]
   transactions          Transaction[]
@@ -148,6 +149,25 @@ model PasswordResetToken {
   expiresAt DateTime
   usedAt    DateTime?
   createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Personal access token for programmatic API access (e.g. the Life Dashboard).
+/// Only the SHA-256 hash of the raw token is stored; the raw value is shown once.
+model PersonalAccessToken {
+  id          String    @id @default(cuid())
+  userId      String
+  name        String
+  tokenHash   String    @unique
+  tokenPrefix String
+  scopes      String
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

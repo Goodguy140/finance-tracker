@@ -123,5 +123,7 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/health).*)"],
+  // `api/v1/*` is token-authenticated (Authorization: Bearer), not cookie-based,
+  // so it must bypass the session gate that redirects everything else to /login.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/health|api/v1).*)"],
 };

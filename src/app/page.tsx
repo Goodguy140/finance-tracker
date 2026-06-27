@@ -29,6 +29,12 @@ import {
   computeOverBudgetTrends,
   type BudgetProgressInput,
 } from "@/lib/budget-alerts";
+import {
+  buildBudgetProgressRows,
+  computeSpendByCategory,
+  selectActiveBudgetsByCategory,
+  type BudgetProgressRow,
+} from "@/lib/budget-progress";
 import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
 import { buildExpenseTitleSuggestions } from "@/lib/expense-title-suggestions";
@@ -50,15 +56,6 @@ const cadenceLabels: Record<RecurringCadence, string> = {
   QUARTERLY: "Quarterly",
   YEARLY: "Yearly",
   BIENNIAL: "Every 2 years",
-};
-
-type BudgetProgressRow = {
-  id: string;
-  categoryId: string;
-  categoryName: string;
-  spentCents: number;
-  limitCents: number;
-  progressPct: number;
 };
 
 type SearchParams = Promise<{ month?: string | string[]; range?: string | string[]; preset?: string | string[] }>;
@@ -160,16 +157,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const incomeCategoryOptions = incomeCategories.map((c) => ({ id: c.id, name: c.name }));
   const expenseTitleSuggestions = buildExpenseTitleSuggestions(titledExpenseHistory);
 
-  const spendByCategory = new Map<string, number>();
-  for (const expense of periodExpenses) {
-    if (expense.splitParts.length > 0) {
-      for (const part of expense.splitParts) {
-        spendByCategory.set(part.categoryId, (spendByCategory.get(part.categoryId) ?? 0) + part.amountCents);
-      }
-      continue;
-    }
-    spendByCategory.set(expense.categoryId, (spendByCategory.get(expense.categoryId) ?? 0) + expense.amountCents);
-  }
+  const spendByCategory = computeSpendByCategory(periodExpenses);
 
   const categoryName = (categoryId: string) =>
     categories.find((c) => c.id === categoryId)?.name ?? budgets.find((b) => b.categoryId === categoryId)?.category.name ?? "Unknown";
@@ -178,30 +166,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   let totalBudgetCents: number;
 
   if (period.range === "month") {
-    const activeBudgetsByCategory = new Map<string, (typeof budgets)[number]>();
-    for (const budget of budgets) {
-      if (budget.periodMonth > period.ym) continue;
-      const existing = activeBudgetsByCategory.get(budget.categoryId);
-      if (!existing || budget.periodMonth > existing.periodMonth) {
-        activeBudgetsByCategory.set(budget.categoryId, budget);
-      }
-    }
-    budgetProgressItems = Array.from(activeBudgetsByCategory.values())
-      .map((budget) => {
-        const spentCents = spendByCategory.get(budget.categoryId) ?? 0;
-        const limitCents = budget.limitCents;
-        const progressPct =
-          limitCents > 0 ? Math.min(Math.max((spentCents / limitCents) * 100, 0), 100) : 0;
-        return {
-          id: budget.id,
-          categoryId: budget.categoryId,
-          categoryName: budget.category.name,
-          spentCents,
-          limitCents,
-          progressPct,
-        };
-      })
-      .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
+    const activeBudgets = Array.from(selectActiveBudgetsByCategory(budgets, period.ym).values());
+    budgetProgressItems = buildBudgetProgressRows(activeBudgets, spendByCategory);
     totalBudgetCents = budgetProgressItems.reduce((sum, row) => sum + row.limitCents, 0);
   } else if (period.range === "ytd") {
     const limitSumByCategory = new Map<string, number>();

@@ -90,6 +90,41 @@ Requires `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (optional `SMTP_PORT
 </details>
 
 <details>
+<summary><strong>API access (personal access tokens)</strong></summary>
+
+External apps (e.g. a personal dashboard) can read your data with a scoped token.
+
+1. **Settings → API tokens → Create token.** The raw token is shown **once** — copy it immediately; only a SHA-256 hash is stored. Revoke anytime.
+2. Call the versioned API with a bearer token:
+
+   ```bash
+   curl -H "Authorization: Bearer <token>" \
+     "https://finance.example.com/api/v1/budgets?month=2026-06"
+   ```
+
+   ```jsonc
+   // 200 OK
+   {
+     "periodMonth": "2026-06",
+     "currency": "CAD",
+     "budgets": [
+       { "categoryId": "…", "categoryName": "Groceries",
+         "limitCents": 40000, "spentCents": 31200, "percentUsed": 78 }
+     ],
+     "totalLimitCents": 74000,
+     "totalSpentCents": 52100
+   }
+   ```
+
+| Endpoint | Scope | Notes |
+|----------|-------|-------|
+| `GET /api/v1/budgets?month=YYYY-MM` | `budgets:read` | `month` defaults to the current month. Rate limited to 60 req/min per token. |
+
+Responses: `401` (missing/invalid/expired/revoked token), `403` (missing scope), `400` (bad `month`), `429` (rate limited). Tokens are not browser-CORS enabled — call from a server.
+
+</details>
+
+<details>
 <summary><strong>Release checklist</strong></summary>
 
 ```bash

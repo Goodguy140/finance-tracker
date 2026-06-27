@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useLayoutEffect, useState, useSyncExternalStore, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ChangeEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { signIn, signOut } from "next-auth/react";
 import { AccountTypePill } from "@/components/account-type-pill";
@@ -39,6 +39,7 @@ import {
 } from "@/app/actions";
 import { ExpenseCsvImportForm } from "./expense-forms";
 import { SubscriptionsPanel, type SubscriptionView } from "@/components/subscriptions-panel";
+import { ApiTokensPanel, type ApiTokenRow } from "@/components/api-tokens-panel";
 
 export function BudgetForm({ expenseCategories }: { expenseCategories: Option[] }) {
   const [isPastOverride, setIsPastOverride] = useState(false);
@@ -276,7 +277,7 @@ export function InvestmentForms({ accounts }: { accounts: Option[] }) {
   );
 }
 
-type SettingsTabId = "profile" | "data" | "subscriptions" | "budgets" | "advanced";
+type SettingsTabId = "profile" | "data" | "subscriptions" | "budgets" | "integrations" | "advanced";
 
 const SETTINGS_TAB_META: { id: SettingsTabId; label: string; labelCompact: string; hint: string }[] = [
   {
@@ -304,6 +305,12 @@ const SETTINGS_TAB_META: { id: SettingsTabId; label: string; labelCompact: strin
     hint: "Monthly limits by expense category",
   },
   {
+    id: "integrations",
+    label: "API tokens",
+    labelCompact: "API",
+    hint: "Connect external apps to read your budgets",
+  },
+  {
     id: "advanced",
     label: "Advanced",
     labelCompact: "Advanced",
@@ -324,6 +331,7 @@ export function SettingsForms({
   subscriptions,
   defaultExpenseAccountId,
   budgetAlertEmailConfigured,
+  apiTokens,
 }: {
   defaults: { displayName: string; countryCode: string; timezone: string };
   profileEmail: string;
@@ -336,8 +344,13 @@ export function SettingsForms({
   subscriptions: SubscriptionView[];
   defaultExpenseAccountId: string | null;
   budgetAlertEmailConfigured: boolean;
+  apiTokens: ApiTokenRow[];
 }) {
   const [tab, setTab] = useState<SettingsTabId>("profile");
+  const tablistRef = useRef<HTMLDivElement | null>(null);
+  // Mobile-only: show a trailing fade + chevron while the tab strip can still scroll right,
+  // so off-screen sections (e.g. Advanced) are discoverable instead of silently clipped.
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const [editingAccount, setEditingAccount] = useState<{
     id: string;
     name: string;
@@ -359,12 +372,26 @@ export function SettingsForms({
       if (h === "#budgets") setTab("budgets");
       else if (h === "#subscriptions" || h === "#subs") setTab("subscriptions");
       else if (h === "#data" || h === "#import" || h === "#accounts") setTab("data");
+      else if (h === "#integrations" || h === "#api" || h === "#tokens") setTab("integrations");
       else if (h === "#advanced") setTab("advanced");
       else if (h === "#profile") setTab("profile");
     };
     syncFromHash();
     window.addEventListener("hashchange", syncFromHash);
     return () => window.removeEventListener("hashchange", syncFromHash);
+  }, []);
+
+  useEffect(() => {
+    const el = tablistRef.current;
+    if (!el) return;
+    const update = () => setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      el.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
   }, []);
 
   const activeAccountCount = accountItems.filter((a) => !a.archived).length;
@@ -377,41 +404,54 @@ export function SettingsForms({
       : "";
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-10">
+    <div className="flex flex-col gap-6">
       <nav
-        className="shrink-0 border-b border-slate-800/80 pb-1 lg:sticky lg:top-24 lg:w-56 lg:self-start lg:border-b-0 lg:border-r lg:border-slate-800/90 lg:pb-0 lg:pr-8"
+        className="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/95 pb-1 pt-2 backdrop-blur supports-[backdrop-filter]:bg-slate-950/80"
         aria-label="Settings sections"
       >
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500 lg:mb-3">Sections</p>
-        <div
-          role="tablist"
-          className="flex flex-row gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex lg:flex-col lg:gap-1.5 lg:overflow-visible lg:pb-0"
-        >
-          {SETTINGS_TAB_META.map((t) => {
-            const selected = tab === t.id;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                title={t.hint}
-                className={`touch-manipulation rounded-xl border px-3.5 py-2.5 text-left text-sm font-medium transition sm:px-4 ${
-                  selected
-                    ? "border-slate-600 bg-slate-800 text-slate-50 shadow-sm ring-1 ring-slate-700/80"
-                    : "border-transparent bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:bg-slate-900/90 hover:text-slate-200"
-                } shrink-0 whitespace-nowrap lg:w-full lg:shrink lg:whitespace-normal`}
-                onClick={() => setTab(t.id)}
-              >
-                <span className="lg:hidden">{t.id === "data" ? t.labelCompact : t.label}</span>
-                <span className="hidden lg:inline">{t.label}</span>
-              </button>
-            );
-          })}
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Sections</p>
+        <div className="relative">
+          <div
+            ref={tablistRef}
+            role="tablist"
+            className="flex flex-row flex-nowrap gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-wrap lg:overflow-visible"
+          >
+            {SETTINGS_TAB_META.map((t) => {
+              const selected = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  title={t.hint}
+                  className={`touch-manipulation rounded-xl border px-3.5 py-2.5 text-center text-sm font-medium transition sm:px-4 ${
+                    selected
+                      ? "border-slate-600 bg-slate-800 text-slate-50 shadow-sm ring-1 ring-slate-700/80"
+                      : "border-transparent bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:bg-slate-900/90 hover:text-slate-200"
+                  } shrink-0 whitespace-nowrap`}
+                  onClick={() => setTab(t.id)}
+                >
+                  <span className="lg:hidden">{t.labelCompact}</span>
+                  <span className="hidden lg:inline">{t.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div
+            aria-hidden
+            className={`pointer-events-none absolute inset-y-0 right-0 flex items-center pb-1 pl-6 pr-0.5 text-slate-400 transition-opacity duration-200 bg-gradient-to-l from-slate-950 via-slate-950/85 to-transparent lg:hidden ${
+              canScrollRight ? "opacity-100" : "opacity-0"
+            }`}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
         </div>
       </nav>
 
-      <div className="min-w-0 flex-1 space-y-4">
+      <div className="min-w-0 space-y-4">
         {tab === "profile" ? (
           <div className="mx-auto max-w-2xl space-y-6" role="tabpanel" aria-label="Profile">
             <header className="space-y-2 border-b border-slate-800/80 pb-6">
@@ -594,7 +634,14 @@ export function SettingsForms({
         ) : null}
 
         {tab === "data" ? (
-          <div className="space-y-4" role="tabpanel" aria-label="Import and accounts">
+          <div className="mx-auto max-w-3xl space-y-6" role="tabpanel" aria-label="Import and accounts">
+            <header className="space-y-2 border-b border-slate-800/80 pb-6">
+              <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Import &amp; accounts</h2>
+              <p className="max-w-prose text-sm leading-relaxed text-slate-400">
+                Import transactions from a CSV statement and manage the financial accounts that back your expenses,
+                income, recurring transactions, and imports.
+              </p>
+            </header>
             <ExpenseCsvImportForm
               accounts={accounts}
               expenseCategories={expenseCategories}
@@ -1007,8 +1054,17 @@ export function SettingsForms({
           </div>
         ) : null}
 
+        {tab === "integrations" ? <ApiTokensPanel tokens={apiTokens} /> : null}
+
         {tab === "advanced" ? (
-          <div className="space-y-4" role="tabpanel" aria-label="Advanced">
+          <div className="mx-auto max-w-3xl space-y-6" role="tabpanel" aria-label="Advanced">
+            <header className="space-y-2 border-b border-slate-800/80 pb-6">
+              <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Advanced</h2>
+              <p className="max-w-prose text-sm leading-relaxed text-slate-400">
+                Back up or restore this account, clear your financial data, or permanently delete your login. These
+                actions affect your whole account, so review each one carefully.
+              </p>
+            </header>
             <section className="space-y-3 rounded-2xl border border-sky-800/60 bg-sky-950/25 p-4 lg:p-5">
               <h3 className="text-base font-semibold text-sky-200 lg:text-lg">Backup and restore</h3>
               <p className="text-sm text-sky-100/85">

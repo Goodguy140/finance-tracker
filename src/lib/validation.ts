@@ -86,6 +86,25 @@ export const deleteBudgetSchema = z.object({
   budgetId: z.string().min(1),
 });
 
+/** Calendar month `YYYY-MM` query/param, e.g. for the budgets API. */
+export const monthParamSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}$/, "month must be in YYYY-MM format");
+
+export const API_TOKEN_SCOPES = ["budgets:read"] as const;
+
+export const createApiTokenSchema = z.object({
+  name: z.string().trim().min(1).max(60),
+  scopes: z
+    .array(z.enum(API_TOKEN_SCOPES))
+    .min(1)
+    .default(["budgets:read"]),
+});
+
+export const revokeApiTokenSchema = z.object({
+  tokenId: z.string().min(1),
+});
+
 export const recurringTransactionSchema = z.object({
   type: z.enum(["EXPENSE", "INCOME"]),
   accountId: z.string().min(1),
