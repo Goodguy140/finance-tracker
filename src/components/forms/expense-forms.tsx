@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useLayoutEffect, useState, useSyncExternalStore, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type ChangeEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { signIn, signOut } from "next-auth/react";
 import { AccountTypePill } from "@/components/account-type-pill";
@@ -66,6 +66,21 @@ export function ExpenseTitleAndCategoryFields({
       : (expenseCategories[0]?.id ?? "");
   const [categoryId, setCategoryId] = useState(initialCategoryId);
 
+  // React 19 automatically calls the native form.reset() after a successful server
+  // action (see ServerActionForm). That reverts this controlled <select> in the DOM
+  // to its first option without changing `categoryId`, so nothing re-syncs it until an
+  // unrelated re-render — the "category resets until another field is edited" bug.
+  // Remounting the select on the form's reset event re-applies the tracked category.
+  const selectRef = useRef<HTMLSelectElement>(null);
+  const [resetNonce, setResetNonce] = useState(0);
+  useEffect(() => {
+    const form = selectRef.current?.form;
+    if (!form) return;
+    const onReset = () => setResetNonce((n) => n + 1);
+    form.addEventListener("reset", onReset);
+    return () => form.removeEventListener("reset", onReset);
+  }, []);
+
   function syncCategoryFromTitle(title: string) {
     const match = categoryIdForExpenseTitle(titleSuggestions, title);
     if (match && expenseCategories.some((c) => c.id === match)) {
@@ -76,6 +91,8 @@ export function ExpenseTitleAndCategoryFields({
   const categoryField = (
     <LabeledField label="Category" hint="Expense category for budgeting and reports.">
       <select
+        key={resetNonce}
+        ref={selectRef}
         id={`${fieldIds}-category`}
         name="categoryId"
         className={selectClass}
