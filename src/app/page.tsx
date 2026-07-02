@@ -72,8 +72,12 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const transactionDateFilter = period.transactionDateFilter;
   const recurringIncomeAnchorYm = period.range === "lifetime" ? anchorYm : period.ym;
   const pastIncomeMonthsYm = getPastMonthYmsBefore(recurringIncomeAnchorYm, 3);
+  // Categories not touched by a transaction (or split part) in the last 3 months are
+  // hidden from the "add" pickers to keep the list focused on what's actually in use.
+  const categoryUsageCutoff = new Date(now);
+  categoryUsageCutoff.setMonth(categoryUsageCutoff.getMonth() - 3);
 
-  const [accounts, categories, budgets, recurringTransactions, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions, recentUnlinkedExpenses] =
+  const [accounts, categories, budgets, recurringTransactions, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions, recentUnlinkedExpenses, recentExpenseCategoryUsage, recentSplitCategoryUsage] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -145,6 +149,23 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       orderBy: { date: "desc" },
       take: 100,
     }),
+    prisma.transaction.findMany({
+      where: {
+        userId: user.id,
+        type: TransactionType.EXPENSE,
+        date: { gte: categoryUsageCutoff },
+      },
+      select: { categoryId: true },
+      distinct: ["categoryId"],
+    }),
+    prisma.splitTransactionPart.findMany({
+      where: {
+        userId: user.id,
+        transaction: { date: { gte: categoryUsageCutoff } },
+      },
+      select: { categoryId: true },
+      distinct: ["categoryId"],
+    }),
   ]);
 
   const expenseCategories = categories.filter((c) => c.kind === CategoryKind.EXPENSE);
@@ -154,6 +175,22 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     name: `${a.name} (${formatAccountTypeLabel(a.type)})`,
   }));
   const expenseCategoryOptions = expenseCategories.map((c) => ({ id: c.id, name: c.name }));
+  // Options for the "add expense" pickers: hide categories with no transaction in the
+  // last 3 months. Recently-created categories are kept (so a brand-new category can be
+  // used), and if every category would be hidden we fall back to the full list so a
+  // dormant account is never left unable to add an expense. The full
+  // `expenseCategoryOptions` is still used for edit forms, where the original category
+  // must remain selectable even if it's now stale.
+  const recentlyUsedExpenseCategoryIds = new Set<string>([
+    ...recentExpenseCategoryUsage.map((t) => t.categoryId),
+    ...recentSplitCategoryUsage.map((s) => s.categoryId),
+  ]);
+  const recentlyUsedExpenseCategories = expenseCategories.filter(
+    (c) => recentlyUsedExpenseCategoryIds.has(c.id) || c.createdAt >= categoryUsageCutoff,
+  );
+  const expenseCategoryAddOptions = (
+    recentlyUsedExpenseCategories.length > 0 ? recentlyUsedExpenseCategories : expenseCategories
+  ).map((c) => ({ id: c.id, name: c.name }));
   const incomeCategoryOptions = incomeCategories.map((c) => ({ id: c.id, name: c.name }));
   const expenseTitleSuggestions = buildExpenseTitleSuggestions(titledExpenseHistory);
 
@@ -443,7 +480,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                 />
                 <AddFormsDropdown
                   accounts={accountOptions}
-                  expenseCategories={expenseCategoryOptions}
+                  expenseCategories={expenseCategoryAddOptions}
                   incomeCategories={incomeCategoryOptions}
                   defaultExpenseAccountId={user.defaultExpenseAccountId}
                 />
@@ -463,7 +500,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
         <DashboardMobileActions
           accounts={accountOptions}
-          expenseCategories={expenseCategoryOptions}
+          expenseCategories={expenseCategoryAddOptions}
           incomeCategories={incomeCategoryOptions}
           defaultExpenseAccountId={user.defaultExpenseAccountId}
           titleSuggestions={expenseTitleSuggestions}
@@ -547,7 +584,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
               <h2 className="mb-3 text-lg font-semibold">Add Expense</h2>
               <ExpenseForm
                 accounts={accountOptions}
-                expenseCategories={expenseCategoryOptions}
+                expenseCategories={expenseCategoryAddOptions}
                 defaultExpenseAccountId={user.defaultExpenseAccountId}
                 titleSuggestions={expenseTitleSuggestions}
               />
