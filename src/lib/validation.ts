@@ -86,6 +86,18 @@ export const deleteBudgetSchema = z.object({
   budgetId: z.string().min(1),
 });
 
+export const reallocateBudgetSchema = z.object({
+  destinationCategoryId: z.string().min(1),
+  transfers: z
+    .array(
+      z.object({
+        categoryId: z.string().min(1),
+        amountCents: z.number().int().positive(),
+      }),
+    )
+    .min(1),
+});
+
 /** Calendar month `YYYY-MM` query/param, e.g. for the budgets API. */
 export const monthParamSchema = z
   .string()
