@@ -19,6 +19,7 @@ import {
 } from "@/lib/budget-alert-preferences";
 import type { BudgetProgressInput, BudgetTrendAlert, BudgetWarning } from "@/lib/budget-alerts";
 import { BudgetReallocateDialog } from "@/components/budget-reallocate-dialog";
+import { headroomCents } from "@/lib/budget-reallocation";
 
 function subscribeMobileViewport(onStoreChange: () => void) {
   const mediaQuery = window.matchMedia("(max-width: 639px)");
@@ -66,7 +67,7 @@ const triggerClassName =
   "relative touch-manipulation inline-flex min-h-9 min-w-9 items-center justify-center rounded-lg border border-slate-700/80 bg-slate-900/90 text-slate-200 transition hover:border-slate-600 hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500/60 lg:min-h-0 lg:rounded-xl lg:px-2.5 lg:py-1.5";
 
 const panelShellClassName =
-  "max-h-[min(85vh,28rem)] overflow-y-auto overscroll-contain rounded-2xl border border-slate-700 bg-slate-950/98 p-4 shadow-2xl backdrop-blur";
+  "max-h-[min(85vh,36rem)] overflow-y-auto overscroll-contain rounded-2xl border border-slate-700 bg-slate-950/98 p-4 shadow-2xl backdrop-blur";
 
 export function BudgetAlertsPanel({
   warnings,
@@ -77,6 +78,10 @@ export function BudgetAlertsPanel({
   periodKey,
 }: BudgetAlertsPanelProps) {
   const [reallocateFor, setReallocateFor] = useState<BudgetWarning | null>(null);
+  const totalHeadroomCents = useMemo(
+    () => budgets.reduce((sum, budget) => sum + headroomCents(budget), 0),
+    [budgets],
+  );
   const dismissedWarnings = useSyncExternalStore(
     subscribeDismissedBudgetWarnings,
     readDismissedBudgetWarnings,
@@ -150,36 +155,54 @@ export function BudgetAlertsPanel({
   );
 
   useEffect(() => {
-    if (notifyPayload.length === 0) return;
-    const prefs = readBudgetAlertPreferences();
-    if (!prefs.browserEnabled) return;
-    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (typeof window === "undefined") return;
 
-    const run = async () => {
-      if (Notification.permission === "default") {
-        await Notification.requestPermission();
-      }
-      if (Notification.permission !== "granted") return;
-
-      const notified = readNotifiedMap();
-      const next = { ...notified };
-      let changed = false;
-
-      for (const item of notifyPayload) {
-        if (!shouldNotifyBrowser(item.categoryId, item.severity, notified)) continue;
-        new Notification("Budget alert", {
-          body: item.message,
-          tag: `budget-${item.categoryId}-${item.severity}`,
-        });
-        next[item.categoryId] = item.severity;
+    // Reconcile the "already notified" record with the current breach reality so
+    // a category that was resolved (dropped below its limit) and later goes over
+    // again can alert once more. `warnings` reflects every still-breached
+    // category (dismissed or not); anything missing from it has resolved.
+    const currentSeverityById = new Map(warnings.map((w) => [w.categoryId, w.severity]));
+    const stored = readNotifiedMap();
+    const next: typeof stored = { ...stored };
+    let changed = false;
+    for (const categoryId of Object.keys(stored)) {
+      const current = currentSeverityById.get(categoryId);
+      if (!current) {
+        delete next[categoryId];
+        changed = true;
+      } else if (stored[categoryId] === "critical" && current === "warning") {
+        // Cooled off from over-budget to a plain warning: allow a future
+        // re-escalation to critical to notify again.
+        next[categoryId] = "warning";
         changed = true;
       }
+    }
 
+    const prefs = readBudgetAlertPreferences();
+    const canNotify = prefs.browserEnabled && "Notification" in window;
+
+    const run = async () => {
+      if (canNotify && notifyPayload.length > 0) {
+        if (Notification.permission === "default") {
+          await Notification.requestPermission();
+        }
+        if (Notification.permission === "granted") {
+          for (const item of notifyPayload) {
+            if (!shouldNotifyBrowser(item.categoryId, item.severity, next)) continue;
+            new Notification("Budget alert", {
+              body: item.message,
+              tag: `budget-${item.categoryId}-${item.severity}`,
+            });
+            next[item.categoryId] = item.severity;
+            changed = true;
+          }
+        }
+      }
       if (changed) writeNotifiedMap(next);
     };
 
     void run();
-  }, [notifyPayload]);
+  }, [notifyPayload, warnings]);
 
   useEffect(() => {
     if (!open) return;
@@ -224,6 +247,11 @@ export function BudgetAlertsPanel({
                     <p className="mt-1 text-xs tabular-nums text-slate-400">
                       {formatCurrency(w.spentCents)} / {formatCurrency(w.limitCents)}
                     </p>
+                    {w.severity === "critical" && totalHeadroomCents - headroomCents(w) > 0 ? (
+                      <p className="mt-1 text-xs text-blue-300">
+                        ≈ {formatCurrency(totalHeadroomCents - headroomCents(w))} available in other budgets
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex shrink-0 flex-col gap-1">
                     {w.severity === "critical" ? (
@@ -424,7 +452,7 @@ export function BudgetAlertsPanel({
               role="dialog"
               aria-modal="true"
               aria-labelledby={panelTitleId}
-              className={`absolute right-0 top-full z-[60] mt-2 w-[min(92vw,22rem)] ${panelShellClassName}`}
+              className={`absolute right-0 top-full z-[60] mt-2 w-[min(92vw,32rem)] ${panelShellClassName}`}
             >
               {panel}
             </div>

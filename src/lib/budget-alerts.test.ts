@@ -6,11 +6,14 @@ import {
   dayOfMonthInYm,
   daysInMonthYm,
   daysLeftInMonthYm,
+  formatBudgetOverBudgetMessage,
   formatBudgetWarningMessage,
   percentUsed,
 } from "./budget-alerts";
+import { formatCurrency } from "./money";
 
 const mayRef = new Date(Date.UTC(2025, 4, 15, 12, 0, 0, 0)); // 2025-05-15
+const earlyMayRef = new Date(Date.UTC(2025, 4, 2, 12, 0, 0, 0)); // 2025-05-02 (day 2)
 
 describe("budget period helpers", () => {
   it("counts days in month and elapsed/remaining", () => {
@@ -49,6 +52,34 @@ describe("computeBudgetWarnings", () => {
     );
     expect(alerts).toHaveLength(0);
   });
+
+  it("does not alert a budget that is exactly at its limit", () => {
+    const alerts = computeBudgetWarnings(
+      [{ categoryId: "c1", categoryName: "Dining", spentCents: 10000, limitCents: 10000 }],
+      { ym: "2025-05", reference: mayRef },
+    );
+    expect(alerts).toHaveLength(0);
+  });
+
+  it("treats one cent under the limit as a warning, not critical (no rounding false-positive)", () => {
+    const alerts = computeBudgetWarnings(
+      [{ categoryId: "c1", categoryName: "Dining", spentCents: 9999, limitCents: 10000 }],
+      { ym: "2025-05", reference: mayRef },
+    );
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].severity).toBe("warning");
+    expect(alerts[0].percentUsed).toBe(100); // rounds to 100 but is under limit
+  });
+
+  it("marks strictly-over budgets critical and exposes remaining cents", () => {
+    const alerts = computeBudgetWarnings(
+      [{ categoryId: "c1", categoryName: "Dining", spentCents: 10300, limitCents: 10000 }],
+      { ym: "2025-05", reference: mayRef },
+    );
+    expect(alerts[0].severity).toBe("critical");
+    expect(alerts[0].remainingCents).toBe(-300);
+    expect(alerts[0].message).toBe(formatBudgetOverBudgetMessage("Dining", 300));
+  });
 });
 
 describe("computeOverBudgetTrends", () => {
@@ -68,6 +99,20 @@ describe("computeOverBudgetTrends", () => {
     ];
     expect(computeOverBudgetTrends(rows, { ym: "2025-05", reference: mayRef })).toHaveLength(0);
   });
+
+  it("ignores categories already over budget (covered by the critical warning)", () => {
+    const rows = [
+      { categoryId: "c1", categoryName: "Dining", spentCents: 12000, limitCents: 10000 },
+    ];
+    expect(computeOverBudgetTrends(rows, { ym: "2025-05", reference: mayRef })).toHaveLength(0);
+  });
+
+  it("stays quiet too early in the month for a projection to mean anything", () => {
+    const rows = [
+      { categoryId: "c1", categoryName: "Dining", spentCents: 7000, limitCents: 10000 },
+    ];
+    expect(computeOverBudgetTrends(rows, { ym: "2025-05", reference: earlyMayRef })).toHaveLength(0);
+  });
 });
 
 describe("computeMonthOverMonthTrends", () => {
@@ -81,6 +126,18 @@ describe("computeMonthOverMonthTrends", () => {
     const trends = computeMonthOverMonthTrends(rows, prior, { ym: "2025-05", reference: mayRef });
     expect(trends.length).toBeGreaterThan(0);
   });
+
+  it("ignores categories already over budget", () => {
+    const prior = new Map([["c1", { categoryId: "c1", spentCents: 3100, limitCents: 10000 }]]);
+    const rows = [{ categoryId: "c1", categoryName: "Dining", spentCents: 12000, limitCents: 10000 }];
+    expect(computeMonthOverMonthTrends(rows, prior, { ym: "2025-05", reference: mayRef })).toHaveLength(0);
+  });
+
+  it("stays quiet too early in the month", () => {
+    const prior = new Map([["c1", { categoryId: "c1", spentCents: 3100, limitCents: 10000 }]]);
+    const rows = [{ categoryId: "c1", categoryName: "Dining", spentCents: 5000, limitCents: 10000 }];
+    expect(computeMonthOverMonthTrends(rows, prior, { ym: "2025-05", reference: earlyMayRef })).toHaveLength(0);
+  });
 });
 
 describe("formatBudgetWarningMessage", () => {
@@ -89,5 +146,25 @@ describe("formatBudgetWarningMessage", () => {
       "Dining is 82% used with 12 days left.",
     );
     expect(percentUsed(8200, 10000)).toBe(82);
+  });
+
+  it("includes remaining dollars when provided", () => {
+    expect(formatBudgetWarningMessage("Dining", 85, 12, 150)).toBe(
+      `Dining is 85% used — ${formatCurrency(150)} left, 12 days left.`,
+    );
+  });
+
+  it("uses singular day label at one day left", () => {
+    expect(formatBudgetWarningMessage("Dining", 85, 1, 150)).toBe(
+      `Dining is 85% used — ${formatCurrency(150)} left, 1 day left.`,
+    );
+  });
+});
+
+describe("formatBudgetOverBudgetMessage", () => {
+  it("states the over-budget amount", () => {
+    expect(formatBudgetOverBudgetMessage("Dining", 300)).toBe(
+      `Dining is over budget by ${formatCurrency(300)}.`,
+    );
   });
 });

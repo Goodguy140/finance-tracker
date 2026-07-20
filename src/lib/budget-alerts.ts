@@ -16,6 +16,8 @@ export type BudgetWarning = {
   spentCents: number;
   limitCents: number;
   percentUsed: number;
+  /** limit − spent: positive when under budget, negative when over. */
+  remainingCents: number;
   daysLeft: number;
   severity: BudgetWarningSeverity;
   message: string;
@@ -69,10 +71,20 @@ export function formatBudgetWarningMessage(
   categoryName: string,
   pct: number,
   daysLeft: number,
+  remainingCents?: number,
 ): string {
   const dayLabel = daysLeft === 1 ? "day" : "days";
-  return `${categoryName} is ${pct}% used with ${daysLeft} ${dayLabel} left.`;
+  if (remainingCents === undefined) {
+    return `${categoryName} is ${pct}% used with ${daysLeft} ${dayLabel} left.`;
+  }
+  return `${categoryName} is ${pct}% used — ${formatCurrency(remainingCents)} left, ${daysLeft} ${dayLabel} left.`;
 }
+
+export function formatBudgetOverBudgetMessage(categoryName: string, overCents: number): string {
+  return `${categoryName} is over budget by ${formatCurrency(overCents)}.`;
+}
+
+const SEVERITY_RANK: Record<BudgetWarningSeverity, number> = { critical: 1, warning: 0 };
 
 export function computeBudgetWarnings(
   rows: BudgetProgressInput[],
@@ -80,34 +92,43 @@ export function computeBudgetWarnings(
     ym: string;
     reference?: Date;
     warningThresholdPct?: number;
-    criticalThresholdPct?: number;
   },
 ): BudgetWarning[] {
   const reference = options.reference ?? new Date();
   const warningThreshold = options.warningThresholdPct ?? 80;
-  const criticalThreshold = options.criticalThresholdPct ?? 100;
   const daysLeft = daysLeftInMonthYm(reference, options.ym);
 
   return rows
     .filter((row) => row.limitCents > 0)
     .map((row) => {
       const pct = percentUsed(row.spentCents, row.limitCents);
+      // Classify on cents, not the rounded percent: being exactly at the limit
+      // (e.g. right after a rebalance) is on-budget, not over.
       const severity: BudgetWarningSeverity | null =
-        pct >= criticalThreshold ? "critical" : pct >= warningThreshold ? "warning" : null;
+        row.spentCents > row.limitCents
+          ? "critical"
+          : row.spentCents < row.limitCents && pct >= warningThreshold
+            ? "warning"
+            : null;
       if (!severity) return null;
+      const remainingCents = row.limitCents - row.spentCents;
       return {
         categoryId: row.categoryId,
         categoryName: row.categoryName,
         spentCents: row.spentCents,
         limitCents: row.limitCents,
         percentUsed: pct,
+        remainingCents,
         daysLeft,
         severity,
-        message: formatBudgetWarningMessage(row.categoryName, pct, daysLeft),
+        message:
+          severity === "critical"
+            ? formatBudgetOverBudgetMessage(row.categoryName, -remainingCents)
+            : formatBudgetWarningMessage(row.categoryName, pct, daysLeft, remainingCents),
       };
     })
     .filter((row): row is BudgetWarning => row !== null)
-    .sort((a, b) => b.percentUsed - a.percentUsed);
+    .sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] || b.percentUsed - a.percentUsed);
 }
 
 /**
@@ -120,18 +141,24 @@ export function computeOverBudgetTrends(
     ym: string;
     reference?: Date;
     paceThreshold?: number;
+    minElapsedDays?: number;
   },
 ): BudgetTrendAlert[] {
   const reference = options.reference ?? new Date();
   const paceThreshold = options.paceThreshold ?? 1.05;
+  const minElapsedDays = options.minElapsedDays ?? 3;
   const totalDays = daysInMonthYm(options.ym);
   const elapsed = dayOfMonthInYm(reference, options.ym);
-  if (elapsed <= 0 || totalDays <= 0) return [];
+  // Too early in the month for a projection to mean anything (one purchase on
+  // day 1 would look like a runaway pace).
+  if (elapsed < minElapsedDays || totalDays <= 0) return [];
 
   const expectedFraction = elapsed / totalDays;
 
   return rows
-    .filter((row) => row.limitCents > 0 && row.spentCents > 0)
+    // Skip categories already over budget: the critical warning is the headline,
+    // and "on track to exceed" is contradictory once it has already exceeded.
+    .filter((row) => row.limitCents > 0 && row.spentCents > 0 && row.spentCents < row.limitCents)
     .map((row) => {
       const spentFraction = row.spentCents / row.limitCents;
       const paceRatio = expectedFraction > 0 ? spentFraction / expectedFraction : 0;
@@ -164,17 +191,21 @@ export function computeMonthOverMonthTrends(
     ym: string;
     reference?: Date;
     rateThreshold?: number;
+    minElapsedDays?: number;
   },
 ): BudgetTrendAlert[] {
   const reference = options.reference ?? new Date();
   const rateThreshold = options.rateThreshold ?? 1.1;
+  const minElapsedDays = options.minElapsedDays ?? 3;
   const priorYm = shiftYm(options.ym, -1);
   const priorDays = daysInMonthYm(priorYm);
   const elapsed = dayOfMonthInYm(reference, options.ym);
-  if (elapsed <= 0) return [];
+  // Daily-rate comparisons are too jumpy in the first days of the month.
+  if (elapsed < minElapsedDays) return [];
 
   return rows
-    .filter((row) => row.limitCents > 0 && row.spentCents > 0)
+    // Already-over-budget categories are covered by the critical warning.
+    .filter((row) => row.limitCents > 0 && row.spentCents > 0 && row.spentCents < row.limitCents)
     .map((row) => {
       const prior = priorByCategory.get(row.categoryId);
       if (!prior || prior.spentCents <= 0) return null;
