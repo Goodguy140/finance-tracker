@@ -17,7 +17,8 @@ import {
   type BudgetWarningSeverityStored,
   type DismissedBudgetWarningMap,
 } from "@/lib/budget-alert-preferences";
-import type { BudgetTrendAlert, BudgetWarning } from "@/lib/budget-alerts";
+import type { BudgetProgressInput, BudgetTrendAlert, BudgetWarning } from "@/lib/budget-alerts";
+import { BudgetReallocateDialog } from "@/components/budget-reallocate-dialog";
 
 function subscribeMobileViewport(onStoreChange: () => void) {
   const mediaQuery = window.matchMedia("(max-width: 639px)");
@@ -33,6 +34,8 @@ export type BudgetAlertsPanelProps = {
   warnings: BudgetWarning[];
   paceTrends: BudgetTrendAlert[];
   momTrends: BudgetTrendAlert[];
+  /** Current-month budget rows, used as reallocation sources when covering an overage. */
+  budgets: BudgetProgressInput[];
   periodLabel: string;
   periodKey: string;
 };
@@ -69,9 +72,11 @@ export function BudgetAlertsPanel({
   warnings,
   paceTrends,
   momTrends,
+  budgets,
   periodLabel,
   periodKey,
 }: BudgetAlertsPanelProps) {
+  const [reallocateFor, setReallocateFor] = useState<BudgetWarning | null>(null);
   const dismissedWarnings = useSyncExternalStore(
     subscribeDismissedBudgetWarnings,
     readDismissedBudgetWarnings,
@@ -220,13 +225,24 @@ export function BudgetAlertsPanel({
                       {formatCurrency(w.spentCents)} / {formatCurrency(w.limitCents)}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => dismissWarning(dismissalKey)}
-                    className="shrink-0 rounded-lg border border-slate-700/80 px-2 py-1 text-xs font-medium text-slate-300 transition hover:border-slate-500 hover:bg-slate-900/70 hover:text-slate-100"
-                  >
-                    Dismiss
-                  </button>
+                  <div className="flex shrink-0 flex-col gap-1">
+                    {w.severity === "critical" ? (
+                      <button
+                        type="button"
+                        onClick={() => setReallocateFor(w)}
+                        className="rounded-lg border border-blue-500/50 bg-blue-500/10 px-2 py-1 text-xs font-medium text-blue-200 transition hover:border-blue-400 hover:bg-blue-500/20"
+                      >
+                        Rebalance
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => dismissWarning(dismissalKey)}
+                      className="rounded-lg border border-slate-700/80 px-2 py-1 text-xs font-medium text-slate-300 transition hover:border-slate-500 hover:bg-slate-900/70 hover:text-slate-100"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
                 </div>
               </li>
             ))}
@@ -354,6 +370,7 @@ export function BudgetAlertsPanel({
   );
 
   return (
+    <>
     <div ref={rootRef} className="relative shrink-0">
       <button
         type="button"
@@ -414,5 +431,19 @@ export function BudgetAlertsPanel({
           )
         : null}
     </div>
+    {reallocateFor ? (
+      <BudgetReallocateDialog
+        destination={{
+          categoryId: reallocateFor.categoryId,
+          categoryName: reallocateFor.categoryName,
+          spentCents: reallocateFor.spentCents,
+          limitCents: reallocateFor.limitCents,
+        }}
+        candidates={budgets}
+        onClose={() => setReallocateFor(null)}
+        onApplied={() => setReallocateFor(null)}
+      />
+    ) : null}
+    </>
   );
 }

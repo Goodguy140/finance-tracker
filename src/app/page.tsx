@@ -475,6 +475,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                   warnings={budgetWarnings}
                   paceTrends={budgetPaceTrends}
                   momTrends={budgetMomTrends}
+                  budgets={budgetProgressItems}
                   periodLabel={periodDescription}
                   periodKey={period.ym}
                 />
