@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { deleteExpenseTransactionAction, updateExpenseAction } from "@/app/actions";
 import { MetaChip } from "@/components/meta-chip";
 import {
+  type ExpenseGroupSummary,
+  groupExpenseLogEntries,
+  summarizeExpenseGroup,
+} from "@/lib/expense-log-grouping";
+import {
   CurrencyAmountInput,
   DateField,
   ExpenseTitleAndCategoryFields,
@@ -639,6 +644,250 @@ function EditExpenseModal({
   );
 }
 
+function ChevronIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform duration-200 ${
+        expanded ? "rotate-90" : ""
+      }`}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2.25}
+      aria-hidden
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="m9 5 7 7-7 7" />
+    </svg>
+  );
+}
+
+function ExpenseLogRow({
+  txn,
+  density,
+  pillSize,
+  cardPad,
+  onEdit,
+}: {
+  txn: ExpenseLogEntry;
+  density: ExpenseLogDensity;
+  pillSize: "default" | "compact";
+  cardPad: string;
+  onEdit: (id: string) => void;
+}) {
+  const body = (
+    <>
+      <ExpenseLogMobileCard txn={txn} pillSize={pillSize} isSplit={txn.isSplit} />
+      <div className="hidden sm:block">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <span className="block font-semibold leading-snug text-slate-100">
+              {expenseLogHeading(txn)}
+            </span>
+            <ExpenseLogMeta txn={txn} density={density} isSplit={txn.isSplit} />
+          </div>
+          <ExpenseAmountBlock txn={txn} size={pillSize} />
+        </div>
+      </div>
+    </>
+  );
+
+  if (txn.isSplit) {
+    return (
+      <div className={`rounded-xl border border-slate-800 bg-slate-950/50 text-sm opacity-90 ${cardPad}`}>
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => onEdit(txn.id)}
+      className={`w-full rounded-xl border border-slate-800 bg-slate-950/50 text-left text-sm text-slate-100 transition hover:border-blue-500/40 hover:bg-slate-900/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 touch-manipulation ${cardPad}`}
+    >
+      {body}
+    </button>
+  );
+}
+
+function showGroupReceiptBreakdown(summary: ExpenseGroupSummary) {
+  if (summary.preCreditCents == null || summary.preCreditCents <= 0) return false;
+  if (summary.creditCents > 0) return true;
+  return summary.preCreditCents !== summary.amountCents;
+}
+
+function ExpenseGroupAmountBlock({
+  summary,
+  size,
+}: {
+  summary: ExpenseGroupSummary;
+  size: "default" | "compact";
+}) {
+  const meta = showGroupReceiptBreakdown(summary);
+  const textClass = size === "compact" ? "text-[10px] leading-tight" : "text-xs leading-snug";
+  return (
+    <div className="flex shrink-0 flex-col items-end gap-1 text-right">
+      <AmountPill cents={summary.amountCents} size={size} />
+      {meta ? (
+        <div className={`max-w-[16rem] space-y-0.5 ${textClass}`}>
+          <p className="tabular-nums text-slate-400">
+            Total <span className="font-medium text-slate-300">{formatCurrency(summary.preCreditCents!)}</span>
+          </p>
+          {summary.creditCents > 0 ? (
+            <p className="tabular-nums text-emerald-400/95">
+              Credits <span className="font-medium">{formatCurrency(-summary.creditCents)}</span>
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function groupCategorySummary(labels: string[]) {
+  if (labels.length <= 2) return labels.join(", ");
+  return `${labels.slice(0, 2).join(", ")} +${labels.length - 2}`;
+}
+
+function CountChip({ count }: { count: number }) {
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-full border border-blue-500/40 bg-blue-500/15 px-2.5 py-1 text-[11px] font-medium text-blue-100 sm:text-xs">
+      {count} transactions
+    </span>
+  );
+}
+
+function ExpenseLogGroupHeader({
+  entries,
+  summary,
+  density,
+  pillSize,
+  cardPad,
+  expanded,
+  listId,
+  onToggle,
+}: {
+  entries: ExpenseLogEntry[];
+  summary: ExpenseGroupSummary;
+  density: ExpenseLogDensity;
+  pillSize: "default" | "compact";
+  cardPad: string;
+  expanded: boolean;
+  listId: string;
+  onToggle: () => void;
+}) {
+  const first = entries[0];
+  const heading = first.title?.trim() || first.categoryLabel;
+  const categories = groupCategorySummary(summary.categoryLabels);
+  const compactLine = [categories, first.accountLabel, first.dateDisplay].join(" · ");
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      aria-controls={listId}
+      className={`w-full rounded-xl border border-slate-800 bg-slate-950/50 text-left text-sm text-slate-100 transition hover:border-blue-500/40 hover:bg-slate-900/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 touch-manipulation ${cardPad}`}
+    >
+      <div className="flex flex-col gap-2 sm:hidden">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-300/90">Expense</p>
+            <p className="mt-0.5 flex items-center gap-1.5 text-base font-semibold leading-snug text-slate-50">
+              <ChevronIcon expanded={expanded} />
+              <span className="min-w-0 truncate">{heading}</span>
+            </p>
+          </div>
+          <ExpenseGroupAmountBlock summary={summary} size={pillSize} />
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <CountChip count={summary.count} />
+          <MetaChip label="Category">{categories}</MetaChip>
+        </div>
+        <p className="text-xs leading-snug text-slate-500">
+          <span className="font-medium text-slate-400">{first.accountLabel}</span>
+          <span className="text-slate-600"> · </span>
+          <span>{first.dateDisplay}</span>
+        </p>
+      </div>
+
+      <div className="hidden sm:block">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <span className="flex items-center gap-1.5 font-semibold leading-snug text-slate-100">
+              <ChevronIcon expanded={expanded} />
+              <span className="min-w-0 truncate">{heading}</span>
+            </span>
+            {density === "compact" ? (
+              <p
+                className="mt-1 line-clamp-2 text-[11px] leading-snug text-slate-400 sm:text-xs"
+                title={`${summary.count} transactions · ${compactLine}`}
+              >
+                <span className="font-medium text-blue-300/90">{summary.count} transactions</span>
+                <span className="text-slate-600"> · </span>
+                {compactLine}
+              </p>
+            ) : (
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                <CountChip count={summary.count} />
+                <MetaChip label="Category">{categories}</MetaChip>
+                <MetaChip label="Account">{first.accountLabel}</MetaChip>
+                <MetaChip label="Transaction">{first.dateDisplay}</MetaChip>
+              </div>
+            )}
+          </div>
+          <ExpenseGroupAmountBlock summary={summary} size={pillSize} />
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function ExpenseLogGroupRows({
+  entries,
+  density,
+  pillSize,
+  cardPad,
+  onEdit,
+}: {
+  entries: ExpenseLogEntry[];
+  density: ExpenseLogDensity;
+  pillSize: "default" | "compact";
+  cardPad: string;
+  onEdit: (id: string) => void;
+}) {
+  const listId = useId();
+  const [expanded, setExpanded] = useState(false);
+  const summary = useMemo(() => summarizeExpenseGroup(entries), [entries]);
+
+  return (
+    <div className="space-y-2">
+      <ExpenseLogGroupHeader
+        entries={entries}
+        summary={summary}
+        density={density}
+        pillSize={pillSize}
+        cardPad={cardPad}
+        expanded={expanded}
+        listId={listId}
+        onToggle={() => setExpanded((v) => !v)}
+      />
+      <div id={listId} hidden={!expanded} className="ml-3 space-y-2 border-l border-slate-800/80 pl-3">
+        {entries.map((txn) => (
+          <ExpenseLogRow
+            key={txn.id}
+            txn={txn}
+            density={density}
+            pillSize={pillSize}
+            cardPad={cardPad}
+            onEdit={onEdit}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function ExpenseLogPanel({
   entries,
   accounts,
@@ -661,6 +910,8 @@ export function ExpenseLogPanel({
     () => entries.filter((e) => expenseLogMatchesQuery(e, searchQuery, formatCurrency)),
     [entries, searchQuery],
   );
+  // Consolidate same-day repeats of the same titled purchase on the same account.
+  const groups = useMemo(() => groupExpenseLogEntries(filteredEntries), [filteredEntries]);
   const editing = editingId ? entries.find((e) => e.id === editingId) : null;
   const trimmedSearch = searchQuery.trim();
 
@@ -701,47 +952,27 @@ export function ExpenseLogPanel({
           ) : filteredEntries.length === 0 ? (
             <p className="text-sm text-slate-400">No expenses match your search.</p>
           ) : (
-            filteredEntries.map((txn) => (
-              <div key={txn.id}>
-                {txn.isSplit ? (
-                  <div
-                    className={`rounded-xl border border-slate-800 bg-slate-950/50 text-sm opacity-90 ${cardPad}`}
-                  >
-                    <ExpenseLogMobileCard txn={txn} pillSize={pillSize} isSplit />
-                    <div className="hidden sm:block">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <span className="block font-semibold leading-snug text-slate-100">
-                            {expenseLogHeading(txn)}
-                          </span>
-                          <ExpenseLogMeta txn={txn} density={density} isSplit />
-                        </div>
-                        <ExpenseAmountBlock txn={txn} size={pillSize} />
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setEditingId(txn.id)}
-                    className={`w-full rounded-xl border border-slate-800 bg-slate-950/50 text-left text-sm text-slate-100 transition hover:border-blue-500/40 hover:bg-slate-900/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 touch-manipulation ${cardPad}`}
-                  >
-                    <ExpenseLogMobileCard txn={txn} pillSize={pillSize} isSplit={false} />
-                    <div className="hidden sm:block">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <span className="block font-semibold leading-snug text-slate-100">
-                            {expenseLogHeading(txn)}
-                          </span>
-                          <ExpenseLogMeta txn={txn} density={density} isSplit={false} />
-                        </div>
-                        <ExpenseAmountBlock txn={txn} size={pillSize} />
-                      </div>
-                    </div>
-                  </button>
-                )}
-              </div>
-            ))
+            groups.map((group) =>
+              group.entries.length === 1 ? (
+                <ExpenseLogRow
+                  key={group.key}
+                  txn={group.entries[0]}
+                  density={density}
+                  pillSize={pillSize}
+                  cardPad={cardPad}
+                  onEdit={setEditingId}
+                />
+              ) : (
+                <ExpenseLogGroupRows
+                  key={group.key}
+                  entries={group.entries}
+                  density={density}
+                  pillSize={pillSize}
+                  cardPad={cardPad}
+                  onEdit={setEditingId}
+                />
+              ),
+            )
           )}
         </div>
       </div>
