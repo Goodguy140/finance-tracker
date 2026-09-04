@@ -11,6 +11,7 @@
     "start": "next start",
     "db:deploy": "prisma migrate deploy",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "e2e:web-server": "node scripts/e2e-server.cjs",

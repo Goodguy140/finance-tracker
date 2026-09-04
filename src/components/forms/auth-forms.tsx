@@ -1,29 +1,13 @@
 "use client";
 
-import { useId, useLayoutEffect, useState, useSyncExternalStore, type ChangeEvent, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useState } from "react";
 import { signIn, signOut } from "next-auth/react";
-import { AccountTypePill } from "@/components/account-type-pill";
 import { SsoSignInForms } from "@/components/sso-sign-in-forms";
 import { ServerActionForm } from "@/components/server-action-form";
-import { BudgetAlertPreferences } from "@/components/budget-alert-preferences";
-import { ExpenseTitleAutocomplete } from "@/components/expense-title-autocomplete";
-import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_ORDER } from "@/lib/account-type-labels";
-import { parseImportedDate } from "@/lib/import-dates";
-import { categoryIdForExpenseTitle, type ExpenseTitleSuggestion } from "@/lib/expense-title-suggestions";
-import { formatCurrency, parseStatementAmount } from "@/lib/money";
 import {
   inputClass,
-  selectClass,
-  textAreaClass,
-  formGridResponsive,
-  spanFullSm,
   primaryBtnClass,
   secondaryBtnClass,
-  LabeledField,
-  CurrencyAmountInput,
-  DateField,
-  type Option,
 } from "./shared";
 import { signupAction, requestPasswordResetAction, resetPasswordAction } from "@/app/actions";
 
@@ -124,6 +108,9 @@ export function LoginForm() {
               window.location.href = result.url;
               return;
             }
+            // Full page load on purpose: the session cookie was just set, and a client-side
+            // router.push() would render the destination against the pre-sign-in session.
+            // eslint-disable-next-line @next/next/no-location-assign-relative-destination
             window.location.href = `${origin}/`;
           } catch {
             setError("Sign-in failed. Please try again.");

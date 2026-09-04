@@ -1,16 +1,11 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useSyncExternalStore, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { signIn, signOut } from "next-auth/react";
-import { AccountTypePill } from "@/components/account-type-pill";
-import { SsoSignInForms } from "@/components/sso-sign-in-forms";
 import { ServerActionForm } from "@/components/server-action-form";
-import { BudgetAlertPreferences } from "@/components/budget-alert-preferences";
 import { ExpenseTitleAutocomplete } from "@/components/expense-title-autocomplete";
-import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_ORDER } from "@/lib/account-type-labels";
 import { parseImportedDate } from "@/lib/import-dates";
-import { formatCurrency, parseStatementAmount } from "@/lib/money";
+import { parseStatementAmount } from "@/lib/money";
 import { MOBILE_OVERLAY_ROOT_Z_CLASS, MOBILE_OVERLAY_SHEET_Z_CLASS } from "@/lib/mobile-z-index";
 import {
   inputClass,
@@ -29,7 +24,6 @@ import {
   defaultExpenseAccountSelectValue,
   getTodayIsoDate,
   CSV_PREVIEW_ALL_MAX,
-  importTargets,
   importTargetsForHeader,
   floatingFieldLabelClass,
 } from "./shared";

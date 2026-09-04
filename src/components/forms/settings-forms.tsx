@@ -1,17 +1,12 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { signIn, signOut } from "next-auth/react";
 import { AccountTypePill } from "@/components/account-type-pill";
-import { SsoSignInForms } from "@/components/sso-sign-in-forms";
 import { ServerActionForm } from "@/components/server-action-form";
 import { BudgetAlertPreferences } from "@/components/budget-alert-preferences";
-import { ExpenseTitleAutocomplete } from "@/components/expense-title-autocomplete";
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_ORDER } from "@/lib/account-type-labels";
-import { parseImportedDate } from "@/lib/import-dates";
-import { categoryIdForExpenseTitle, type ExpenseTitleSuggestion } from "@/lib/expense-title-suggestions";
-import { formatCurrency, parseStatementAmount } from "@/lib/money";
+import { formatCurrency } from "@/lib/money";
 import {
   inputClass,
   selectClass,
