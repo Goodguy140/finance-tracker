@@ -13,6 +13,22 @@ export const loginSchema = z.object({
   password: z.string().min(8),
 });
 
+/**
+ * Profile edits. Same bounds `signupSchema` already enforces — this action used to write
+ * straight from the form with no validation at all. Timezone is checked for shape rather
+ * than membership so users outside the seeded country list can still set a real zone.
+ */
+export const updateProfileSchema = z.object({
+  displayName: z.string().trim().min(2).max(60),
+  countryCode: z.string().trim().toUpperCase().length(2),
+  timezone: z
+    .string()
+    .trim()
+    .min(3)
+    .max(64)
+    .regex(/^[A-Za-z][A-Za-z0-9+\-_]*(\/[A-Za-z0-9+\-_]+)*$/, "Enter a valid IANA time zone."),
+});
+
 const nonZeroExpenseAmount = z.coerce
   .number()
   .refine((n) => Number.isFinite(n) && n !== 0, {

@@ -46,6 +46,7 @@ import {
   updateAccountSchema,
   updateBudgetSchema,
   updateDefaultExpenseAccountSchema,
+  updateProfileSchema,
   updateRecurringTransactionSchema,
 } from "@/lib/validation";
 import {
@@ -115,7 +116,12 @@ export async function changePasswordAction(formData: FormData) {
 
   await prisma.user.update({
     where: { id: user.id },
-    data: { passwordHash: await hash(payload.newPassword, 12) },
+    data: {
+      passwordHash: await hash(payload.newPassword, 12),
+      // Revoke every session issued before this change — including the attacker's, which
+      // is the whole point of changing a password you think has leaked.
+      tokenVersion: { increment: 1 },
+    },
   });
   const h = await headers();
   await recordAuditLog(prisma, {
@@ -127,13 +133,14 @@ export async function changePasswordAction(formData: FormData) {
 
 export async function updateProfileAction(formData: FormData) {
   const user = await requireUser();
+  const payload = updateProfileSchema.parse({
+    displayName: getFormValue(formData, "displayName") || user.displayName,
+    countryCode: getFormValue(formData, "countryCode") || user.countryCode,
+    timezone: getFormValue(formData, "timezone") || user.timezone,
+  });
   await prisma.user.update({
     where: { id: user.id },
-    data: {
-      displayName: getFormValue(formData, "displayName") || user.displayName,
-      countryCode: getFormValue(formData, "countryCode") || user.countryCode,
-      timezone: getFormValue(formData, "timezone") || user.timezone,
-    },
+    data: payload,
   });
   revalidatePath("/settings");
 }
@@ -218,13 +225,18 @@ export async function resetPasswordAction(formData: FormData) {
   if (!matched) throw new Error("Invalid or expired token.");
 
   await prisma.$transaction([
-    prisma.passwordResetToken.update({
-      where: { id: matched.id },
+    // Burn every outstanding token, not just the one presented: the others were issued to
+    // the same mailbox and stay valid for the rest of their window otherwise.
+    prisma.passwordResetToken.updateMany({
+      where: { userId: user.id, usedAt: null },
       data: { usedAt: new Date() },
     }),
     prisma.user.update({
       where: { id: user.id },
-      data: { passwordHash: await hash(newPassword, 12) },
+      data: {
+        passwordHash: await hash(newPassword, 12),
+        tokenVersion: { increment: 1 },
+      },
     }),
   ]);
 }
