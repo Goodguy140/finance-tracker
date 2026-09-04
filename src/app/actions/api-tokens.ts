@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { generateApiToken } from "@/lib/api-token";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { MfaStepUpRequiredError, requireFreshMfa, requireUser, type MfaStepUpCode } from "@/lib/session";
 import { createApiTokenSchema, revokeApiTokenSchema } from "@/lib/validation";
 import { getFormValue } from "./_helpers";
 
@@ -28,7 +28,7 @@ function expiryDateFromChoice(choice: string): Date | null {
 export type CreateApiTokenState =
   | { ok: null }
   | { ok: true; token: string; name: string; prefix: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; code?: MfaStepUpCode };
 
 /**
  * Creates a personal access token and returns the raw value **once**.
@@ -39,6 +39,14 @@ export async function createApiTokenAction(
   formData: FormData,
 ): Promise<CreateApiTokenState> {
   const user = await requireUser();
+  // A token is a standing credential for an external app, so minting one is gated on a
+  // passkey assertion from the last few minutes — the same bar as linking an SSO account.
+  try {
+    await requireFreshMfa();
+  } catch (err) {
+    if (err instanceof MfaStepUpRequiredError) return { ok: false, error: err.message, code: err.code };
+    throw err;
+  }
   const parsed = createApiTokenSchema.safeParse({
     name: getFormValue(formData, "name"),
     scopes: ["budgets:read"],

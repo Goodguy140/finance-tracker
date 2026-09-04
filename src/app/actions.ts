@@ -42,3 +42,8 @@ export {
 export { clearUserFinancialDataAction, importUserBackupAction } from "./actions/backup";
 export { updateAdminOauthSettingsAction } from "./actions/admin";
 export { createApiTokenAction, revokeApiTokenAction } from "./actions/api-tokens";
+export {
+  renamePasskeyAction,
+  removePasskeyAction,
+  unlinkSsoProviderAction,
+} from "./actions/mfa";

@@ -88,6 +88,9 @@ model User {
   sessions              Session[]
   resetTokens           PasswordResetToken[]
   personalAccessTokens  PersonalAccessToken[]
+  webAuthnCredentials   WebAuthnCredential[]
+  mfaChallenges         MfaChallenge[]
+  recoveryCodes         RecoveryCode[]
   accounts              Account[]
   categories            Category[]
   transactions          Transaction[]
@@ -176,6 +179,62 @@ model PersonalAccessToken {
   expiresAt   DateTime?
   revokedAt   DateTime?
   createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/**
+ * A registered passkey (WebAuthn credential). Having at least one row turns the passkey
+ * second factor on for every sign-in. `credentialId` and `publicKey` are base64url strings
+ * exactly as the browser reports them; the public key is not secret, but the row is still
+ * excluded from user backups because a credential is bound to this RP origin and restoring
+ * someone else's credential list into an account would be a takeover vector.
+ */
+model WebAuthnCredential {
+  id           String    @id @default(cuid())
+  userId       String
+  credentialId String    @unique
+  publicKey    String
+  counter      Int       @default(0)
+  transports   String?
+  deviceType   String
+  backedUp     Boolean   @default(false)
+  name         String
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/**
+ * One-shot server-side state for a WebAuthn ceremony (or an SSO link intent). Rows are
+ * deleted the moment they are consumed and expire after a few minutes regardless.
+ * `userId` is null for passwordless sign-in challenges, where no session exists yet.
+ */
+model MfaChallenge {
+  id        String   @id @default(cuid())
+  userId    String?
+  purpose   String
+  challenge String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/** Single-use recovery codes (bcrypt-hashed) issued alongside the first passkey. */
+model RecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

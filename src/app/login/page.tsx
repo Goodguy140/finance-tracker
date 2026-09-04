@@ -16,6 +16,8 @@ const oauthErrorMessages: Record<string, string> = {
     "SSO callback failed (often wrong redirect_uri or lost OAuth cookies). Retry sign-in; if you use a tunnel, set AUTH_TRUST_HOST=true and restart.",
   OAuthCreateAccount: "Could not create your account from SSO.",
   AccessDenied: "Sign-in was denied.",
+  LinkRequired:
+    "That sign-in belongs to an email that already has an account here, but it isn't linked yet. Sign in with your password or passkey, then link it under Settings → Security.",
   Configuration: "Auth is misconfigured (for example NEXTAUTH_SECRET or OAuth client settings).",
   Callback: "Something went wrong during the OAuth callback.",
   Default: "Sign-in failed. Try again or use email and password.",

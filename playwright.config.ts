@@ -1,7 +1,9 @@
 import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
-const baseURL = "http://127.0.0.1:3050";
+// `localhost`, not 127.0.0.1: Chromium refuses an IP literal as a WebAuthn RP ID, and
+// NEXTAUTH_URL (below) is what the passkey RP ID is derived from.
+const baseURL = "http://localhost:3050";
 const repoRoot = process.cwd();
 
 const DEFAULT_NEXTAUTH_SECRET =
@@ -41,6 +43,9 @@ function getE2eEnv(): Record<string, string> {
   env.SERVER_SETTINGS_ENCRYPTION_KEY =
     process.env.SERVER_SETTINGS_ENCRYPTION_KEY?.trim() || DEFAULT_SERVER_SETTINGS_KEY;
   env.AUTH_TRUST_HOST = process.env.AUTH_TRUST_HOST?.trim() || "true";
+  // Every spec signs in from the same socket, so the whole suite shares one per-IP login
+  // budget; at the default of 30 the last few logins of a run fail with a lockout.
+  env.LOGIN_MAX_PER_IP = process.env.LOGIN_MAX_PER_IP?.trim() || "1000";
   return env;
 }
 

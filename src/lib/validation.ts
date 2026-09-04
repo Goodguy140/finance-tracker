@@ -285,3 +285,30 @@ export const updateDefaultExpenseAccountSchema = z.object({
     .trim()
     .transform((value) => (value === "" ? null : value)),
 });
+
+/** Passkeys / MFA. Names are user-facing labels only ("MacBook Touch ID"). */
+export const passkeyNameSchema = z.string().trim().min(1).max(40);
+
+export const beginPasskeyRegistrationSchema = z.object({
+  name: passkeyNameSchema,
+  currentPassword: z.string().optional(),
+});
+
+export const passkeyRowIdSchema = z.object({ passkeyId: z.string().min(1) });
+
+export const renamePasskeySchema = z.object({
+  passkeyId: z.string().min(1),
+  name: passkeyNameSchema,
+});
+
+/** Codes are shown as `xxxxx-xxxxx` (base32, lower-case); accept them with or without the dash. */
+export const recoveryCodeSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .transform((value) => value.replace(/[\s-]/g, ""))
+    .pipe(z.string().regex(/^[a-z2-7]{10}$/, "Enter a valid recovery code.")),
+});
+
+export const ssoLinkProviderSchema = z.object({ provider: z.enum(["google", "authentik"]) });

@@ -1,10 +1,12 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, useTransition } from "react";
+import Link from "next/link";
 import { ServerActionForm } from "@/components/server-action-form";
 import { createApiTokenAction, type CreateApiTokenState } from "@/app/actions/api-tokens";
 import { revokeApiTokenAction } from "@/app/actions";
 import { inputClass, primaryBtnClass, secondaryBtnClass } from "@/components/forms/shared";
+import { usePasskeyStepUp } from "@/components/mfa/passkey-client";
 
 export type ApiTokenRow = {
   id: string;
@@ -15,6 +17,8 @@ export type ApiTokenRow = {
   lastUsedAt: string | null;
   expiresAt: string | null;
 };
+
+export type ApiTokensMfaState = { enrolled: boolean; freshUntil: number | null };
 
 const initialState: CreateApiTokenState = { ok: null };
 
@@ -49,8 +53,29 @@ function CopyButton({ value }: { value: string }) {
   );
 }
 
-export function ApiTokensPanel({ tokens }: { tokens: ApiTokenRow[] }) {
+export function ApiTokensPanel({ tokens, mfa }: { tokens: ApiTokenRow[]; mfa: ApiTokensMfaState }) {
   const [state, formAction, pending] = useActionState(createApiTokenAction, initialState);
+  const stepUp = usePasskeyStepUp(mfa.freshUntil, mfa.enrolled);
+  const [stepUpError, setStepUpError] = useState<string | null>(null);
+  const [verifying, startVerify] = useTransition();
+
+  // A token is a standing credential for an external app: confirm with a passkey first,
+  // then hand the same form data to the action (which enforces the same rule server-side).
+  const submitWithStepUp = (form: HTMLFormElement) => {
+    const formData = new FormData(form);
+    setStepUpError(null);
+    startVerify(async () => {
+      const outcome = await stepUp.ensureFresh();
+      if (!outcome.ok) {
+        if (!outcome.cancelled) setStepUpError(outcome.error);
+        return;
+      }
+      formAction(formData);
+      form.reset();
+    });
+  };
+  const needsPasskey = !mfa.enrolled;
+  const mfaError = stepUpError ?? (state.ok === false && state.code ? state.error : null);
 
   return (
     <div role="tabpanel" aria-label="API tokens" className="mx-auto max-w-2xl space-y-6">
@@ -77,13 +102,33 @@ export function ApiTokensPanel({ tokens }: { tokens: ApiTokenRow[] }) {
         </div>
       ) : null}
 
-      {state.ok === false ? (
+      {needsPasskey ? (
+        <div className="rounded-2xl border border-amber-800/80 bg-amber-950/40 p-4 text-sm text-amber-100">
+          Creating a token requires a passkey.{" "}
+          <Link href="/settings#security" className="font-medium underline underline-offset-4">
+            Add one in Security
+          </Link>{" "}
+          first.
+        </div>
+      ) : null}
+
+      {mfaError ? (
+        <div role="alert" className="rounded-2xl border border-red-500/40 bg-red-950/40 p-4 text-sm text-red-100">
+          {mfaError}
+        </div>
+      ) : state.ok === false ? (
         <div className="rounded-2xl border border-red-500/40 bg-red-950/40 p-4 text-sm text-red-100">
           {state.error}
         </div>
       ) : null}
 
-      <form action={formAction} className="space-y-3">
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submitWithStepUp(e.currentTarget);
+        }}
+      >
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <label className="flex-1 space-y-1.5">
             <span className="text-sm font-medium text-slate-300">Token name</span>
@@ -105,8 +150,8 @@ export function ApiTokensPanel({ tokens }: { tokens: ApiTokenRow[] }) {
               <option value="never">Never</option>
             </select>
           </label>
-          <button type="submit" className={primaryBtnClass} disabled={pending}>
-            {pending ? "Creating…" : "Create token"}
+          <button type="submit" className={primaryBtnClass} disabled={pending || verifying || needsPasskey}>
+            {verifying ? "Confirming…" : pending ? "Creating…" : "Create token"}
           </button>
         </div>
       </form>

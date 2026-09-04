@@ -10,6 +10,11 @@ export async function GET() {
   if (auth.status === 401) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // A login parked on the passkey wall must not be able to pull the whole account out
+  // through the API with the very same cookie the wall is holding back.
+  if (auth.status === 403) {
+    return NextResponse.json({ error: "Passkey verification required" }, { status: 403 });
+  }
 
   const user = auth.user;
   const payload = await buildUserBackupPayload(user.id);

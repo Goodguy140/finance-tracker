@@ -117,7 +117,12 @@ export async function proxy(req: NextRequest) {
   } else if (addedDevProto) {
     forwardHeaders = baseHeaders;
   }
-  const nextInit = forwardHeaders ? { request: { headers: forwardHeaders } } : {};
+  // Server components cannot see the request URL; `requireUser` reads this to send a
+  // login parked on the passkey wall back to where it was going. Always set (overriding
+  // anything the client sent) so the value is never attacker-controlled.
+  const requestHeaders = forwardHeaders ?? new Headers(req.headers);
+  requestHeaders.set("x-pathname", pathname + req.nextUrl.search);
+  const nextInit = { request: { headers: requestHeaders } };
 
   if (pathname.startsWith("/api/auth")) {
     return NextResponse.next(nextInit);

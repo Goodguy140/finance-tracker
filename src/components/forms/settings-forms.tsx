@@ -34,7 +34,8 @@ import {
 } from "@/app/actions";
 import { ExpenseCsvImportForm } from "./expense-forms";
 import { SubscriptionsPanel, type SubscriptionView } from "@/components/subscriptions-panel";
-import { ApiTokensPanel, type ApiTokenRow } from "@/components/api-tokens-panel";
+import { ApiTokensPanel, type ApiTokenRow, type ApiTokensMfaState } from "@/components/api-tokens-panel";
+import { SecurityPanel, type SecurityPanelProps } from "@/components/security-panel";
 
 export function BudgetForm({ expenseCategories }: { expenseCategories: Option[] }) {
   const [isPastOverride, setIsPastOverride] = useState(false);
@@ -279,7 +280,7 @@ const SETTINGS_TAB_META: { id: SettingsTabId; label: string; labelCompact: strin
     id: "profile",
     label: "Profile",
     labelCompact: "Profile",
-    hint: "Name, region, timezone, and password",
+    hint: "Name, region, timezone, password, and passkeys",
   },
   {
     id: "data",
@@ -327,6 +328,7 @@ export function SettingsForms({
   defaultExpenseAccountId,
   budgetAlertEmailConfigured,
   apiTokens,
+  security,
 }: {
   defaults: { displayName: string; countryCode: string; timezone: string };
   profileEmail: string;
@@ -340,6 +342,7 @@ export function SettingsForms({
   defaultExpenseAccountId: string | null;
   budgetAlertEmailConfigured: boolean;
   apiTokens: ApiTokenRow[];
+  security: SecurityPanelProps;
 }) {
   const [tab, setTab] = useState<SettingsTabId>("profile");
   const tablistRef = useRef<HTMLDivElement | null>(null);
@@ -369,7 +372,7 @@ export function SettingsForms({
       else if (h === "#data" || h === "#import" || h === "#accounts") setTab("data");
       else if (h === "#integrations" || h === "#api" || h === "#tokens") setTab("integrations");
       else if (h === "#advanced") setTab("advanced");
-      else if (h === "#profile") setTab("profile");
+      else if (h === "#profile" || h === "#security") setTab("profile");
     };
     syncFromHash();
     window.addEventListener("hashchange", syncFromHash);
@@ -625,6 +628,8 @@ export function SettingsForms({
                 </div>
               )}
             </section>
+
+            <SecurityPanel {...security} />
           </div>
         ) : null}
 
@@ -1049,7 +1054,9 @@ export function SettingsForms({
           </div>
         ) : null}
 
-        {tab === "integrations" ? <ApiTokensPanel tokens={apiTokens} /> : null}
+        {tab === "integrations" ? (
+          <ApiTokensPanel tokens={apiTokens} mfa={{ enrolled: security.passkeys.length > 0, freshUntil: security.freshUntil } satisfies ApiTokensMfaState} />
+        ) : null}
 
         {tab === "advanced" ? (
           <div className="mx-auto max-w-3xl space-y-6" role="tabpanel" aria-label="Advanced">

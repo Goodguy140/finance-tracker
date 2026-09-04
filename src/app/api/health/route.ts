@@ -1,6 +1,6 @@
 import { getMigrationHealth } from "@/lib/migration-health";
 import { prisma } from "@/lib/prisma";
-import { getCurrentSession } from "@/lib/session";
+import { loadSessionUser } from "@/lib/session";
 
 /**
  * GET /api/health
@@ -19,8 +19,10 @@ export async function GET() {
   const health = await getMigrationHealth(prisma);
   const schemaOk = health.schema.status === "ok" || health.schema.status === "skipped";
 
-  const session = await getCurrentSession();
-  if (session?.user?.role !== "SERVER_ADMIN") {
+  const loaded = await loadSessionUser();
+  const admin = loaded?.user.role === "SERVER_ADMIN";
+  const passkeyPending = loaded ? loaded.mfa.required && !loaded.mfa.verified : true;
+  if (!admin || passkeyPending) {
     return Response.json({ ok: true });
   }
 

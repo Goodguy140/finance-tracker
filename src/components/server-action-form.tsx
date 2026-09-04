@@ -9,9 +9,14 @@ type ServerActionFormProps = {
   children: ReactNode;
   className?: string;
   onSuccess?: () => void;
+  /**
+   * Runs before the action; return false to abort silently (e.g. the user dismissed a
+   * passkey prompt). Lets step-up-gated forms verify first without a second toast path.
+   */
+  beforeSubmit?: () => Promise<boolean>;
 };
 
-export function ServerActionForm({ action, children, className, onSuccess }: ServerActionFormProps) {
+export function ServerActionForm({ action, children, className, onSuccess, beforeSubmit }: ServerActionFormProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -62,6 +67,7 @@ export function ServerActionForm({ action, children, className, onSuccess }: Ser
           setError(null);
           startTransition(async () => {
             try {
+              if (beforeSubmit && !(await beforeSubmit())) return;
               await action(formData);
               onSuccess?.();
               router.refresh();
