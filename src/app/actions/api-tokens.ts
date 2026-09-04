@@ -12,6 +12,19 @@ import { getFormValue } from "./_helpers";
 /** Max active (non-revoked) tokens per user — keeps the attack surface small. */
 const MAX_ACTIVE_TOKENS = 20;
 
+/**
+ * Tokens used to be created with no `expiresAt` at all, so a value leaked into a shell
+ * history or a dashboard config stayed valid forever unless someone remembered to revoke
+ * it. `authenticateApiToken` has always honoured the column; only the create path was
+ * missing. "never" remains selectable for unattended integrations.
+ */
+function expiryDateFromChoice(choice: string): Date | null {
+  if (choice === "never") return null;
+  const days = Number.parseInt(choice, 10);
+  if (!Number.isFinite(days) || days <= 0) return null;
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+}
+
 export type CreateApiTokenState =
   | { ok: null }
   | { ok: true; token: string; name: string; prefix: string }
@@ -29,6 +42,7 @@ export async function createApiTokenAction(
   const parsed = createApiTokenSchema.safeParse({
     name: getFormValue(formData, "name"),
     scopes: ["budgets:read"],
+    expiresInDays: getFormValue(formData, "expiresInDays") || undefined,
   });
   if (!parsed.success) {
     return { ok: false, error: "Enter a name (1–60 characters) for the token." };
@@ -42,6 +56,7 @@ export async function createApiTokenAction(
   }
 
   const { raw, hash, prefix } = generateApiToken();
+  const expiresAt = expiryDateFromChoice(parsed.data.expiresInDays);
   const created = await prisma.personalAccessToken.create({
     data: {
       userId: user.id,
@@ -49,6 +64,7 @@ export async function createApiTokenAction(
       tokenHash: hash,
       tokenPrefix: prefix,
       scopes: parsed.data.scopes.join(","),
+      expiresAt,
     },
     select: { id: true },
   });
@@ -58,7 +74,11 @@ export async function createApiTokenAction(
     action: AUDIT_ACTIONS.api_token_created,
     targetType: "personal_access_token",
     targetId: created.id,
-    metadata: { name: parsed.data.name, scopes: parsed.data.scopes },
+    metadata: {
+      name: parsed.data.name,
+      scopes: parsed.data.scopes,
+      expiresInDays: parsed.data.expiresInDays,
+    },
     headers: await headers(),
   });
 

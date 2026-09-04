@@ -31,14 +31,21 @@ export const userBackupSchema = z.object({
       updatedAt: isoDate,
     }),
   ),
-  passwordResetTokens: z.array(
-    z.object({
-      tokenHash: z.string().min(1),
-      expiresAt: isoDate,
-      usedAt: isoDate.nullable(),
-      createdAt: isoDate,
-    }),
-  ),
+  /**
+   * Accepted for compatibility with existing backup files and then ignored — the import
+   * deliberately does not restore reset tokens. See the note in importUserBackupAction.
+   */
+  passwordResetTokens: z
+    .array(
+      z.object({
+        tokenHash: z.string().min(1),
+        expiresAt: isoDate,
+        usedAt: isoDate.nullable(),
+        createdAt: isoDate,
+      }),
+    )
+    .optional()
+    .default([]),
   accounts: z.array(
     z.object({
       id: z.string().min(1),

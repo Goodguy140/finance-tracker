@@ -121,12 +121,16 @@ export const monthParamSchema = z
 
 export const API_TOKEN_SCOPES = ["budgets:read"] as const;
 
+/** Selectable token lifetimes, in days. `never` stays available but is not the default. */
+export const API_TOKEN_EXPIRY_CHOICES = ["30", "90", "365", "never"] as const;
+
 export const createApiTokenSchema = z.object({
   name: z.string().trim().min(1).max(60),
   scopes: z
     .array(z.enum(API_TOKEN_SCOPES))
     .min(1)
     .default(["budgets:read"]),
+  expiresInDays: z.enum(API_TOKEN_EXPIRY_CHOICES).default("90"),
 });
 
 export const revokeApiTokenSchema = z.object({

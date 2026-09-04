@@ -40,7 +40,15 @@ export default async function SettingsPage() {
     prisma.personalAccessToken.findMany({
       where: { userId: user.id, revokedAt: null },
       orderBy: { createdAt: "desc" },
-      select: { id: true, name: true, tokenPrefix: true, scopes: true, createdAt: true, lastUsedAt: true },
+      select: {
+        id: true,
+        name: true,
+        tokenPrefix: true,
+        scopes: true,
+        createdAt: true,
+        lastUsedAt: true,
+        expiresAt: true,
+      },
     }),
   ]);
 
@@ -51,6 +59,7 @@ export default async function SettingsPage() {
     scopes: token.scopes,
     createdAt: token.createdAt.toISOString(),
     lastUsedAt: token.lastUsedAt ? token.lastUsedAt.toISOString() : null,
+    expiresAt: token.expiresAt ? token.expiresAt.toISOString() : null,
   }));
 
   const activeAccounts = accounts.filter((a) => !a.archived);

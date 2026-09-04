@@ -36,6 +36,11 @@ export async function linkOAuthUser(params: {
       },
     }));
 
+  // The provider's access/refresh/id tokens are deliberately not persisted. Nothing in
+  // this app ever reads them back — sign-in state lives in the session JWT — so storing
+  // them only created a set of live third-party credentials sitting in plaintext columns.
+  // If a feature ever needs one (token refresh, calling a provider API), reintroduce it
+  // through encryptSecret rather than restoring these assignments.
   await prisma.authAccount.upsert({
     where: {
       provider_providerAccountId: {
@@ -45,16 +50,12 @@ export async function linkOAuthUser(params: {
     },
     update: {
       userId: dbUser.id,
-      accessToken: account.access_token,
-      refreshToken: account.refresh_token,
       expiresAt: account.expires_at,
     },
     create: {
       provider: account.provider,
       providerAccountId: account.providerAccountId,
       userId: dbUser.id,
-      accessToken: account.access_token,
-      refreshToken: account.refresh_token,
       expiresAt: account.expires_at,
     },
   });

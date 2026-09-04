@@ -13,12 +13,19 @@ export type ApiTokenRow = {
   scopes: string;
   createdAt: string;
   lastUsedAt: string | null;
+  expiresAt: string | null;
 };
 
 const initialState: CreateApiTokenState = { ok: null };
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function fmtExpiry(iso: string | null): string {
+  if (!iso) return "never expires";
+  const at = new Date(iso);
+  return at.getTime() <= Date.now() ? `expired ${fmtDate(iso)}` : `expires ${fmtDate(iso)}`;
 }
 
 function CopyButton({ value }: { value: string }) {
@@ -89,6 +96,15 @@ export function ApiTokensPanel({ tokens }: { tokens: ApiTokenRow[] }) {
               autoComplete="off"
             />
           </label>
+          <label className="space-y-1.5">
+            <span className="text-sm font-medium text-slate-300">Expires</span>
+            <select name="expiresInDays" className={inputClass} defaultValue="90">
+              <option value="30">In 30 days</option>
+              <option value="90">In 90 days</option>
+              <option value="365">In 1 year</option>
+              <option value="never">Never</option>
+            </select>
+          </label>
           <button type="submit" className={primaryBtnClass} disabled={pending}>
             {pending ? "Creating…" : "Create token"}
           </button>
@@ -108,7 +124,8 @@ export function ApiTokensPanel({ tokens }: { tokens: ApiTokenRow[] }) {
                   <p className="font-mono text-xs text-slate-400">{token.tokenPrefix}…</p>
                   <p className="text-xs text-slate-500">
                     {token.scopes} · created {fmtDate(token.createdAt)} ·{" "}
-                    {token.lastUsedAt ? `last used ${fmtDate(token.lastUsedAt)}` : "never used"}
+                    {token.lastUsedAt ? `last used ${fmtDate(token.lastUsedAt)}` : "never used"} ·{" "}
+                    {fmtExpiry(token.expiresAt)}
                   </p>
                 </div>
                 <ServerActionForm action={revokeApiTokenAction}>

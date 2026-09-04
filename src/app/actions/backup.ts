@@ -88,6 +88,14 @@ export async function clearUserFinancialDataAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
+/**
+ * A whole-account restore does not fit Prisma's default 5s interactive-transaction budget
+ * once there are a few months of history, and blowing the budget rolls the entire import
+ * back. Both values are generous on purpose: this runs at most a few times in an account's
+ * life, and a partial restore is far worse than a slow one.
+ */
+const IMPORT_TRANSACTION_OPTIONS = { maxWait: 15_000, timeout: 180_000 } as const;
+
 export async function importUserBackupAction(formData: FormData) {
   const user = await requireUser();
   const raw = formData.get("backupJson");
@@ -121,7 +129,6 @@ export async function importUserBackupAction(formData: FormData) {
 
     const accountIdMap = new Map<string, string>();
     const categoryIdMap = new Map<string, string>();
-    const transactionIdMap = new Map<string, string>();
 
     const profileFields = resolveBackupUserProfileFields({
       currentUser: { role: user.role, passwordHash: user.passwordHash },
@@ -187,7 +194,21 @@ export async function importUserBackupAction(formData: FormData) {
       if (row.accountId && !mappedAccountId) {
         throw new Error("Backup references unknown transaction account.");
       }
-      const created = await tx.transaction.create({
+      // Split parts are nested rather than written in a second pass: it removes a
+      // round trip per part and makes the transaction id map unnecessary.
+      const splitParts = row.splitParts.map((part) => {
+        const mappedSplitCategoryId = categoryIdMap.get(part.categoryId);
+        if (!mappedSplitCategoryId) {
+          throw new Error("Backup references unknown split category.");
+        }
+        return {
+          userId: user.id,
+          categoryId: mappedSplitCategoryId,
+          amountCents: part.amountCents,
+        };
+      });
+
+      await tx.transaction.create({
         data: {
           userId: user.id,
           accountId: mappedAccountId ?? null,
@@ -204,38 +225,19 @@ export async function importUserBackupAction(formData: FormData) {
           note: row.note,
           createdAt: new Date(row.createdAt),
           updatedAt: new Date(row.updatedAt),
+          ...(splitParts.length > 0 ? { splitParts: { create: splitParts } } : {}),
         },
         select: { id: true },
       });
-      transactionIdMap.set(row.id, created.id);
     }
 
-    for (const row of parsed.transactions) {
-      const mappedTransactionId = transactionIdMap.get(row.id);
-      if (!mappedTransactionId) continue;
-      for (const part of row.splitParts) {
-        const mappedCategoryId = categoryIdMap.get(part.categoryId);
+    await tx.budget.createMany({
+      data: parsed.budgets.map((row) => {
+        const mappedCategoryId = categoryIdMap.get(row.categoryId);
         if (!mappedCategoryId) {
-          throw new Error("Backup references unknown split category.");
+          throw new Error("Backup references unknown budget category.");
         }
-        await tx.splitTransactionPart.create({
-          data: {
-            userId: user.id,
-            transactionId: mappedTransactionId,
-            categoryId: mappedCategoryId,
-            amountCents: part.amountCents,
-          },
-        });
-      }
-    }
-
-    for (const row of parsed.budgets) {
-      const mappedCategoryId = categoryIdMap.get(row.categoryId);
-      if (!mappedCategoryId) {
-        throw new Error("Backup references unknown budget category.");
-      }
-      await tx.budget.create({
-        data: {
+        return {
           userId: user.id,
           categoryId: mappedCategoryId,
           name: row.name,
@@ -243,9 +245,9 @@ export async function importUserBackupAction(formData: FormData) {
           limitCents: row.limitCents,
           createdAt: new Date(row.createdAt),
           updatedAt: new Date(row.updatedAt),
-        },
-      });
-    }
+        };
+      }),
+    });
 
     for (const row of parsed.recurringTransactions) {
       const mappedCategoryId = categoryIdMap.get(row.categoryId);
@@ -325,13 +327,13 @@ export async function importUserBackupAction(formData: FormData) {
       });
     }
 
-    for (const row of parsed.investmentFlows) {
-      const mappedAccountId = accountIdMap.get(row.accountId);
-      if (!mappedAccountId) {
-        throw new Error("Backup references unknown investment account.");
-      }
-      await tx.investmentFlow.create({
-        data: {
+    await tx.investmentFlow.createMany({
+      data: parsed.investmentFlows.map((row) => {
+        const mappedAccountId = accountIdMap.get(row.accountId);
+        if (!mappedAccountId) {
+          throw new Error("Backup references unknown investment account.");
+        }
+        return {
           userId: user.id,
           accountId: mappedAccountId,
           date: new Date(row.date),
@@ -339,26 +341,26 @@ export async function importUserBackupAction(formData: FormData) {
           amountCents: row.amountCents,
           note: row.note,
           createdAt: new Date(row.createdAt),
-        },
-      });
-    }
+        };
+      }),
+    });
 
-    for (const row of parsed.portfolioSnapshots) {
-      const mappedAccountId = accountIdMap.get(row.accountId);
-      if (!mappedAccountId) {
-        throw new Error("Backup references unknown snapshot account.");
-      }
-      await tx.portfolioSnapshot.create({
-        data: {
+    await tx.portfolioSnapshot.createMany({
+      data: parsed.portfolioSnapshots.map((row) => {
+        const mappedAccountId = accountIdMap.get(row.accountId);
+        if (!mappedAccountId) {
+          throw new Error("Backup references unknown snapshot account.");
+        }
+        return {
           userId: user.id,
           accountId: mappedAccountId,
           date: new Date(row.date),
           totalValueCents: row.totalValueCents,
           note: row.note,
           createdAt: new Date(row.createdAt),
-        },
-      });
-    }
+        };
+      }),
+    });
 
     for (const row of sanitizeAuthAccountsForImport(parsed.authAccounts)) {
       await tx.authAccount.create({
@@ -378,18 +380,12 @@ export async function importUserBackupAction(formData: FormData) {
       });
     }
 
-    for (const row of parsed.passwordResetTokens) {
-      await tx.passwordResetToken.create({
-        data: {
-          userId: user.id,
-          tokenHash: row.tokenHash,
-          expiresAt: new Date(row.expiresAt),
-          usedAt: row.usedAt ? new Date(row.usedAt) : null,
-          createdAt: new Date(row.createdAt),
-        },
-      });
-    }
-  });
+    // `parsed.passwordResetTokens` is deliberately not restored. A reset token is
+    // ephemeral state, not user data, and writing hashes and expiries straight from an
+    // uploaded file lets a crafted backup plant a token the author already knows the raw
+    // value of — an account-takeover primitive that survives password changes. Exports
+    // have always sanitised the array to empty, so nothing real is lost.
+  }, IMPORT_TRANSACTION_OPTIONS);
 
   const h = await headers();
   const fileMeta =
