@@ -4,62 +4,24 @@ import { hash, compare } from "bcryptjs";
 import crypto from "crypto";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { AccountType, CategoryKind, Prisma, TransactionType, UserRole } from "@prisma/client";
 import { getDefaultTimezone } from "@/lib/country-config";
 import { ensureDefaultDataForUser } from "@/lib/defaults";
-import { parseStatementAmount, toCents } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
-import { dateFromYmd, ymdFromDateUtc } from "@/lib/date-only";
-import { parseImportedDate } from "@/lib/import-dates";
-import { decryptSecret, encryptSecret } from "@/lib/security";
-import { requireAdmin, requireUser } from "@/lib/session";
+import { requireUser } from "@/lib/session";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
-import { resolveAuthentikOauthSettings, resolveGoogleOauthSettings } from "@/lib/oauth-settings";
-import { formatAccountDetachedLabel } from "@/lib/account-type-labels";
-import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
-import { advanceRecurringDate } from "@/lib/recurring-transactions";
-import { mergeAccountDescriptionOnDetach } from "@/lib/transaction-account-detach";
 import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
 import { sendEmail } from "@/lib/email";
-import { userBackupSchema } from "@/lib/backup-schema";
-import { resolveBackupUserProfileFields, sanitizeAuthAccountsForImport } from "@/lib/backup-restore";
 import {
-  budgetSchema,
-  accountSchema,
-  expenseCsvImportSchema,
-  expenseBaseSchema,
-  incomeSchema,
-  updateIncomeBaseSchema,
-  updateExpenseBaseSchema,
-  investmentFlowSchema,
   loginSchema,
   passwordChangeSchema,
-  portfolioSnapshotSchema,
-  postRecurringTransactionSchema,
-  recurringTransactionSchema,
   signupSchema,
-  splitExpenseSchema,
-  deleteBudgetSchema,
-  deleteRecurringTransactionSchema,
-  setRecurringTransactionEnabledSchema,
-  setAccountArchivedSchema,
-  updateAccountSchema,
-  updateBudgetSchema,
-  updateDefaultExpenseAccountSchema,
-  updateRecurringTransactionSchema,
+  updateProfileSchema,
 } from "@/lib/validation";
 import {
   getFormValue,
-  toPeriodMonth,
-  getOptionalMappedValue,
   publicSignupAllowed,
   resolveSignupRole,
-  assertUserOwnsAccount,
-  assertUserOwnsActiveAccount,
-  assertUserOwnsCategory,
-  categoryKindForTransactionType,
 } from "./_helpers";
-
 export async function signupAction(formData: FormData) {
   const payload = signupSchema.parse({
     email: getFormValue(formData, "email"),
@@ -115,7 +77,12 @@ export async function changePasswordAction(formData: FormData) {
 
   await prisma.user.update({
     where: { id: user.id },
-    data: { passwordHash: await hash(payload.newPassword, 12) },
+    data: {
+      passwordHash: await hash(payload.newPassword, 12),
+      // Revoke every session issued before this change — including the attacker's, which
+      // is the whole point of changing a password you think has leaked.
+      tokenVersion: { increment: 1 },
+    },
   });
   const h = await headers();
   await recordAuditLog(prisma, {
@@ -127,13 +94,14 @@ export async function changePasswordAction(formData: FormData) {
 
 export async function updateProfileAction(formData: FormData) {
   const user = await requireUser();
+  const payload = updateProfileSchema.parse({
+    displayName: getFormValue(formData, "displayName") || user.displayName,
+    countryCode: getFormValue(formData, "countryCode") || user.countryCode,
+    timezone: getFormValue(formData, "timezone") || user.timezone,
+  });
   await prisma.user.update({
     where: { id: user.id },
-    data: {
-      displayName: getFormValue(formData, "displayName") || user.displayName,
-      countryCode: getFormValue(formData, "countryCode") || user.countryCode,
-      timezone: getFormValue(formData, "timezone") || user.timezone,
-    },
+    data: payload,
   });
   revalidatePath("/settings");
 }
@@ -218,13 +186,18 @@ export async function resetPasswordAction(formData: FormData) {
   if (!matched) throw new Error("Invalid or expired token.");
 
   await prisma.$transaction([
-    prisma.passwordResetToken.update({
-      where: { id: matched.id },
+    // Burn every outstanding token, not just the one presented: the others were issued to
+    // the same mailbox and stay valid for the rest of their window otherwise.
+    prisma.passwordResetToken.updateMany({
+      where: { userId: user.id, usedAt: null },
       data: { usedAt: new Date() },
     }),
     prisma.user.update({
       where: { id: user.id },
-      data: { passwordHash: await hash(newPassword, 12) },
+      data: {
+        passwordHash: await hash(newPassword, 12),
+        tokenVersion: { increment: 1 },
+      },
     }),
   ]);
 }

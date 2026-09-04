@@ -1,6 +1,6 @@
 import { AuthentikProvider } from "@/lib/authentik-provider";
 import { normalizeAuthentikIssuer } from "@/lib/oauth-settings";
-import { decryptSecret } from "@/lib/security";
+import { tryDecryptSecret } from "@/lib/security";
 import { prisma } from "@/lib/prisma";
 import GoogleProvider from "next-auth/providers/google";
 import type { Provider } from "next-auth/providers/index";
@@ -8,11 +8,7 @@ import type { Provider } from "next-auth/providers/index";
 async function getServerSetting(key: string) {
   const row = await prisma.serverSetting.findUnique({ where: { key } });
   if (!row) return null;
-  try {
-    return decryptSecret(row.encryptedValue);
-  } catch {
-    return null;
-  }
+  return tryDecryptSecret(row.encryptedValue);
 }
 
 export async function getGoogleProvider(): Promise<Provider | null> {

@@ -35,3 +35,17 @@ export function decryptSecret(payload: string) {
   ]);
   return decrypted.toString("utf8");
 }
+
+/**
+ * `decryptSecret` throws when the GCM auth tag does not verify — which is exactly what
+ * happens to every stored value after SERVER_SETTINGS_ENCRYPTION_KEY is rotated. Callers
+ * that render stored settings should use this and show "could not be decrypted" instead
+ * of turning a key rotation into an unexplained 500.
+ */
+export function tryDecryptSecret(payload: string): string | null {
+  try {
+    return decryptSecret(payload);
+  } catch {
+    return null;
+  }
+}

@@ -8,5 +8,11 @@ test-results
 *.tsbuildinfo
 .env*
 dev.db
-prisma/*.db
-prisma/*.db-journal
+# Any SQLite file anywhere, not just the two paths that used to be listed. The tracked
+# prisma/.data/local-e2e.db slipped past `prisma/*.db` and was baked into every image.
+**/*.db
+**/*.db-journal
+**/*.db-wal
+**/*.db-shm
+.data
+prisma/.data

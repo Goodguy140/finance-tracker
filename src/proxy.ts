@@ -86,10 +86,25 @@ function skipSyntheticForwardedForPath(pathname: string): boolean {
   );
 }
 
+/**
+ * `getToken` decodes the `Authorization: Bearer` value outside its own try/catch, so a
+ * malformed percent-escape (`Bearer %`) throws `URIError` straight through this gate and
+ * 500s every route it protects. A request we cannot read a token from has no session —
+ * treat any throw as anonymous rather than letting it escape.
+ */
+export async function readToken(req: NextRequest) {
+  try {
+    return await getToken({ req, secret: getNextAuthSecret() });
+  } catch {
+    return null;
+  }
+}
+
 export const __authProxyInternals = {
   skipSyntheticForwardedForPath,
   isLoopbackHost,
   parsedNextAuthPublicOrigin,
+  readToken,
 };
 
 export async function proxy(req: NextRequest) {
@@ -108,7 +123,7 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next(nextInit);
   }
 
-  const token = await getToken({ req, secret: getNextAuthSecret() });
+  const token = await readToken(req);
   const isPublic = PUBLIC_PATHS.some((path) => pathname.startsWith(path));
 
   if (!token && !isPublic) {

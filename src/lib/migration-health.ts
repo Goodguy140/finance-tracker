@@ -1,7 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
-import { decryptSecret } from "./security";
+import { tryDecryptSecret } from "./security";
 
-export const SCHEMA_REPAIR_VERSION = "1";
+export const SCHEMA_REPAIR_VERSION = "2";
 
 export const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 export const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
@@ -13,19 +13,15 @@ export const REQUIRED_SCHEMA_COLUMNS = [
   { table: "Transaction", column: "creditBreakdownJson" },
   { table: "User", column: "defaultExpenseAccountId" },
   { table: "Account", column: "archived" },
+  { table: "User", column: "tokenVersion" },
 ] as const;
 
 const OAUTH_KEY_PREFIX = "oauth.";
 
 export type OAuthProviderHealth = "not_configured" | "ok" | "decrypt_failed";
 
-export function tryDecryptServerSetting(payload: string): string | null {
-  try {
-    return decryptSecret(payload);
-  } catch {
-    return null;
-  }
-}
+/** @deprecated Use `tryDecryptSecret` from `@/lib/security` directly. */
+export const tryDecryptServerSetting = tryDecryptSecret;
 
 async function tableColumns(prisma: PrismaClient, table: string): Promise<Set<string>> {
   const rows = (await prisma.$queryRawUnsafe(`PRAGMA table_info("${table}")`)) as Array<{ name: string }>;

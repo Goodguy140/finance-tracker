@@ -1,5 +1,5 @@
 /** Keep in sync with SCHEMA_REPAIR_VERSION in src/lib/migration-health.ts */
-const SCHEMA_REPAIR_VERSION = "1";
+const SCHEMA_REPAIR_VERSION = "2";
 const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
 
@@ -25,6 +25,11 @@ const COLUMN_REPAIRS = [
     column: "defaultExpenseAccountId",
     ddl: 'ALTER TABLE "User" ADD COLUMN "defaultExpenseAccountId" TEXT',
   },
+  {
+    table: "User",
+    column: "tokenVersion",
+    ddl: 'ALTER TABLE "User" ADD COLUMN "tokenVersion" INTEGER NOT NULL DEFAULT 0',
+  },
 ];
 
 async function tableColumns(prisma, table) {
@@ -32,7 +37,35 @@ async function tableColumns(prisma, table) {
   return new Set(rows.map((row) => row.name));
 }
 
+/**
+ * Switch the database to write-ahead logging.
+ *
+ * The default rollback journal takes an exclusive lock for every write, so a single slow
+ * write blocks every reader; under WAL, readers and the writer proceed concurrently. That
+ * matters as soon as anything writes outside a user's own page load (a scheduled job, a
+ * provider webhook) rather than only in response to one.
+ *
+ * The mode is stored in the database header, so this runs once and persists. WAL needs
+ * real file locking and silently stays in the old mode on network filesystems, so the
+ * result is checked and reported rather than assumed.
+ */
+async function enableWriteAheadLogging(prisma) {
+  try {
+    const rows = await prisma.$queryRawUnsafe("PRAGMA journal_mode=WAL");
+    const mode = String(rows?.[0]?.journal_mode ?? "").toLowerCase();
+    if (mode === "wal") return;
+    console.warn(
+      `repair-sqlite-schema: journal_mode is "${mode}", not WAL — ` +
+        "expected on a network filesystem; writes will keep taking an exclusive lock.",
+    );
+  } catch (err) {
+    console.warn("repair-sqlite-schema: could not set journal_mode=WAL:", err?.message ?? err);
+  }
+}
+
 async function runRepair(prisma) {
+  await enableWriteAheadLogging(prisma);
+
   for (const repair of COLUMN_REPAIRS) {
     const columns = await tableColumns(prisma, repair.table);
     if (columns.has(repair.column)) continue;
@@ -97,4 +130,10 @@ async function recordRepairMarker(prisma) {
   }
 }
 
-module.exports = { COLUMN_REPAIRS, tableColumns, runRepair, SCHEMA_REPAIR_VERSION };
+module.exports = {
+  COLUMN_REPAIRS,
+  tableColumns,
+  runRepair,
+  enableWriteAheadLogging,
+  SCHEMA_REPAIR_VERSION,
+};

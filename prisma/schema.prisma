@@ -68,6 +68,14 @@ model User {
   emailVerifiedAt         DateTime?
   role                    UserRole  @default(USER)
   /**
+   * Bumped whenever every existing session should stop working (password change, password
+   * reset, explicit sign-out-everywhere). Sessions are stateless JWTs, so this is the only
+   * revocation channel: a token carries the version it was issued with and is rejected once
+   * it no longer matches. Tokens issued before this column existed carry no version and are
+   * treated as 0, so deploying it does not sign everyone out.
+   */
+  tokenVersion            Int       @default(0)
+  /**
    * When set, the Add Expense form preselects this account (must be one of the user's accounts).
    */
   defaultExpenseAccountId String?

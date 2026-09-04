@@ -39,7 +39,8 @@ async function createMinimalSchema(prisma: PrismaClient) {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE "User" (
       "id" TEXT NOT NULL PRIMARY KEY,
-      "defaultExpenseAccountId" TEXT
+      "defaultExpenseAccountId" TEXT,
+      "tokenVersion" INTEGER NOT NULL DEFAULT 0
     )
   `);
   await prisma.$executeRawUnsafe(`
