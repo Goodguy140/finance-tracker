@@ -146,3 +146,22 @@ Confirm production env vars are set, `DATABASE_URL` uses persistent `/data`, and
 Always back up `app.db` before deploying migrations.
 
 </details>
+
+## Passkeys (phishing-resistant MFA)
+
+Users can add passkeys (Touch ID, Windows Hello, Android, security keys) under **Settings → Profile → Security**. Once an account has one:
+
+- every sign-in — password or SSO — must be confirmed with a passkey on the `/mfa` wall;
+- passkeys also work as a passwordless first factor ("Sign in with a passkey" on the login page);
+- linking anything external (Google/Authentik sign-in, personal API tokens) requires a passkey assertion from the last 5 minutes;
+- SSO identities are never auto-linked by email any more — link them from Settings after a passkey check.
+
+Eight single-use recovery codes are issued with the first passkey. If an account loses every passkey *and* its codes, an operator can reset it from a shell:
+
+```bash
+node scripts/reset-mfa.cjs user@example.com
+```
+
+Password logins are limited to 10 per email and 30 per client IP every 15 minutes; set `LOGIN_MAX_PER_IP` higher if your users share one address (office NAT, VPN egress).
+
+`NEXTAUTH_URL` must be the hostname users actually visit: the passkey relying-party ID is derived from it (IP addresses are not accepted by browsers; `localhost` works for development).

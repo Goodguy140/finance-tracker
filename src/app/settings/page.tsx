@@ -5,8 +5,10 @@ import type { SubscriptionView } from "@/components/subscriptions-panel";
 import { isBudgetAlertEmailConfigured } from "@/lib/budget-alert-email";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
 import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
+import { MFA_STEP_UP_MAX_AGE_MS } from "@/lib/auth-constants";
+import { getAuthentikProvider, getGoogleProvider } from "@/lib/oauth-provider-config";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { requireLoadedUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +21,25 @@ const cadenceLabels: Record<RecurringCadence, string> = {
   BIENNIAL: "Every 2 years",
 };
 
-export default async function SettingsPage() {
-  const user = await requireUser();
-  const [accounts, categories, budgets, subscriptionRules, apiTokenRecords] = await Promise.all([
+type SearchParams = Promise<{ linked?: string | string[] }>;
+
+export default async function SettingsPage({ searchParams }: { searchParams: SearchParams }) {
+  const loaded = await requireLoadedUser();
+  const { user, mfa } = loaded;
+  const sp = await searchParams;
+  const linkedRaw = Array.isArray(sp.linked) ? sp.linked[0] : sp.linked;
+  const [
+    accounts,
+    categories,
+    budgets,
+    subscriptionRules,
+    apiTokenRecords,
+    passkeyRecords,
+    recoveryCodesRemaining,
+    authAccounts,
+    googleProvider,
+    authentikProvider,
+  ] = await Promise.all([
     prisma.account.findMany({ where: { userId: user.id }, orderBy: { name: "asc" } }),
     prisma.category.findMany({ where: { userId: user.id, kind: CategoryKind.EXPENSE }, orderBy: { name: "asc" } }),
     prisma.budget.findMany({ where: { userId: user.id }, include: { category: true }, orderBy: [{ periodMonth: "desc" }, { category: { name: "asc" } }] }),
@@ -50,7 +68,37 @@ export default async function SettingsPage() {
         expiresAt: true,
       },
     }),
+    prisma.webAuthnCredential.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, name: true, createdAt: true, lastUsedAt: true, backedUp: true },
+    }),
+    prisma.recoveryCode.count({ where: { userId: user.id, usedAt: null } }),
+    prisma.authAccount.findMany({ where: { userId: user.id }, select: { provider: true } }),
+    getGoogleProvider(),
+    getAuthentikProvider(),
   ]);
+
+  const availableProviders = [
+    ...(googleProvider ? ["google"] : []),
+    ...(authentikProvider ? ["authentik"] : []),
+  ];
+  const linkedProviders = [...new Set(authAccounts.map((a) => a.provider))];
+  const security = {
+    hasPassword: user.passwordHash != null,
+    passkeys: passkeyRecords.map((pk) => ({
+      id: pk.id,
+      name: pk.name,
+      createdAt: pk.createdAt.toISOString(),
+      lastUsedAt: pk.lastUsedAt ? pk.lastUsedAt.toISOString() : null,
+      backedUp: pk.backedUp,
+    })),
+    recoveryCodesRemaining,
+    freshUntil: mfa.verified && mfa.verifiedAt != null ? mfa.verifiedAt + MFA_STEP_UP_MAX_AGE_MS : null,
+    linkedProviders,
+    availableProviders,
+    linkedJustNow: linkedRaw && linkedProviders.includes(linkedRaw) ? linkedRaw : null,
+  };
 
   const apiTokens = apiTokenRecords.map((token) => ({
     id: token.id,
@@ -148,6 +196,7 @@ export default async function SettingsPage() {
         defaultExpenseAccountId={user.defaultExpenseAccountId}
         budgetAlertEmailConfigured={isBudgetAlertEmailConfigured()}
         apiTokens={apiTokens}
+        security={security}
       />
     </main>
   );

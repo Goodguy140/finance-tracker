@@ -15,6 +15,19 @@ export const AUDIT_ACTIONS = {
   api_token_created: "api_token_created",
   api_token_revoked: "api_token_revoked",
   api_budgets_read: "api_budgets_read",
+  passkey_registered: "passkey_registered",
+  passkey_renamed: "passkey_renamed",
+  passkey_removed: "passkey_removed",
+  mfa_disabled: "mfa_disabled",
+  mfa_verified: "mfa_verified",
+  mfa_verification_failed: "mfa_verification_failed",
+  mfa_step_up: "mfa_step_up",
+  recovery_codes_generated: "recovery_codes_generated",
+  recovery_code_used: "recovery_code_used",
+  sso_link_started: "sso_link_started",
+  sso_account_linked: "sso_account_linked",
+  sso_link_rejected: "sso_link_rejected",
+  sso_account_unlinked: "sso_account_unlinked",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

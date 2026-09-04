@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { signIn, signOut } from "next-auth/react";
+import { startAuthentication } from "@simplewebauthn/browser";
+import { beginPasswordlessSignInAction } from "@/app/actions/mfa";
+import { describeWebAuthnError } from "@/components/mfa/passkey-client";
 import { SsoSignInForms } from "@/components/sso-sign-in-forms";
 import { ServerActionForm } from "@/components/server-action-form";
 import {
@@ -140,6 +143,49 @@ export function LoginForm() {
           Login
         </button>
       </form>
+      <button
+        type="button"
+        disabled={pending}
+        className={`inline-flex w-full items-center justify-center ${secondaryBtnClass} py-2.5`}
+        onClick={async () => {
+          setError(null);
+          setPending(true);
+          try {
+            const origin = window.location.origin;
+            const begin = await beginPasswordlessSignInAction();
+            if (!begin.ok) {
+              setError(begin.error);
+              return;
+            }
+            let response;
+            try {
+              response = await startAuthentication({ optionsJSON: begin.options });
+            } catch (err) {
+              const { cancelled, message } = describeWebAuthnError(err);
+              if (!cancelled) setError(message);
+              return;
+            }
+            const result = await signIn("passkey", {
+              challengeId: begin.challengeId,
+              response: JSON.stringify(response),
+              callbackUrl: `${origin}/`,
+              redirect: false,
+            });
+            if (result?.error) {
+              setError("Passkey sign-in failed. Try again or use your password.");
+              return;
+            }
+            // Full page load on purpose: the session cookie was just set (see LoginForm).
+            window.location.href = result?.url ?? `${origin}/`;
+          } catch {
+            setError("Passkey sign-in failed. Please try again.");
+          } finally {
+            setPending(false);
+          }
+        }}
+      >
+        Sign in with a passkey
+      </button>
       <SsoSignInForms callbackUrl="/" />
     </div>
   );

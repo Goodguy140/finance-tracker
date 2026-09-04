@@ -39,6 +39,12 @@ describe("GET /api/backup/export/me", () => {
     expect(res.status).toBe(401);
   });
 
+  it("returns 403 while the login still owes a passkey check", async () => {
+    vi.mocked(requireUserApiUser).mockResolvedValue({ status: 403, reason: "mfa_required" });
+    const res = await GET();
+    expect(res.status).toBe(403);
+  });
+
   it("returns JSON attachment when authenticated", async () => {
     vi.mocked(requireUserApiUser).mockResolvedValue({
       status: "ok",
