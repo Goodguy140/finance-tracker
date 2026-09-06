@@ -1,5 +1,6 @@
 "use client";
 
+import { signOut } from "next-auth/react";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AccountTypePill } from "@/components/account-type-pill";
@@ -568,7 +569,13 @@ export function SettingsForms({
               </div>
 
               {hasPassword ? (
-                <ServerActionForm action={changePasswordAction} className="space-y-4">
+                <ServerActionForm
+                  action={changePasswordAction}
+                  className="space-y-4"
+                  // The change revokes every session, this one included; a clean sign-out
+                  // beats letting the next navigation discover the dead cookie.
+                  onSuccess={() => signOut({ callbackUrl: "/login" })}
+                >
                   <LabeledField label="Current password" hint="The password you use on the login page with this email.">
                     <input
                       type="password"
