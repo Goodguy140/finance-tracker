@@ -27,6 +27,7 @@ export const clearUserFinancialDataAction = formAction(async (formData: FormData
       data: { defaultExpenseAccountId: null },
     });
     await tx.budget.deleteMany({ where: { userId: user.id } });
+    await tx.budgetAlertNotification.deleteMany({ where: { userId: user.id } });
     await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
     await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
     await tx.portfolioSnapshot.deleteMany({ where: { userId: user.id } });
@@ -65,6 +66,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
     });
     await tx.passwordResetToken.deleteMany({ where: { userId: user.id } });
     await tx.budget.deleteMany({ where: { userId: user.id } });
+    await tx.budgetAlertNotification.deleteMany({ where: { userId: user.id } });
     await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
     await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
     await tx.portfolioSnapshot.deleteMany({ where: { userId: user.id } });

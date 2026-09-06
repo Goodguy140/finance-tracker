@@ -47,6 +47,7 @@ import {
 } from "@/lib/recurring-transactions";
 import { currentYmInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
+import { autoPostDueRecurringTransactions } from "@/lib/recurring-post";
 import { requireUser } from "@/lib/session";
 
 const cadenceLabels: Record<RecurringCadence, string> = {
@@ -66,6 +67,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const user = await requireUser();
   const sp = await searchParams;
   const now = new Date();
+  // Rules in AUTO mode post themselves; doing it here as well as on the hourly sweep
+  // means an occurrence due today is already in the log by the time the page renders.
+  try {
+    await autoPostDueRecurringTransactions(user.id, now);
+  } catch (err) {
+    console.error("[recurring] auto-post on dashboard load failed", err);
+  }
   const anchorYm = currentYmInTimeZone(user.timezone, now);
   const period = parseDashboardSearchParams(sp, now, user.timezone);
   const periodDescription = describeDashboardPeriod(period);
@@ -414,6 +422,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     endDateDisplay: rule.endDate ? formatDateOnlyUtc(rule.endDate) : null,
     note: rule.note,
     enabled: rule.enabled,
+    postMode: rule.postMode,
     status: rule.enabled ? getRecurringDateStatus(rule.nextExpectedDate, now) : ("disabled" as const),
   }));
 

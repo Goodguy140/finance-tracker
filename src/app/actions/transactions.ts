@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { CategoryKind, Prisma, TransactionType } from "@prisma/client";
+import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
 import { MAX_AMOUNT, parseStatementAmount, toCents } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { dateFromYmd } from "@/lib/date-only";
@@ -58,6 +59,7 @@ export const createExpenseAction = formAction(async (formData: FormData) => {
       note: payload.note,
     },
   });
+  scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
 });
 
@@ -108,6 +110,7 @@ export const updateExpenseAction = formAction(async (formData: FormData) => {
       note: payload.note,
     },
   });
+  scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
 });
 
@@ -126,6 +129,7 @@ export const deleteExpenseTransactionAction = formAction(async (formData: FormDa
   if (!existing) throw new Error("Expense not found.");
 
   await prisma.transaction.delete({ where: { id: existing.id } });
+  scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
 });
 
@@ -247,6 +251,7 @@ export const importExpensesCsvAction = formAction(async (formData: FormData) => 
     if (pending.length > 0) await tx.transaction.createMany({ data: pending });
   }, LONG_TRANSACTION_OPTIONS);
 
+  scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
   revalidatePath("/settings");
 });
@@ -391,6 +396,7 @@ export const createSplitExpenseAction = formAction(async (formData: FormData) =>
       },
     },
   });
+  scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
 });
 

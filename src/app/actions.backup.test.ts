@@ -7,6 +7,7 @@ const mockPrisma = vi.hoisted(() => ({
   passwordResetToken: { deleteMany: vi.fn(), create: vi.fn() },
   authAccount: { deleteMany: vi.fn(), create: vi.fn() },
   budget: { deleteMany: vi.fn(), createMany: vi.fn() },
+  budgetAlertNotification: { deleteMany: vi.fn() },
   recurringTransaction: { deleteMany: vi.fn(), create: vi.fn() },
   investmentFlow: { deleteMany: vi.fn(), create: vi.fn(), createMany: vi.fn() },
   portfolioSnapshot: { deleteMany: vi.fn(), create: vi.fn(), createMany: vi.fn() },

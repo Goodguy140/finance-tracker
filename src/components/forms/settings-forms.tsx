@@ -201,6 +201,12 @@ export function RecurringTransactionForm({
         defaultValue={today}
       />
       <DateField name="endDate" label="End date" hint="Optional final expected date." />
+      <LabeledField label="Posting" hint="Automatic rules are posted to your log as soon as they are due.">
+        <select name="postMode" defaultValue="REVIEW" className={selectClass}>
+          <option value="REVIEW">Post by hand when due</option>
+          <option value="AUTO">Post automatically when due</option>
+        </select>
+      </LabeledField>
       <LabeledField label="Note" hint="Optional note copied to posted transactions." className={spanFullSm}>
         <textarea name="note" rows={2} maxLength={250} className={textAreaClass} placeholder="Optional details" />
       </LabeledField>
@@ -328,6 +334,7 @@ export function SettingsForms({
   subscriptions,
   defaultExpenseAccountId,
   budgetAlertEmailConfigured,
+  budgetAlertEmailEnabled,
   apiTokens,
   security,
 }: {
@@ -342,6 +349,7 @@ export function SettingsForms({
   subscriptions: SubscriptionView[];
   defaultExpenseAccountId: string | null;
   budgetAlertEmailConfigured: boolean;
+  budgetAlertEmailEnabled: boolean;
   apiTokens: ApiTokenRow[];
   security: SecurityPanelProps;
 }) {
@@ -919,7 +927,7 @@ export function SettingsForms({
               </dl>
             </header>
 
-            <BudgetAlertPreferences emailConfigured={budgetAlertEmailConfigured} />
+            <BudgetAlertPreferences emailConfigured={budgetAlertEmailConfigured} emailEnabled={budgetAlertEmailEnabled} />
 
             <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-5 shadow-lg sm:p-6">
               <div className="border-b border-slate-800/90 pb-4">

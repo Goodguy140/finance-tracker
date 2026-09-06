@@ -158,6 +158,8 @@ export const recurringTransactionSchema = z.object({
   nextExpectedDate: z.string().min(1),
   endDate: z.string().optional(),
   note: z.string().trim().max(250).optional(),
+  /** REVIEW: post from the dashboard by hand. AUTO: posted when due, no click needed. */
+  postMode: z.enum(["REVIEW", "AUTO"]).default("REVIEW"),
 });
 
 export const updateRecurringTransactionSchema = recurringTransactionSchema.extend({

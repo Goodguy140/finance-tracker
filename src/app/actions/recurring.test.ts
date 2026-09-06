@@ -32,6 +32,8 @@ vi.mock("@/lib/prisma", () => ({
   prisma: mockPrisma,
 }));
 
+vi.mock("@/lib/budget-alert-dispatch", () => ({ scheduleBudgetAlertEmails: vi.fn() }));
+
 const { createRecurringTransactionAction, postRecurringTransactionAction } = await import("./recurring");
 
 function form(entries: Record<string, string>) {

@@ -1,13 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { Prisma, TransactionType } from "@prisma/client";
+import { Prisma, RecurringPostMode, TransactionType } from "@prisma/client";
+import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
 import { toCents } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
-import { dateFromYmd, ymdFromDateUtc } from "@/lib/date-only";
+import { dateFromYmd } from "@/lib/date-only";
 import { requireUser } from "@/lib/session";
-import { advanceRecurringDate } from "@/lib/recurring-transactions";
-import { recomputeSubscriptionTransactionCredits } from "@/lib/subscription-credit";
+import { postRecurringOccurrence } from "@/lib/recurring-post";
 import {
   postRecurringTransactionSchema,
   recurringTransactionSchema,
@@ -34,6 +34,7 @@ export const createRecurringTransactionAction = formAction(async (formData: Form
     nextExpectedDate: getFormValue(formData, "nextExpectedDate"),
     endDate: getFormValue(formData, "endDate") || undefined,
     note: getFormValue(formData, "note") || undefined,
+    postMode: getFormValue(formData, "postMode") || undefined,
   });
   const type = payload.type as TransactionType;
   await Promise.all([
@@ -57,6 +58,7 @@ export const createRecurringTransactionAction = formAction(async (formData: Form
       cadence: payload.cadence,
       nextExpectedDate,
       endDate,
+      postMode: payload.postMode as RecurringPostMode,
       note: payload.note || null,
     },
   });
@@ -76,6 +78,7 @@ export const updateRecurringTransactionAction = formAction(async (formData: Form
     nextExpectedDate: getFormValue(formData, "nextExpectedDate"),
     endDate: getFormValue(formData, "endDate") || undefined,
     note: getFormValue(formData, "note") || undefined,
+    postMode: getFormValue(formData, "postMode") || undefined,
   });
   if (!parsed.success) {
     throw new Error("Recurring transaction name, amount, cadence, account, category, and next date are required.");
@@ -109,6 +112,7 @@ export const updateRecurringTransactionAction = formAction(async (formData: Form
       cadence: payload.cadence,
       nextExpectedDate,
       endDate,
+      postMode: payload.postMode as RecurringPostMode,
       note: payload.note || null,
     },
   });
@@ -160,79 +164,19 @@ export const postRecurringTransactionAction = formAction(async (formData: FormDa
   const expectedDate = dateFromYmd(payload.expectedDate);
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const rule = await tx.recurringTransaction.findFirst({
-        where: { id: payload.recurringTransactionId, userId: user.id },
-        include: { account: true, category: true },
-      });
-      if (!rule) throw new Error("Recurring transaction not found.");
-
-      if (ymdFromDateUtc(rule.nextExpectedDate) !== payload.expectedDate) {
-        const posted = await tx.transaction.findFirst({
-          where: {
-            userId: user.id,
-            recurringTransactionId: rule.id,
-            recurringExpectedDate: expectedDate,
-          },
-          select: { id: true },
-        });
-        if (posted) return;
-        throw new Error("This recurring transaction has already moved to a different expected date.");
-      }
-      if (!rule.enabled) throw new Error("Recurring transaction is disabled.");
-      if (rule.account.archived) throw new Error("Cannot post a recurring transaction to an archived account.");
-      if (rule.category.kind !== categoryKindForTransactionType(rule.type)) {
-        throw new Error("Recurring transaction category does not match its income/expense type.");
-      }
-      if (rule.endDate && ymdFromDateUtc(expectedDate) > ymdFromDateUtc(rule.endDate)) {
-        throw new Error("Recurring transaction has passed its end date.");
-      }
-
-      const nextExpectedDate = advanceRecurringDate(rule.nextExpectedDate, rule.cadence);
-      const stillEnabled = !rule.endDate || ymdFromDateUtc(nextExpectedDate) <= ymdFromDateUtc(rule.endDate);
-      const updated = await tx.recurringTransaction.updateMany({
-        where: {
-          id: rule.id,
-          userId: user.id,
-          enabled: true,
-          nextExpectedDate: rule.nextExpectedDate,
-        },
-        data: {
-          nextExpectedDate,
-          enabled: stillEnabled,
-        },
-      });
-      if (updated.count === 0) return;
-
-      await tx.transaction.create({
-        data: {
-          userId: user.id,
-          accountId: rule.accountId,
-          categoryId: rule.categoryId,
-          type: rule.type,
-          amountCents: rule.amountCents,
-          title: rule.name,
-          date: expectedDate,
-          note: rule.note,
-          recurringTransactionId: rule.id,
-          recurringExpectedDate: expectedDate,
-        },
-      });
-
-      // Apply credits for any shared-subscription members already marked paid for this occurrence.
-      await recomputeSubscriptionTransactionCredits(tx, {
-        userId: user.id,
-        recurringTransactionId: rule.id,
-        expectedDate,
-      });
-    });
+    await prisma.$transaction((tx) =>
+      postRecurringOccurrence(tx, { userId: user.id, recurringTransactionId: payload.recurringTransactionId, expectedDate }),
+    );
   } catch (error) {
+    // Two clicks racing on the same occurrence: the unique (rule, expected date) index
+    // rejects the second insert, and there is nothing left to do.
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return;
     }
     throw error;
   }
 
+  scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
 });
 

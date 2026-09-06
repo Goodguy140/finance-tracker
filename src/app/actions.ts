@@ -47,3 +47,4 @@ export {
   removePasskeyAction,
   unlinkSsoProviderAction,
 } from "./actions/mfa";
+export { setBudgetAlertEmailAction } from "./actions/preferences";

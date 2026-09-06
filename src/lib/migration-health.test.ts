@@ -40,7 +40,8 @@ async function createMinimalSchema(prisma: PrismaClient) {
     CREATE TABLE "User" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "defaultExpenseAccountId" TEXT,
-      "tokenVersion" INTEGER NOT NULL DEFAULT 0
+      "tokenVersion" INTEGER NOT NULL DEFAULT 0,
+      "budgetAlertEmailEnabled" BOOLEAN NOT NULL DEFAULT false
     )
   `);
   await prisma.$executeRawUnsafe(`

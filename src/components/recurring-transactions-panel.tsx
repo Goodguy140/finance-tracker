@@ -31,6 +31,7 @@ export type RecurringTransactionListItem = {
   endDateDisplay: string | null;
   note: string | null;
   enabled: boolean;
+  postMode: "REVIEW" | "AUTO";
   status: "overdue" | "due" | "upcoming" | "disabled";
 };
 
@@ -111,6 +112,7 @@ function RecurringCard({
         <MetaChip label="Cadence">{item.cadenceLabel}</MetaChip>
         <MetaChip label="Next">{item.nextExpectedDateDisplay}</MetaChip>
         {item.endDateDisplay ? <MetaChip label="Ends">{item.endDateDisplay}</MetaChip> : null}
+        {item.postMode === "AUTO" ? <MetaChip label="Posting">Automatic</MetaChip> : null}
       </div>
       <div className="mt-3 flex flex-wrap justify-end gap-2">
         {item.enabled ? (
@@ -279,6 +281,10 @@ export function RecurringTransactionsPanel({
                   className={inputClass}
                   aria-label="Optional end date"
                 />
+                <select name="postMode" defaultValue={editingItem.postMode} className={selectClass} aria-label="Posting">
+                  <option value="REVIEW">Post by hand when due</option>
+                  <option value="AUTO">Post automatically when due</option>
+                </select>
               </div>
               <textarea
                 name="note"
