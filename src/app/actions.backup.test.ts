@@ -136,6 +136,109 @@ describe("importUserBackupAction", () => {
     expect(mockPrisma.passwordResetToken.deleteMany).toHaveBeenCalled();
   });
 
+  it("restores the link between a posted occurrence and its recurring rule", async () => {
+    const iso = "2026-01-01T00:00:00.000Z";
+    mockPrisma.account.create.mockResolvedValue({ id: "acc-new" });
+    mockPrisma.category.create.mockResolvedValue({ id: "cat-new" });
+    mockPrisma.recurringTransaction.create.mockResolvedValue({ id: "rule-new" });
+    mockPrisma.transaction.create.mockResolvedValue({ id: "txn-new" });
+    const backup = {
+      ...minimalBackup("user@example.com"),
+      accounts: [
+        { id: "acc-old", name: "Chequing", type: "CHEQUING", currency: "CAD", countryCode: "CA", provider: null, archived: false, createdAt: iso, updatedAt: iso },
+      ],
+      categories: [{ id: "cat-old", name: "Rent", kind: "EXPENSE", isDefault: false, createdAt: iso, updatedAt: iso }],
+      recurringTransactions: [
+        {
+          id: "rule-old",
+          accountId: "acc-old",
+          categoryId: "cat-old",
+          type: "EXPENSE",
+          name: "Rent",
+          amountCents: 150_000,
+          cadence: "MONTHLY",
+          nextExpectedDate: "2026-03-01T00:00:00.000Z",
+          endDate: null,
+          postMode: "REVIEW",
+          enabled: true,
+          note: null,
+          createdAt: iso,
+          updatedAt: iso,
+          members: [],
+        },
+      ],
+      transactions: [
+        {
+          id: "txn-old",
+          accountId: "acc-old",
+          categoryId: "cat-old",
+          type: "EXPENSE",
+          amountCents: 150_000,
+          preCreditCents: null,
+          creditCents: null,
+          creditBreakdownJson: null,
+          title: "Rent",
+          date: "2026-02-01T00:00:00.000Z",
+          postedDate: null,
+          accountDescription: null,
+          note: null,
+          recurringTransactionId: "rule-old",
+          recurringExpectedDate: "2026-02-01T00:00:00.000Z",
+          createdAt: iso,
+          updatedAt: iso,
+          splitParts: [],
+        },
+      ],
+    };
+    const file = new File([JSON.stringify(backup)], "backup.json", { type: "application/json" });
+    const formData = new FormData();
+    formData.set("backupJson", file);
+
+    expect(await importUserBackupAction(formData)).toBeUndefined();
+
+    expect(mockPrisma.transaction.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          recurringTransactionId: "rule-new",
+          recurringExpectedDate: new Date("2026-02-01T00:00:00.000Z"),
+        }),
+      }),
+    );
+    // Rules are created before the transactions that reference them.
+    const ruleOrder = mockPrisma.recurringTransaction.create.mock.invocationCallOrder[0];
+    const txnOrder = mockPrisma.transaction.create.mock.invocationCallOrder[0];
+    expect(ruleOrder).toBeLessThan(txnOrder);
+  });
+
+  it("refuses a file whose transaction points at a rule it does not contain", async () => {
+    const iso = "2026-01-01T00:00:00.000Z";
+    mockPrisma.account.create.mockResolvedValue({ id: "acc-new" });
+    mockPrisma.category.create.mockResolvedValue({ id: "cat-new" });
+    const backup = {
+      ...minimalBackup("user@example.com"),
+      accounts: [
+        { id: "acc-old", name: "Chequing", type: "CHEQUING", currency: "CAD", countryCode: "CA", provider: null, archived: false, createdAt: iso, updatedAt: iso },
+      ],
+      categories: [{ id: "cat-old", name: "Rent", kind: "EXPENSE", isDefault: false, createdAt: iso, updatedAt: iso }],
+      transactions: [
+        {
+          id: "txn-old", accountId: "acc-old", categoryId: "cat-old", type: "EXPENSE", amountCents: 1, preCreditCents: null,
+          creditCents: null, creditBreakdownJson: null, title: null, date: iso, postedDate: null, accountDescription: null,
+          note: null, recurringTransactionId: "rule-missing", recurringExpectedDate: iso, createdAt: iso, updatedAt: iso, splitParts: [],
+        },
+      ],
+    };
+    const file = new File([JSON.stringify(backup)], "backup.json", { type: "application/json" });
+    const formData = new FormData();
+    formData.set("backupJson", file);
+
+    expect(await importUserBackupAction(formData)).toEqual({
+      ok: false,
+      error: "Backup references unknown recurring transaction.",
+    });
+    expect(mockPrisma.transaction.create).not.toHaveBeenCalled();
+  });
+
   it("never touches linked SSO identities, whatever the file contains", async () => {
     // Linking a provider requires a fresh passkey assertion; a plain session uploading a
     // file must not be able to attach (or silently drop) provider identities.

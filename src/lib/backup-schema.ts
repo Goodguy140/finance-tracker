@@ -90,6 +90,9 @@ export const userBackupSchema = z.object({
       postedDate: isoDate.nullable(),
       accountDescription: z.string().nullable(),
       note: z.string().max(250).nullable(),
+      /** Absent in files exported before recurring links were included. */
+      recurringTransactionId: z.string().min(1).nullable().optional(),
+      recurringExpectedDate: isoDate.nullable().optional(),
       createdAt: isoDate,
       updatedAt: isoDate,
       splitParts: z.array(
@@ -113,6 +116,8 @@ export const userBackupSchema = z.object({
   recurringTransactions: z
     .array(
       z.object({
+        /** Absent in files exported before recurring links were included. */
+        id: z.string().min(1).optional(),
         accountId: z.string().min(1),
         categoryId: z.string().min(1),
         type: z.enum(["EXPENSE", "INCOME"]),
