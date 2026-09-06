@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useTransition } from "react";
+import { setBudgetAlertEmailAction } from "@/app/actions";
+import { isActionFailure } from "@/lib/action-result";
 import {
   readBudgetAlertPreferences,
   writeBudgetAlertPreferences,
@@ -10,11 +12,21 @@ import {
 const checkboxClass =
   "h-4 w-4 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-2 focus:ring-blue-500/40";
 
-export function BudgetAlertPreferences({ emailConfigured }: { emailConfigured: boolean }) {
+export function BudgetAlertPreferences({
+  emailConfigured,
+  emailEnabled,
+}: {
+  emailConfigured: boolean;
+  /** Server-side opt-in from the user row; browser notifications stay a per-device choice. */
+  emailEnabled: boolean;
+}) {
   const [prefs, setPrefs] = useState(() => readBudgetAlertPreferences());
   const [browserSupported] = useState(
     () => typeof window !== "undefined" && "Notification" in window,
   );
+  const [email, setEmail] = useState(emailEnabled);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailPending, startEmailTransition] = useTransition();
 
   const update = useCallback((patch: Partial<BudgetAlertPreferences>) => {
     setPrefs((prev) => {
@@ -31,6 +43,21 @@ export function BudgetAlertPreferences({ emailConfigured }: { emailConfigured: b
     }
     update({ browserEnabled: true });
   }, [browserSupported, update]);
+
+  const setEmailEnabled = (next: boolean) => {
+    setEmailError(null);
+    const previous = email;
+    setEmail(next);
+    startEmailTransition(async () => {
+      const formData = new FormData();
+      formData.set("enabled", next ? "true" : "false");
+      const result = await setBudgetAlertEmailAction(formData);
+      if (isActionFailure(result)) {
+        setEmail(previous);
+        setEmailError(result.error);
+      }
+    });
+  };
 
   return (
     <section className="space-y-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-4 sm:p-5">
@@ -67,17 +94,18 @@ export function BudgetAlertPreferences({ emailConfigured }: { emailConfigured: b
         <input
           type="checkbox"
           className={checkboxClass}
-          checked={prefs.emailEnabled}
-          disabled={!emailConfigured}
-          onChange={(e) => update({ emailEnabled: e.target.checked })}
+          checked={email}
+          disabled={!emailConfigured || emailPending}
+          onChange={(e) => setEmailEnabled(e.target.checked)}
         />
         <span className="text-sm text-slate-300">
           <span className="font-medium text-slate-200">Email alerts</span>
           <span className="mt-0.5 block text-xs text-slate-500">
             {emailConfigured
-              ? "Sends to your account email when SMTP is configured on the server."
+              ? "Sent to your account email the first time a category reaches 80% of its limit each month, and again if it goes over."
               : "Requires SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM on the server."}
           </span>
+          {emailError ? <span className="mt-1 block text-xs text-red-300">{emailError}</span> : null}
         </span>
       </label>
     </section>

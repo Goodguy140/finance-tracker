@@ -70,6 +70,9 @@ export type UserBackupPayload = {
     postedDate: IsoString | null;
     accountDescription: string | null;
     note: string | null;
+    /** The recurring rule (by its exported `id`) this row was posted from, if any. */
+    recurringTransactionId: string | null;
+    recurringExpectedDate: IsoString | null;
     createdAt: IsoString;
     updatedAt: IsoString;
     splitParts: Array<{
@@ -86,6 +89,8 @@ export type UserBackupPayload = {
     updatedAt: IsoString;
   }>;
   recurringTransactions: Array<{
+    /** Referenced by `transactions[].recurringTransactionId`; remapped on import. */
+    id: string;
     accountId: string;
     categoryId: string;
     type: "EXPENSE" | "INCOME";
@@ -237,6 +242,8 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       postedDate: toIso(row.postedDate),
       accountDescription: row.accountDescription,
       note: row.note,
+      recurringTransactionId: row.recurringTransactionId,
+      recurringExpectedDate: toIso(row.recurringExpectedDate),
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       splitParts: row.splitParts.map((part) => ({
@@ -253,6 +260,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       updatedAt: row.updatedAt.toISOString(),
     })),
     recurringTransactions: user.recurringTransactions.map((row) => ({
+      id: row.id,
       accountId: row.accountId,
       categoryId: row.categoryId,
       type: row.type,

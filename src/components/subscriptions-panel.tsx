@@ -47,6 +47,7 @@ export type SubscriptionView = {
   endDateYmd: string | null;
   note: string | null;
   enabled: boolean;
+  postMode: "REVIEW" | "AUTO";
   members: SubscriptionMemberView[];
 };
 
@@ -329,6 +330,13 @@ export function SubscriptionsPanel({
               <input name="nextExpectedDate" type="date" className={inputClass} required />
             </label>
             <label>
+              <span className="mb-1 block text-xs text-slate-400">Posting</span>
+              <select name="postMode" defaultValue="REVIEW" className={selectClass}>
+                <option value="REVIEW">Post by hand when due</option>
+                <option value="AUTO">Post automatically when due</option>
+              </select>
+            </label>
+            <label>
               <span className="mb-1 block text-xs text-slate-400">End date (optional)</span>
               <input name="endDate" type="date" className={inputClass} />
             </label>
@@ -406,6 +414,10 @@ export function SubscriptionsPanel({
                 </select>
                 <input name="nextExpectedDate" type="date" defaultValue={editing.nextExpectedDateYmd} className={inputClass} required />
                 <input name="endDate" type="date" defaultValue={editing.endDateYmd ?? ""} className={inputClass} aria-label="Optional end date" />
+                <select name="postMode" defaultValue={editing.postMode} className={selectClass} aria-label="Posting">
+                  <option value="REVIEW">Post by hand when due</option>
+                  <option value="AUTO">Post automatically when due</option>
+                </select>
               </div>
               <textarea name="note" defaultValue={editing.note ?? ""} className={textAreaClass} placeholder="Optional note" maxLength={250} />
               <div className="flex justify-end gap-2">

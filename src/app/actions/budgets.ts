@@ -14,8 +14,11 @@ import {
   reallocateBudgetSchema,
   updateBudgetSchema,
 } from "@/lib/validation";
-import { getFormValue } from "./_helpers";
-export async function upsertBudgetAction(formData: FormData) {
+import {
+  getFormValue,
+  formAction,
+} from "./_helpers";
+export const upsertBudgetAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const rawPeriodMonth = getFormValue(formData, "periodMonth");
   const parsed = budgetSchema.safeParse({
@@ -75,9 +78,9 @@ export async function upsertBudgetAction(formData: FormData) {
   });
   revalidatePath("/");
   revalidatePath("/settings");
-}
+});
 
-export async function updateBudgetAction(formData: FormData) {
+export const updateBudgetAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const parsed = updateBudgetSchema.safeParse({
     budgetId: getFormValue(formData, "budgetId"),
@@ -104,9 +107,9 @@ export async function updateBudgetAction(formData: FormData) {
   });
   revalidatePath("/");
   revalidatePath("/settings");
-}
+});
 
-export async function deleteBudgetAction(formData: FormData) {
+export const deleteBudgetAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = deleteBudgetSchema.parse({
     budgetId: getFormValue(formData, "budgetId"),
@@ -123,7 +126,7 @@ export async function deleteBudgetAction(formData: FormData) {
   });
   revalidatePath("/");
   revalidatePath("/settings");
-}
+});
 
 /**
  * Cover a category's current-month overage by pulling from other budgets: raise
@@ -131,7 +134,7 @@ export async function deleteBudgetAction(formData: FormData) {
  * month (upserting current-month rows so history is untouched and the change
  * carries forward).
  */
-export async function reallocateBudgetAction(formData: FormData) {
+export const reallocateBudgetAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
 
   let transfers: unknown;
@@ -200,5 +203,5 @@ export async function reallocateBudgetAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/settings");
-}
+});
 

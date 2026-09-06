@@ -8,8 +8,11 @@ import { requireAdmin } from "@/lib/session";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { invalidateOAuthProviderCache } from "@/lib/oauth-provider-config";
 import { resolveAuthentikOauthSettings, resolveGoogleOauthSettings } from "@/lib/oauth-settings";
-import { getFormValue } from "./_helpers";
-export async function updateAdminOauthSettingsAction(formData: FormData) {
+import {
+  getFormValue,
+  formAction,
+} from "./_helpers";
+export const updateAdminOauthSettingsAction = formAction(async (formData: FormData) => {
   const user = await requireAdmin();
   const [googleClientIdRow, googleClientSecretRow, authentikIssuerRow, authentikClientIdRow, authentikClientSecretRow] =
     await Promise.all([
@@ -71,4 +74,4 @@ export async function updateAdminOauthSettingsAction(formData: FormData) {
     headers: h,
   });
   revalidatePath("/settings/admin");
-}
+});

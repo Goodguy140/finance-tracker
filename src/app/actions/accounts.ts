@@ -16,8 +16,9 @@ import {
 } from "@/lib/validation";
 import {
   getFormValue,
+  formAction,
 } from "./_helpers";
-export async function createFinancialAccountAction(formData: FormData) {
+export const createFinancialAccountAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = accountSchema.parse({
     name: getFormValue(formData, "name"),
@@ -44,9 +45,9 @@ export async function createFinancialAccountAction(formData: FormData) {
   });
   revalidatePath("/");
   revalidatePath("/settings");
-}
+});
 
-export async function updateFinancialAccountAction(formData: FormData) {
+export const updateFinancialAccountAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = updateAccountSchema.parse({
     accountId: getFormValue(formData, "accountId"),
@@ -67,9 +68,9 @@ export async function updateFinancialAccountAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/settings");
-}
+});
 
-export async function updateDefaultExpenseAccountAction(formData: FormData) {
+export const updateDefaultExpenseAccountAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = updateDefaultExpenseAccountSchema.parse({
     defaultExpenseAccountId: getFormValue(formData, "defaultExpenseAccountId"),
@@ -100,9 +101,9 @@ export async function updateDefaultExpenseAccountAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/settings");
-}
+});
 
-export async function deleteFinancialAccountAction(formData: FormData) {
+export const deleteFinancialAccountAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const accountId = getFormValue(formData, "accountId");
   if (!accountId) throw new Error("Account id is required.");
@@ -156,9 +157,9 @@ export async function deleteFinancialAccountAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/settings");
-}
+});
 
-export async function setFinancialAccountArchivedAction(formData: FormData) {
+export const setFinancialAccountArchivedAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = setAccountArchivedSchema.parse({
     accountId: getFormValue(formData, "accountId"),
@@ -204,5 +205,5 @@ export async function setFinancialAccountArchivedAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/settings");
-}
+});
 

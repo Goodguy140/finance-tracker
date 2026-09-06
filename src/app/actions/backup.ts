@@ -9,8 +9,12 @@ import { requireUser } from "@/lib/session";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { userBackupSchema } from "@/lib/backup-schema";
 import { resolveBackupUserProfileFields } from "@/lib/backup-restore";
-import { getFormValue, LONG_TRANSACTION_OPTIONS } from "./_helpers";
-export async function clearUserFinancialDataAction(formData: FormData) {
+import {
+  getFormValue,
+  LONG_TRANSACTION_OPTIONS,
+  formAction,
+} from "./_helpers";
+export const clearUserFinancialDataAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const confirmation = getFormValue(formData, "confirmation").trim();
   if (confirmation !== "RESET FINANCIAL DATA") {
@@ -23,6 +27,7 @@ export async function clearUserFinancialDataAction(formData: FormData) {
       data: { defaultExpenseAccountId: null },
     });
     await tx.budget.deleteMany({ where: { userId: user.id } });
+    await tx.budgetAlertNotification.deleteMany({ where: { userId: user.id } });
     await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
     await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
     await tx.portfolioSnapshot.deleteMany({ where: { userId: user.id } });
@@ -36,9 +41,9 @@ export async function clearUserFinancialDataAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/settings");
-}
+});
 
-export async function importUserBackupAction(formData: FormData) {
+export const importUserBackupAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const raw = formData.get("backupJson");
   if (!(raw instanceof File)) {
@@ -61,6 +66,7 @@ export async function importUserBackupAction(formData: FormData) {
     });
     await tx.passwordResetToken.deleteMany({ where: { userId: user.id } });
     await tx.budget.deleteMany({ where: { userId: user.id } });
+    await tx.budgetAlertNotification.deleteMany({ where: { userId: user.id } });
     await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
     await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
     await tx.portfolioSnapshot.deleteMany({ where: { userId: user.id } });
@@ -126,70 +132,8 @@ export async function importUserBackupAction(formData: FormData) {
       categoryIdMap.set(category.id, created.id);
     }
 
-    for (const row of parsed.transactions) {
-      const mappedCategoryId = categoryIdMap.get(row.categoryId);
-      if (!mappedCategoryId) {
-        throw new Error("Backup references unknown transaction category.");
-      }
-      const mappedAccountId = row.accountId ? accountIdMap.get(row.accountId) : null;
-      if (row.accountId && !mappedAccountId) {
-        throw new Error("Backup references unknown transaction account.");
-      }
-      // Split parts are nested rather than written in a second pass: it removes a
-      // round trip per part and makes the transaction id map unnecessary.
-      const splitParts = row.splitParts.map((part) => {
-        const mappedSplitCategoryId = categoryIdMap.get(part.categoryId);
-        if (!mappedSplitCategoryId) {
-          throw new Error("Backup references unknown split category.");
-        }
-        return {
-          userId: user.id,
-          categoryId: mappedSplitCategoryId,
-          amountCents: part.amountCents,
-        };
-      });
-
-      await tx.transaction.create({
-        data: {
-          userId: user.id,
-          accountId: mappedAccountId ?? null,
-          categoryId: mappedCategoryId,
-          type: row.type,
-          amountCents: row.amountCents,
-          preCreditCents: row.preCreditCents,
-          creditCents: row.creditCents,
-          creditBreakdownJson: row.creditBreakdownJson,
-          title: row.title,
-          date: new Date(row.date),
-          postedDate: row.postedDate ? new Date(row.postedDate) : null,
-          accountDescription: row.accountDescription,
-          note: row.note,
-          createdAt: new Date(row.createdAt),
-          updatedAt: new Date(row.updatedAt),
-          ...(splitParts.length > 0 ? { splitParts: { create: splitParts } } : {}),
-        },
-        select: { id: true },
-      });
-    }
-
-    await tx.budget.createMany({
-      data: parsed.budgets.map((row) => {
-        const mappedCategoryId = categoryIdMap.get(row.categoryId);
-        if (!mappedCategoryId) {
-          throw new Error("Backup references unknown budget category.");
-        }
-        return {
-          userId: user.id,
-          categoryId: mappedCategoryId,
-          name: row.name,
-          periodMonth: row.periodMonth,
-          limitCents: row.limitCents,
-          createdAt: new Date(row.createdAt),
-          updatedAt: new Date(row.updatedAt),
-        };
-      }),
-    });
-
+    // Rules go in before transactions so posted occurrences can point back at them.
+    const recurringIdMap = new Map<string, string>();
     for (const row of parsed.recurringTransactions) {
       const mappedCategoryId = categoryIdMap.get(row.categoryId);
       const mappedAccountId = accountIdMap.get(row.accountId);
@@ -215,6 +159,7 @@ export async function importUserBackupAction(formData: FormData) {
         },
         select: { id: true },
       });
+      if (row.id) recurringIdMap.set(row.id, createdRule.id);
 
       for (const member of row.members ?? []) {
         const createdMember = await tx.subscriptionMember.create({
@@ -245,6 +190,78 @@ export async function importUserBackupAction(formData: FormData) {
         }
       }
     }
+
+    for (const row of parsed.transactions) {
+      const mappedCategoryId = categoryIdMap.get(row.categoryId);
+      if (!mappedCategoryId) {
+        throw new Error("Backup references unknown transaction category.");
+      }
+      const mappedAccountId = row.accountId ? accountIdMap.get(row.accountId) : null;
+      if (row.accountId && !mappedAccountId) {
+        throw new Error("Backup references unknown transaction account.");
+      }
+      // Files from before links were exported carry no rule ids; anything newer must
+      // resolve, or posted-occurrence detection and share credits silently break later.
+      const mappedRecurringId = row.recurringTransactionId ? recurringIdMap.get(row.recurringTransactionId) : null;
+      if (row.recurringTransactionId && !mappedRecurringId) {
+        throw new Error("Backup references unknown recurring transaction.");
+      }
+      // Split parts are nested rather than written in a second pass: it removes a
+      // round trip per part and makes the transaction id map unnecessary.
+      const splitParts = row.splitParts.map((part) => {
+        const mappedSplitCategoryId = categoryIdMap.get(part.categoryId);
+        if (!mappedSplitCategoryId) {
+          throw new Error("Backup references unknown split category.");
+        }
+        return {
+          userId: user.id,
+          categoryId: mappedSplitCategoryId,
+          amountCents: part.amountCents,
+        };
+      });
+
+      await tx.transaction.create({
+        data: {
+          userId: user.id,
+          accountId: mappedAccountId ?? null,
+          categoryId: mappedCategoryId,
+          type: row.type,
+          amountCents: row.amountCents,
+          preCreditCents: row.preCreditCents,
+          creditCents: row.creditCents,
+          creditBreakdownJson: row.creditBreakdownJson,
+          title: row.title,
+          date: new Date(row.date),
+          postedDate: row.postedDate ? new Date(row.postedDate) : null,
+          accountDescription: row.accountDescription,
+          note: row.note,
+          recurringTransactionId: mappedRecurringId ?? null,
+          recurringExpectedDate: mappedRecurringId && row.recurringExpectedDate ? new Date(row.recurringExpectedDate) : null,
+          createdAt: new Date(row.createdAt),
+          updatedAt: new Date(row.updatedAt),
+          ...(splitParts.length > 0 ? { splitParts: { create: splitParts } } : {}),
+        },
+        select: { id: true },
+      });
+    }
+
+    await tx.budget.createMany({
+      data: parsed.budgets.map((row) => {
+        const mappedCategoryId = categoryIdMap.get(row.categoryId);
+        if (!mappedCategoryId) {
+          throw new Error("Backup references unknown budget category.");
+        }
+        return {
+          userId: user.id,
+          categoryId: mappedCategoryId,
+          name: row.name,
+          periodMonth: row.periodMonth,
+          limitCents: row.limitCents,
+          createdAt: new Date(row.createdAt),
+          updatedAt: new Date(row.updatedAt),
+        };
+      }),
+    });
 
     for (const row of parsed.subscriptions ?? []) {
       const mappedCategoryId = categoryIdMap.get(row.categoryId);
@@ -330,5 +347,5 @@ export async function importUserBackupAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/settings");
-}
+});
 

@@ -38,3 +38,28 @@ export function currentYmInTimeZone(timeZone: string | null | undefined, referen
   }
   return ymFromLocalFields(reference);
 }
+
+function ymdFromLocalFields(reference: Date): string {
+  return `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}-${String(reference.getDate()).padStart(2, "0")}`;
+}
+
+/** The calendar day (`YYYY-MM-DD`) `reference` falls on in `timeZone`; host calendar for an unknown zone. */
+export function currentYmdInTimeZone(timeZone: string | null | undefined, reference = new Date()): string {
+  if (!timeZone) return ymdFromLocalFields(reference);
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(reference);
+    const pick = (type: string) => parts.find((p) => p.type === type)?.value;
+    const year = pick("year");
+    const month = pick("month");
+    const day = pick("day");
+    if (year && month && day) return `${year}-${month}-${day}`;
+  } catch {
+    // RangeError for an unrecognised zone: fall through to the host calendar.
+  }
+  return ymdFromLocalFields(reference);
+}

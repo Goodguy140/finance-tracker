@@ -14,6 +14,7 @@ export const REQUIRED_SCHEMA_COLUMNS = [
   { table: "User", column: "defaultExpenseAccountId" },
   { table: "Account", column: "archived" },
   { table: "User", column: "tokenVersion" },
+  { table: "User", column: "budgetAlertEmailEnabled" },
 ] as const;
 
 const OAUTH_KEY_PREFIX = "oauth.";

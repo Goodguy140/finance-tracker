@@ -1,11 +1,63 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/prisma", () => ({ prisma: {} }));
-vi.mock("@/lib/auth-options", () => ({ getAuthOptions: vi.fn() }));
+const findUnique = vi.fn();
+const getServerSession = vi.fn();
+const redirect = vi.fn((path: string) => {
+  throw new Error(`REDIRECT:${path}`);
+});
+
+vi.mock("@/lib/prisma", () => ({ prisma: { user: { findUnique } } }));
+vi.mock("@/lib/auth-options", () => ({ getAuthOptions: vi.fn(async () => ({})) }));
+vi.mock("next-auth", () => ({ getServerSession }));
 vi.mock("next/headers", () => ({ headers: vi.fn(), cookies: vi.fn() }));
-vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
+vi.mock("next/navigation", () => ({ redirect }));
+vi.mock("@/lib/mfa-session", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/mfa-session")>("@/lib/mfa-session");
+  return { ...actual, getMfaState: vi.fn(async () => ({ verified: false, verifiedAt: null, method: null })) };
+});
 
-const { mfaRedirectPath, safeNextPath, MfaStepUpRequiredError } = await import("./session");
+const { mfaRedirectPath, safeNextPath, MfaStepUpRequiredError, resolveSession, requireSessionUser, STALE_SESSION_PATH } =
+  await import("./session");
+
+describe("resolveSession", () => {
+  const dbUser = { id: "u1", email: "a@b.c", tokenVersion: 1, _count: { webAuthnCredentials: 0 } };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("is anonymous without a session", async () => {
+    getServerSession.mockResolvedValue(null);
+    expect(await resolveSession()).toEqual({ status: "anonymous" });
+    await expect(requireSessionUser()).rejects.toThrow("REDIRECT:/login");
+  });
+
+  it("is stale, not anonymous, when the token's user no longer exists", async () => {
+    getServerSession.mockResolvedValue({ user: { id: "u1", tokenVersion: 1 } });
+    findUnique.mockResolvedValue(null);
+    expect(await resolveSession()).toEqual({ status: "stale", reason: "user_deleted" });
+    await expect(requireSessionUser()).rejects.toThrow(`REDIRECT:${STALE_SESSION_PATH}`);
+  });
+
+  it("is stale when the token version was revoked", async () => {
+    getServerSession.mockResolvedValue({ user: { id: "u1", tokenVersion: 0 } });
+    findUnique.mockResolvedValue(dbUser);
+    expect(await resolveSession()).toEqual({ status: "stale", reason: "token_revoked" });
+  });
+
+  it("loads the user when the version matches", async () => {
+    getServerSession.mockResolvedValue({ user: { id: "u1", tokenVersion: 1, sid: "s1", authAt: 5 } });
+    findUnique.mockResolvedValue(dbUser);
+    const resolution = await resolveSession();
+    expect(resolution.status).toBe("ok");
+    if (resolution.status === "ok") {
+      expect(resolution.loaded.user.id).toBe("u1");
+      expect(resolution.loaded.sid).toBe("s1");
+      expect(resolution.loaded.authAt).toBe(5);
+      expect(resolution.loaded.mfa.required).toBe(false);
+    }
+  });
+});
 
 describe("safeNextPath", () => {
   it("keeps same-origin relative paths", () => {

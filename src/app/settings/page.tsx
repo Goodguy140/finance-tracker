@@ -145,6 +145,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
       endDateYmd: rule.endDate ? ymdFromDateUtc(rule.endDate) : null,
       note: rule.note,
       enabled: rule.enabled,
+      postMode: rule.postMode,
       members: rule.subscriptionMembers.map((member) => {
         const status = member.shareStatuses.find((s) => ymdFromDateUtc(s.expectedDate) === nextYmd);
         return {
@@ -195,6 +196,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
         subscriptions={subscriptions}
         defaultExpenseAccountId={user.defaultExpenseAccountId}
         budgetAlertEmailConfigured={isBudgetAlertEmailConfigured()}
+        budgetAlertEmailEnabled={user.budgetAlertEmailEnabled}
         apiTokens={apiTokens}
         security={security}
       />

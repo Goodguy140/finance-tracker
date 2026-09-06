@@ -30,6 +30,11 @@ const COLUMN_REPAIRS = [
     column: "tokenVersion",
     ddl: 'ALTER TABLE "User" ADD COLUMN "tokenVersion" INTEGER NOT NULL DEFAULT 0',
   },
+  {
+    table: "User",
+    column: "budgetAlertEmailEnabled",
+    ddl: 'ALTER TABLE "User" ADD COLUMN "budgetAlertEmailEnabled" BOOLEAN NOT NULL DEFAULT false',
+  },
 ];
 
 async function tableColumns(prisma, table) {

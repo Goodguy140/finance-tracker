@@ -19,6 +19,7 @@ npm run dev
 | `AUTH_TRUST_HOST` | Set `true` behind reverse proxies |
 | `ALLOW_PUBLIC_SIGNUP` | `false` recommended on public deployments |
 | `AUDIT_LOG_RETENTION_DAYS` | Optional. Audit rows older than this are pruned (default `365`) |
+| `RECURRING_AUTO_POST_SCHEDULER` | Optional. Set `false` to disable the hourly in-process sweep that posts recurring rules in "automatic" mode |
 
 `DATABASE_URL` defaults to `file:/data/app.db` (production) or `file:./dev.db` (development).
 
@@ -76,7 +77,7 @@ Configure under **Settings → Server admin → OAuth** (encrypted in the databa
 <details>
 <summary>SMTP (password reset & budget alert email)</summary>
 
-Requires `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (optional `SMTP_PORT`, default `587`). Enable budget email alerts under **Settings → Budgets** when configured.
+Requires `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (optional `SMTP_PORT`, default `587`). Enable budget email alerts under **Settings → Budgets** when configured: after any change to the current month's spending, each category that has reached 80% of its limit (and again when it goes over) is emailed once per month.
 
 </details>
 
@@ -147,6 +148,10 @@ Confirm production env vars are set, `DATABASE_URL` uses persistent `/data`, and
 Always back up `app.db` before deploying migrations.
 
 </details>
+
+## Recurring transactions
+
+Each rule is either **posted by hand** (the default: the dashboard shows it as due and you click *Post transaction*) or **posted automatically**. Automatic rules are posted when you open the dashboard and by an hourly sweep inside the server process, so an account nobody opens still gets its rent and salary entries on time. Set the mode when creating or editing a rule.
 
 ## Passkeys (phishing-resistant MFA)
 

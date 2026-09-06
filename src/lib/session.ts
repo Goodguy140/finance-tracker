@@ -14,6 +14,20 @@ export type MfaGate = MfaState & {
   passkeyCount: number;
 };
 
+/**
+ * Sessions are stateless JWTs, so a revoked or orphaned token keeps arriving until it
+ * expires. Server components cannot clear cookies, so a stale login is sent to this route
+ * handler, which drops the cookies and lands on /login. Without it, the proxy (which only
+ * checks that a token exists) bounces /login back to /, and / bounces back to /login: a
+ * redirect loop that only clearing site data escaped.
+ */
+export const STALE_SESSION_PATH = "/api/session/stale";
+
+export type SessionResolution =
+  | { status: "anonymous" }
+  | { status: "stale"; reason: "user_deleted" | "token_revoked" }
+  | { status: "ok"; loaded: LoadedSession };
+
 export type LoadedSession = {
   session: Session;
   user: User;
@@ -65,26 +79,42 @@ export async function getCurrentSession() {
 
 /**
  * The one resolver behind every guard: valid JWT, live token version, and the passkey
- * state for this login. Returns null for anything that should be treated as signed out.
+ * state for this login. "Stale" means a token that decodes fine but no longer maps to a
+ * live login — its user is gone or its version was revoked — and must be cleared, not
+ * merely ignored (see `STALE_SESSION_PATH`).
  */
-export async function loadSessionUser(): Promise<LoadedSession | null> {
+export async function resolveSession(): Promise<SessionResolution> {
   const session = await getCurrentSession();
-  if (!session?.user?.id) return null;
+  if (!session?.user?.id) return { status: "anonymous" };
   const row = await prisma.user.findUnique({
     where: { id: session.user.id },
     include: { _count: { select: { webAuthnCredentials: true } } },
   });
-  if (!row) return null;
+  if (!row) return { status: "stale", reason: "user_deleted" };
   const { _count, ...user } = row;
-  if (!tokenVersionMatches(session, user)) return null;
+  if (!tokenVersionMatches(session, user)) return { status: "stale", reason: "token_revoked" };
   const state = await getMfaState(session);
   return {
-    session,
-    user,
-    sid: sessionSid(session),
-    authAt: typeof session.user.authAt === "number" ? session.user.authAt : null,
-    mfa: { ...state, required: _count.webAuthnCredentials > 0, passkeyCount: _count.webAuthnCredentials },
+    status: "ok",
+    loaded: {
+      session,
+      user,
+      sid: sessionSid(session),
+      authAt: typeof session.user.authAt === "number" ? session.user.authAt : null,
+      mfa: { ...state, required: _count.webAuthnCredentials > 0, passkeyCount: _count.webAuthnCredentials },
+    },
   };
+}
+
+/** `resolveSession` collapsed to the loaded login, or null for anything signed out. */
+export async function loadSessionUser(): Promise<LoadedSession | null> {
+  const resolution = await resolveSession();
+  return resolution.status === "ok" ? resolution.loaded : null;
+}
+
+/** Where a request that is not a live login goes: cookie clean-up for a stale one, /login otherwise. */
+export function signedOutRedirectPath(resolution: Exclude<SessionResolution, { status: "ok" }>): string {
+  return resolution.status === "stale" ? STALE_SESSION_PATH : "/login";
 }
 
 function mfaPending(loaded: LoadedSession): boolean {
@@ -135,15 +165,16 @@ export async function requireAdminApiUser(): Promise<AdminApiAuth> {
  * actions that complete it — everything else goes through `requireUser`.
  */
 export async function requireSessionUser(): Promise<LoadedSession> {
-  const loaded = await loadSessionUser();
-  if (!loaded) redirect("/login");
-  return loaded;
+  const resolution = await resolveSession();
+  if (resolution.status !== "ok") redirect(signedOutRedirectPath(resolution));
+  return resolution.loaded;
 }
 
 /** `requireUser` plus the session/MFA detail, for pages that render passkey state. */
 export async function requireLoadedUser(): Promise<LoadedSession> {
-  const loaded = await loadSessionUser();
-  if (!loaded) redirect("/login");
+  const resolution = await resolveSession();
+  if (resolution.status !== "ok") redirect(signedOutRedirectPath(resolution));
+  const loaded = resolution.loaded;
   if (mfaPending(loaded)) redirect(mfaRedirectPath(await currentPath()));
   return loaded;
 }
@@ -164,8 +195,9 @@ export async function requireAdmin() {
  * typed error so the caller can prompt for a fresh assertion and retry.
  */
 export async function requireFreshMfa(maxAgeMs = MFA_STEP_UP_MAX_AGE_MS): Promise<LoadedSession> {
-  const loaded = await loadSessionUser();
-  if (!loaded) redirect("/login");
+  const resolution = await resolveSession();
+  if (resolution.status !== "ok") redirect(signedOutRedirectPath(resolution));
+  const loaded = resolution.loaded;
   if (!loaded.mfa.required) throw new MfaStepUpRequiredError("mfa_required");
   const at = loaded.mfa.verifiedAt;
   if (!loaded.mfa.verified || at == null || Date.now() - at > maxAgeMs) {

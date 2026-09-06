@@ -79,6 +79,12 @@ model User {
    * When set, the Add Expense form preselects this account (must be one of the user's accounts).
    */
   defaultExpenseAccountId String?
+  /**
+   * Email the account address when a monthly budget crosses its warning or over-budget
+   * threshold. Server-side so the alert can be sent from whichever request pushed the
+   * category over, not only from a browser that happens to be open.
+   */
+  budgetAlertEmailEnabled Boolean   @default(false)
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
@@ -103,6 +109,24 @@ model User {
   auditLogs             AuditLog[]
   subscriptionMembers       SubscriptionMember[]
   subscriptionShareStatuses SubscriptionShareStatus[]
+  budgetAlertNotifications  BudgetAlertNotification[]
+}
+
+/**
+ * One row per budget alert email actually sent, so a category that stays over its limit
+ * for the rest of the month is announced once per severity, not on every expense.
+ */
+model BudgetAlertNotification {
+  id          String   @id @default(cuid())
+  userId      String
+  periodMonth String
+  categoryId  String
+  severity    String
+  sentAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, periodMonth, categoryId, severity])
 }
 
 model AuditLog {

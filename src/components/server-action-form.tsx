@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { isActionFailure } from "@/lib/action-result";
 
 type ServerActionFormProps = {
   action: (formData: FormData) => Promise<unknown>;
@@ -68,7 +69,11 @@ export function ServerActionForm({ action, children, className, onSuccess, befor
           startTransition(async () => {
             try {
               if (beforeSubmit && !(await beforeSubmit())) return;
-              await action(formData);
+              const result = await action(formData);
+              if (isActionFailure(result)) {
+                setError(result.error);
+                return;
+              }
               onSuccess?.();
               router.refresh();
             } catch (e) {

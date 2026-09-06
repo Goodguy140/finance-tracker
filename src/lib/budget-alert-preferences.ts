@@ -3,14 +3,13 @@ export const BUDGET_ALERT_NOTIFIED_KEY = "finance-tracker:budget-alert-notified"
 export const BUDGET_ALERT_DISMISSED_KEY = "finance-tracker:budget-alert-dismissed";
 const BUDGET_ALERT_DISMISSED_EVENT = "finance-tracker:budget-alert-dismissed-changed";
 
+/** Per-device choices kept in localStorage. Email alerts are a server-side setting on the user. */
 export type BudgetAlertPreferences = {
   browserEnabled: boolean;
-  emailEnabled: boolean;
 };
 
 export const DEFAULT_BUDGET_ALERT_PREFS: BudgetAlertPreferences = {
   browserEnabled: false,
-  emailEnabled: false,
 };
 
 export function readBudgetAlertPreferences(): BudgetAlertPreferences {
@@ -19,10 +18,7 @@ export function readBudgetAlertPreferences(): BudgetAlertPreferences {
     const raw = localStorage.getItem(BUDGET_ALERT_PREFS_KEY);
     if (!raw) return DEFAULT_BUDGET_ALERT_PREFS;
     const parsed = JSON.parse(raw) as Partial<BudgetAlertPreferences>;
-    return {
-      browserEnabled: Boolean(parsed.browserEnabled),
-      emailEnabled: Boolean(parsed.emailEnabled),
-    };
+    return { browserEnabled: Boolean(parsed.browserEnabled) };
   } catch {
     return DEFAULT_BUDGET_ALERT_PREFS;
   }

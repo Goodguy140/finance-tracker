@@ -1,5 +1,6 @@
 "use client";
 
+import { isActionFailure } from "@/lib/action-result";
 import { useActionState, useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { deleteExpenseTransactionAction, updateExpenseAction } from "@/app/actions";
@@ -312,7 +313,8 @@ function EditExpenseModal({
   const [state, formAction, isPending] = useActionState(
     async (_prev: UpdateState, formData: FormData): Promise<UpdateState> => {
       try {
-        await updateExpenseAction(formData);
+        const result = await updateExpenseAction(formData);
+        if (isActionFailure(result)) return { ok: false, error: result.error };
         return { ok: true };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Could not save changes.";
@@ -325,7 +327,8 @@ function EditExpenseModal({
   const [deleteState, deleteFormAction, deletePending] = useActionState(
     async (_prev: DeleteState, formData: FormData): Promise<DeleteState> => {
       try {
-        await deleteExpenseTransactionAction(formData);
+        const result = await deleteExpenseTransactionAction(formData);
+        if (isActionFailure(result)) return { ok: false, error: result.error };
         return { ok: true };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Could not delete.";

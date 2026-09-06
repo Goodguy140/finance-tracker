@@ -47,6 +47,7 @@ import {
 } from "@/lib/recurring-transactions";
 import { currentYmInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
+import { autoPostDueRecurringTransactions } from "@/lib/recurring-post";
 import { requireUser } from "@/lib/session";
 
 const cadenceLabels: Record<RecurringCadence, string> = {
@@ -66,6 +67,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const user = await requireUser();
   const sp = await searchParams;
   const now = new Date();
+  // Rules in AUTO mode post themselves; doing it here as well as on the hourly sweep
+  // means an occurrence due today is already in the log by the time the page renders.
+  try {
+    await autoPostDueRecurringTransactions(user.id, now);
+  } catch (err) {
+    console.error("[recurring] auto-post on dashboard load failed", err);
+  }
   const anchorYm = currentYmInTimeZone(user.timezone, now);
   const period = parseDashboardSearchParams(sp, now, user.timezone);
   const periodDescription = describeDashboardPeriod(period);
@@ -77,7 +85,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const categoryUsageCutoff = new Date(now);
   categoryUsageCutoff.setMonth(categoryUsageCutoff.getMonth() - 3);
 
-  const [accounts, categories, budgets, recurringTransactions, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions, recentUnlinkedExpenses, recentExpenseCategoryUsage, recentSplitCategoryUsage] =
+  const [accounts, categories, budgets, recurringTransactions, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -142,6 +150,17 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       where: {
         userId: user.id,
         type: TransactionType.EXPENSE,
+        recurringTransactionId: null,
+        date: { gte: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000) },
+      },
+      select: { id: true, title: true, date: true, amountCents: true },
+      orderBy: { date: "desc" },
+      take: 100,
+    }),
+    prisma.transaction.findMany({
+      where: {
+        userId: user.id,
+        type: TransactionType.INCOME,
         recurringTransactionId: null,
         date: { gte: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000) },
       },
@@ -403,15 +422,18 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     endDateDisplay: rule.endDate ? formatDateOnlyUtc(rule.endDate) : null,
     note: rule.note,
     enabled: rule.enabled,
+    postMode: rule.postMode,
     status: rule.enabled ? getRecurringDateStatus(rule.nextExpectedDate, now) : ("disabled" as const),
   }));
 
-  const recentUnlinkedExpenseOptions = recentUnlinkedExpenses.map((txn) => ({
+  const toRecentOption = (txn: { id: string; title: string | null; date: Date; amountCents: number }) => ({
     id: txn.id,
     title: txn.title ?? "",
     dateDisplay: formatDateOnlyUtc(txn.date),
     amountCents: txn.amountCents,
-  }));
+  });
+  const recentUnlinkedExpenseOptions = recentUnlinkedExpenses.map(toRecentOption);
+  const recentUnlinkedIncomeOptions = recentUnlinkedIncomes.map(toRecentOption);
 
   const recurringForecastPeriod =
     period.range === "ytd"
@@ -575,6 +597,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                   expenseCategories={expenseCategoryOptions}
                   incomeCategories={incomeCategoryOptions}
                   recentExpenses={recentUnlinkedExpenseOptions}
+                  recentIncomes={recentUnlinkedIncomeOptions}
                 />
               </div>
             </div>
