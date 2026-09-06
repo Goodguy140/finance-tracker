@@ -188,7 +188,7 @@ export const skipRecurringOccurrenceAction = formAction(async (formData: FormDat
     await prisma.$transaction(async (tx) => {
       const rule = await tx.recurringTransaction.findFirst({
         where: { id: payload.recurringTransactionId, userId: user.id },
-        select: { id: true, name: true, cadence: true, enabled: true, endDate: true, nextExpectedDate: true },
+        select: { id: true, name: true, type: true, cadence: true, enabled: true, endDate: true, nextExpectedDate: true },
       });
       if (!rule) throw new Error("Subscription not found.");
 
@@ -232,22 +232,25 @@ async function linkAlreadyLoggedTransaction(
   tx: SkipTxClient,
   params: {
     userId: string;
-    rule: { id: string; name: string };
+    rule: { id: string; name: string; type: TransactionType };
     expectedDate: Date;
     transactionId?: string;
   },
 ) {
+  // Match the rule's own kind: an income rule links an income entry, not an expense.
+  const type = params.rule.type;
+  const kindLabel = type === TransactionType.INCOME ? "income entry" : "expense";
   if (params.transactionId) {
     const txn = await tx.transaction.findFirst({
       where: {
         id: params.transactionId,
         userId: params.userId,
-        type: TransactionType.EXPENSE,
+        type,
         recurringTransactionId: null,
       },
       select: { id: true },
     });
-    if (!txn) throw new Error("Selected expense was not found or is already linked to a subscription.");
+    if (!txn) throw new Error(`Selected ${kindLabel} was not found or is already linked to a recurring transaction.`);
     await tx.transaction.update({
       where: { id: txn.id },
       data: { recurringTransactionId: params.rule.id, recurringExpectedDate: params.expectedDate },
@@ -255,12 +258,12 @@ async function linkAlreadyLoggedTransaction(
     return;
   }
 
-  // Auto-match an unlinked expense with the same title near the expected date (closest wins).
+  // Auto-match an unlinked entry with the same title near the expected date (closest wins).
   const windowMs = ALREADY_LOGGED_MATCH_WINDOW_DAYS * 24 * 60 * 60 * 1000;
   const candidates = await tx.transaction.findMany({
     where: {
       userId: params.userId,
-      type: TransactionType.EXPENSE,
+      type,
       recurringTransactionId: null,
       title: params.rule.name,
       date: {

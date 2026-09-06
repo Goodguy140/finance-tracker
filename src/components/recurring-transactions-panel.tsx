@@ -154,12 +154,15 @@ export function RecurringTransactionsPanel({
   expenseCategories,
   incomeCategories,
   recentExpenses = [],
+  recentIncomes = [],
 }: {
   items: RecurringTransactionListItem[];
   accounts: Option[];
   expenseCategories: Option[];
   incomeCategories: Option[];
   recentExpenses?: RecentExpenseOption[];
+  /** Unlinked income entries, offered when the rule being skipped is an income rule. */
+  recentIncomes?: RecentExpenseOption[];
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const editingItem = items.find((item) => item.id === editingId) ?? null;
@@ -299,7 +302,7 @@ export function RecurringTransactionsPanel({
       {skippingItem ? (
         <SkipModal
           item={skippingItem}
-          recentExpenses={recentExpenses}
+          recentExpenses={skippingItem.type === "INCOME" ? recentIncomes : recentExpenses}
           onClose={() => setSkippingId(null)}
         />
       ) : null}
@@ -371,7 +374,8 @@ function SkipModal({
               <span>
                 Auto-match by title
                 <span className="mt-0.5 block text-xs text-slate-400">
-                  Finds an unlinked expense titled “{item.name}” near {item.nextExpectedDateDisplay}.
+                  Finds an unlinked {item.type === "INCOME" ? "income entry" : "expense"} titled “{item.name}” near{" "}
+                  {item.nextExpectedDateDisplay}.
                 </span>
               </span>
             </label>
@@ -402,7 +406,9 @@ function SkipModal({
               </span>
             </label>
             {recentExpenses.length === 0 ? (
-              <p className="text-xs text-slate-500">No recent unlinked expenses found to pick from.</p>
+              <p className="text-xs text-slate-500">
+                No recent unlinked {item.type === "INCOME" ? "income entries" : "expenses"} found to pick from.
+              </p>
             ) : null}
           </div>
         ) : null}

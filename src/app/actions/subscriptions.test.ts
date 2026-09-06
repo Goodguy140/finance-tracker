@@ -162,6 +162,42 @@ describe("skipRecurringOccurrenceAction", () => {
     expect(ymdFromDateUtc(tx.recurringTransaction.updateMany.mock.calls[0][0].data.nextExpectedDate)).toBe("2026-08-01");
   });
 
+  it("links an income entry, not an expense, when skipping an income rule as already logged", async () => {
+    const tx = {
+      recurringTransaction: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "rule-pay",
+          name: "Paycheque",
+          type: "INCOME",
+          cadence: "BIWEEKLY",
+          enabled: true,
+          endDate: null,
+          nextExpectedDate: dateFromYmd("2026-07-03"),
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      transaction: {
+        findMany: vi.fn().mockResolvedValue([{ id: "inc-1", date: dateFromYmd("2026-07-03") }]),
+        findFirst: vi.fn(),
+        update: vi.fn(),
+      },
+    };
+    mockPrisma.$transaction.mockImplementation(async (cb: (arg: typeof tx) => Promise<void>) => cb(tx));
+
+    const result = await skipRecurringOccurrenceAction(
+      form({ recurringTransactionId: "rule-pay", expectedDate: "2026-07-03", reason: "already_logged" }),
+    );
+
+    expect(result).toBeUndefined();
+    expect(tx.transaction.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ type: "INCOME", title: "Paycheque" }) }),
+    );
+    expect(tx.transaction.update).toHaveBeenCalledWith({
+      where: { id: "inc-1" },
+      data: { recurringTransactionId: "rule-pay", recurringExpectedDate: dateFromYmd("2026-07-03") },
+    });
+  });
+
   it("rejects when the occurrence has already moved on", async () => {
     const tx = {
       recurringTransaction: {

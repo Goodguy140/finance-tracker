@@ -77,7 +77,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const categoryUsageCutoff = new Date(now);
   categoryUsageCutoff.setMonth(categoryUsageCutoff.getMonth() - 3);
 
-  const [accounts, categories, budgets, recurringTransactions, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions, recentUnlinkedExpenses, recentExpenseCategoryUsage, recentSplitCategoryUsage] =
+  const [accounts, categories, budgets, recurringTransactions, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -142,6 +142,17 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       where: {
         userId: user.id,
         type: TransactionType.EXPENSE,
+        recurringTransactionId: null,
+        date: { gte: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000) },
+      },
+      select: { id: true, title: true, date: true, amountCents: true },
+      orderBy: { date: "desc" },
+      take: 100,
+    }),
+    prisma.transaction.findMany({
+      where: {
+        userId: user.id,
+        type: TransactionType.INCOME,
         recurringTransactionId: null,
         date: { gte: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000) },
       },
@@ -406,12 +417,14 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     status: rule.enabled ? getRecurringDateStatus(rule.nextExpectedDate, now) : ("disabled" as const),
   }));
 
-  const recentUnlinkedExpenseOptions = recentUnlinkedExpenses.map((txn) => ({
+  const toRecentOption = (txn: { id: string; title: string | null; date: Date; amountCents: number }) => ({
     id: txn.id,
     title: txn.title ?? "",
     dateDisplay: formatDateOnlyUtc(txn.date),
     amountCents: txn.amountCents,
-  }));
+  });
+  const recentUnlinkedExpenseOptions = recentUnlinkedExpenses.map(toRecentOption);
+  const recentUnlinkedIncomeOptions = recentUnlinkedIncomes.map(toRecentOption);
 
   const recurringForecastPeriod =
     period.range === "ytd"
@@ -575,6 +588,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                   expenseCategories={expenseCategoryOptions}
                   incomeCategories={incomeCategoryOptions}
                   recentExpenses={recentUnlinkedExpenseOptions}
+                  recentIncomes={recentUnlinkedIncomeOptions}
                 />
               </div>
             </div>
