@@ -115,12 +115,27 @@ export async function createRegistrationOptions(
   return { challengeId, options };
 }
 
+/**
+ * The browser response arrives as an untyped action argument. Anything that is not an
+ * object with a string `id` is rejected here with the usual generic error, rather than
+ * reaching Prisma and echoing its validation message back to the client.
+ */
+function hasCredentialId(response: unknown): response is { id: string } {
+  return (
+    typeof response === "object" &&
+    response !== null &&
+    typeof (response as { id?: unknown }).id === "string" &&
+    (response as { id: string }).id.length > 0
+  );
+}
+
 export async function verifyRegistration(params: {
   userId: string;
   challengeId: string;
   response: RegistrationResponseJSON;
   name: string;
 }): Promise<WebAuthnCredential> {
+  if (!hasCredentialId(params.response)) throw new MfaVerificationError();
   const rp = getWebAuthnRp();
   const expectedChallenge = await consumeChallenge(params.challengeId, "register", params.userId);
   if (!expectedChallenge) throw new MfaVerificationError("This passkey setup expired. Start again.");
@@ -180,6 +195,7 @@ export async function verifyAuthentication(params: {
   /** Required for `authenticate` (the session user); null for passwordless sign-in. */
   expectedUserId: string | null;
 }): Promise<{ user: User; credential: WebAuthnCredential }> {
+  if (!hasCredentialId(params.response)) throw new MfaVerificationError();
   const rp = getWebAuthnRp();
   const expectedChallenge = await consumeChallenge(params.challengeId, params.purpose, params.expectedUserId);
   if (!expectedChallenge) throw new MfaVerificationError("This passkey prompt expired. Try again.");

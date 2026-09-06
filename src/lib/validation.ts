@@ -1,4 +1,14 @@
 import { z } from "zod";
+import { MAX_AMOUNT, MAX_AMOUNT_CENTS } from "@/lib/money";
+import { YM_PATTERN } from "@/lib/period-month";
+
+/**
+ * Money inputs. Every money column is a 32-bit `Int` of cents, so amounts are capped at
+ * `MAX_AMOUNT` here rather than surfacing as a database error later.
+ */
+const amountTooLarge = { message: `Amount cannot exceed ${MAX_AMOUNT.toLocaleString("en-CA")}.` };
+export const positiveAmount = z.coerce.number().positive().max(MAX_AMOUNT, amountTooLarge);
+export const nonNegativeAmount = z.coerce.number().nonnegative().max(MAX_AMOUNT, amountTooLarge);
 
 export const signupSchema = z.object({
   email: z.email(),
@@ -33,7 +43,8 @@ const nonZeroExpenseAmount = z.coerce
   .number()
   .refine((n) => Number.isFinite(n) && n !== 0, {
     message: "Enter a non-zero amount. Use a negative value for credits (e.g. refunds) shown on statements.",
-  });
+  })
+  .refine((n) => Math.abs(n) <= MAX_AMOUNT, amountTooLarge);
 
 export const expenseBaseSchema = z.object({
   accountId: z.string().min(1),
@@ -62,7 +73,7 @@ export const incomeBaseSchema = z.object({
 });
 
 export const incomeSchema = incomeBaseSchema.extend({
-  amount: z.coerce.number().positive(),
+  amount: positiveAmount,
   postedDate: z.string().optional(),
 });
 
@@ -75,27 +86,27 @@ export const splitExpenseSchema = z.object({
   date: z.string().min(1),
   title: z.string().trim().max(120).optional(),
   note: z.string().max(250).optional(),
-  parts: z.array(
-    z.object({
-      categoryId: z.string().min(1),
-      amount: z.coerce.number().positive(),
-    }),
-  ),
+  parts: z
+    .array(
+      z.object({
+        categoryId: z.string().min(1),
+        amount: positiveAmount,
+      }),
+    )
+    .min(1, "Add at least one split line.")
+    .max(50, "A split expense can have at most 50 lines."),
 });
 
 export const budgetSchema = z.object({
   categoryName: z.string().trim().min(1).max(80),
-  limit: z.coerce.number().positive(),
-  periodMonth: z
-    .string()
-    .regex(/^\d{4}-\d{2}$/)
-    .optional(),
+  limit: positiveAmount,
+  periodMonth: z.string().regex(YM_PATTERN).optional(),
 });
 
 export const updateBudgetSchema = z.object({
   budgetId: z.string().min(1),
   name: z.string().trim().min(1).max(80),
-  limit: z.coerce.number().positive(),
+  limit: positiveAmount,
 });
 
 export const deleteBudgetSchema = z.object({
@@ -108,7 +119,7 @@ export const reallocateBudgetSchema = z.object({
     .array(
       z.object({
         categoryId: z.string().min(1),
-        amountCents: z.number().int().positive(),
+        amountCents: z.number().int().positive().max(MAX_AMOUNT_CENTS),
       }),
     )
     .min(1),
@@ -117,7 +128,7 @@ export const reallocateBudgetSchema = z.object({
 /** Calendar month `YYYY-MM` query/param, e.g. for the budgets API. */
 export const monthParamSchema = z
   .string()
-  .regex(/^\d{4}-\d{2}$/, "month must be in YYYY-MM format");
+  .regex(YM_PATTERN, "month must be a calendar month in YYYY-MM format");
 
 export const API_TOKEN_SCOPES = ["budgets:read"] as const;
 
@@ -142,7 +153,7 @@ export const recurringTransactionSchema = z.object({
   accountId: z.string().min(1),
   categoryId: z.string().min(1),
   name: z.string().trim().min(2).max(80),
-  amount: z.coerce.number().positive(),
+  amount: positiveAmount,
   cadence: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "BIENNIAL"]),
   nextExpectedDate: z.string().min(1),
   endDate: z.string().optional(),
@@ -177,13 +188,13 @@ export const skipRecurringOccurrenceSchema = z.object({
 export const subscriptionMemberSchema = z.object({
   recurringTransactionId: z.string().min(1),
   name: z.string().trim().min(1).max(80),
-  share: z.coerce.number().positive(),
+  share: positiveAmount,
 });
 
 export const updateSubscriptionMemberSchema = z.object({
   memberId: z.string().min(1),
   name: z.string().trim().min(1).max(80),
-  share: z.coerce.number().positive(),
+  share: positiveAmount,
 });
 
 export const deleteSubscriptionMemberSchema = z.object({
@@ -200,14 +211,14 @@ export const setSubscriptionShareStatusSchema = z.object({
 export const investmentFlowSchema = z.object({
   accountId: z.string().min(1),
   direction: z.enum(["CONTRIBUTION", "WITHDRAWAL"]),
-  amount: z.coerce.number().positive(),
+  amount: positiveAmount,
   date: z.string().min(1),
   note: z.string().max(250).optional(),
 });
 
 export const portfolioSnapshotSchema = z.object({
   accountId: z.string().min(1),
-  totalValue: z.coerce.number().nonnegative(),
+  totalValue: nonNegativeAmount,
   date: z.string().min(1),
   note: z.string().max(250).optional(),
 });
@@ -223,6 +234,9 @@ export const passwordChangeSchema = z
     path: ["confirmPassword"],
   });
 
+/** One import runs inside a single database transaction; keep it bounded. */
+export const MAX_CSV_IMPORT_ROWS = 5000;
+
 const importFieldOptions = z.enum([
   "",
   "amount",
@@ -235,7 +249,10 @@ const importFieldOptions = z.enum([
 ]);
 
 export const expenseCsvImportSchema = z.object({
-  rows: z.array(z.record(z.string(), z.string())).min(1),
+  rows: z
+    .array(z.record(z.string(), z.string()))
+    .min(1, "The CSV has no data rows.")
+    .max(MAX_CSV_IMPORT_ROWS, `Import at most ${MAX_CSV_IMPORT_ROWS} rows at a time.`),
   mapping: z.object({
     amount: z.string().min(1),
     date: z.string().optional(),

@@ -28,3 +28,25 @@ describe("proxy matcher", () => {
     expect(matcher.test("/api/health")).toBe(false);
   });
 });
+
+describe("public path classification", () => {
+  const classify = __authProxyInternals.classifyPublicPath;
+
+  it("matches whole path segments only", () => {
+    expect(classify("/login")).toBe("signed-out-only");
+    expect(classify("/login/")).toBe("signed-out-only");
+    expect(classify("/loginfoo")).toBe("protected");
+    expect(classify("/signup")).toBe("signed-out-only");
+  });
+
+  it("keeps the password-reset pages reachable with a session", () => {
+    expect(classify("/forgot-password")).toBe("public");
+    expect(classify("/reset-password")).toBe("public");
+  });
+
+  it("treats everything else as protected", () => {
+    expect(classify("/")).toBe("protected");
+    expect(classify("/settings")).toBe("protected");
+    expect(classify("/api/backup/export/me")).toBe("protected");
+  });
+});

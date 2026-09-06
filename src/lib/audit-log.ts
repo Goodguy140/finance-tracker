@@ -4,13 +4,13 @@ import { headers } from "next/headers";
 export const AUDIT_ACTIONS = {
   admin_oauth_settings_updated: "admin_oauth_settings_updated",
   user_password_changed: "user_password_changed",
+  user_password_reset: "user_password_reset",
   user_backup_imported: "user_backup_imported",
   financial_account_created: "financial_account_created",
   financial_account_archived: "financial_account_archived",
   financial_account_unarchived: "financial_account_unarchived",
   financial_account_deleted: "financial_account_deleted",
   user_account_deleted: "user_account_deleted",
-  admin_backup_exported: "admin_backup_exported",
   user_backup_exported: "user_backup_exported",
   api_token_created: "api_token_created",
   api_token_revoked: "api_token_revoked",
@@ -96,6 +96,30 @@ export type RecordAuditLogInput = {
   headers?: Headers;
 };
 
+const DEFAULT_AUDIT_RETENTION_DAYS = 365;
+/** Prune expired rows roughly once in this many successful writes. */
+const RETENTION_SWEEP_ODDS = 200;
+
+/**
+ * How long audit rows are kept. Every API read and sign-in writes a row, so the table
+ * grows without bound unless something prunes it; anything that is not a positive integer
+ * keeps the default. `0` is not accepted: an audit log that deletes itself is no log.
+ */
+export function resolveAuditRetentionDays(raw = process.env.AUDIT_LOG_RETENTION_DAYS): number {
+  const n = Number.parseInt(raw?.trim() ?? "", 10);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_AUDIT_RETENTION_DAYS;
+}
+
+async function maybePruneExpiredAuditRows(prisma: PrismaClient, random = Math.random) {
+  if (Math.floor(random() * RETENTION_SWEEP_ODDS) !== 0) return;
+  const cutoff = new Date(Date.now() - resolveAuditRetentionDays() * 24 * 60 * 60 * 1000);
+  try {
+    await prisma.auditLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
+  } catch {
+    // Housekeeping must never fail the request it piggybacked on.
+  }
+}
+
 export async function recordAuditLog(prisma: PrismaClient, input: RecordAuditLogInput): Promise<void> {
   const scrubbed = scrubAuditMetadata(input.metadata ?? undefined);
   let metadataJson: string | null = null;
@@ -123,5 +147,7 @@ export async function recordAuditLog(prisma: PrismaClient, input: RecordAuditLog
     if (process.env.NODE_ENV !== "production") {
       console.warn("[audit-log] failed to persist audit entry", err);
     }
+    return;
   }
+  await maybePruneExpiredAuditRows(prisma);
 }

@@ -1,5 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
-import { recordAuditLog, scrubAuditMetadata, clientMetaFromHeaders, AUDIT_ACTIONS } from "./audit-log";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  recordAuditLog,
+  resolveAuditRetentionDays,
+  scrubAuditMetadata,
+  clientMetaFromHeaders,
+  AUDIT_ACTIONS,
+} from "./audit-log";
 
 describe("scrubAuditMetadata", () => {
   it("removes secret-like keys and truncates long strings", () => {
@@ -42,5 +48,40 @@ describe("recordAuditLog", () => {
         metadata: { token: "x" },
       }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("resolveAuditRetentionDays", () => {
+  it("defaults to a year and ignores anything that is not a positive integer", () => {
+    expect(resolveAuditRetentionDays(undefined)).toBe(365);
+    expect(resolveAuditRetentionDays("")).toBe(365);
+    expect(resolveAuditRetentionDays("0")).toBe(365);
+    expect(resolveAuditRetentionDays("-5")).toBe(365);
+    expect(resolveAuditRetentionDays("abc")).toBe(365);
+    expect(resolveAuditRetentionDays(" 90 ")).toBe(90);
+  });
+});
+
+describe("audit retention sweep", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("prunes rows older than the retention window on the lucky roll, and never fails the write", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const deleteMany = vi.fn().mockRejectedValue(new Error("locked"));
+    const prisma = { auditLog: { create: vi.fn().mockResolvedValue({}), deleteMany } } as never;
+    await recordAuditLog(prisma, { userId: "u1", action: AUDIT_ACTIONS.user_password_changed });
+    expect(deleteMany).toHaveBeenCalledWith({ where: { createdAt: { lt: expect.any(Date) } } });
+    const cutoff = deleteMany.mock.calls[0][0].where.createdAt.lt as Date;
+    expect(Date.now() - cutoff.getTime()).toBeGreaterThan(364 * 24 * 60 * 60 * 1000);
+  });
+
+  it("does not sweep on other rolls", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const deleteMany = vi.fn();
+    const prisma = { auditLog: { create: vi.fn().mockResolvedValue({}), deleteMany } } as never;
+    await recordAuditLog(prisma, { userId: "u1", action: AUDIT_ACTIONS.user_password_changed });
+    expect(deleteMany).not.toHaveBeenCalled();
   });
 });

@@ -17,6 +17,8 @@ declare module "next-auth" {
       tokenVersion?: number;
       /** Random id minted at sign-in; the MFA cookie is bound to it. */
       sid?: string;
+      /** Epoch ms of the sign-in that established this session (absent on tokens issued before the claim existed). */
+      authAt?: number;
       /** Present only when the session was established by a passwordless passkey sign-in. */
       mfa?: MfaSignInClaim;
     };
@@ -35,6 +37,8 @@ declare module "next-auth/jwt" {
     tokenVersion?: number;
     /** Stamped once at sign-in. NextAuth rotates `jti` on every re-encode, so it cannot serve as a login id. */
     sid?: string;
+    /** Stamped once at sign-in and never refreshed. */
+    authAt?: number;
     mfa?: MfaSignInClaim;
   }
 }

@@ -4,6 +4,7 @@ import type { Account, User } from "next-auth";
 const db = {
   authAccount: { findUnique: vi.fn(), update: vi.fn(), create: vi.fn() },
   user: { findUnique: vi.fn(), create: vi.fn(), count: vi.fn() },
+  $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(db)),
 };
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 
@@ -51,6 +52,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   cookieJar.clear();
   process.env.ALLOW_PUBLIC_SIGNUP = "true";
+  delete process.env.INITIAL_ADMIN_EMAIL;
   db.authAccount.findUnique.mockResolvedValue(null);
   db.user.findUnique.mockResolvedValue(null);
 });
@@ -130,6 +132,28 @@ describe("linkOAuthUser", () => {
       expect.objectContaining({ data: expect.objectContaining({ userId: "u-new", providerAccountId: "google-sub-123" }) }),
     );
     expect(user.id).toBe("u-new");
+  });
+
+  it("makes the first account the admin, unless INITIAL_ADMIN_EMAIL names someone else", async () => {
+    db.user.count.mockResolvedValue(0);
+    db.user.create.mockImplementation(async ({ data }: { data: { role: string } }) => ({
+      id: "u-first",
+      email: "alice@example.com",
+      displayName: "Alice G",
+      role: data.role,
+    }));
+
+    await linkOAuthUser({ user: profile(), account, defaultDisplayName: "x" });
+    expect(db.user.create).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: "SERVER_ADMIN" }) }),
+    );
+
+    process.env.INITIAL_ADMIN_EMAIL = "owner@example.com";
+    await linkOAuthUser({ user: profile(), account, defaultDisplayName: "x" });
+    expect(db.user.create).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: "USER" }) }),
+    );
+    expect(db.$transaction).toHaveBeenCalled();
   });
 
   it("denies unknown identities when public sign-up is closed", async () => {

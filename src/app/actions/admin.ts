@@ -6,10 +6,9 @@ import { prisma } from "@/lib/prisma";
 import { encryptSecret, tryDecryptSecret } from "@/lib/security";
 import { requireAdmin } from "@/lib/session";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
+import { invalidateOAuthProviderCache } from "@/lib/oauth-provider-config";
 import { resolveAuthentikOauthSettings, resolveGoogleOauthSettings } from "@/lib/oauth-settings";
-import {
-  getFormValue,
-} from "./_helpers";
+import { getFormValue } from "./_helpers";
 export async function updateAdminOauthSettingsAction(formData: FormData) {
   const user = await requireAdmin();
   const [googleClientIdRow, googleClientSecretRow, authentikIssuerRow, authentikClientIdRow, authentikClientSecretRow] =
@@ -60,6 +59,7 @@ export async function updateAdminOauthSettingsAction(formData: FormData) {
       },
     });
   }
+  invalidateOAuthProviderCache();
   const h = await headers();
   await recordAuditLog(prisma, {
     userId: user.id,

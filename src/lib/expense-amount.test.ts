@@ -48,4 +48,23 @@ describe("parseExpenseAmountFromForm", () => {
   it("rejects credits without a total before credits", () => {
     expect(() => parseExpenseAmountFromForm(fd({ amount: "", preCreditTotal: "", creditTotal: "5" }))).toThrow();
   });
+
+  it("rejects amounts that would overflow the cents column", () => {
+    expect(() => parseExpenseAmountFromForm(fd({ amount: "30000000", preCreditTotal: "", creditTotal: "" }))).toThrow(
+      /cannot exceed/,
+    );
+    expect(() => parseExpenseAmountFromForm(fd({ amount: "-30000000", preCreditTotal: "", creditTotal: "" }))).toThrow(
+      /cannot exceed/,
+    );
+    expect(() => parseExpenseAmountFromForm(fd({ amount: "", preCreditTotal: "30000000", creditTotal: "" }))).toThrow(
+      /cannot exceed/,
+    );
+    expect(() => parseExpenseAmountFromForm(fd({ amount: "", preCreditTotal: "50", creditTotal: "30000000" }))).toThrow(
+      /cannot exceed/,
+    );
+    // Right at the bound still works.
+    expect(parseExpenseAmountFromForm(fd({ amount: "20000000", preCreditTotal: "", creditTotal: "" })).amountCents).toBe(
+      2_000_000_000,
+    );
+  });
 });

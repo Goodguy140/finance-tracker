@@ -33,26 +33,3 @@ export function resolveBackupUserProfileFields(params: {
     passwordHash: currentUser.passwordHash,
   };
 }
-
-export type BackupAuthAccountRow = {
-  provider: string;
-  providerAccountId: string;
-  accessToken: string | null;
-  refreshToken: string | null;
-  expiresAt: number | null;
-  tokenType: string | null;
-  scope: string | null;
-  idToken: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-/** OAuth secrets from backups are not re-applied on import. */
-export function sanitizeAuthAccountsForImport<T extends BackupAuthAccountRow>(accounts: T[]): T[] {
-  return accounts.map((row) => ({
-    ...row,
-    accessToken: null,
-    refreshToken: null,
-    idToken: null,
-  }));
-}

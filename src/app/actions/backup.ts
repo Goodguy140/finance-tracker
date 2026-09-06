@@ -8,10 +8,8 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { userBackupSchema } from "@/lib/backup-schema";
-import { resolveBackupUserProfileFields, sanitizeAuthAccountsForImport } from "@/lib/backup-restore";
-import {
-  getFormValue,
-} from "./_helpers";
+import { resolveBackupUserProfileFields } from "@/lib/backup-restore";
+import { getFormValue, LONG_TRANSACTION_OPTIONS } from "./_helpers";
 export async function clearUserFinancialDataAction(formData: FormData) {
   const user = await requireUser();
   const confirmation = getFormValue(formData, "confirmation").trim();
@@ -40,14 +38,6 @@ export async function clearUserFinancialDataAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
-/**
- * A whole-account restore does not fit Prisma's default 5s interactive-transaction budget
- * once there are a few months of history, and blowing the budget rolls the entire import
- * back. Both values are generous on purpose: this runs at most a few times in an account's
- * life, and a partial restore is far worse than a slow one.
- */
-const IMPORT_TRANSACTION_OPTIONS = { maxWait: 15_000, timeout: 180_000 } as const;
-
 export async function importUserBackupAction(formData: FormData) {
   const user = await requireUser();
   const raw = formData.get("backupJson");
@@ -70,7 +60,6 @@ export async function importUserBackupAction(formData: FormData) {
       data: { defaultExpenseAccountId: null },
     });
     await tx.passwordResetToken.deleteMany({ where: { userId: user.id } });
-    await tx.authAccount.deleteMany({ where: { userId: user.id } });
     await tx.budget.deleteMany({ where: { userId: user.id } });
     await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
     await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
@@ -314,30 +303,18 @@ export async function importUserBackupAction(formData: FormData) {
       }),
     });
 
-    for (const row of sanitizeAuthAccountsForImport(parsed.authAccounts)) {
-      await tx.authAccount.create({
-        data: {
-          userId: user.id,
-          provider: row.provider,
-          providerAccountId: row.providerAccountId,
-          accessToken: row.accessToken,
-          refreshToken: row.refreshToken,
-          expiresAt: row.expiresAt,
-          tokenType: row.tokenType,
-          scope: row.scope,
-          idToken: row.idToken,
-          createdAt: new Date(row.createdAt),
-          updatedAt: new Date(row.updatedAt),
-        },
-      });
-    }
+    // `parsed.authAccounts` is deliberately not restored, and the user's existing links are
+    // left untouched. Attaching an SSO identity to an account requires a fresh passkey
+    // assertion (`beginSsoLinkAction`); writing provider ids straight from an uploaded file
+    // would let a plain session bypass that, and would also silently drop links made
+    // since the backup was taken. Relink from Settings → Security instead.
 
     // `parsed.passwordResetTokens` is deliberately not restored. A reset token is
     // ephemeral state, not user data, and writing hashes and expiries straight from an
     // uploaded file lets a crafted backup plant a token the author already knows the raw
     // value of — an account-takeover primitive that survives password changes. Exports
     // have always sanitised the array to empty, so nothing real is lost.
-  }, IMPORT_TRANSACTION_OPTIONS);
+  }, LONG_TRANSACTION_OPTIONS);
 
   const h = await headers();
   const fileMeta =

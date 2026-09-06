@@ -79,6 +79,25 @@ describe("jwt callback at sign-in", () => {
     expect(findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "u1" } }));
   });
 
+  it("stamps authAt at sign-in only and exposes it on the session", async () => {
+    const options = await getAuthOptions();
+    const jwt = options.callbacks!.jwt!;
+    const before = Date.now();
+    const token = (await jwt(signInRequest({}, { id: "u1", email: "user@example.com" }))) as JWT & { authAt?: number };
+    expect(token.authAt).toBeGreaterThanOrEqual(before);
+    expect(token.authAt).toBeLessThanOrEqual(Date.now());
+
+    const stamped = token.authAt;
+    const refreshed = (await jwt(subsequentRequest({ ...token, roleRefreshedAt: 0 }))) as JWT & { authAt?: number };
+    expect(refreshed.authAt).toBe(stamped);
+
+    const session = await options.callbacks!.session!({
+      session: { user: { id: "" }, expires: "" } as unknown as Session,
+      token: refreshed,
+    } as never);
+    expect((session.user as { authAt?: number } | undefined)?.authAt).toBe(stamped);
+  });
+
   it("keeps the sid across refreshes", async () => {
     const jwt = (await getAuthOptions()).callbacks!.jwt!;
     const token = await jwt(signInRequest({ email: "user@example.com" }, { id: "u1" }));

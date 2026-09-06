@@ -15,7 +15,6 @@ import { IncomeLogPanel } from "@/components/income-log";
 import { RecurringTransactionsPanel } from "@/components/recurring-transactions-panel";
 import {
   budgetPeriodMonthInYtd,
-  currentPeriodYm,
   describeDashboardPeriod,
   endExclusiveOfMonthYm,
   parseDashboardSearchParams,
@@ -46,6 +45,7 @@ import {
   getPastMonthYmsBefore,
   getRecurringDateStatus,
 } from "@/lib/recurring-transactions";
+import { currentYmInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 
@@ -66,8 +66,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const user = await requireUser();
   const sp = await searchParams;
   const now = new Date();
-  const anchorYm = currentPeriodYm(now);
-  const period = parseDashboardSearchParams(sp, now);
+  const anchorYm = currentYmInTimeZone(user.timezone, now);
+  const period = parseDashboardSearchParams(sp, now, user.timezone);
   const periodDescription = describeDashboardPeriod(period);
   const transactionDateFilter = period.transactionDateFilter;
   const recurringIncomeAnchorYm = period.range === "lifetime" ? anchorYm : period.ym;

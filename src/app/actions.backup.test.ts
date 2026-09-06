@@ -136,7 +136,9 @@ describe("importUserBackupAction", () => {
     expect(mockPrisma.passwordResetToken.deleteMany).toHaveBeenCalled();
   });
 
-  it("strips OAuth tokens when restoring auth accounts", async () => {
+  it("never touches linked SSO identities, whatever the file contains", async () => {
+    // Linking a provider requires a fresh passkey assertion; a plain session uploading a
+    // file must not be able to attach (or silently drop) provider identities.
     const payload = JSON.stringify(minimalBackup("user@example.com"));
     const file = new File([payload], "backup.json", { type: "application/json" });
     const formData = new FormData();
@@ -144,14 +146,7 @@ describe("importUserBackupAction", () => {
 
     await importUserBackupAction(formData);
 
-    expect(mockPrisma.authAccount.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          accessToken: null,
-          refreshToken: null,
-          idToken: null,
-        }),
-      }),
-    );
+    expect(mockPrisma.authAccount.create).not.toHaveBeenCalled();
+    expect(mockPrisma.authAccount.deleteMany).not.toHaveBeenCalled();
   });
 });

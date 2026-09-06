@@ -161,56 +161,8 @@ export function DateField({
   );
 }
 
-export function parseCsvLine(line: string) {
-  const cells: string[] = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i += 1) {
-    const char = line[i];
-    const nextChar = line[i + 1];
-
-    if (char === '"' && inQuotes && nextChar === '"') {
-      current += '"';
-      i += 1;
-      continue;
-    }
-    if (char === '"') {
-      inQuotes = !inQuotes;
-      continue;
-    }
-    if (char === "," && !inQuotes) {
-      cells.push(current.trim());
-      current = "";
-      continue;
-    }
-    current += char;
-  }
-
-  cells.push(current.trim());
-  return cells;
-}
-
-export function parseCsvText(csvText: string) {
-  const lines = csvText
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  if (lines.length < 2) return { headers: [] as string[], rows: [] as Record<string, string>[] };
-
-  const headers = parseCsvLine(lines[0]);
-  const rows = lines.slice(1).map((line) => {
-    const cells = parseCsvLine(line);
-    return headers.reduce<Record<string, string>>((acc, header, index) => {
-      acc[header] = cells[index] ?? "";
-      return acc;
-    }, {});
-  });
-
-  return { headers, rows };
-}
+// CSV parsing lives in a pure module so it can be unit-tested; re-exported for existing imports.
+export { parseCsvLine, parseCsvText } from "@/lib/csv";
 
 export const importTargets = [
   { value: "", label: "Ignore this column" },

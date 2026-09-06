@@ -1,6 +1,12 @@
 import { z } from "zod";
+import { MAX_AMOUNT_CENTS } from "@/lib/money";
+import { YM_PATTERN } from "@/lib/period-month";
 
 const isoDate = z.iso.datetime();
+/** Money columns are 32-bit ints; bound every cents field so a bad file fails validation, not the DB write. */
+const signedCents = z.number().int().min(-MAX_AMOUNT_CENTS).max(MAX_AMOUNT_CENTS);
+const positiveCents = z.number().int().positive().max(MAX_AMOUNT_CENTS);
+const nonNegativeCents = z.number().int().nonnegative().max(MAX_AMOUNT_CENTS);
 
 export const userBackupSchema = z.object({
   version: z.literal(1),
@@ -75,9 +81,9 @@ export const userBackupSchema = z.object({
       accountId: z.string().min(1).nullable(),
       categoryId: z.string().min(1),
       type: z.enum(["EXPENSE", "INCOME"]),
-      amountCents: z.number().int(),
-      preCreditCents: z.number().int().nullable(),
-      creditCents: z.number().int().nullable(),
+      amountCents: signedCents,
+      preCreditCents: signedCents.nullable(),
+      creditCents: signedCents.nullable(),
       creditBreakdownJson: z.string().nullable(),
       title: z.string().max(120).nullable(),
       date: isoDate,
@@ -89,7 +95,7 @@ export const userBackupSchema = z.object({
       splitParts: z.array(
         z.object({
           categoryId: z.string().min(1),
-          amountCents: z.number().int(),
+          amountCents: signedCents,
         }),
       ),
     }),
@@ -98,8 +104,8 @@ export const userBackupSchema = z.object({
     z.object({
       categoryId: z.string().min(1),
       name: z.string().max(80).nullable(),
-      periodMonth: z.string().regex(/^\d{4}-\d{2}$/),
-      limitCents: z.number().int().positive(),
+      periodMonth: z.string().regex(YM_PATTERN),
+      limitCents: positiveCents,
       createdAt: isoDate,
       updatedAt: isoDate,
     }),
@@ -111,7 +117,7 @@ export const userBackupSchema = z.object({
         categoryId: z.string().min(1),
         type: z.enum(["EXPENSE", "INCOME"]),
         name: z.string().min(1).max(80),
-        amountCents: z.number().int().positive(),
+        amountCents: positiveCents,
         cadence: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "BIENNIAL"]),
         nextExpectedDate: isoDate,
         endDate: isoDate.nullable(),
@@ -124,7 +130,7 @@ export const userBackupSchema = z.object({
           .array(
             z.object({
               name: z.string().min(1).max(80),
-              shareCents: z.number().int().positive(),
+              shareCents: positiveCents,
               createdAt: isoDate,
               updatedAt: isoDate,
               shareStatuses: z
@@ -151,7 +157,7 @@ export const userBackupSchema = z.object({
       accountId: z.string().min(1),
       categoryId: z.string().min(1),
       name: z.string().min(1).max(80),
-      amountCents: z.number().int().positive(),
+      amountCents: positiveCents,
       billingCycle: z.enum(["WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "BIENNIAL"]),
       nextChargeDate: isoDate,
       createdAt: isoDate,
@@ -163,7 +169,7 @@ export const userBackupSchema = z.object({
       accountId: z.string().min(1),
       date: isoDate,
       direction: z.enum(["CONTRIBUTION", "WITHDRAWAL"]),
-      amountCents: z.number().int().positive(),
+      amountCents: positiveCents,
       note: z.string().max(250).nullable(),
       createdAt: isoDate,
     }),
@@ -172,7 +178,7 @@ export const userBackupSchema = z.object({
     z.object({
       accountId: z.string().min(1),
       date: isoDate,
-      totalValueCents: z.number().int().nonnegative(),
+      totalValueCents: nonNegativeCents,
       note: z.string().max(250).nullable(),
       createdAt: isoDate,
     }),

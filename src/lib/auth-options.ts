@@ -64,6 +64,8 @@ type AppJwt = JWT & {
   roleRefreshedAt?: number;
   tokenVersion?: number;
   sid?: string;
+  /** Epoch ms of the sign-in that produced this token; never refreshed. */
+  authAt?: number;
   mfa?: { at: number; method: "passkey" };
 };
 
@@ -196,6 +198,9 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           // A fresh id per login. NextAuth rotates `jti` on every re-encode, so this is
           // the only claim the passkey cookie can safely be bound to.
           typedToken.sid = randomUUID();
+          // Lets SSO-only accounts (no password to re-ask for) prove a *recent* login
+          // before an action that would otherwise be a takeover from a stolen cookie.
+          typedToken.authAt = Date.now();
           if (typeof user.mfaVerifiedAt === "number") {
             typedToken.mfa = { at: user.mfaVerifiedAt, method: "passkey" };
           }
@@ -239,6 +244,7 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
           // them as 0 matches the column default so an upgrade signs nobody out.
           session.user.tokenVersion = typedToken.tokenVersion ?? 0;
           session.user.sid = typedToken.sid;
+          session.user.authAt = typedToken.authAt;
           session.user.mfa = typedToken.mfa;
         }
         return session;

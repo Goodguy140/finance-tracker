@@ -1,3 +1,5 @@
+import { currentYmInTimeZone, isValidYm } from "@/lib/period-month";
+
 /** Calendar month as `YYYY-MM` (UTC-agnostic; aligned with existing month helpers). */
 export type DashboardRange = "month" | "ytd" | "lifetime";
 
@@ -87,14 +89,19 @@ export function budgetPeriodMonthInYtd(periodMonth: string, anchorYm: string): b
   return periodMonth.slice(0, 4) === year && periodMonth >= start && periodMonth <= anchorYm;
 }
 
+/**
+ * `timeZone` (the user's IANA zone) decides which calendar month "now" falls in; without
+ * it the host clock is used, as before.
+ */
 export function parseDashboardSearchParams(
   params: { month?: string | string[]; range?: string | string[]; preset?: string | string[] },
   reference = new Date(),
+  timeZone?: string | null,
 ): ParsedDashboardPeriod {
   const monthRaw = firstParam(params.month);
   const rangeRaw = firstParam(params.range);
   const presetRaw = firstParam(params.preset);
-  const defaultYm = currentPeriodYm(reference);
+  const defaultYm = timeZone ? currentYmInTimeZone(timeZone, reference) : currentPeriodYm(reference);
 
   if (monthRaw === "all") {
     return {
@@ -119,8 +126,7 @@ export function parseDashboardSearchParams(
     };
   }
 
-  const ym =
-    monthRaw && /^\d{4}-\d{2}$/.test(monthRaw) ? monthRaw : defaultYm;
+  const ym = isValidYm(monthRaw) ? monthRaw : defaultYm;
   const range = parseDashboardRangeParam(rangeRaw);
 
   if (range === "lifetime") {

@@ -1,3 +1,15 @@
+/**
+ * Every money column is a Prisma `Int` (signed 32-bit). Anything past this bound would
+ * surface as a raw database error, so inputs are validated against it up front. Twenty
+ * million currency units is far beyond any personal-finance line item.
+ */
+export const MAX_AMOUNT_CENTS = 2_000_000_000;
+export const MAX_AMOUNT = MAX_AMOUNT_CENTS / 100;
+
+export function isCentsInRange(cents: number): boolean {
+  return Number.isFinite(cents) && Math.abs(cents) <= MAX_AMOUNT_CENTS;
+}
+
 export function toCents(amount: number) {
   return Math.round(amount * 100);
 }

@@ -1,32 +1,35 @@
-import { CategoryKind, TransactionType, UserRole } from "@prisma/client";
+import { CategoryKind, TransactionType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+
+export { publicSignupAllowed, resolveSignupRole } from "@/lib/signup-policy";
 
 export function getFormValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "");
 }
 
-export function toPeriodMonth(date = new Date()) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+/**
+ * `JSON.parse` for a form field the client serialised. A malformed value used to escape as
+ * a raw `SyntaxError`; callers get their own message instead. Empty input yields `fallback`.
+ */
+export function parseJsonField<T>(raw: string, fallback: T, message: string): T {
+  if (!raw.trim()) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw new Error(message);
+  }
 }
+
+/**
+ * Bulk imports (a whole backup, a statement of a few thousand rows) do not fit Prisma's
+ * default 5s interactive-transaction budget, and blowing the budget rolls everything back.
+ * Generous on purpose: these run rarely and a partial import is worse than a slow one.
+ */
+export const LONG_TRANSACTION_OPTIONS = { maxWait: 15_000, timeout: 180_000 } as const;
 
 export function getOptionalMappedValue(row: Record<string, string>, key?: string) {
   if (!key) return undefined;
   return row[key]?.trim() || undefined;
-}
-
-export function publicSignupAllowed() {
-  const value = process.env.ALLOW_PUBLIC_SIGNUP?.trim().toLowerCase();
-  if (value === undefined) {
-    return process.env.NODE_ENV !== "production";
-  }
-  return value === "true" || value === "1";
-}
-
-export function resolveSignupRole(email: string, existingUserCount: number): UserRole {
-  if (existingUserCount > 0) return UserRole.USER;
-  const initialAdmin = process.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase();
-  if (!initialAdmin) return UserRole.SERVER_ADMIN;
-  return email.toLowerCase() === initialAdmin ? UserRole.SERVER_ADMIN : UserRole.USER;
 }
 
 export async function assertUserOwnsAccount(userId: string, accountId: string) {

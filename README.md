@@ -18,6 +18,7 @@ npm run dev
 | `SERVER_SETTINGS_ENCRYPTION_KEY` | Encrypts OAuth admin settings in DB (min 32 chars) |
 | `AUTH_TRUST_HOST` | Set `true` behind reverse proxies |
 | `ALLOW_PUBLIC_SIGNUP` | `false` recommended on public deployments |
+| `AUDIT_LOG_RETENTION_DAYS` | Optional. Audit rows older than this are pruned (default `365`) |
 
 `DATABASE_URL` defaults to `file:/data/app.db` (production) or `file:./dev.db` (development).
 
@@ -139,7 +140,7 @@ Confirm production env vars are set, `DATABASE_URL` uses persistent `/data`, and
 <details>
 <summary><strong>Backup and restore</strong></summary>
 
-**Per-user JSON** — **Settings → Advanced**: export via `/api/backup/export/me` (sanitized: no password hash, OAuth tokens, or reset tokens). Import replaces data for the same email only; role and password are never restored from the file.
+**Per-user JSON** — **Settings → Advanced**: export via `/api/backup/export/me` (sanitized: no password hash, OAuth tokens, or reset tokens). Import replaces financial data for the same email only; role, password, passkeys, and linked SSO identities are never restored from the file (relink SSO from Settings → Security).
 
 **Full database** — stop traffic, copy `/data/app.db`, store encrypted off-host. Restore by replacing the file and restarting the container.
 
@@ -154,7 +155,8 @@ Users can add passkeys (Touch ID, Windows Hello, Android, security keys) under *
 - every sign-in — password or SSO — must be confirmed with a passkey on the `/mfa` wall;
 - passkeys also work as a passwordless first factor ("Sign in with a passkey" on the login page);
 - linking anything external (Google/Authentik sign-in, personal API tokens) requires a passkey assertion from the last 5 minutes;
-- SSO identities are never auto-linked by email any more — link them from Settings after a passkey check.
+- SSO identities are never auto-linked by email any more — link them from Settings after a passkey check;
+- an account with no password (SSO-only) can add its first passkey only within 5 minutes of signing in, so a stolen session cookie cannot turn MFA on by itself.
 
 Eight single-use recovery codes are issued with the first passkey. If an account loses every passkey *and* its codes, an operator can reset it from a shell:
 

@@ -93,6 +93,16 @@ describe("verifyAuthentication", () => {
     db.webAuthnCredential.findUnique.mockResolvedValue(stored);
   });
 
+  it("rejects a malformed response before touching the database", async () => {
+    for (const response of [undefined, null, "cred-1", {}, { id: 42 }, { id: "" }]) {
+      await expect(
+        verifyAuthentication({ challengeId: "c1", response: response as never, purpose: "authenticate", expectedUserId: "u1" }),
+      ).rejects.toBeInstanceOf(MfaVerificationError);
+    }
+    expect(db.webAuthnCredential.findUnique).not.toHaveBeenCalled();
+    expect(db.mfaChallenge.deleteMany).not.toHaveBeenCalled();
+  });
+
   it("refuses a passkey that belongs to a different user than the session", async () => {
     await expect(
       verifyAuthentication({ challengeId: "c1", response: { id: "cred-1" } as never, purpose: "authenticate", expectedUserId: "u2" }),

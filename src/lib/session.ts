@@ -14,7 +14,14 @@ export type MfaGate = MfaState & {
   passkeyCount: number;
 };
 
-export type LoadedSession = { session: Session; user: User; sid: string; mfa: MfaGate };
+export type LoadedSession = {
+  session: Session;
+  user: User;
+  sid: string;
+  /** When this login happened (epoch ms); null for tokens issued before the claim existed. */
+  authAt: number | null;
+  mfa: MfaGate;
+};
 
 export type ApiAuth =
   | { status: "ok"; user: User }
@@ -75,6 +82,7 @@ export async function loadSessionUser(): Promise<LoadedSession | null> {
     session,
     user,
     sid: sessionSid(session),
+    authAt: typeof session.user.authAt === "number" ? session.user.authAt : null,
     mfa: { ...state, required: _count.webAuthnCredentials > 0, passkeyCount: _count.webAuthnCredentials },
   };
 }
