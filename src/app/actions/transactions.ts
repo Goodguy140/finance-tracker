@@ -19,13 +19,14 @@ import {
 } from "@/lib/validation";
 import {
   getFormValue,
-  getOptionalMappedValue,
+  LONG_TRANSACTION_OPTIONS,
   assertUserOwnsAccount,
   assertUserOwnsCategory,
-  LONG_TRANSACTION_OPTIONS,
+  formAction,
+  getOptionalMappedValue,
   parseJsonField,
 } from "./_helpers";
-export async function createExpenseAction(formData: FormData) {
+export const createExpenseAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = expenseBaseSchema.parse({
     accountId: getFormValue(formData, "accountId"),
@@ -58,9 +59,9 @@ export async function createExpenseAction(formData: FormData) {
     },
   });
   revalidatePath("/");
-}
+});
 
-export async function updateExpenseAction(formData: FormData) {
+export const updateExpenseAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = updateExpenseBaseSchema.parse({
     transactionId: getFormValue(formData, "transactionId"),
@@ -108,9 +109,9 @@ export async function updateExpenseAction(formData: FormData) {
     },
   });
   revalidatePath("/");
-}
+});
 
-export async function deleteExpenseTransactionAction(formData: FormData) {
+export const deleteExpenseTransactionAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const transactionId = getFormValue(formData, "transactionId");
   if (!transactionId) throw new Error("Transaction id is required.");
@@ -126,9 +127,9 @@ export async function deleteExpenseTransactionAction(formData: FormData) {
 
   await prisma.transaction.delete({ where: { id: existing.id } });
   revalidatePath("/");
-}
+});
 
-export async function importExpensesCsvAction(formData: FormData) {
+export const importExpensesCsvAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const rowsJson = getFormValue(formData, "rowsJson");
   const fieldSelectionsJson = getFormValue(formData, "fieldSelections");
@@ -248,9 +249,9 @@ export async function importExpensesCsvAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/settings");
-}
+});
 
-export async function createIncomeAction(formData: FormData) {
+export const createIncomeAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = incomeSchema.parse({
     accountId: getFormValue(formData, "accountId"),
@@ -279,9 +280,9 @@ export async function createIncomeAction(formData: FormData) {
     },
   });
   revalidatePath("/");
-}
+});
 
-export async function updateIncomeAction(formData: FormData) {
+export const updateIncomeAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = updateIncomeBaseSchema.parse({
     transactionId: getFormValue(formData, "transactionId"),
@@ -327,9 +328,9 @@ export async function updateIncomeAction(formData: FormData) {
     },
   });
   revalidatePath("/");
-}
+});
 
-export async function deleteIncomeTransactionAction(formData: FormData) {
+export const deleteIncomeTransactionAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const transactionId = getFormValue(formData, "transactionId");
   if (!transactionId) throw new Error("Transaction id is required.");
@@ -345,9 +346,9 @@ export async function deleteIncomeTransactionAction(formData: FormData) {
 
   await prisma.transaction.delete({ where: { id: existing.id } });
   revalidatePath("/");
-}
+});
 
-export async function createSplitExpenseAction(formData: FormData) {
+export const createSplitExpenseAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const parsedParts = parseJsonField<unknown>(getFormValue(formData, "parts"), [], "Split lines could not be read. Try again.");
   const payload = splitExpenseSchema.parse({
@@ -391,5 +392,5 @@ export async function createSplitExpenseAction(formData: FormData) {
     },
   });
   revalidatePath("/");
-}
+});
 

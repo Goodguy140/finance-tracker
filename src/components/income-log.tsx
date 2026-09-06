@@ -1,5 +1,6 @@
 "use client";
 
+import { isActionFailure } from "@/lib/action-result";
 import { useActionState, useEffect, useId, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { deleteIncomeTransactionAction, updateIncomeAction } from "@/app/actions";
@@ -197,7 +198,8 @@ function EditIncomeModal({
   const [state, formAction, isPending] = useActionState(
     async (_prev: UpdateState, formData: FormData): Promise<UpdateState> => {
       try {
-        await updateIncomeAction(formData);
+        const result = await updateIncomeAction(formData);
+        if (isActionFailure(result)) return { ok: false, error: result.error };
         return { ok: true };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Could not save changes.";
@@ -210,7 +212,8 @@ function EditIncomeModal({
   const [deleteState, deleteFormAction, deletePending] = useActionState(
     async (_prev: DeleteState, formData: FormData): Promise<DeleteState> => {
       try {
-        await deleteIncomeTransactionAction(formData);
+        const result = await deleteIncomeTransactionAction(formData);
+        if (isActionFailure(result)) return { ok: false, error: result.error };
         return { ok: true };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Could not delete.";

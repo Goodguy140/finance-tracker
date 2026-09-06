@@ -34,11 +34,11 @@ describe("subscription member actions", () => {
   it("rejects adding a member to a subscription the user does not own", async () => {
     mockPrisma.recurringTransaction.findFirst.mockResolvedValue(null);
 
-    await expect(
-      createSubscriptionMemberAction(
+    expect(
+      await createSubscriptionMemberAction(
         form({ recurringTransactionId: "rule-x", name: "Sam", share: "5" }),
       ),
-    ).rejects.toThrow("Subscription not found.");
+    ).toEqual({ ok: false, error: "Subscription not found." });
     expect(mockPrisma.subscriptionMember.create).not.toHaveBeenCalled();
   });
 
@@ -179,11 +179,11 @@ describe("skipRecurringOccurrenceAction", () => {
     };
     mockPrisma.$transaction.mockImplementation(async (cb: (arg: typeof tx) => Promise<void>) => cb(tx));
 
-    await expect(
-      skipRecurringOccurrenceAction(
+    expect(
+      await skipRecurringOccurrenceAction(
         form({ recurringTransactionId: "rule-1", expectedDate: "2026-07-01", reason: "skip_once" }),
       ),
-    ).rejects.toThrow("already moved to a different expected date");
+    ).toMatchObject({ ok: false, error: expect.stringContaining("already moved to a different expected date") });
     expect(tx.recurringTransaction.updateMany).not.toHaveBeenCalled();
   });
 });

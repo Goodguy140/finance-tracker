@@ -53,8 +53,8 @@ describe("recurring transaction actions", () => {
       where.kind === CategoryKind.INCOME ? null : { id: "category-1" },
     );
 
-    await expect(
-      createRecurringTransactionAction(
+    expect(
+      await createRecurringTransactionAction(
         form({
           type: "INCOME",
           accountId: "account-1",
@@ -65,7 +65,7 @@ describe("recurring transaction actions", () => {
           nextExpectedDate: "2026-05-01",
         }),
       ),
-    ).rejects.toThrow("Selected category was not found.");
+    ).toEqual({ ok: false, error: "Selected category was not found." });
 
     expect(mockPrisma.recurringTransaction.create).not.toHaveBeenCalled();
   });

@@ -19,6 +19,7 @@ import {
 } from "@/lib/validation";
 import {
   getFormValue,
+  formAction,
   publicSignupAllowed,
   resolveSignupRole,
 } from "./_helpers";
@@ -26,7 +27,7 @@ import {
 const SIGNUP_WINDOW_MS = 15 * 60 * 1000;
 const SIGNUP_MAX_PER_IP = 10;
 
-export async function signupAction(formData: FormData) {
+export const signupAction = formAction(async (formData: FormData) => {
   const payload = signupSchema.parse({
     email: getFormValue(formData, "email"),
     password: getFormValue(formData, "password"),
@@ -71,10 +72,10 @@ export async function signupAction(formData: FormData) {
 
   await ensureDefaultDataForUser(user);
   revalidatePath("/");
-}
+});
 
 
-export async function changePasswordAction(formData: FormData) {
+export const changePasswordAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = passwordChangeSchema.parse({
     currentPassword: getFormValue(formData, "currentPassword"),
@@ -101,9 +102,9 @@ export async function changePasswordAction(formData: FormData) {
     action: AUDIT_ACTIONS.user_password_changed,
     headers: h,
   });
-}
+});
 
-export async function updateProfileAction(formData: FormData) {
+export const updateProfileAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = updateProfileSchema.parse({
     displayName: getFormValue(formData, "displayName") || user.displayName,
@@ -115,10 +116,10 @@ export async function updateProfileAction(formData: FormData) {
     data: payload,
   });
   revalidatePath("/settings");
-}
+});
 
 
-export async function deleteAccountAction(formData: FormData) {
+export const deleteAccountAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const confirmation = getFormValue(formData, "confirmation");
   if (confirmation !== "DELETE") throw new Error("Type DELETE to confirm.");
@@ -131,9 +132,9 @@ export async function deleteAccountAction(formData: FormData) {
     headers: h,
   });
   await prisma.user.delete({ where: { id: user.id } });
-}
+});
 
-export async function requestPasswordResetAction(formData: FormData) {
+export const requestPasswordResetAction = formAction(async (formData: FormData) => {
   const email = loginSchema.parse({
     email: getFormValue(formData, "email"),
     password: "12345678",
@@ -168,9 +169,9 @@ export async function requestPasswordResetAction(formData: FormData) {
       text: `Use this link within 30 minutes to reset your password:\n\n${resetUrl}\n`,
     });
   }
-}
+});
 
-export async function resetPasswordAction(formData: FormData) {
+export const resetPasswordAction = formAction(async (formData: FormData) => {
   const email = getFormValue(formData, "email").toLowerCase();
   const token = getFormValue(formData, "token");
   const newPassword = getFormValue(formData, "newPassword");
@@ -219,4 +220,4 @@ export async function resetPasswordAction(formData: FormData) {
     action: AUDIT_ACTIONS.user_password_reset,
     headers: await headers(),
   });
-}
+});

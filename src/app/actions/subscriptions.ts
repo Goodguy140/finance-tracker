@@ -15,7 +15,10 @@ import {
   subscriptionMemberSchema,
   updateSubscriptionMemberSchema,
 } from "@/lib/validation";
-import { getFormValue } from "./_helpers";
+import {
+  getFormValue,
+  formAction,
+} from "./_helpers";
 
 /** Days on either side of the expected date to search for a matching already-logged expense. */
 const ALREADY_LOGGED_MATCH_WINDOW_DAYS = 15;
@@ -34,7 +37,7 @@ async function getOwnedRecurringRule(userId: string, recurringTransactionId: str
   return rule;
 }
 
-export async function createSubscriptionMemberAction(formData: FormData) {
+export const createSubscriptionMemberAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = subscriptionMemberSchema.parse({
     recurringTransactionId: getFormValue(formData, "recurringTransactionId"),
@@ -52,9 +55,9 @@ export async function createSubscriptionMemberAction(formData: FormData) {
     },
   });
   revalidateSubscriptionViews();
-}
+});
 
-export async function updateSubscriptionMemberAction(formData: FormData) {
+export const updateSubscriptionMemberAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = updateSubscriptionMemberSchema.parse({
     memberId: getFormValue(formData, "memberId"),
@@ -88,9 +91,9 @@ export async function updateSubscriptionMemberAction(formData: FormData) {
     }
   });
   revalidateSubscriptionViews();
-}
+});
 
-export async function deleteSubscriptionMemberAction(formData: FormData) {
+export const deleteSubscriptionMemberAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = deleteSubscriptionMemberSchema.parse({
     memberId: getFormValue(formData, "memberId"),
@@ -118,9 +121,9 @@ export async function deleteSubscriptionMemberAction(formData: FormData) {
     }
   });
   revalidateSubscriptionViews();
-}
+});
 
-export async function setSubscriptionShareStatusAction(formData: FormData) {
+export const setSubscriptionShareStatusAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = setSubscriptionShareStatusSchema.parse({
     memberId: getFormValue(formData, "memberId"),
@@ -169,9 +172,9 @@ export async function setSubscriptionShareStatusAction(formData: FormData) {
     }
   });
   revalidateSubscriptionViews();
-}
+});
 
-export async function skipRecurringOccurrenceAction(formData: FormData) {
+export const skipRecurringOccurrenceAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = skipRecurringOccurrenceSchema.parse({
     recurringTransactionId: getFormValue(formData, "recurringTransactionId"),
@@ -221,7 +224,7 @@ export async function skipRecurringOccurrenceAction(formData: FormData) {
   }
 
   revalidateSubscriptionViews();
-}
+});
 
 type SkipTxClient = Prisma.TransactionClient;
 

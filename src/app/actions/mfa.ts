@@ -4,7 +4,6 @@ import { compare } from "bcryptjs";
 import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import type {
   AuthenticationResponseJSON,
   PublicKeyCredentialCreationOptionsJSON,
@@ -23,7 +22,6 @@ import {
 import { prisma } from "@/lib/prisma";
 import { clearRateLimit, enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
 import {
-  loadSessionUser,
   MfaStepUpRequiredError,
   requireFreshMfa,
   requireSessionUser,
@@ -47,7 +45,10 @@ import {
   verifyAuthentication,
   verifyRegistration,
 } from "@/lib/webauthn";
-import { getFormValue } from "./_helpers";
+import {
+  getFormValue,
+  formAction,
+} from "./_helpers";
 
 const WINDOW_MS = 15 * 60 * 1000;
 const ENROLL_PASSWORD_MAX = 5;
@@ -102,8 +103,7 @@ export async function beginPasskeyRegistrationAction(input: {
   const parsed = beginPasskeyRegistrationSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Give the passkey a name (1–40 characters)." };
 
-  const loaded = await loadSessionUser();
-  if (!loaded) redirect("/login");
+  const loaded = await requireSessionUser();
   const { user, mfa, authAt } = loaded;
 
   try {
@@ -272,7 +272,7 @@ export async function redeemRecoveryCodeAction(input: { code: string }): Promise
   }
 }
 
-export async function renamePasskeyAction(formData: FormData) {
+export const renamePasskeyAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const parsed = renamePasskeySchema.parse({
     passkeyId: getFormValue(formData, "passkeyId"),
@@ -292,10 +292,10 @@ export async function renamePasskeyAction(formData: FormData) {
     headers: await headers(),
   });
   revalidatePath("/settings");
-}
+});
 
 /** Removing the last passkey switches MFA off again (and burns the recovery codes with it). */
-export async function removePasskeyAction(formData: FormData) {
+export const removePasskeyAction = formAction(async (formData: FormData) => {
   const loaded = await requireFreshMfa();
   const { user } = loaded;
   const parsed = passkeyRowIdSchema.parse({ passkeyId: getFormValue(formData, "passkeyId") });
@@ -333,7 +333,7 @@ export async function removePasskeyAction(formData: FormData) {
     await recordAuditLog(prisma, { userId: user.id, action: AUDIT_ACTIONS.mfa_disabled, headers: h });
   }
   revalidatePath("/settings");
-}
+});
 
 export async function regenerateRecoveryCodesAction(): Promise<RecoveryCodesResult> {
   try {
@@ -396,7 +396,7 @@ export async function beginSsoLinkAction(input: { provider: string }): Promise<S
   }
 }
 
-export async function unlinkSsoProviderAction(formData: FormData) {
+export const unlinkSsoProviderAction = formAction(async (formData: FormData) => {
   const loaded = await requireFreshMfa();
   const { user } = loaded;
   const { provider } = ssoLinkProviderSchema.parse({ provider: getFormValue(formData, "provider") });
@@ -417,4 +417,4 @@ export async function unlinkSsoProviderAction(formData: FormData) {
     headers: await headers(),
   });
   revalidatePath("/settings");
-}
+});

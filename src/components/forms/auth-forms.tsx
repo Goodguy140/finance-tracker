@@ -13,6 +13,7 @@ import {
   secondaryBtnClass,
 } from "./shared";
 import { signupAction, requestPasswordResetAction, resetPasswordAction } from "@/app/actions";
+import { isActionFailure } from "@/lib/action-result";
 
 export function SignupForm() {
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +29,11 @@ export function SignupForm() {
         const form = e.currentTarget;
         const formData = new FormData(form);
         try {
-          await signupAction(formData);
+          const result = await signupAction(formData);
+          if (isActionFailure(result)) {
+            setError(result.error);
+            return;
+          }
           const email = String(formData.get("email") ?? "");
           const password = String(formData.get("password") ?? "");
           await signIn("credentials", {

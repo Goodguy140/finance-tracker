@@ -1,7 +1,36 @@
 import { CategoryKind, TransactionType } from "@prisma/client";
+import { unstable_rethrow } from "next/navigation";
+import { describeActionError, isExpectedActionError } from "@/lib/action-errors";
+import type { ActionFailure } from "@/lib/action-result";
 import { prisma } from "@/lib/prisma";
 
 export { publicSignupAllowed, resolveSignupRole } from "@/lib/signup-policy";
+
+export type FormActionResult = ActionFailure | undefined;
+
+/**
+ * Wraps a form action so failures come back as a value instead of a thrown error.
+ *
+ * Next.js strips the message from any error a server action throws in production, so a
+ * thrown "Expense not found." reaches the browser as a generic notice. Actions keep
+ * throwing internally (guards, zod, rate limits); this turns those into
+ * `{ ok: false, error }` for the client, logs anything unexpected server-side, and lets
+ * Next's own control-flow throws (`redirect`, `notFound`) pass through untouched.
+ */
+export function formAction(
+  fn: (formData: FormData) => Promise<void>,
+): (formData: FormData) => Promise<FormActionResult> {
+  return async (formData) => {
+    try {
+      await fn(formData);
+      return undefined;
+    } catch (err) {
+      unstable_rethrow(err);
+      if (!isExpectedActionError(err)) console.error("[action] unexpected failure", err);
+      return { ok: false, error: describeActionError(err) };
+    }
+  };
+}
 
 export function getFormValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "");

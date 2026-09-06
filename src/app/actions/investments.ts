@@ -12,8 +12,9 @@ import {
 import {
   getFormValue,
   assertUserOwnsAccount,
+  formAction,
 } from "./_helpers";
-export async function createInvestmentFlowAction(formData: FormData) {
+export const createInvestmentFlowAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = investmentFlowSchema.parse({
     accountId: getFormValue(formData, "accountId"),
@@ -35,9 +36,9 @@ export async function createInvestmentFlowAction(formData: FormData) {
     },
   });
   revalidatePath("/");
-}
+});
 
-export async function createPortfolioSnapshotAction(formData: FormData) {
+export const createPortfolioSnapshotAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = portfolioSnapshotSchema.parse({
     accountId: getFormValue(formData, "accountId"),
@@ -57,5 +58,5 @@ export async function createPortfolioSnapshotAction(formData: FormData) {
     },
   });
   revalidatePath("/");
-}
+});
 

@@ -20,8 +20,9 @@ import {
   assertUserOwnsActiveAccount,
   assertUserOwnsCategory,
   categoryKindForTransactionType,
+  formAction,
 } from "./_helpers";
-export async function createRecurringTransactionAction(formData: FormData) {
+export const createRecurringTransactionAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = recurringTransactionSchema.parse({
     type: getFormValue(formData, "type"),
@@ -60,9 +61,9 @@ export async function createRecurringTransactionAction(formData: FormData) {
     },
   });
   revalidatePath("/");
-}
+});
 
-export async function updateRecurringTransactionAction(formData: FormData) {
+export const updateRecurringTransactionAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const parsed = updateRecurringTransactionSchema.safeParse({
     recurringTransactionId: getFormValue(formData, "recurringTransactionId"),
@@ -112,9 +113,9 @@ export async function updateRecurringTransactionAction(formData: FormData) {
     },
   });
   revalidatePath("/");
-}
+});
 
-export async function setRecurringTransactionEnabledAction(formData: FormData) {
+export const setRecurringTransactionEnabledAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = setRecurringTransactionEnabledSchema.parse({
     recurringTransactionId: getFormValue(formData, "recurringTransactionId"),
@@ -132,9 +133,9 @@ export async function setRecurringTransactionEnabledAction(formData: FormData) {
     data: { enabled: payload.enabled === "true" },
   });
   revalidatePath("/");
-}
+});
 
-export async function deleteRecurringTransactionAction(formData: FormData) {
+export const deleteRecurringTransactionAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = deleteRecurringTransactionSchema.parse({
     recurringTransactionId: getFormValue(formData, "recurringTransactionId"),
@@ -148,9 +149,9 @@ export async function deleteRecurringTransactionAction(formData: FormData) {
 
   await prisma.recurringTransaction.delete({ where: { id: existing.id } });
   revalidatePath("/");
-}
+});
 
-export async function postRecurringTransactionAction(formData: FormData) {
+export const postRecurringTransactionAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = postRecurringTransactionSchema.parse({
     recurringTransactionId: getFormValue(formData, "recurringTransactionId"),
@@ -233,5 +234,5 @@ export async function postRecurringTransactionAction(formData: FormData) {
   }
 
   revalidatePath("/");
-}
+});
 

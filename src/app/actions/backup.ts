@@ -9,8 +9,12 @@ import { requireUser } from "@/lib/session";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { userBackupSchema } from "@/lib/backup-schema";
 import { resolveBackupUserProfileFields } from "@/lib/backup-restore";
-import { getFormValue, LONG_TRANSACTION_OPTIONS } from "./_helpers";
-export async function clearUserFinancialDataAction(formData: FormData) {
+import {
+  getFormValue,
+  LONG_TRANSACTION_OPTIONS,
+  formAction,
+} from "./_helpers";
+export const clearUserFinancialDataAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const confirmation = getFormValue(formData, "confirmation").trim();
   if (confirmation !== "RESET FINANCIAL DATA") {
@@ -36,9 +40,9 @@ export async function clearUserFinancialDataAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/settings");
-}
+});
 
-export async function importUserBackupAction(formData: FormData) {
+export const importUserBackupAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const raw = formData.get("backupJson");
   if (!(raw instanceof File)) {
@@ -330,5 +334,5 @@ export async function importUserBackupAction(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/settings");
-}
+});
 

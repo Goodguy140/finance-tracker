@@ -7,7 +7,10 @@ import { generateApiToken } from "@/lib/api-token";
 import { prisma } from "@/lib/prisma";
 import { MfaStepUpRequiredError, requireFreshMfa, requireUser, type MfaStepUpCode } from "@/lib/session";
 import { createApiTokenSchema, revokeApiTokenSchema } from "@/lib/validation";
-import { getFormValue } from "./_helpers";
+import {
+  getFormValue,
+  formAction,
+} from "./_helpers";
 
 /** Max active (non-revoked) tokens per user — keeps the attack surface small. */
 const MAX_ACTIVE_TOKENS = 20;
@@ -94,7 +97,7 @@ export async function createApiTokenAction(
   return { ok: true, token: raw, name: parsed.data.name, prefix };
 }
 
-export async function revokeApiTokenAction(formData: FormData) {
+export const revokeApiTokenAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const parsed = revokeApiTokenSchema.parse({ tokenId: getFormValue(formData, "tokenId") });
 
@@ -119,4 +122,4 @@ export async function revokeApiTokenAction(formData: FormData) {
   });
 
   revalidatePath("/settings");
-}
+});
