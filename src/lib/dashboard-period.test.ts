@@ -71,6 +71,20 @@ describe("parseDashboardSearchParams", () => {
     });
   });
 
+  it("falls back to the default month for an impossible month like 2024-13", () => {
+    const p = parseDashboardSearchParams({ month: "2024-13", range: "month" }, ref);
+    expect(p.ym).toBe(currentPeriodYm(ref));
+    expect(parseDashboardSearchParams({ month: "2024-00" }, ref).ym).toBe(currentPeriodYm(ref));
+  });
+
+  it("resolves the default month in the user's time zone when one is given", () => {
+    // 2025-05-01T03:30Z is still April 30 in Toronto but May 1 in Tokyo.
+    const boundary = new Date("2025-05-01T03:30:00.000Z");
+    expect(parseDashboardSearchParams({}, boundary, "America/Toronto").ym).toBe("2025-04");
+    expect(parseDashboardSearchParams({}, boundary, "Asia/Tokyo").ym).toBe("2025-05");
+    expect(parseDashboardSearchParams({ preset: "previous-month" }, boundary, "Asia/Tokyo").ym).toBe("2025-04");
+  });
+
   it("parses explicit month range", () => {
     const p = parseDashboardSearchParams({ month: "2024-03", range: "month" }, ref);
     expect(p.range).toBe("month");

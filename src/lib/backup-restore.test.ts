@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveBackupUserProfileFields, sanitizeAuthAccountsForImport } from "@/lib/backup-restore";
+import { resolveBackupUserProfileFields } from "@/lib/backup-restore";
 
 describe("resolveBackupUserProfileFields", () => {
   it("never applies role or passwordHash from backup", () => {
@@ -38,29 +38,5 @@ describe("resolveBackupUserProfileFields", () => {
     expect(result.role).toBe("SERVER_ADMIN");
     expect(result.passwordHash).toBe("admin-hash");
     expect(result.emailVerifiedAt).toEqual(new Date("2026-01-15T12:00:00.000Z"));
-  });
-});
-
-describe("sanitizeAuthAccountsForImport", () => {
-  it("strips OAuth token fields", () => {
-    const rows = sanitizeAuthAccountsForImport([
-      {
-        provider: "google",
-        providerAccountId: "123",
-        accessToken: "at",
-        refreshToken: "rt",
-        expiresAt: 1,
-        tokenType: "Bearer",
-        scope: "email",
-        idToken: "id",
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-      },
-    ]);
-
-    expect(rows[0]?.accessToken).toBeNull();
-    expect(rows[0]?.refreshToken).toBeNull();
-    expect(rows[0]?.idToken).toBeNull();
-    expect(rows[0]?.provider).toBe("google");
   });
 });

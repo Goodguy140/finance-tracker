@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { API_SCOPES, authenticateApiToken } from "@/lib/api-token";
 import { buildMonthlyBudgetProgress, budgetRowPercentUsed } from "@/lib/budget-progress";
-import { currentPeriodYm } from "@/lib/dashboard-period";
+import { currentYmInTimeZone } from "@/lib/period-month";
 import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
 import { monthParamSchema } from "@/lib/validation";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
   }
 
   const rawMonth = new URL(request.url).searchParams.get("month");
-  let ym = currentPeriodYm();
+  let ym = currentYmInTimeZone(auth.user.timezone);
   if (rawMonth !== null) {
     const parsed = monthParamSchema.safeParse(rawMonth);
     if (!parsed.success) {

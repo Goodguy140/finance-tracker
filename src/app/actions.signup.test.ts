@@ -1,20 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UserRole } from "@prisma/client";
 
-const mockPrisma = vi.hoisted(() => ({
-  user: {
-    findUnique: vi.fn(),
-    count: vi.fn(),
-    create: vi.fn(),
-  },
-}));
+const mockPrisma = vi.hoisted(() => {
+  const db = {
+    user: {
+      findUnique: vi.fn(),
+      count: vi.fn(),
+      create: vi.fn(),
+    },
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(db)),
+  };
+  return db;
+});
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/headers", () => ({ headers: vi.fn(async () => new Headers({ "x-forwarded-for": "203.0.113.9" })) }));
 vi.mock("@/lib/rate-limit", () => ({ enforceSlidingWindowRateLimit: vi.fn() }));
 vi.mock("@/lib/defaults", () => ({ ensureDefaultDataForUser: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
 
 const { signupAction } = await import("./actions/auth");
+const { enforceSlidingWindowRateLimit } = await import("@/lib/rate-limit");
 
 function signupForm(email: string) {
   const data = new FormData();
@@ -72,5 +78,13 @@ describe("signupAction", () => {
         data: expect.objectContaining({ role: UserRole.SERVER_ADMIN }),
       }),
     );
+  });
+
+  it("rate limits by client address as well as by email", async () => {
+    delete process.env.INITIAL_ADMIN_EMAIL;
+    await signupAction(signupForm("first@example.com"));
+    const keys = vi.mocked(enforceSlidingWindowRateLimit).mock.calls.map((call) => call[0]);
+    expect(keys).toContain("signup:first@example.com");
+    expect(keys).toContain("signup-ip:203.0.113.9");
   });
 });

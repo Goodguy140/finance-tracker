@@ -12,6 +12,7 @@ import type {
   RegistrationResponseJSON,
 } from "@simplewebauthn/server";
 import { AUDIT_ACTIONS, clientMetaFromHeaders, recordAuditLog } from "@/lib/audit-log";
+import { MFA_STEP_UP_MAX_AGE_MS } from "@/lib/auth-constants";
 import { getAuthentikProvider, getGoogleProvider } from "@/lib/oauth-provider-config";
 import {
   clearMfaCookie,
@@ -54,6 +55,8 @@ const VERIFY_MAX_PER_USER = 10;
 const RECOVERY_MAX = 5;
 const PASSKEY_SIGNIN_MAX_PER_IP = 20;
 const TOO_MANY = "Too many attempts. Please try again later.";
+const SSO_REAUTH_MESSAGE =
+  "To add your first passkey, sign out and sign back in with your SSO provider, then add it within 5 minutes.";
 
 export type MfaActionFailure = { ok: false; error: string; code?: MfaStepUpCode };
 
@@ -85,8 +88,12 @@ async function clientIp(): Promise<string | undefined> {
 
 /**
  * Step 1 of adding a passkey. The *first* passkey is what turns MFA on, so it must not be
- * something a stolen session cookie can do on its own: it re-asks for the password when
- * there is one. Every later passkey needs a fresh assertion from an existing one.
+ * something a stolen session cookie can do on its own:
+ *
+ * - if the account already has passkeys, a fresh assertion from one of them (step-up);
+ * - if the account has a password, the user is asked to re-enter it;
+ * - if the account is SSO-only (nothing to re-ask for), the login itself must be recent,
+ *   so the user signs in with their provider again and enrols within the step-up window.
  */
 export async function beginPasskeyRegistrationAction(input: {
   name: string;
@@ -97,7 +104,7 @@ export async function beginPasskeyRegistrationAction(input: {
 
   const loaded = await loadSessionUser();
   if (!loaded) redirect("/login");
-  const { user, mfa } = loaded;
+  const { user, mfa, authAt } = loaded;
 
   try {
     if (mfa.required) {
@@ -110,6 +117,8 @@ export async function beginPasskeyRegistrationAction(input: {
         return { ok: false, error: "Current password is incorrect." };
       }
       await clearRateLimit(key);
+    } else if (authAt == null || Date.now() - authAt > MFA_STEP_UP_MAX_AGE_MS) {
+      return { ok: false, error: SSO_REAUTH_MESSAGE };
     }
     const { challengeId, options } = await createRegistrationOptions(user);
     return { ok: true, challengeId, options };

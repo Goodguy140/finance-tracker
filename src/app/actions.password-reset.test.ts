@@ -23,7 +23,7 @@ describe("requestPasswordResetAction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.NEXTAUTH_URL = "http://127.0.0.1:3050";
-    mockPrisma.user.findUnique.mockResolvedValue({ id: "u1", email: "user@example.com" });
+    mockPrisma.user.findUnique.mockResolvedValue({ id: "u1", email: "user@example.com", passwordHash: "$2a$12$hash" });
     mockPrisma.passwordResetToken.create.mockResolvedValue({});
   });
 
@@ -40,5 +40,16 @@ describe("requestPasswordResetAction", () => {
         subject: expect.stringContaining("Reset"),
       }),
     );
+  });
+
+  it("stays silent for an account that has no password (SSO or passkey only)", async () => {
+    mockPrisma.user.findUnique.mockResolvedValue({ id: "u2", email: "sso@example.com", passwordHash: null });
+    const formData = new FormData();
+    formData.set("email", "sso@example.com");
+
+    await requestPasswordResetAction(formData);
+
+    expect(mockPrisma.passwordResetToken.create).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
   });
 });

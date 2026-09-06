@@ -8,7 +8,7 @@ import { getDefaultTimezone } from "@/lib/country-config";
 import { ensureDefaultDataForUser } from "@/lib/defaults";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
+import { AUDIT_ACTIONS, clientMetaFromHeaders, recordAuditLog } from "@/lib/audit-log";
 import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
 import { sendEmail } from "@/lib/email";
 import {
@@ -22,6 +22,10 @@ import {
   publicSignupAllowed,
   resolveSignupRole,
 } from "./_helpers";
+
+const SIGNUP_WINDOW_MS = 15 * 60 * 1000;
+const SIGNUP_MAX_PER_IP = 10;
+
 export async function signupAction(formData: FormData) {
   const payload = signupSchema.parse({
     email: getFormValue(formData, "email"),
@@ -35,27 +39,34 @@ export async function signupAction(formData: FormData) {
   if (!publicSignupAllowed()) {
     throw new Error("Public sign up is disabled.");
   }
-  await enforceSlidingWindowRateLimit(
-    `signup:${payload.email.toLowerCase()}`,
-    5,
-    15 * 60 * 1000,
-    "Too many signup attempts. Please try again later.",
-  );
+  const email = payload.email.toLowerCase();
+  const tooMany = "Too many signup attempts. Please try again later.";
+  await enforceSlidingWindowRateLimit(`signup:${email}`, 5, SIGNUP_WINDOW_MS, tooMany);
+  // The per-email budget alone lets one client mint unlimited accounts (and limiter rows)
+  // by varying the address; the per-IP budget is what actually bounds that.
+  const ip = clientMetaFromHeaders(await headers()).ipAddress;
+  if (ip) {
+    await enforceSlidingWindowRateLimit(`signup-ip:${ip}`, SIGNUP_MAX_PER_IP, SIGNUP_WINDOW_MS, tooMany);
+  }
 
-  const existing = await prisma.user.findUnique({ where: { email: payload.email.toLowerCase() } });
+  const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) throw new Error("An account with this email already exists.");
 
-  const count = await prisma.user.count();
-  const email = payload.email.toLowerCase();
-  const user = await prisma.user.create({
-    data: {
-      email,
-      passwordHash: await hash(payload.password, 12),
-      displayName: payload.displayName,
-      countryCode: payload.countryCode,
-      timezone: payload.timezone,
-      role: resolveSignupRole(email, count),
-    },
+  const passwordHash = await hash(payload.password, 12);
+  // Count and create in one transaction: two concurrent first signups must not both read
+  // zero users and both become the server admin.
+  const user = await prisma.$transaction(async (tx) => {
+    const count = await tx.user.count();
+    return tx.user.create({
+      data: {
+        email,
+        passwordHash,
+        displayName: payload.displayName,
+        countryCode: payload.countryCode,
+        timezone: payload.timezone,
+        role: resolveSignupRole(email, count),
+      },
+    });
   });
 
   await ensureDefaultDataForUser(user);
@@ -134,7 +145,10 @@ export async function requestPasswordResetAction(formData: FormData) {
     "Too many password reset attempts. Please try again later.",
   );
   const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-  if (!user) return;
+  // An account that signs in only through SSO or a passkey has no password to reset;
+  // minting one here would add a login method its owner never chose. Stay silent, exactly
+  // like an unknown address, so the response does not reveal which case applied.
+  if (!user?.passwordHash) return;
 
   const token = crypto.randomUUID();
   await prisma.passwordResetToken.create({
@@ -169,7 +183,7 @@ export async function resetPasswordAction(formData: FormData) {
   if (newPassword.length < 8) throw new Error("Password must be at least 8 characters.");
 
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) throw new Error("Invalid email/token combination.");
+  if (!user?.passwordHash) throw new Error("Invalid or expired token.");
 
   const candidateTokens = await prisma.passwordResetToken.findMany({
     where: { userId: user.id, usedAt: null, expiresAt: { gt: new Date() } },
@@ -200,4 +214,9 @@ export async function resetPasswordAction(formData: FormData) {
       },
     }),
   ]);
+  await recordAuditLog(prisma, {
+    userId: user.id,
+    action: AUDIT_ACTIONS.user_password_reset,
+    headers: await headers(),
+  });
 }

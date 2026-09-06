@@ -3,6 +3,25 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/reset-password"];
+/**
+ * Public paths a signed-in visitor is bounced away from. The password-reset pages are
+ * not among them: a reset link from an email must keep working in a browser that still
+ * holds a session (which may well be the session the reset is meant to revoke).
+ */
+const SIGNED_OUT_ONLY_PATHS = ["/login", "/signup"];
+
+/** Exact match or a sub-path — `/login/foo` yes, `/loginfoo` no. */
+function matchesPathPrefix(pathname: string, base: string): boolean {
+  return pathname === base || pathname.startsWith(`${base}/`);
+}
+
+export type PublicPathClass = "protected" | "public" | "signed-out-only";
+
+export function classifyPublicPath(pathname: string): PublicPathClass {
+  if (SIGNED_OUT_ONLY_PATHS.some((base) => matchesPathPrefix(pathname, base))) return "signed-out-only";
+  if (PUBLIC_PATHS.some((base) => matchesPathPrefix(pathname, base))) return "public";
+  return "protected";
+}
 
 function getNextAuthSecret() {
   const secret = process.env.NEXTAUTH_SECRET?.trim();
@@ -105,6 +124,7 @@ export const __authProxyInternals = {
   isLoopbackHost,
   parsedNextAuthPublicOrigin,
   readToken,
+  classifyPublicPath,
 };
 
 export async function proxy(req: NextRequest) {
@@ -129,13 +149,13 @@ export async function proxy(req: NextRequest) {
   }
 
   const token = await readToken(req);
-  const isPublic = PUBLIC_PATHS.some((path) => pathname.startsWith(path));
+  const pathClass = classifyPublicPath(pathname);
 
-  if (!token && !isPublic) {
+  if (!token && pathClass === "protected") {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  if (token && isPublic) {
+  if (token && pathClass === "signed-out-only") {
     return NextResponse.redirect(new URL("/", req.url));
   }
 

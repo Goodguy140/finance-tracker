@@ -3,15 +3,8 @@ import { cookies } from "next/headers";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { clearSsoLinkCookie, readSsoLinkIntent, ssoLinkCookieName } from "@/lib/mfa-session";
 import { prisma } from "@/lib/prisma";
+import { publicSignupAllowed, resolveSignupRole } from "@/lib/signup-policy";
 import { consumeChallenge } from "@/lib/webauthn";
-
-function publicSignupAllowed() {
-  const value = process.env.ALLOW_PUBLIC_SIGNUP?.trim().toLowerCase();
-  if (value === undefined) {
-    return process.env.NODE_ENV !== "production";
-  }
-  return value === "true" || value === "1";
-}
 
 /** Login page error code shown when an SSO identity matches an account it is not linked to. */
 export const LINK_REQUIRED_ERROR = "LinkRequired";
@@ -115,22 +108,27 @@ export async function linkOAuthUser(params: {
 
   if (!publicSignupAllowed()) return false;
 
-  const currentCount = await prisma.user.count();
-  const dbUser = await prisma.user.create({
-    data: {
-      email,
-      displayName: user.name?.trim() || defaultDisplayName,
-      role: currentCount === 0 ? "SERVER_ADMIN" : "USER",
-      emailVerifiedAt: new Date(),
-    },
-  });
-  // The provider's access/refresh/id tokens are deliberately not persisted. Nothing in
-  // this app ever reads them back — sign-in state lives in the session JWT — so storing
-  // them only created a set of live third-party credentials sitting in plaintext columns.
-  // If a feature ever needs one (token refresh, calling a provider API), reintroduce it
-  // through encryptSecret rather than restoring these assignments.
-  await prisma.authAccount.create({
-    data: { provider, providerAccountId, userId: dbUser.id, expiresAt: account.expires_at },
+  // Same role rules as password signup (`INITIAL_ADMIN_EMAIL` included), and count +
+  // create in one transaction so two first sign-ins cannot both become the admin.
+  const dbUser = await prisma.$transaction(async (tx) => {
+    const currentCount = await tx.user.count();
+    const created = await tx.user.create({
+      data: {
+        email,
+        displayName: user.name?.trim() || defaultDisplayName,
+        role: resolveSignupRole(email, currentCount),
+        emailVerifiedAt: new Date(),
+      },
+    });
+    // The provider's access/refresh/id tokens are deliberately not persisted. Nothing in
+    // this app ever reads them back — sign-in state lives in the session JWT — so storing
+    // them only created a set of live third-party credentials sitting in plaintext columns.
+    // If a feature ever needs one (token refresh, calling a provider API), reintroduce it
+    // through encryptSecret rather than restoring these assignments.
+    await tx.authAccount.create({
+      data: { provider, providerAccountId, userId: created.id, expiresAt: account.expires_at },
+    });
+    return created;
   });
   adoptLocalIdentity(user, dbUser);
   return true;

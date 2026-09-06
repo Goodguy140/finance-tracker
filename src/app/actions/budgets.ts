@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { CategoryKind } from "@prisma/client";
 import { toCents } from "@/lib/money";
+import { currentYmInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
 import { buildMonthlyBudgetProgress } from "@/lib/budget-progress";
 import { computeReallocationPlan } from "@/lib/budget-reallocation";
@@ -13,10 +14,7 @@ import {
   reallocateBudgetSchema,
   updateBudgetSchema,
 } from "@/lib/validation";
-import {
-  getFormValue,
-  toPeriodMonth,
-} from "./_helpers";
+import { getFormValue } from "./_helpers";
 export async function upsertBudgetAction(formData: FormData) {
   const user = await requireUser();
   const rawPeriodMonth = getFormValue(formData, "periodMonth");
@@ -29,7 +27,9 @@ export async function upsertBudgetAction(formData: FormData) {
     throw new Error("Category name and budget limit are required.");
   }
   const payload = parsed.data;
-  const currentPeriodMonth = toPeriodMonth();
+  // "This month" is the user's, not the container's: the same instant is a different
+  // calendar month across the date line.
+  const currentPeriodMonth = currentYmInTimeZone(user.timezone);
   const periodMonth = payload.periodMonth ?? currentPeriodMonth;
 
   if (payload.periodMonth && payload.periodMonth >= currentPeriodMonth) {
@@ -151,7 +151,7 @@ export async function reallocateBudgetAction(formData: FormData) {
   const payload = parsed.data;
 
   // Period is derived server-side; the client cannot reallocate a past month.
-  const periodMonth = toPeriodMonth();
+  const periodMonth = currentYmInTimeZone(user.timezone);
   const progress = await buildMonthlyBudgetProgress(user.id, periodMonth);
 
   const updates = computeReallocationPlan(

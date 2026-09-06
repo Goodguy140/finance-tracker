@@ -1,8 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { CategoryKind, TransactionType } from "@prisma/client";
-import { parseStatementAmount, toCents } from "@/lib/money";
+import { CategoryKind, Prisma, TransactionType } from "@prisma/client";
+import { MAX_AMOUNT, parseStatementAmount, toCents } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { dateFromYmd } from "@/lib/date-only";
 import { parseImportedDate } from "@/lib/import-dates";
@@ -14,6 +14,7 @@ import {
   incomeSchema,
   updateIncomeBaseSchema,
   updateExpenseBaseSchema,
+  positiveAmount,
   splitExpenseSchema,
 } from "@/lib/validation";
 import {
@@ -21,6 +22,8 @@ import {
   getOptionalMappedValue,
   assertUserOwnsAccount,
   assertUserOwnsCategory,
+  LONG_TRANSACTION_OPTIONS,
+  parseJsonField,
 } from "./_helpers";
 export async function createExpenseAction(formData: FormData) {
   const user = await requireUser();
@@ -129,8 +132,8 @@ export async function importExpensesCsvAction(formData: FormData) {
   const user = await requireUser();
   const rowsJson = getFormValue(formData, "rowsJson");
   const fieldSelectionsJson = getFormValue(formData, "fieldSelections");
-  const parsedRows = JSON.parse(rowsJson || "[]");
-  const fieldSelections = JSON.parse(fieldSelectionsJson || "[]");
+  const parsedRows = parseJsonField<unknown>(rowsJson, [], "The CSV rows could not be read. Re-upload the file and try again.");
+  const fieldSelections = parseJsonField<unknown>(fieldSelectionsJson, [], "The column mapping could not be read. Try again.");
   const payload = expenseCsvImportSchema.parse({
     rows: parsedRows,
     mapping: {
@@ -182,13 +185,17 @@ export async function importExpensesCsvAction(formData: FormData) {
   });
   const categoryByName = new Map(categories.map((category) => [category.name.trim().toLowerCase(), category.id]));
 
+  // Rows are resolved first (creating any missing categories as we go) and written with a
+  // single createMany: one round trip per row used to push large statements past the
+  // transaction timeout and roll the whole import back.
   await prisma.$transaction(async (tx) => {
+    const pending: Prisma.TransactionCreateManyInput[] = [];
     for (const row of payload.rows) {
       const amountRaw = row[payload.mapping.amount]?.trim();
       if (!amountRaw) continue;
 
       const amount = parseStatementAmount(amountRaw);
-      if (amount === null) continue;
+      if (amount === null || Math.abs(amount) > MAX_AMOUNT) continue;
 
       const dateRaw = getOptionalMappedValue(row, payload.mapping.date) ?? payload.manualValues.date;
       const transactionDate = parseImportedDate(dateRaw) ?? new Date();
@@ -224,21 +231,20 @@ export async function importExpensesCsvAction(formData: FormData) {
         }
       }
 
-      await tx.transaction.create({
-        data: {
-          userId: user.id,
-          accountId: resolvedAccountId,
-          categoryId: resolvedCategoryId,
-          type: TransactionType.EXPENSE,
-          amountCents: toCents(amount),
-          date: transactionDate,
-          postedDate,
-          title,
-          note,
-        },
+      pending.push({
+        userId: user.id,
+        accountId: resolvedAccountId,
+        categoryId: resolvedCategoryId,
+        type: TransactionType.EXPENSE,
+        amountCents: toCents(amount),
+        date: transactionDate,
+        postedDate,
+        title,
+        note,
       });
     }
-  });
+    if (pending.length > 0) await tx.transaction.createMany({ data: pending });
+  }, LONG_TRANSACTION_OPTIONS);
 
   revalidatePath("/");
   revalidatePath("/settings");
@@ -285,11 +291,11 @@ export async function updateIncomeAction(formData: FormData) {
     title: getFormValue(formData, "title") || undefined,
     note: getFormValue(formData, "note"),
   });
-  const amountRaw = getFormValue(formData, "amount");
-  const amount = Number(amountRaw);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error("Amount must be a positive number.");
+  const parsedAmount = positiveAmount.safeParse(getFormValue(formData, "amount"));
+  if (!parsedAmount.success) {
+    throw new Error(parsedAmount.error.issues[0]?.message ?? "Amount must be a positive number.");
   }
+  const amount = parsedAmount.data;
   await Promise.all([
     payload.accountId ? assertUserOwnsAccount(user.id, payload.accountId) : Promise.resolve(),
     assertUserOwnsCategory(user.id, payload.categoryId, CategoryKind.INCOME),
@@ -343,8 +349,7 @@ export async function deleteIncomeTransactionAction(formData: FormData) {
 
 export async function createSplitExpenseAction(formData: FormData) {
   const user = await requireUser();
-  const partsRaw = getFormValue(formData, "parts");
-  const parsedParts = JSON.parse(partsRaw || "[]");
+  const parsedParts = parseJsonField<unknown>(getFormValue(formData, "parts"), [], "Split lines could not be read. Try again.");
   const payload = splitExpenseSchema.parse({
     accountId: getFormValue(formData, "accountId"),
     date: getFormValue(formData, "date"),

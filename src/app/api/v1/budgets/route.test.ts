@@ -11,7 +11,10 @@ vi.mock("@/lib/budget-progress", () => ({
   budgetRowPercentUsed: vi.fn(() => 78),
 }));
 vi.mock("@/lib/rate-limit", () => ({ enforceSlidingWindowRateLimit: vi.fn(async () => {}) }));
-vi.mock("@/lib/dashboard-period", () => ({ currentPeriodYm: vi.fn(() => "2026-06") }));
+vi.mock("@/lib/period-month", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/period-month")>("@/lib/period-month");
+  return { ...actual, currentYmInTimeZone: vi.fn(() => "2026-06") };
+});
 vi.mock("@/lib/audit-log", () => ({
   AUDIT_ACTIONS: { api_budgets_read: "api_budgets_read" },
   recordAuditLog: vi.fn(),
@@ -25,7 +28,7 @@ const { GET } = await import("./route");
 
 const okAuth = {
   status: "ok" as const,
-  user: { id: "u1" },
+  user: { id: "u1", timezone: "America/Toronto" },
   token: { id: "t1" },
 };
 

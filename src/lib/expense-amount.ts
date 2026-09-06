@@ -1,4 +1,6 @@
-import { toCents } from "./money";
+import { MAX_AMOUNT, toCents } from "./money";
+
+const TOO_LARGE = `Amounts cannot exceed ${MAX_AMOUNT.toLocaleString("en-CA")}.`;
 
 function getFormValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "");
@@ -28,12 +30,14 @@ export function parseExpenseAmountFromForm(formData: FormData): ParsedExpenseAmo
     if (!Number.isFinite(pre) || pre <= 0) {
       throw new Error("Total before credits must be a positive number.");
     }
+    if (pre > MAX_AMOUNT) throw new Error(TOO_LARGE);
     let creditNum = 0;
     for (const c of creditRaws) {
       const n = Number(c);
       if (!Number.isFinite(n) || n < 0) {
         throw new Error("Each credit must be zero or a positive number.");
       }
+      if (n > MAX_AMOUNT) throw new Error(TOO_LARGE);
       creditNum += n;
     }
     const net = pre - creditNum;
@@ -62,6 +66,7 @@ export function parseExpenseAmountFromForm(formData: FormData): ParsedExpenseAmo
   if (!Number.isFinite(amount) || amount === 0) {
     throw new Error("Enter a non-zero amount. Use a negative value for statement credits.");
   }
+  if (Math.abs(amount) > MAX_AMOUNT) throw new Error(TOO_LARGE);
 
   return {
     amountCents: toCents(amount),
