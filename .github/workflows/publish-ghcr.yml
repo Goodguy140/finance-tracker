@@ -8,7 +8,9 @@ on:
 
 concurrency:
   group: ghcr-publish-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Not `true`: a following merge used to cancel an in-flight image push partway
+  # through (run 35302488545). Queue the next release instead of aborting this one.
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -25,6 +27,7 @@ jobs:
   publish:
     needs: tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,6 +52,9 @@ jobs:
             type=ref,event=branch
             type=sha
 
+      # The nested test.yml `docker` job just built this exact image in the same
+      # workflow run on the same ref, so it wrote to the same GHA cache scope --
+      # this build is near-total layer hits rather than a second 2m36s build.
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
@@ -56,3 +62,5 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
