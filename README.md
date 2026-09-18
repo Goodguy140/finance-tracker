@@ -89,6 +89,22 @@ Requires `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (optional `SMTP_PORT
 
 </details>
 
+<details>
+<summary>Single sign-on only</summary>
+
+Turn password sign-in off under **Settings → Server admin → Sign-in methods**, leaving SSO and passkeys. Refused unless an OAuth provider is enabled and your own account has one linked. `DISABLE_PASSWORD_LOGIN=false` in the environment overrides the stored setting, which is how you get back in if SSO breaks.
+
+</details>
+
+</details>
+
+<details>
+<summary><strong>Access control and account management</strong></summary>
+
+Roles, MFA policy, API token rotation, the de-provisioning runbook, and a quarterly access-review checklist: **[docs/access-control.md](docs/access-control.md)**.
+
+Admins manage accounts at **Settings → Server admin → Users** (change role, suspend, sign out, delete) and review activity at **Settings → Server admin → Audit log** (filter by action, actor, and date; export CSV). Audit rows are kept for `AUDIT_LOG_RETENTION_DAYS` days, default 365.
+
 </details>
 
 <details>
