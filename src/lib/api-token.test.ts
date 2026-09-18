@@ -86,6 +86,17 @@ describe("authenticateApiToken", () => {
     }
   });
 
+  it("rejects a valid token whose owner has been suspended", async () => {
+    // Suspension bumps tokenVersion, which only revokes browser sessions. Without this
+    // check a de-provisioned user's integrations keep reading their data indefinitely.
+    const res = await authenticateApiToken(
+      reqWithAuth("Bearer ft_x"),
+      "budgets:read",
+      fakeClient({ ...validRecord, user: { ...validRecord.user, disabledAt: new Date() } }),
+    );
+    expect(res.status).toBe("unauthorized");
+  });
+
   it("rejects a revoked token", async () => {
     const res = await authenticateApiToken(
       reqWithAuth("Bearer ft_x"),

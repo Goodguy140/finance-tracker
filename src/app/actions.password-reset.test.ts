@@ -15,6 +15,7 @@ vi.mock("@/lib/email", () => ({
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
+vi.mock("@/lib/oauth-provider-config", () => ({ isPasswordLoginDisabled: vi.fn(async () => false) }));
 
 const { requestPasswordResetAction } = await import("./actions/auth");
 const { sendEmail } = await import("@/lib/email");

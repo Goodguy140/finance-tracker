@@ -83,3 +83,33 @@ export function parseCsvText(csvText: string): ParsedCsv {
   );
   return { headers, rows };
 }
+
+/**
+ * Characters that make a spreadsheet treat a cell as a formula rather than as text. A cell
+ * beginning with one of these is prefixed with an apostrophe when written out.
+ *
+ * This matters because exported rows can contain attacker-influenced values — an attempted
+ * email address, a user agent — and an export exists to be opened in Excel by an
+ * administrator. Without the prefix, `=HYPERLINK(...)` typed into a sign-up form runs on
+ * their machine when they review the log. Tab and CR are included because Excel strips
+ * leading whitespace before deciding, so " =cmd" is still a formula.
+ */
+const FORMULA_PREFIXES = ["=", "+", "-", "@", "\t", "\r"];
+
+export function escapeCsvCell(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const raw = String(value);
+  const defused = FORMULA_PREFIXES.some((p) => raw.startsWith(p)) ? `'${raw}` : raw;
+  // Quote whenever the value could otherwise break the row or field structure; doubling an
+  // embedded quote is how RFC 4180 escapes it.
+  return /[",\n\r]/.test(defused) ? `"${defused.replaceAll('"', '""')}"` : defused;
+}
+
+export function toCsvRow(cells: readonly unknown[]): string {
+  return cells.map(escapeCsvCell).join(",");
+}
+
+/** CRLF line endings, per RFC 4180 — Excel is the target and it is the fussiest reader. */
+export function toCsv(header: readonly string[], rows: readonly (readonly unknown[])[]): string {
+  return [toCsvRow(header), ...rows.map(toCsvRow)].join("\r\n");
+}

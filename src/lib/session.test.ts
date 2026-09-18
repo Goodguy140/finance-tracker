@@ -39,6 +39,15 @@ describe("resolveSession", () => {
     await expect(requireSessionUser()).rejects.toThrow(`REDIRECT:${STALE_SESSION_PATH}`);
   });
 
+  it("is stale when the account has been suspended", async () => {
+    // Suspension must clear cookies like a revocation, not merely refuse: the proxy only
+    // checks that a token exists, so a refused-but-kept cookie loops /login against /.
+    getServerSession.mockResolvedValue({ user: { id: "u1", tokenVersion: 1 } });
+    findUnique.mockResolvedValue({ ...dbUser, disabledAt: new Date("2026-02-03T00:00:00.000Z") });
+    expect(await resolveSession()).toEqual({ status: "stale", reason: "user_disabled" });
+    await expect(requireSessionUser()).rejects.toThrow(`REDIRECT:${STALE_SESSION_PATH}`);
+  });
+
   it("is stale when the token version was revoked", async () => {
     getServerSession.mockResolvedValue({ user: { id: "u1", tokenVersion: 0 } });
     findUnique.mockResolvedValue(dbUser);

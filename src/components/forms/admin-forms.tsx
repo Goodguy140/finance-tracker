@@ -5,7 +5,10 @@ import {
   inputClass,
   primaryBtnClass,
 } from "./shared";
-import { updateAdminOauthSettingsAction } from "@/app/actions";
+import {
+  updateAdminOauthSettingsAction,
+  updatePasswordLoginSettingAction,
+} from "@/app/actions";
 
 export function AdminOauthForm({
   googleEnabled,
@@ -75,3 +78,43 @@ export function AdminOauthForm({
   );
 }
 
+
+export function AdminPasswordLoginForm({
+  passwordLoginDisabled,
+  configuredViaEnv,
+}: {
+  passwordLoginDisabled: boolean;
+  configuredViaEnv: boolean;
+}) {
+  return (
+    <ServerActionForm action={updatePasswordLoginSettingAction} className="space-y-2">
+      <section className="space-y-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+        <h3 className="font-semibold text-slate-100">Sign-in methods</h3>
+        {configuredViaEnv ? (
+          <p className="text-xs text-slate-400">
+            DISABLE_PASSWORD_LOGIN is set in the environment and overrides this setting. Unset it
+            to manage password sign-in from here.
+          </p>
+        ) : null}
+        <label className="flex items-center gap-2 text-slate-300">
+          <input
+            type="checkbox"
+            name="passwordLoginDisabled"
+            value="true"
+            defaultChecked={passwordLoginDisabled}
+            disabled={configuredViaEnv}
+          />
+          Disable password sign-in (single sign-on only)
+        </label>
+        <p className="text-xs text-slate-500">
+          Passkeys keep working — they need no identity provider. Refused unless Google or
+          Authentik is enabled and your own account already has that provider linked, since
+          otherwise nobody can get back in.
+        </p>
+        <button className={primaryBtnClass} disabled={configuredViaEnv}>
+          Save sign-in settings
+        </button>
+      </section>
+    </ServerActionForm>
+  );
+}

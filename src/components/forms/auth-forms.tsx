@@ -86,7 +86,7 @@ export function SignupForm() {
   );
 }
 
-export function LoginForm() {
+export function LoginForm({ passwordLoginDisabled = false }: { passwordLoginDisabled?: boolean }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +94,13 @@ export function LoginForm() {
 
   return (
     <div className="space-y-3">
+      {error ? <p className="text-sm text-red-300">{error}</p> : null}
+      {passwordLoginDisabled ? (
+        <p className="rounded-lg border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm text-slate-300">
+          This server uses single sign-on. Continue with your provider or a passkey below.
+        </p>
+      ) : null}
+      {passwordLoginDisabled ? null : (
       <form
         className="space-y-3"
         onSubmit={async (e) => {
@@ -127,7 +134,6 @@ export function LoginForm() {
           }
         }}
       >
-        {error ? <p className="text-sm text-red-300">{error}</p> : null}
         <input
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -148,6 +154,7 @@ export function LoginForm() {
           Login
         </button>
       </form>
+      )}
       <button
         type="button"
         disabled={pending}

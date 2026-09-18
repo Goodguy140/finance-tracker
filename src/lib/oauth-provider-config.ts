@@ -1,6 +1,7 @@
 import { AuthentikProvider } from "@/lib/authentik-provider";
+import { PASSWORD_LOGIN_DISABLED_KEY, resolvePasswordLoginDisabledEnv } from "@/lib/auth-settings";
 import { normalizeAuthentikIssuer } from "@/lib/oauth-settings";
-import { tryDecryptSecret } from "@/lib/security";
+import { getServerSetting } from "@/lib/server-settings";
 import { prisma } from "@/lib/prisma";
 import GoogleProvider from "next-auth/providers/google";
 import type { Provider } from "next-auth/providers/index";
@@ -14,7 +15,12 @@ import type { Provider } from "next-auth/providers/index";
  * next request at the cost of one small aggregate query instead of seven reads plus
  * decryption. Env-based Authentik config is static for the life of the process.
  */
-type CachedProviders = { signature: string; google: Provider | null; authentik: Provider | null };
+type CachedProviders = {
+  signature: string;
+  google: Provider | null;
+  authentik: Provider | null;
+  passwordLoginDisabled: boolean;
+};
 let providerCache: CachedProviders | null = null;
 let providerCacheInFlight: Promise<CachedProviders> | null = null;
 
@@ -24,8 +30,10 @@ export function invalidateOAuthProviderCache() {
 }
 
 async function oauthSettingsSignature(): Promise<string> {
+  // `auth.` is included because the SSO-only switch is resolved alongside the providers and
+  // shares this cache; `startsWith` is anchored, so it does not also match `oauth.`.
   const agg = await prisma.serverSetting.aggregate({
-    where: { key: { startsWith: "oauth." } },
+    where: { OR: [{ key: { startsWith: "oauth." } }, { key: { startsWith: "auth." } }] },
     _count: { _all: true },
     _max: { updatedAt: true },
   });
@@ -36,9 +44,13 @@ async function getCachedOAuthProviders(): Promise<CachedProviders> {
   const signature = await oauthSettingsSignature();
   if (providerCache && providerCache.signature === signature) return providerCache;
   if (!providerCacheInFlight) {
-    providerCacheInFlight = Promise.all([resolveGoogleProvider(), resolveAuthentikProvider()])
-      .then(([google, authentik]) => {
-        providerCache = { signature, google, authentik };
+    providerCacheInFlight = Promise.all([
+      resolveGoogleProvider(),
+      resolveAuthentikProvider(),
+      resolvePasswordLoginDisabled(),
+    ])
+      .then(([google, authentik, passwordLoginDisabled]) => {
+        providerCache = { signature, google, authentik, passwordLoginDisabled };
         return providerCache;
       })
       .finally(() => {
@@ -56,10 +68,15 @@ export async function getAuthentikProvider(): Promise<Provider | null> {
   return (await getCachedOAuthProviders()).authentik;
 }
 
-async function getServerSetting(key: string) {
-  const row = await prisma.serverSetting.findUnique({ where: { key } });
-  if (!row) return null;
-  return tryDecryptSecret(row.encryptedValue);
+/** True when password sign-in is turned off and only SSO or a passkey may be used. */
+export async function isPasswordLoginDisabled(): Promise<boolean> {
+  return (await getCachedOAuthProviders()).passwordLoginDisabled;
+}
+
+async function resolvePasswordLoginDisabled(): Promise<boolean> {
+  const fromEnv = resolvePasswordLoginDisabledEnv();
+  if (fromEnv !== null) return fromEnv;
+  return (await getServerSetting(PASSWORD_LOGIN_DISABLED_KEY)) === "true";
 }
 
 async function resolveGoogleProvider(): Promise<Provider | null> {

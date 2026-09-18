@@ -7,7 +7,7 @@ import { AdminMigrationHealthPanel } from "@/components/admin-migration-health";
 import { AdminOauthWarnings } from "@/components/admin-oauth-warnings";
 import { AdminRuntimeMetricsPanel } from "@/components/admin-runtime-metrics";
 import { AdminSystemHealthPanel } from "@/components/admin-system-health";
-import { AdminOauthForm } from "@/components/forms";
+import { AdminOauthForm, AdminPasswordLoginForm } from "@/components/forms";
 import { getAdminAnalytics } from "@/lib/admin-analytics";
 import { getAdminOauthStatus } from "@/lib/admin-oauth-status";
 import { getAdminRuntimeMetrics } from "@/lib/admin-runtime-metrics";
@@ -15,6 +15,8 @@ import { getAdminSystemHealth } from "@/lib/admin-system-health";
 import { getMigrationHealth, tryDecryptServerSetting } from "@/lib/migration-health";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/session";
+import { isPasswordLoginDisabled } from "@/lib/oauth-provider-config";
+import { resolvePasswordLoginDisabledEnv } from "@/lib/auth-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +35,8 @@ function readBooleanSetting(row: { encryptedValue: string } | null): boolean {
 export default async function AdminSettingsPage() {
   await requireAdmin();
   const runtimeMetrics = getAdminRuntimeMetrics();
+  const passwordLoginDisabled = await isPasswordLoginDisabled();
+  const passwordLoginViaEnv = resolvePasswordLoginDisabledEnv() !== null;
   const [health, systemHealth, analytics, oauthStatus, googleEnabledRow, googleIdRow, authentikEnabledRow, authentikIssuerRow, authentikIdRow] =
     await Promise.all([
       getMigrationHealth(prisma),
@@ -71,6 +75,22 @@ export default async function AdminSettingsPage() {
       <AdminEnvConfigPanel />
       <AdminMigrationHealthPanel schema={health.schema} oauth={health.oauth} repair={health.repair} />
       <AdminOauthWarnings status={oauthStatus} />
+      <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+        <h2 className="font-semibold text-slate-100">Users</h2>
+        <p className="text-xs text-slate-500">
+          Review who has access, change roles, suspend or remove accounts, and end sessions.
+        </p>
+        <Link
+          href="/settings/admin/users"
+          className="inline-flex rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-700"
+        >
+          Manage users
+        </Link>
+      </section>
+      <AdminPasswordLoginForm
+        passwordLoginDisabled={passwordLoginDisabled}
+        configuredViaEnv={passwordLoginViaEnv}
+      />
       <AdminOauthForm
         googleEnabled={googleEnabled}
         googleClientId={googleClientId}

@@ -1,7 +1,11 @@
 import path from "node:path";
 import type { PrismaClient } from "@prisma/client";
 import { getLoginDebugVersionLine } from "@/lib/app-version";
-import { getAuthentikProvider, getGoogleProvider } from "@/lib/oauth-provider-config";
+import {
+  getAuthentikProvider,
+  getGoogleProvider,
+  isPasswordLoginDisabled,
+} from "@/lib/oauth-provider-config";
 import { getMigrationHealth } from "@/lib/migration-health";
 
 export type EnvPresence = "present" | "missing" | "invalid";
@@ -64,10 +68,11 @@ export async function getAdminSystemHealth(prisma: PrismaClient): Promise<AdminS
   const encKey = envTrim("SERVER_SETTINGS_ENCRYPTION_KEY");
   const nextAuthUrl = envTrim("NEXTAUTH_URL");
 
-  const [migrationHealth, googleProvider, authentikProvider] = await Promise.all([
+  const [migrationHealth, googleProvider, authentikProvider, passwordLoginDisabled] = await Promise.all([
     getMigrationHealth(prisma),
     getGoogleProvider(),
     getAuthentikProvider(),
+    isPasswordLoginDisabled(),
   ]);
 
   return {
@@ -84,7 +89,8 @@ export async function getAdminSystemHealth(prisma: PrismaClient): Promise<AdminS
       NEXTAUTH_URL: nextAuthUrl ? (nextAuthUrl.startsWith("http") ? "present" : "invalid") : "missing",
     },
     authProviders: {
-      credentialsRegistered: true,
+      // No longer a constant: the SSO-only switch removes this provider entirely.
+      credentialsRegistered: !passwordLoginDisabled,
       googleRuntime: googleProvider != null,
       authentikRuntime: authentikProvider != null,
     },

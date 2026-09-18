@@ -331,3 +331,28 @@ export const recoveryCodeSchema = z.object({
 });
 
 export const ssoLinkProviderSchema = z.object({ provider: z.enum(["google", "authentik"]) });
+
+/** Admin user management. `userId` is always the target, never the acting admin. */
+export const adminUserIdSchema = z.object({ userId: z.string().min(1) });
+
+export const adminSetUserRoleSchema = z.object({
+  userId: z.string().min(1),
+  role: z.enum(["SERVER_ADMIN", "USER"]),
+});
+
+export const adminSetUserDisabledSchema = z.object({
+  userId: z.string().min(1),
+  // Checkbox/button values arrive as strings; an unchecked box submits nothing at all.
+  disabled: z.enum(["true", "false"]),
+});
+
+/** Deleting a user is irreversible and cascades their whole financial history. */
+export const adminDeleteUserSchema = z.object({
+  userId: z.string().min(1),
+  confirmEmail: z.string().trim().toLowerCase().min(1, "Type the account's email to confirm."),
+});
+
+/** SSO-only switch; an unchecked checkbox submits nothing, hence the string enum. */
+export const adminSetPasswordLoginDisabledSchema = z.object({
+  disabled: z.enum(["true", "false"]),
+});
