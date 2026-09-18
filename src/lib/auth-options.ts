@@ -46,18 +46,36 @@ export function resolveLoginMaxPerIp(raw = process.env.LOGIN_MAX_PER_IP): number
 const PASSKEY_MAX_PER_IP = 20;
 const LOGIN_RATE_LIMIT_MESSAGE = "Too many login attempts. Please try again later.";
 
+/** `authorize` is handed headers as a plain object whose values may be string or string[]. */
+function readRequestHeader(headers: Record<string, unknown> | undefined, name: string) {
+  const raw = headers?.[name];
+  if (typeof raw === "string") return raw;
+  if (Array.isArray(raw) && typeof raw[0] === "string") return raw[0];
+  return undefined;
+}
+
 /** First hop of `x-forwarded-for`, falling back to `x-real-ip`. */
 function clientIpFromRequestHeaders(headers: Record<string, unknown> | undefined) {
   if (!headers) return undefined;
-  const read = (name: string) => {
-    const raw = headers[name];
-    if (typeof raw === "string") return raw;
-    if (Array.isArray(raw) && typeof raw[0] === "string") return raw[0];
-    return undefined;
-  };
-  const forwarded = read("x-forwarded-for")?.split(",")[0]?.trim();
-  return forwarded || read("x-real-ip")?.trim() || undefined;
+  const forwarded = readRequestHeader(headers, "x-forwarded-for")?.split(",")[0]?.trim();
+  return forwarded || readRequestHeader(headers, "x-real-ip")?.trim() || undefined;
 }
+
+/**
+ * `recordAuditLog` reads client IP and user agent off a `Headers` instance, but `authorize`
+ * only ever sees a plain object. Carry across the fields the audit log actually records.
+ */
+function auditHeadersFromRequestHeaders(headers: Record<string, unknown> | undefined) {
+  const carried = new Headers();
+  for (const name of ["x-forwarded-for", "x-real-ip", "user-agent"]) {
+    const value = readRequestHeader(headers, name);
+    if (value) carried.set(name, value);
+  }
+  return carried;
+}
+
+/** Why a credentials sign-in was rejected. Recorded in `user_login_failed` metadata. */
+type LoginFailureReason = "unknown_email" | "password_login_unavailable" | "invalid_password";
 
 type AppJwt = JWT & {
   role?: "SERVER_ADMIN" | "USER";
@@ -105,10 +123,32 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         );
       }
 
+      // Recorded only below the rate limiter: the empty-credentials bail-out above it is
+      // unmetered, so auditing that branch would hand an attacker a log-flooding lever.
+      // `recordAuditLog` swallows its own failures, so none of these can break sign-in.
+      const auditHeaders = auditHeadersFromRequestHeaders(req?.headers);
+      const recordFailure = (reason: LoginFailureReason, userId: string | null) =>
+        recordAuditLog(prisma, {
+          userId,
+          action: AUDIT_ACTIONS.user_login_failed,
+          metadata: { email, reason },
+          headers: auditHeaders,
+        });
+
       const user = await prisma.user.findUnique({ where: { email } });
-      if (!user?.passwordHash) return null;
+      if (!user) {
+        await recordFailure("unknown_email", null);
+        return null;
+      }
+      if (!user.passwordHash) {
+        await recordFailure("password_login_unavailable", user.id);
+        return null;
+      }
       const valid = await compare(password, user.passwordHash);
-      if (!valid) return null;
+      if (!valid) {
+        await recordFailure("invalid_password", user.id);
+        return null;
+      }
 
       // Honest sign-ins must not accumulate toward the lockout they are protected by.
       await clearRateLimit(emailKey);
@@ -250,8 +290,23 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         return session;
       },
     },
+    // Success is recorded here rather than in `authorize` so OAuth and passkey sign-ins are
+    // covered too. Neither event takes a request argument, so `recordAuditLog` falls back to
+    // `next/headers`, which resolves inside the NextAuth route handler.
     events: {
-      async signOut() {
+      async signIn({ user, account }) {
+        await recordAuditLog(prisma, {
+          userId: user.id,
+          action: AUDIT_ACTIONS.user_login_succeeded,
+          metadata: { provider: account?.provider ?? "credentials" },
+        });
+      },
+      async signOut({ token }) {
+        // JWT strategy: `token` is populated and `session` is not.
+        await recordAuditLog(prisma, {
+          userId: (token as AppJwt | undefined)?.sub ?? null,
+          action: AUDIT_ACTIONS.user_logout,
+        });
         // Runs inside the sign-out route handler, where cookies are writable. The cookie
         // is bound to the login's `sid` and would be inert anyway; this just tidies up.
         try {

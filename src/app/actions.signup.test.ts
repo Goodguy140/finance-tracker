@@ -18,9 +18,15 @@ vi.mock("next/headers", () => ({ headers: vi.fn(async () => new Headers({ "x-for
 vi.mock("@/lib/rate-limit", () => ({ enforceSlidingWindowRateLimit: vi.fn() }));
 vi.mock("@/lib/defaults", () => ({ ensureDefaultDataForUser: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
+// Keep the real action names; `mockPrisma` has no auditLog table for the writer to use.
+vi.mock("@/lib/audit-log", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/audit-log")>()),
+  recordAuditLog: vi.fn(),
+}));
 
 const { signupAction } = await import("./actions/auth");
 const { enforceSlidingWindowRateLimit } = await import("@/lib/rate-limit");
+const { AUDIT_ACTIONS, recordAuditLog } = await import("@/lib/audit-log");
 
 function signupForm(email: string) {
   const data = new FormData();
@@ -78,6 +84,20 @@ describe("signupAction", () => {
         data: expect.objectContaining({ role: UserRole.SERVER_ADMIN }),
       }),
     );
+  });
+
+  it("audits the new account and the role it was granted", async () => {
+    delete process.env.INITIAL_ADMIN_EMAIL;
+    await signupAction(signupForm("first@example.com"));
+
+    expect(vi.mocked(recordAuditLog).mock.calls[0][1]).toMatchObject({
+      userId: "new",
+      action: AUDIT_ACTIONS.user_signed_up,
+      targetType: "User",
+      targetId: "new",
+      // The first account silently becomes admin — the reason the role is recorded at all.
+      metadata: { role: UserRole.SERVER_ADMIN },
+    });
   });
 
   it("rate limits by client address as well as by email", async () => {
