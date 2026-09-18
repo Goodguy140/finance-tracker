@@ -152,6 +152,10 @@ model AuditLog {
   @@index([createdAt])
   @@index([userId])
   @@index([action])
+  // The review UI filters by action or actor and always orders by time; the single-column
+  // indexes above leave that as a filter-then-sort over everything the filter matched.
+  @@index([action, createdAt])
+  @@index([userId, createdAt])
 }
 
 model Session {

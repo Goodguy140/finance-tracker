@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCsvLine, parseCsvRecords, parseCsvText } from "./csv";
+import { escapeCsvCell, parseCsvLine, parseCsvRecords, parseCsvText, toCsv, toCsvRow } from "./csv";
 
 describe("parseCsvText", () => {
   it("maps header cells onto each row and trims cells", () => {
@@ -47,5 +47,62 @@ describe("parseCsvRecords / parseCsvLine", () => {
   it("parses a single line", () => {
     expect(parseCsvLine('x,"y,z",w')).toEqual(["x", "y,z", "w"]);
     expect(parseCsvLine("")).toEqual([""]);
+  });
+});
+
+describe("escapeCsvCell", () => {
+  it("passes ordinary values through untouched", () => {
+    expect(escapeCsvCell("user@example.com")).toBe("user@example.com");
+    expect(escapeCsvCell(42)).toBe("42");
+  });
+
+  it("renders null and undefined as an empty field", () => {
+    expect(escapeCsvCell(null)).toBe("");
+    expect(escapeCsvCell(undefined)).toBe("");
+  });
+
+  it("quotes and doubles embedded quotes", () => {
+    expect(escapeCsvCell('say "hi"')).toBe('"say ""hi"""');
+  });
+
+  it("quotes values containing a comma or a newline", () => {
+    expect(escapeCsvCell("a,b")).toBe('"a,b"');
+    expect(escapeCsvCell("line1\nline2")).toBe('"line1\nline2"');
+  });
+
+  it.each(["=", "+", "-", "@", "\t", "\r"])("defuses a cell starting with %j", (prefix) => {
+    expect(escapeCsvCell(`${prefix}cmd`).includes("'")).toBe(true);
+  });
+
+  it("defuses a formula and still quotes it when it contains a comma", () => {
+    // Both rules apply: the apostrophe stops execution, the quoting keeps the row intact.
+    expect(escapeCsvCell('=HYPERLINK("http://evil","click")')).toBe(
+      `"'=HYPERLINK(""http://evil"",""click"")"`,
+    );
+  });
+
+  it("does not defuse a value that merely contains an equals sign", () => {
+    expect(escapeCsvCell("a=b")).toBe("a=b");
+  });
+});
+
+describe("toCsvRow / toCsv", () => {
+  it("joins cells with commas", () => {
+    expect(toCsvRow(["a", "b", null])).toBe("a,b,");
+  });
+
+  it("emits a header then rows, separated by CRLF", () => {
+    expect(toCsv(["one", "two"], [["a", "b"], ["c", "d"]])).toBe("one,two\r\na,b\r\nc,d");
+  });
+
+  it("emits just the header for an empty result", () => {
+    expect(toCsv(["one"], [])).toBe("one");
+  });
+});
+
+describe("round trip", () => {
+  it("parses back what it writes, formula prefix aside", () => {
+    const csv = toCsv(["a", "b"], [["plain, with comma", 'quote " inside']]);
+    expect(parseCsvText(csv).rows[0]).toEqual({ a: "plain, with comma", b: 'quote " inside' });
   });
 });
