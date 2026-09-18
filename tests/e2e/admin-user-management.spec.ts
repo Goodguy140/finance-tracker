@@ -1,4 +1,4 @@
-import { expect, test, type Browser } from "@playwright/test";
+import { expect, test, type Browser, type Page } from "@playwright/test";
 import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
@@ -19,6 +19,15 @@ async function createUser(email: string, role: "USER" | "SERVER_ADMIN") {
   });
   await ensureDefaultDataForUser(user);
   return user;
+}
+
+/**
+ * The admin user list renders as a table on desktop and as cards on a phone, and both are in
+ * the DOM with one hidden by CSS. Match whichever row element is actually visible so the spec
+ * exercises the layout the viewport is really showing.
+ */
+function userRow(page: Page, email: string) {
+  return page.locator("tr, li").filter({ hasText: email }).filter({ visible: true });
 }
 
 /** Signs in through the real form in its own context, so two sessions can coexist. */
@@ -44,7 +53,7 @@ test("an admin suspending a user ends that user's live session", async ({ browse
   const admin = await signIn(browser, adminEmail);
 
   await admin.page.goto("/settings/admin/users");
-  const memberRow = admin.page.getByRole("row", { name: new RegExp(memberEmail) });
+  const memberRow = userRow(admin.page, memberEmail);
   await expect(memberRow).toBeVisible();
   await memberRow.getByRole("button", { name: "Suspend" }).click();
   await expect(memberRow.getByText("suspended")).toBeVisible();
@@ -77,7 +86,7 @@ test("an admin cannot remove the last admin who can sign in", async ({ browser }
   await admin.page.goto("/settings/admin/users");
 
   // Own-account controls are absent entirely, which is the guard rail's first layer.
-  const ownRow = admin.page.getByRole("row", { name: new RegExp(adminEmail) });
+  const ownRow = userRow(admin.page, adminEmail);
   await expect(ownRow).toBeVisible();
   await expect(ownRow.getByRole("button", { name: "Suspend" })).toHaveCount(0);
   await expect(ownRow.getByText("(you)")).toBeVisible();
