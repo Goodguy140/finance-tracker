@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Account, User } from "next-auth";
 
 const db = {
@@ -30,7 +30,6 @@ vi.mock("@/lib/audit-log", async () => {
 });
 
 process.env.NEXTAUTH_SECRET = "link-test-secret";
-delete process.env.NEXTAUTH_URL;
 
 const { linkOAuthUser } = await import("./link-oauth-user");
 const { signPayload, ssoLinkCookieName } = await import("./mfa-session");
@@ -48,13 +47,24 @@ const account: Account = {
 
 const localUser = { id: "u-local", email: "alice@example.com", displayName: "Alice Local" };
 
+// Redirects are built against NEXTAUTH_URL, and importing the module pulls a .env in through
+// Prisma's dotenv load - so pin the origin here rather than trusting the ambient environment.
+const ORIGIN = "https://tracker.test";
+const env = process.env;
+
 beforeEach(() => {
   vi.clearAllMocks();
   cookieJar.clear();
+  process.env = { ...env };
+  process.env.NEXTAUTH_URL = ORIGIN;
   process.env.ALLOW_PUBLIC_SIGNUP = "true";
   delete process.env.INITIAL_ADMIN_EMAIL;
   db.authAccount.findUnique.mockResolvedValue(null);
   db.user.findUnique.mockResolvedValue(null);
+});
+
+afterEach(() => {
+  process.env = env;
 });
 
 describe("linkOAuthUser", () => {
@@ -76,7 +86,7 @@ describe("linkOAuthUser", () => {
     db.user.findUnique.mockResolvedValue(localUser);
     const result = await linkOAuthUser({ user: profile(), account, defaultDisplayName: "x" });
     expect(typeof result).toBe("string");
-    expect(result).toBe("/login?error=LinkRequired");
+    expect(result).toBe(`${ORIGIN}/login?error=LinkRequired`);
     expect(db.authAccount.create).not.toHaveBeenCalled();
     expect(recordAuditLog).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: "sso_link_rejected" }));
   });
@@ -92,7 +102,7 @@ describe("linkOAuthUser", () => {
     );
 
     const result = await linkOAuthUser({ user: profile(), account, defaultDisplayName: "x" });
-    expect(result).toBe("/settings?linked=google");
+    expect(result).toBe(`${ORIGIN}/settings?linked=google`);
     expect(consumeChallenge).toHaveBeenCalledWith("c1", "sso-link", "u-intent");
     expect(db.authAccount.create).toHaveBeenCalledWith({
       data: { provider: "google", providerAccountId: "google-sub-123", userId: "u-intent", expiresAt: account.expires_at },
@@ -107,7 +117,7 @@ describe("linkOAuthUser", () => {
       signPayload("sso-link", { userId: "u-intent", provider: "authentik", challengeId: "c1", exp: Date.now() + 60_000 }),
     );
     db.user.findUnique.mockResolvedValue(localUser);
-    expect(await linkOAuthUser({ user: profile(), account, defaultDisplayName: "x" })).toBe("/login?error=LinkRequired");
+    expect(await linkOAuthUser({ user: profile(), account, defaultDisplayName: "x" })).toBe(`${ORIGIN}/login?error=LinkRequired`);
     expect(consumeChallenge).not.toHaveBeenCalled();
 
     cookieJar.set(
@@ -115,7 +125,7 @@ describe("linkOAuthUser", () => {
       signPayload("sso-link", { userId: "u-intent", provider: "google", challengeId: "c1", exp: Date.now() + 60_000 }),
     );
     consumeChallenge.mockResolvedValue(null);
-    expect(await linkOAuthUser({ user: profile(), account, defaultDisplayName: "x" })).toBe("/login?error=LinkRequired");
+    expect(await linkOAuthUser({ user: profile(), account, defaultDisplayName: "x" })).toBe(`${ORIGIN}/login?error=LinkRequired`);
     expect(db.authAccount.create).not.toHaveBeenCalled();
   });
 
