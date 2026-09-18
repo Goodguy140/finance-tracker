@@ -200,6 +200,22 @@ describe("credentials authorize auditing", () => {
     expect(compareMock).not.toHaveBeenCalled();
   });
 
+  it("refuses a suspended account before checking its password", async () => {
+    findUnique.mockResolvedValue({
+      id: "u1",
+      email: "gone@example.com",
+      passwordHash: "hashed",
+      disabledAt: new Date("2026-02-03T00:00:00.000Z"),
+    });
+
+    expect(await authorize({ email: "gone@example.com", password: "right" })).toBeNull();
+    expect(recordAuditLogMock.mock.calls[0][1]).toMatchObject({
+      userId: "u1",
+      metadata: { reason: "account_disabled" },
+    });
+    expect(compareMock).not.toHaveBeenCalled();
+  });
+
   it("records a wrong password against the user", async () => {
     findUnique.mockResolvedValue({ id: "u1", email: "user@example.com", passwordHash: "hashed" });
     compareMock.mockResolvedValue(false as never);

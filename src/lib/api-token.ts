@@ -74,6 +74,9 @@ export async function authenticateApiToken(
   if (record.expiresAt && record.expiresAt.getTime() <= Date.now()) {
     return { status: "unauthorized" };
   }
+  // De-provisioning has to reach machine access too, or a suspended user's integrations keep
+  // reading their data. Bumping `tokenVersion` only revokes browser sessions, not bearer tokens.
+  if (record.user.disabledAt) return { status: "unauthorized" };
   if (!tokenHasScope(record.scopes, requiredScope)) return { status: "forbidden" };
 
   // Best-effort usage stamp; must never block or fail the request.

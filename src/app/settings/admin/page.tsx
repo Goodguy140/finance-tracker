@@ -71,6 +71,18 @@ export default async function AdminSettingsPage() {
       <AdminEnvConfigPanel />
       <AdminMigrationHealthPanel schema={health.schema} oauth={health.oauth} repair={health.repair} />
       <AdminOauthWarnings status={oauthStatus} />
+      <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+        <h2 className="font-semibold text-slate-100">Users</h2>
+        <p className="text-xs text-slate-500">
+          Review who has access, change roles, suspend or remove accounts, and end sessions.
+        </p>
+        <Link
+          href="/settings/admin/users"
+          className="inline-flex rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-700"
+        >
+          Manage users
+        </Link>
+      </section>
       <AdminOauthForm
         googleEnabled={googleEnabled}
         googleClientId={googleClientId}

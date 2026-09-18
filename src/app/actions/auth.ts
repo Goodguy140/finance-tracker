@@ -113,6 +113,24 @@ export const changePasswordAction = formAction(async (formData: FormData) => {
   });
 });
 
+/**
+ * Sign out every session, including this one. Sessions are stateless JWTs, so bumping
+ * `tokenVersion` is the only revocation channel there is — every guard compares the version
+ * the token carries against the current one and rejects anything older.
+ */
+export const signOutEverywhereAction = formAction(async () => {
+  const user = await requireUser();
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { tokenVersion: { increment: 1 } },
+  });
+  await recordAuditLog(prisma, {
+    userId: user.id,
+    action: AUDIT_ACTIONS.user_sessions_revoked,
+    headers: await headers(),
+  });
+});
+
 export const updateProfileAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = updateProfileSchema.parse({

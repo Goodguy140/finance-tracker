@@ -5,6 +5,7 @@ export {
   deleteAccountAction,
   requestPasswordResetAction,
   resetPasswordAction,
+  signOutEverywhereAction,
 } from "./actions/auth";
 export {
   createExpenseAction,
@@ -41,6 +42,12 @@ export {
 } from "./actions/accounts";
 export { clearUserFinancialDataAction, importUserBackupAction } from "./actions/backup";
 export { updateAdminOauthSettingsAction } from "./actions/admin";
+export {
+  setUserRoleAction,
+  setUserDisabledAction,
+  forceSignOutUserAction,
+  deleteUserAction,
+} from "./actions/admin-users";
 export { createApiTokenAction, revokeApiTokenAction } from "./actions/api-tokens";
 export {
   renamePasskeyAction,

@@ -76,6 +76,13 @@ model User {
    */
   tokenVersion            Int       @default(0)
   /**
+   * Set when an admin suspends the account. A suspended user keeps all their financial
+   * history but cannot sign in, hold a session, or use a personal access token — the
+   * de-provisioning step for someone who has left, without destroying their data. Suspending
+   * also bumps `tokenVersion`, so live sessions stop at the next request rather than at expiry.
+   */
+  disabledAt              DateTime?
+  /**
    * When set, the Add Expense form preselects this account (must be one of the user's accounts).
    */
   defaultExpenseAccountId String?

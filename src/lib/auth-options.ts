@@ -75,7 +75,11 @@ function auditHeadersFromRequestHeaders(headers: Record<string, unknown> | undef
 }
 
 /** Why a credentials sign-in was rejected. Recorded in `user_login_failed` metadata. */
-type LoginFailureReason = "unknown_email" | "password_login_unavailable" | "invalid_password";
+type LoginFailureReason =
+  | "unknown_email"
+  | "account_disabled"
+  | "password_login_unavailable"
+  | "invalid_password";
 
 type AppJwt = JWT & {
   role?: "SERVER_ADMIN" | "USER";
@@ -140,6 +144,10 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         await recordFailure("unknown_email", null);
         return null;
       }
+      if (user.disabledAt) {
+        await recordFailure("account_disabled", user.id);
+        return null;
+      }
       if (!user.passwordHash) {
         await recordFailure("password_login_unavailable", user.id);
         return null;
@@ -189,6 +197,15 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
 
       const user = await verifyPasskeySignIn(challengeId, response);
       if (!user) return null;
+      // A valid assertion from a suspended account is still a rejected sign-in.
+      if (user.disabledAt) {
+        await recordAuditLog(prisma, {
+          userId: user.id,
+          action: AUDIT_ACTIONS.user_login_failed,
+          metadata: { email: user.email, reason: "account_disabled" },
+        });
+        return null;
+      }
 
       await recordAuditLog(prisma, {
         userId: user.id,
@@ -221,11 +238,22 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
     callbacks: {
       async signIn({ user, account }) {
         if (isOAuthAccountProvider(account?.provider)) {
-          return linkOAuthUser({
+          const linked = await linkOAuthUser({
             user,
             account,
             defaultDisplayName: OAUTH_DEFAULT_NAMES[account.provider] ?? "SSO User",
           });
+          // A string is a redirect (link completed, or refused with a reason); pass it on.
+          if (linked !== true) return linked;
+          // Credentials and passkey sign-ins already rejected suspended accounts inside
+          // `authorize`. SSO has no such hook: the local row is only known once
+          // `linkOAuthUser` has resolved the provider identity to an account here.
+          const local = await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { disabledAt: true },
+          });
+          if (local?.disabledAt) return "/login?error=AccountDisabled";
+          return true;
         }
         return Boolean(user.email);
       },

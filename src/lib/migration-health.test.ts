@@ -41,7 +41,8 @@ async function createMinimalSchema(prisma: PrismaClient) {
       "id" TEXT NOT NULL PRIMARY KEY,
       "defaultExpenseAccountId" TEXT,
       "tokenVersion" INTEGER NOT NULL DEFAULT 0,
-      "budgetAlertEmailEnabled" BOOLEAN NOT NULL DEFAULT false
+      "budgetAlertEmailEnabled" BOOLEAN NOT NULL DEFAULT false,
+      "disabledAt" DATETIME
     )
   `);
   await prisma.$executeRawUnsafe(`
