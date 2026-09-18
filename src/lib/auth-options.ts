@@ -5,7 +5,11 @@ import type { JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { SESSION_MAX_AGE_S } from "@/lib/auth-constants";
-import { getAuthentikProvider, getGoogleProvider } from "@/lib/oauth-provider-config";
+import {
+  getAuthentikProvider,
+  getGoogleProvider,
+  isPasswordLoginDisabled,
+} from "@/lib/oauth-provider-config";
 import { isOAuthAccountProvider, linkOAuthUser } from "@/lib/link-oauth-user";
 import { clearMfaCookie } from "@/lib/mfa-session";
 import { prisma } from "@/lib/prisma";
@@ -75,7 +79,11 @@ function auditHeadersFromRequestHeaders(headers: Record<string, unknown> | undef
 }
 
 /** Why a credentials sign-in was rejected. Recorded in `user_login_failed` metadata. */
-type LoginFailureReason = "unknown_email" | "password_login_unavailable" | "invalid_password";
+type LoginFailureReason =
+  | "unknown_email"
+  | "account_disabled"
+  | "password_login_unavailable"
+  | "invalid_password";
 
 type AppJwt = JWT & {
   role?: "SERVER_ADMIN" | "USER";
@@ -88,9 +96,10 @@ type AppJwt = JWT & {
 };
 
 export async function getAuthOptions(): Promise<NextAuthOptions> {
-  const [googleProvider, authentikProvider] = await Promise.all([
+  const [googleProvider, authentikProvider, passwordLoginDisabled] = await Promise.all([
     getGoogleProvider(),
     getAuthentikProvider(),
+    isPasswordLoginDisabled(),
   ]);
 
   const credentialsProvider = CredentialsProvider({
@@ -100,6 +109,10 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
       password: { label: "Password", type: "password" },
     },
     async authorize(credentials, req) {
+      // The provider is left out of the array entirely below; this is the second lock, in
+      // case a stale cached options object is still serving a request when the switch flips.
+      if (await isPasswordLoginDisabled()) return null;
+
       const email = credentials?.email?.toLowerCase().trim();
       const password = credentials?.password ?? "";
       if (!email || !password) return null;
@@ -138,6 +151,10 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
       const user = await prisma.user.findUnique({ where: { email } });
       if (!user) {
         await recordFailure("unknown_email", null);
+        return null;
+      }
+      if (user.disabledAt) {
+        await recordFailure("account_disabled", user.id);
         return null;
       }
       if (!user.passwordHash) {
@@ -189,6 +206,15 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
 
       const user = await verifyPasskeySignIn(challengeId, response);
       if (!user) return null;
+      // A valid assertion from a suspended account is still a rejected sign-in.
+      if (user.disabledAt) {
+        await recordAuditLog(prisma, {
+          userId: user.id,
+          action: AUDIT_ACTIONS.user_login_failed,
+          metadata: { email: user.email, reason: "account_disabled" },
+        });
+        return null;
+      }
 
       await recordAuditLog(prisma, {
         userId: user.id,
@@ -206,7 +232,9 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
   });
 
   const providers = [
-    credentialsProvider,
+    // Passkeys stay registered: they are a passwordless first factor, so turning passwords
+    // off must not also remove the one credential that needs no identity provider at all.
+    ...(passwordLoginDisabled ? [] : [credentialsProvider]),
     passkeyProvider,
     ...(googleProvider ? [googleProvider] : []),
     ...(authentikProvider ? [authentikProvider] : []),
@@ -221,11 +249,22 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
     callbacks: {
       async signIn({ user, account }) {
         if (isOAuthAccountProvider(account?.provider)) {
-          return linkOAuthUser({
+          const linked = await linkOAuthUser({
             user,
             account,
             defaultDisplayName: OAUTH_DEFAULT_NAMES[account.provider] ?? "SSO User",
           });
+          // A string is a redirect (link completed, or refused with a reason); pass it on.
+          if (linked !== true) return linked;
+          // Credentials and passkey sign-ins already rejected suspended accounts inside
+          // `authorize`. SSO has no such hook: the local row is only known once
+          // `linkOAuthUser` has resolved the provider identity to an account here.
+          const local = await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { disabledAt: true },
+          });
+          if (local?.disabledAt) return "/login?error=AccountDisabled";
+          return true;
         }
         return Boolean(user.email);
       },

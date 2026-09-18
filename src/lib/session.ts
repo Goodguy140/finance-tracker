@@ -25,7 +25,7 @@ export const STALE_SESSION_PATH = "/api/session/stale";
 
 export type SessionResolution =
   | { status: "anonymous" }
-  | { status: "stale"; reason: "user_deleted" | "token_revoked" }
+  | { status: "stale"; reason: "user_deleted" | "token_revoked" | "user_disabled" }
   | { status: "ok"; loaded: LoadedSession };
 
 export type LoadedSession = {
@@ -92,6 +92,11 @@ export async function resolveSession(): Promise<SessionResolution> {
   });
   if (!row) return { status: "stale", reason: "user_deleted" };
   const { _count, ...user } = row;
+  // A suspended account is treated like a revoked one rather than merely refused: the
+  // cookies have to be cleared, or the proxy (which only checks that a token exists) sends
+  // /login back to / and / back to /login. Suspending bumps `tokenVersion` too, so this is
+  // belt-and-braces — it also covers a token minted in the same millisecond as the suspend.
+  if (user.disabledAt) return { status: "stale", reason: "user_disabled" };
   if (!tokenVersionMatches(session, user)) return { status: "stale", reason: "token_revoked" };
   const state = await getMfaState(session);
   return {
