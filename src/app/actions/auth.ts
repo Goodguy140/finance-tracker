@@ -71,6 +71,15 @@ export const signupAction = formAction(async (formData: FormData) => {
   });
 
   await ensureDefaultDataForUser(user);
+  await recordAuditLog(prisma, {
+    userId: user.id,
+    action: AUDIT_ACTIONS.user_signed_up,
+    targetType: "User",
+    targetId: user.id,
+    // The first account silently becomes SERVER_ADMIN; that belongs in an access review.
+    metadata: { role: user.role },
+    headers: await headers(),
+  });
   revalidatePath("/");
 });
 

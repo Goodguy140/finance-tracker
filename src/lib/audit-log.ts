@@ -3,6 +3,10 @@ import { headers } from "next/headers";
 
 export const AUDIT_ACTIONS = {
   admin_oauth_settings_updated: "admin_oauth_settings_updated",
+  user_signed_up: "user_signed_up",
+  user_login_succeeded: "user_login_succeeded",
+  user_login_failed: "user_login_failed",
+  user_logout: "user_logout",
   user_password_changed: "user_password_changed",
   user_password_reset: "user_password_reset",
   user_backup_imported: "user_backup_imported",

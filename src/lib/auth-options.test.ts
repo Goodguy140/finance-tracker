@@ -19,10 +19,34 @@ vi.mock("@/lib/rate-limit", () => ({
 }));
 
 vi.mock("@/lib/webauthn", () => ({ verifyPasskeySignIn: vi.fn() }));
-vi.mock("@/lib/audit-log", () => ({ AUDIT_ACTIONS: {}, recordAuditLog: vi.fn() }));
+// Keep the real AUDIT_ACTIONS so the auditing tests below assert on actual action names
+// rather than on `undefined` from a stubbed-out registry.
+vi.mock("@/lib/audit-log", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/audit-log")>()),
+  recordAuditLog: vi.fn(),
+}));
 vi.mock("next/headers", () => ({ cookies: vi.fn(), headers: vi.fn() }));
+vi.mock("bcryptjs", () => ({ compare: vi.fn(), hash: vi.fn() }));
 
 const { getAuthOptions, resolveLoginMaxPerIp } = await import("@/lib/auth-options");
+const { AUDIT_ACTIONS, recordAuditLog } = await import("@/lib/audit-log");
+const { compare } = await import("bcryptjs");
+
+const recordAuditLogMock = vi.mocked(recordAuditLog);
+const compareMock = vi.mocked(compare);
+
+/**
+ * `CredentialsProvider` returns a stub whose real config — `authorize`, the `id` override —
+ * lives under `options` until the NextAuth handler merges it. Reach through to that.
+ */
+function credentialsConfig(options: NextAuthOptions, id: string) {
+  const provider = options.providers.find(
+    (p) => ((p as { options?: { id?: string } }).options?.id ?? p.id) === id,
+  );
+  return (provider as unknown as {
+    options: { authorize: (c: unknown, r: unknown) => Promise<unknown> };
+  }).options;
+}
 
 type JwtCallback = NonNullable<NonNullable<NextAuthOptions["callbacks"]>["jwt"]>;
 
@@ -138,5 +162,120 @@ describe("resolveLoginMaxPerIp", () => {
     expect(resolveLoginMaxPerIp("-5")).toBe(30);
     expect(resolveLoginMaxPerIp("lots")).toBe(30);
     expect(resolveLoginMaxPerIp(" 250 ")).toBe(250);
+  });
+});
+
+describe("credentials authorize auditing", () => {
+  const req = { headers: { "x-forwarded-for": "203.0.113.9, 10.0.0.1", "user-agent": "probe/1.0" } };
+
+  async function authorize(credentials: Record<string, string>) {
+    const config = credentialsConfig(await getAuthOptions(), "credentials");
+    return config.authorize(credentials, req);
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("records an unknown email with no user id attached", async () => {
+    findUnique.mockResolvedValue(null);
+
+    expect(await authorize({ email: "Nobody@Example.com ", password: "hunter2" })).toBeNull();
+    expect(recordAuditLogMock).toHaveBeenCalledTimes(1);
+    expect(recordAuditLogMock.mock.calls[0][1]).toMatchObject({
+      userId: null,
+      action: AUDIT_ACTIONS.user_login_failed,
+      metadata: { email: "nobody@example.com", reason: "unknown_email" },
+    });
+  });
+
+  it("distinguishes an account that has no password login from a wrong password", async () => {
+    findUnique.mockResolvedValue({ id: "u1", email: "sso@example.com", passwordHash: null });
+
+    expect(await authorize({ email: "sso@example.com", password: "hunter2" })).toBeNull();
+    expect(recordAuditLogMock.mock.calls[0][1]).toMatchObject({
+      userId: "u1",
+      metadata: { reason: "password_login_unavailable" },
+    });
+    expect(compareMock).not.toHaveBeenCalled();
+  });
+
+  it("records a wrong password against the user", async () => {
+    findUnique.mockResolvedValue({ id: "u1", email: "user@example.com", passwordHash: "hashed" });
+    compareMock.mockResolvedValue(false as never);
+
+    expect(await authorize({ email: "user@example.com", password: "wrong" })).toBeNull();
+    expect(recordAuditLogMock.mock.calls[0][1]).toMatchObject({
+      userId: "u1",
+      metadata: { reason: "invalid_password" },
+    });
+  });
+
+  it("carries the client IP and user agent onto the audit row", async () => {
+    findUnique.mockResolvedValue(null);
+    await authorize({ email: "nobody@example.com", password: "hunter2" });
+
+    // `authorize` is handed a plain object, so the headers must be rebuilt as a `Headers`
+    // instance for recordAuditLog to read them at all.
+    const carried = recordAuditLogMock.mock.calls[0][1].headers;
+    expect(carried).toBeInstanceOf(Headers);
+    expect(carried?.get("x-forwarded-for")).toBe("203.0.113.9, 10.0.0.1");
+    expect(carried?.get("user-agent")).toBe("probe/1.0");
+  });
+
+  it("does not audit the unmetered empty-credentials bail-out", async () => {
+    // That branch sits above the rate limiter, so auditing it would be a log-flooding lever.
+    expect(await authorize({ email: "", password: "" })).toBeNull();
+    expect(await authorize({ email: "user@example.com", password: "" })).toBeNull();
+    expect(recordAuditLogMock).not.toHaveBeenCalled();
+    expect(findUnique).not.toHaveBeenCalled();
+  });
+
+  it("records nothing on a successful sign-in — events.signIn owns that", async () => {
+    findUnique.mockResolvedValue({
+      id: "u1",
+      email: "user@example.com",
+      passwordHash: "hashed",
+      displayName: "Test",
+      role: "USER",
+    });
+    compareMock.mockResolvedValue(true as never);
+
+    expect(await authorize({ email: "user@example.com", password: "right" })).toMatchObject({ id: "u1" });
+    expect(recordAuditLogMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("sign-in and sign-out events", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("records a successful sign-in with the provider that produced it", async () => {
+    const events = (await getAuthOptions()).events!;
+    await events.signIn!({ user: { id: "u1", email: "user@example.com" }, account: { provider: "authentik" } } as never);
+
+    expect(recordAuditLogMock.mock.calls[0][1]).toMatchObject({
+      userId: "u1",
+      action: AUDIT_ACTIONS.user_login_succeeded,
+      metadata: { provider: "authentik" },
+    });
+  });
+
+  it("falls back to credentials when no account is attached", async () => {
+    const events = (await getAuthOptions()).events!;
+    await events.signIn!({ user: { id: "u1" }, account: null } as never);
+
+    expect(recordAuditLogMock.mock.calls[0][1]).toMatchObject({ metadata: { provider: "credentials" } });
+  });
+
+  it("records sign-out against the token subject", async () => {
+    const events = (await getAuthOptions()).events!;
+    await events.signOut!({ token: { sub: "u1" } } as never);
+
+    expect(recordAuditLogMock.mock.calls[0][1]).toMatchObject({
+      userId: "u1",
+      action: AUDIT_ACTIONS.user_logout,
+    });
   });
 });
