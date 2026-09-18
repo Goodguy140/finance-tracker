@@ -1,19 +1,30 @@
 name: Test
 
+# No `push` trigger: pushes to main are covered by the nested run that
+# publish-ghcr.yml starts via `workflow_call`. Having both meant every merge ran
+# this entire workflow twice (~9 duplicated runner-minutes), and the concurrency
+# group below could not dedupe them because inside a `workflow_call`
+# `github.workflow` resolves to the *caller's* name, putting them in separate groups.
 on:
-  push:
-    branches:
-      - main
   pull_request:
   workflow_call:
 
+permissions:
+  contents: read
+
 concurrency:
-  group: test-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Superseded PRs are worth cancelling; an in-flight release is not. When called
+  # from publish-ghcr.yml, `github.event_name` is the caller's event (`push`), so
+  # two quick merges no longer have the second one cancel the first one's tests.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Fast correctness gate (~1m15s). `e2e` and `docker` fan out from here in
+  # parallel, so a PR that fails lint stops before paying for either of them.
   checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,11 +49,35 @@ jobs:
       - name: Run unit tests
         run: npm test
 
-      - name: Build app
-        run: npm run build
+      # There is deliberately no `npm run build` step here. Nothing consumed its
+      # output -- `.next` is in .dockerignore, so the Docker build never saw it, and
+      # `e2e` builds independently. The `docker` job's builder stage covers it.
 
-      - name: Docker build smoke test
-        run: docker build -t finance-tracker-app:ci .
+  docker:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # buildx (rather than plain `docker build`) so this shares a layer cache with
+      # the publish job, which previously rebuilt the same image from scratch.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          # Export to the local daemon so the smoke test below can `docker run` it.
+          load: true
+          tags: finance-tracker-app:ci
+          cache-from: type=gha
+          # mode=max: the expensive layers (npm ci in `deps`, next build in
+          # `builder`) are intermediate stages, which mode=min would not cache.
+          cache-to: type=gha,mode=max
 
       # require('@prisma/engines') catches missing @prisma/* hoisted deps; migrate deploy --help exercises the CLI without a DB.
       - name: Docker Prisma CLI runtime smoke test
@@ -51,6 +86,7 @@ jobs:
   e2e:
     needs: checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       DATABASE_URL: file:./.data/e2e.db
       NEXTAUTH_URL: http://127.0.0.1:3050
@@ -70,14 +106,36 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Prepare SQLite database path
-        run: mkdir -p .data
+      # No DB prep step here on purpose: scripts/e2e-server.cjs unlinks the SQLite
+      # file, recreates .data/, and runs `prisma db push` itself. CI used to apply
+      # all 22 migrations to a database that was deleted seconds later.
 
-      - name: Apply Prisma migrations
-        run: npx prisma migrate deploy
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+
+      # The cache holds browser binaries but not the apt-level system libraries,
+      # so those still have to be installed on a hit.
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      # scripts/e2e-server.cjs runs a full `next build` before booting standalone;
+      # persisting .next/cache makes that incremental. See Next's CI build caching guide.
+      - name: Cache Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'public/**', 'next.config.ts') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
 
       - name: Run E2E tests
         run: npm run test:e2e
