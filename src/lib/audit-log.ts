@@ -16,6 +16,7 @@ export const AUDIT_ACTIONS = {
   admin_user_sessions_revoked: "admin_user_sessions_revoked",
   admin_user_deleted: "admin_user_deleted",
   admin_audit_exported: "admin_audit_exported",
+  admin_auth_settings_updated: "admin_auth_settings_updated",
   user_backup_imported: "user_backup_imported",
   financial_account_created: "financial_account_created",
   financial_account_archived: "financial_account_archived",

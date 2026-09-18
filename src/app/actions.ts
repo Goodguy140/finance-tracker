@@ -41,7 +41,10 @@ export {
   setFinancialAccountArchivedAction,
 } from "./actions/accounts";
 export { clearUserFinancialDataAction, importUserBackupAction } from "./actions/backup";
-export { updateAdminOauthSettingsAction } from "./actions/admin";
+export {
+  updateAdminOauthSettingsAction,
+  updatePasswordLoginSettingAction,
+} from "./actions/admin";
 export {
   setUserRoleAction,
   setUserDisabledAction,

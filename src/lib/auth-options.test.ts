@@ -8,9 +8,11 @@ vi.mock("@/lib/prisma", () => ({
   prisma: { user: { findUnique } },
 }));
 
+const isPasswordLoginDisabled = vi.fn(async () => false);
 vi.mock("@/lib/oauth-provider-config", () => ({
   getGoogleProvider: vi.fn(async () => null),
   getAuthentikProvider: vi.fn(async () => null),
+  isPasswordLoginDisabled,
 }));
 
 vi.mock("@/lib/rate-limit", () => ({
@@ -293,5 +295,37 @@ describe("sign-in and sign-out events", () => {
       userId: "u1",
       action: AUDIT_ACTIONS.user_logout,
     });
+  });
+});
+
+describe("SSO-only switch", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isPasswordLoginDisabled.mockResolvedValue(false);
+  });
+
+  function providerIds(options: NextAuthOptions) {
+    return options.providers.map((p) => (p as { options?: { id?: string } }).options?.id ?? p.id);
+  }
+
+  it("registers the credentials provider while password login is allowed", async () => {
+    expect(providerIds(await getAuthOptions())).toContain("credentials");
+  });
+
+  it("removes the credentials provider but keeps passkeys when disabled", async () => {
+    // Passkeys are a passwordless first factor; turning passwords off must not take away
+    // the one credential that needs no identity provider at all.
+    isPasswordLoginDisabled.mockResolvedValue(true);
+    const ids = providerIds(await getAuthOptions());
+    expect(ids).not.toContain("credentials");
+    expect(ids).toContain("passkey");
+  });
+
+  it("refuses a password sign-in even if a stale options object still holds the provider", async () => {
+    const config = credentialsConfig(await getAuthOptions(), "credentials");
+    isPasswordLoginDisabled.mockResolvedValue(true);
+
+    expect(await config.authorize({ email: "user@example.com", password: "right" }, {})).toBeNull();
+    expect(findUnique).not.toHaveBeenCalled();
   });
 });

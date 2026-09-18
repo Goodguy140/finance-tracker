@@ -18,6 +18,7 @@ vi.mock("next/headers", () => ({ headers: vi.fn(async () => new Headers({ "x-for
 vi.mock("@/lib/rate-limit", () => ({ enforceSlidingWindowRateLimit: vi.fn() }));
 vi.mock("@/lib/defaults", () => ({ ensureDefaultDataForUser: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
+vi.mock("@/lib/oauth-provider-config", () => ({ isPasswordLoginDisabled: vi.fn(async () => false) }));
 // Keep the real action names; `mockPrisma` has no auditLog table for the writer to use.
 vi.mock("@/lib/audit-log", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/audit-log")>()),

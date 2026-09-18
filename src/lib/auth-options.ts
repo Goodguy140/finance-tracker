@@ -5,7 +5,11 @@ import type { JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { SESSION_MAX_AGE_S } from "@/lib/auth-constants";
-import { getAuthentikProvider, getGoogleProvider } from "@/lib/oauth-provider-config";
+import {
+  getAuthentikProvider,
+  getGoogleProvider,
+  isPasswordLoginDisabled,
+} from "@/lib/oauth-provider-config";
 import { isOAuthAccountProvider, linkOAuthUser } from "@/lib/link-oauth-user";
 import { clearMfaCookie } from "@/lib/mfa-session";
 import { prisma } from "@/lib/prisma";
@@ -92,9 +96,10 @@ type AppJwt = JWT & {
 };
 
 export async function getAuthOptions(): Promise<NextAuthOptions> {
-  const [googleProvider, authentikProvider] = await Promise.all([
+  const [googleProvider, authentikProvider, passwordLoginDisabled] = await Promise.all([
     getGoogleProvider(),
     getAuthentikProvider(),
+    isPasswordLoginDisabled(),
   ]);
 
   const credentialsProvider = CredentialsProvider({
@@ -104,6 +109,10 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
       password: { label: "Password", type: "password" },
     },
     async authorize(credentials, req) {
+      // The provider is left out of the array entirely below; this is the second lock, in
+      // case a stale cached options object is still serving a request when the switch flips.
+      if (await isPasswordLoginDisabled()) return null;
+
       const email = credentials?.email?.toLowerCase().trim();
       const password = credentials?.password ?? "";
       if (!email || !password) return null;
@@ -223,7 +232,9 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
   });
 
   const providers = [
-    credentialsProvider,
+    // Passkeys stay registered: they are a passwordless first factor, so turning passwords
+    // off must not also remove the one credential that needs no identity provider at all.
+    ...(passwordLoginDisabled ? [] : [credentialsProvider]),
     passkeyProvider,
     ...(googleProvider ? [googleProvider] : []),
     ...(authentikProvider ? [authentikProvider] : []),

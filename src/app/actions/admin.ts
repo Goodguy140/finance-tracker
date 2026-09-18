@@ -6,7 +6,14 @@ import { prisma } from "@/lib/prisma";
 import { encryptSecret, tryDecryptSecret } from "@/lib/security";
 import { requireAdmin } from "@/lib/session";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
-import { invalidateOAuthProviderCache } from "@/lib/oauth-provider-config";
+import { PASSWORD_LOGIN_DISABLED_KEY, describeSsoOnlyRefusal } from "@/lib/auth-settings";
+import {
+  getAuthentikProvider,
+  getGoogleProvider,
+  invalidateOAuthProviderCache,
+} from "@/lib/oauth-provider-config";
+import { setServerSetting } from "@/lib/server-settings";
+import { adminSetPasswordLoginDisabledSchema } from "@/lib/validation";
 import { resolveAuthentikOauthSettings, resolveGoogleOauthSettings } from "@/lib/oauth-settings";
 import {
   getFormValue,
@@ -74,4 +81,43 @@ export const updateAdminOauthSettingsAction = formAction(async (formData: FormDa
     headers: h,
   });
   revalidatePath("/settings/admin");
+});
+
+/**
+ * Turn password sign-in off, leaving SSO and passkeys as the only ways in.
+ *
+ * Guarded on the way in, never on the way out: re-enabling password login is always allowed,
+ * because it is the recovery path. An env `DISABLE_PASSWORD_LOGIN` still overrides whatever
+ * is stored here, which is how an admin locked out by a broken IdP gets back in.
+ */
+export const updatePasswordLoginSettingAction = formAction(async (formData: FormData) => {
+  const user = await requireAdmin();
+  const { disabled } = adminSetPasswordLoginDisabledSchema.parse({
+    disabled: getFormValue(formData, "passwordLoginDisabled") || "false",
+  });
+  const turningOff = disabled === "true";
+
+  if (turningOff) {
+    const [google, authentik, linkedProviders] = await Promise.all([
+      getGoogleProvider(),
+      getAuthentikProvider(),
+      prisma.authAccount.count({ where: { userId: user.id } }),
+    ]);
+    const refusal = describeSsoOnlyRefusal({
+      hasOAuthProvider: Boolean(google || authentik),
+      actorHasLinkedProvider: linkedProviders > 0,
+    });
+    if (refusal) throw new Error(refusal);
+  }
+
+  await setServerSetting(PASSWORD_LOGIN_DISABLED_KEY, turningOff ? "true" : "false", user.id);
+  invalidateOAuthProviderCache();
+  await recordAuditLog(prisma, {
+    userId: user.id,
+    action: AUDIT_ACTIONS.admin_auth_settings_updated,
+    metadata: { passwordLoginDisabled: turningOff },
+    headers: await headers(),
+  });
+  revalidatePath("/settings/admin");
+  revalidatePath("/login");
 });

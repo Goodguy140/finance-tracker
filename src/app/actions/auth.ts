@@ -9,6 +9,7 @@ import { ensureDefaultDataForUser } from "@/lib/defaults";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { AUDIT_ACTIONS, clientMetaFromHeaders, recordAuditLog } from "@/lib/audit-log";
+import { isPasswordLoginDisabled } from "@/lib/oauth-provider-config";
 import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
 import { sendEmail } from "@/lib/email";
 import {
@@ -39,6 +40,10 @@ export const signupAction = formAction(async (formData: FormData) => {
   });
   if (!publicSignupAllowed()) {
     throw new Error("Public sign up is disabled.");
+  }
+  // A password account created while SSO-only is on could never sign in with that password.
+  if (await isPasswordLoginDisabled()) {
+    throw new Error("This server uses single sign-on. Ask an admin to invite you.");
   }
   const email = payload.email.toLowerCase();
   const tooMany = "Too many signup attempts. Please try again later.";
@@ -162,6 +167,9 @@ export const deleteAccountAction = formAction(async (formData: FormData) => {
 });
 
 export const requestPasswordResetAction = formAction(async (formData: FormData) => {
+  if (await isPasswordLoginDisabled()) {
+    throw new Error("This server uses single sign-on; passwords cannot be reset.");
+  }
   const email = loginSchema.parse({
     email: getFormValue(formData, "email"),
     password: "12345678",
@@ -199,6 +207,9 @@ export const requestPasswordResetAction = formAction(async (formData: FormData) 
 });
 
 export const resetPasswordAction = formAction(async (formData: FormData) => {
+  if (await isPasswordLoginDisabled()) {
+    throw new Error("This server uses single sign-on; passwords cannot be reset.");
+  }
   const email = getFormValue(formData, "email").toLowerCase();
   const token = getFormValue(formData, "token");
   const newPassword = getFormValue(formData, "newPassword");

@@ -351,3 +351,8 @@ export const adminDeleteUserSchema = z.object({
   userId: z.string().min(1),
   confirmEmail: z.string().trim().toLowerCase().min(1, "Type the account's email to confirm."),
 });
+
+/** SSO-only switch; an unchecked checkbox submits nothing, hence the string enum. */
+export const adminSetPasswordLoginDisabledSchema = z.object({
+  disabled: z.enum(["true", "false"]),
+});
