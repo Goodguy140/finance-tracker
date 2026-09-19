@@ -34,6 +34,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Agent worktrees are complete checkouts of this repo nested inside it, so linting
+    // them lints a second copy of every file — and the `scripts/**` override above is
+    // root-relative, so it does not apply there and every .cjs require() fails the build.
+    // Each worktree lints itself from its own root.
+    ".claude/**",
   ]),
 ]);
 
