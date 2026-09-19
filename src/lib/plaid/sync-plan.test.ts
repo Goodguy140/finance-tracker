@@ -210,6 +210,39 @@ describe("planPage: pending becomes posted", () => {
     }
   });
 
+  it("carries the resolved transaction onto the posted row", () => {
+    // Without this the posted row is LINKED but points at nothing, so a later revision to
+    // it can be neither shown nor applied — silently losing exactly the tip-posting case
+    // the transfer machinery exists for.
+    const plan = planPage(
+      page({ added: [posted()] }),
+      context(),
+      existingMap([
+        {
+          plaidTransactionId: "ptx-pending",
+          status: PlaidStagedStatus.LINKED,
+          resolvedTransactionId: "txn-abc",
+        },
+      ]),
+    );
+    expect(plan.upserts[0].resolvedTransactionId).toBe("txn-abc");
+  });
+
+  it("leaves resolvedTransactionId unset for a row nobody has acted on", () => {
+    const plan = planPage(
+      page({ added: [posted()] }),
+      context(),
+      existingMap([
+        {
+          plaidTransactionId: "ptx-pending",
+          status: PlaidStagedStatus.NEEDS_REVIEW,
+          resolvedTransactionId: null,
+        },
+      ]),
+    );
+    expect(plan.upserts[0].resolvedTransactionId).toBeUndefined();
+  });
+
   it("stages normally when the pending row is unknown to us", () => {
     const plan = planPage(page({ added: [posted()] }), context(), existingMap([]));
     expect(plan.upserts).toHaveLength(1);

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { PlaidItemStatus, PlaidStagedStatus, type User } from "@prisma/client";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
+import { describeActionError } from "@/lib/action-errors";
 import { prisma } from "@/lib/prisma";
 import { PlaidApiError } from "@/lib/plaid/client";
 import { checkMappingAllowed } from "@/lib/plaid/mapping";
@@ -53,11 +54,20 @@ async function requireStepUp(): Promise<{ user: User } | { error: string; code: 
   }
 }
 
+/**
+ * Turns a failure into something safe to show.
+ *
+ * Plaid's own message is written for a person and is surfaced verbatim. Anything else goes
+ * through `describeActionError`, which deliberately suppresses Prisma messages because
+ * they describe internals — these three actions return their error directly rather than
+ * going through `formAction`, so without this they would be the one place in the app that
+ * leaks a database error to the browser.
+ */
 function describePlaidFailure(err: unknown): string {
   if (err instanceof PlaidApiError) {
     return err.message || `Plaid rejected the request (${err.errorCode}).`;
   }
-  return err instanceof Error ? err.message : "Something went wrong talking to Plaid.";
+  return describeActionError(err);
 }
 
 export type PlaidLinkTokenState =

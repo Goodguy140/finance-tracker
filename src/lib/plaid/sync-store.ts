@@ -151,11 +151,18 @@ export function createSyncStore(): SyncStore {
               plaidItemId: item.id,
               plaidTransactionId: upsert.plaidTransactionId,
               status: upsert.status ?? PlaidStagedStatus.NEEDS_REVIEW,
+              resolvedTransactionId: upsert.resolvedTransactionId ?? null,
               ...shared,
             },
             // A status is only forced when a decision is being inherited; otherwise the
             // user's own decision on this row must survive an update.
-            update: { ...shared, ...(upsert.status ? { status: upsert.status } : {}) },
+            update: {
+              ...shared,
+              ...(upsert.status ? { status: upsert.status } : {}),
+              ...(upsert.resolvedTransactionId
+                ? { resolvedTransactionId: upsert.resolvedTransactionId }
+                : {}),
+            },
           });
         }
 
@@ -258,7 +265,15 @@ export function createSyncStore(): SyncStore {
       });
       if (staged.length === 0) return 0;
 
-      const dates = staged.map((row) => row.date.getTime());
+      // Reduced rather than spread: an initial 24-month backfill can stage thousands of
+      // rows, and `Math.min(...arr)` passes every element as an argument.
+      let minDate = Number.POSITIVE_INFINITY;
+      let maxDate = Number.NEGATIVE_INFINITY;
+      for (const row of staged) {
+        const t = row.date.getTime();
+        if (t < minDate) minDate = t;
+        if (t > maxDate) maxDate = t;
+      }
       const tolerance = MATCH_DATE_TOLERANCE_DAYS * DAY_MS;
       // One windowed scan for the whole batch rather than a query per row — this is the
       // query `Transaction(userId, date)` was added for.
@@ -266,8 +281,8 @@ export function createSyncStore(): SyncStore {
         where: {
           userId: item.userId,
           date: {
-            gte: new Date(Math.min(...dates) - tolerance),
-            lte: new Date(Math.max(...dates) + tolerance),
+            gte: new Date(minDate - tolerance),
+            lte: new Date(maxDate + tolerance),
           },
           verification: { is: null },
         },
@@ -310,16 +325,32 @@ export function createSyncStore(): SyncStore {
 
       const assigned = assignMatches(forMatch, candidates);
 
+      // Most rows have no match, and they all get identical (null) values — so they go in
+      // one statement rather than one per row. An initial backfill can stage thousands,
+      // and Prisma's interactive transactions run sequentially, so a write per row is the
+      // difference between one round trip and several thousand.
+      const unmatchedIds = staged.filter((row) => !assigned.has(row.id)).map((row) => row.id);
+
       await prisma.$transaction(async (tx) => {
-        for (const row of staged) {
-          const match = assigned.get(row.id);
-          await tx.plaidStagedTransaction.update({
-            where: { id: row.id },
+        if (unmatchedIds.length > 0) {
+          await tx.plaidStagedTransaction.updateMany({
+            where: { id: { in: unmatchedIds } },
             data: {
-              matchTransactionId: match?.transactionId ?? null,
-              matchScore: match?.score ?? null,
-              matchTier: match?.tier ?? null,
-              matchReasonsJson: match ? JSON.stringify(match.reasons) : null,
+              matchTransactionId: null,
+              matchScore: null,
+              matchTier: null,
+              matchReasonsJson: null,
+            },
+          });
+        }
+        for (const [stagedId, match] of assigned) {
+          await tx.plaidStagedTransaction.update({
+            where: { id: stagedId },
+            data: {
+              matchTransactionId: match.transactionId,
+              matchScore: match.score,
+              matchTier: match.tier,
+              matchReasonsJson: JSON.stringify(match.reasons),
             },
           });
         }

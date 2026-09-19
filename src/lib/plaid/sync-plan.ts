@@ -56,6 +56,12 @@ export type StagedUpsert = {
   suggestedAccountId: string | null;
   /** Forced status, used when a decision is inherited from a superseded pending row. */
   status?: PlaidStagedStatus;
+  /**
+   * Carried over with an inherited decision. Without it the posted row is LINKED or ADDED
+   * but points at nothing, so a later revision to it cannot be shown or applied — which is
+   * precisely the tip-posting case the transfer machinery exists for.
+   */
+  resolvedTransactionId?: string | null;
 };
 
 /** A committed row whose bank record was replaced by its posted successor. */
@@ -247,7 +253,11 @@ export function planPage(
           return;
         case PlaidStagedStatus.LINKED:
         case PlaidStagedStatus.ADDED:
-          plan.upserts.push({ ...upsert, status: pendingRow.status });
+          plan.upserts.push({
+            ...upsert,
+            status: pendingRow.status,
+            resolvedTransactionId: pendingRow.resolvedTransactionId,
+          });
           plan.supersede.push(pendingId);
           if (pendingRow.resolvedTransactionId) {
             plan.transfers.push({
