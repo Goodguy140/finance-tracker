@@ -78,9 +78,9 @@ export function ApiTokensPanel({ tokens, mfa }: { tokens: ApiTokenRow[]; mfa: Ap
   const mfaError = stepUpError ?? (state.ok === false && state.code ? state.error : null);
 
   return (
-    <div role="tabpanel" aria-label="API tokens" className="mx-auto max-w-2xl space-y-6">
-      <header className="space-y-2 border-b border-slate-800/80 pb-6">
-        <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">API tokens</h2>
+    <section aria-labelledby="api-tokens-heading" className="space-y-6">
+      <header className="space-y-2">
+        <h3 id="api-tokens-heading" className="text-base font-semibold text-slate-100 lg:text-lg">API tokens</h3>
         <p className="max-w-prose text-sm leading-relaxed text-slate-400">
           Connect external apps — like your Life Dashboard — to read your budgets over the API.
           Tokens are scoped to <code className="rounded bg-slate-800 px-1 py-0.5 text-xs">budgets:read</code>,
@@ -184,6 +184,6 @@ export function ApiTokensPanel({ tokens, mfa }: { tokens: ApiTokenRow[]; mfa: Ap
           </ul>
         )}
       </div>
-    </div>
+    </section>
   );
 }

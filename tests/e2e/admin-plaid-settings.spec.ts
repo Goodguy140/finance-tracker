@@ -40,7 +40,7 @@ test("an admin can store Plaid credentials, and the secret is encrypted and neve
   page,
 }) => {
   const email = `plaid-admin-${Date.now()}@example.com`;
-  await createAdmin(email);
+  const user = await createAdmin(email);
   await signIn(page, email);
 
   await page.goto("/settings/admin");
@@ -55,9 +55,18 @@ test("an admin can store Plaid credentials, and the secret is encrypted and neve
   await section.getByRole("combobox").selectOption("production");
   await section.getByRole("button", { name: "Save Plaid settings" }).click();
 
+  // Polled on the audit row, which the action writes last. Waiting on anything earlier
+  // observes the gaps between the action's sequential writes and reads a row that is about
+  // to exist as missing — which is how this flaked twice.
   await expect
-    .poll(async () => readPlaidSetting("plaid.clientId"), { timeout: 10_000 })
-    .toBe("test-client-id");
+    .poll(
+      async () =>
+        prisma.auditLog.count({ where: { action: "plaid_settings_updated", userId: user.id } }),
+      { timeout: 10_000 },
+    )
+    .toBeGreaterThan(0);
+
+  expect(await readPlaidSetting("plaid.clientId")).toBe("test-client-id");
   expect(await readPlaidSetting("plaid.secret")).toBe("test-secret-value");
   expect(await readPlaidSetting("plaid.enabled")).toBe("true");
   expect(await readPlaidSetting("plaid.env")).toBe("production");
@@ -68,7 +77,7 @@ test("an admin can store Plaid credentials, and the secret is encrypted and neve
 
   // The audit trail records the change without the credential values.
   const audit = await prisma.auditLog.findFirst({
-    where: { action: "plaid_settings_updated" },
+    where: { action: "plaid_settings_updated", userId: user.id },
     orderBy: { createdAt: "desc" },
   });
   expect(audit).not.toBeNull();
@@ -85,7 +94,12 @@ test("an admin can store Plaid credentials, and the secret is encrypted and neve
   await section.getByPlaceholder("Plaid client ID").fill("second-client-id");
   await section.getByRole("button", { name: "Save Plaid settings" }).click();
   await expect
-    .poll(async () => readPlaidSetting("plaid.clientId"), { timeout: 10_000 })
-    .toBe("second-client-id");
+    .poll(
+      async () =>
+        prisma.auditLog.count({ where: { action: "plaid_settings_updated", userId: user.id } }),
+      { timeout: 10_000 },
+    )
+    .toBe(2);
+  expect(await readPlaidSetting("plaid.clientId")).toBe("second-client-id");
   expect(await readPlaidSetting("plaid.secret")).toBe("test-secret-value");
 });

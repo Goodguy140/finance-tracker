@@ -82,8 +82,8 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
   await enrolFirstPasskey(page, PASSWORD);
 
   // --- connect and map ---
-  await openSettingsTab(page, "banks");
-  const panel = page.getByRole("tabpanel", { name: "Banks" });
+  await openSettingsTab(page, "accounts");
+  const panel = page.getByRole("region", { name: "Connected banks" });
   await panel.getByLabel("How far back to fetch").selectOption("90");
   await panel.getByRole("button", { name: "Connect a bank" }).click();
   await expect(panel.getByText(/Connected to Test Credit Union/i)).toBeVisible({ timeout: 15_000 });
@@ -102,8 +102,8 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
 
   // --- sync ---
   await page.reload();
-  await openSettingsTab(page, "banks");
-  await page.getByRole("tabpanel", { name: "Banks" }).getByRole("button", { name: "Sync now" }).click();
+  await openSettingsTab(page, "accounts");
+  await page.getByRole("region", { name: "Connected banks" }).getByRole("button", { name: "Sync now" }).click();
 
   await expect
     .poll(
@@ -190,8 +190,8 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
   expect(added.verification?.source).toBe("IMPORTED");
 
   // --- a second sync is a no-op: nothing is re-proposed ---
-  await openSettingsTab(page, "banks");
-  await page.getByRole("tabpanel", { name: "Banks" }).getByRole("button", { name: "Sync now" }).click();
+  await openSettingsTab(page, "accounts");
+  await page.getByRole("region", { name: "Connected banks" }).getByRole("button", { name: "Sync now" }).click();
   await page.waitForTimeout(2_000);
   expect(
     await prisma.plaidStagedTransaction.count({

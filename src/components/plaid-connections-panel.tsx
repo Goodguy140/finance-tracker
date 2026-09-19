@@ -172,9 +172,11 @@ export function PlaidConnectionsPanel({
     (unlinkState.ok === false ? unlinkState.error : null);
 
   return (
-    <div role="tabpanel" aria-label="Banks" className="mx-auto max-w-3xl space-y-6">
-      <header className="space-y-2 border-b border-slate-800/80 pb-6">
-        <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Banks</h2>
+    <section aria-labelledby="connected-banks-heading" className="space-y-6">
+      <header className="space-y-2">
+        <h3 id="connected-banks-heading" className="text-lg font-semibold tracking-tight text-slate-100 lg:text-xl">
+          Connected banks
+        </h3>
         <p className="max-w-prose text-sm leading-relaxed text-slate-400">
           Connect a bank to pull in transactions and confirm the ones you have already
           entered. Nothing is added to your log automatically — every synced transaction
@@ -406,6 +408,6 @@ export function PlaidConnectionsPanel({
           ))}
         </ul>
       )}
-    </div>
+    </section>
   );
 }

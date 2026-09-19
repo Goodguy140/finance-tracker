@@ -89,7 +89,7 @@ test.describe("passkey MFA", () => {
     await loginWithPassword(page, account.email, account.password);
 
     await openSettingsTab(page, "integrations");
-    const panel = page.getByRole("tabpanel", { name: "API tokens" });
+    const panel = page.getByRole("region", { name: "API tokens" });
     await expect(panel.getByText("Creating a token requires a passkey.")).toBeVisible();
     await expect(panel.getByRole("button", { name: "Create token" })).toBeDisabled();
 
