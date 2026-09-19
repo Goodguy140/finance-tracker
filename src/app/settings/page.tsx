@@ -9,6 +9,14 @@ import { MFA_STEP_UP_MAX_AGE_MS } from "@/lib/auth-constants";
 import { getAuthentikProvider, getGoogleProvider } from "@/lib/oauth-provider-config";
 import { prisma } from "@/lib/prisma";
 import { requireLoadedUser } from "@/lib/session";
+import { getPlaidConfig } from "@/lib/plaid/config";
+import { plaidFakeClientEnabled } from "@/lib/plaid/service";
+import {
+  describeHistorySetting,
+  describeShortfall,
+  HISTORY_WINDOWS,
+} from "@/lib/plaid/window";
+import type { PlaidConnectionsPanelProps } from "@/components/plaid-connections-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +47,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     authAccounts,
     googleProvider,
     authentikProvider,
+    plaidItems,
+    plaidConfig,
+    plaidFakeLink,
   ] = await Promise.all([
     prisma.account.findMany({ where: { userId: user.id }, orderBy: { name: "asc" } }),
     prisma.category.findMany({ where: { userId: user.id, kind: CategoryKind.EXPENSE }, orderBy: { name: "asc" } }),
@@ -77,6 +88,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     prisma.authAccount.findMany({ where: { userId: user.id }, select: { provider: true } }),
     getGoogleProvider(),
     getAuthentikProvider(),
+    prisma.plaidItem.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "asc" },
+      include: { plaidAccounts: { orderBy: { name: "asc" } } },
+    }),
+    getPlaidConfig(),
+    plaidFakeClientEnabled(),
   ]);
 
   const availableProviders = [
@@ -159,6 +177,48 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     };
   });
 
+  const plaid: PlaidConnectionsPanelProps = {
+    configured: plaidConfig !== null,
+    fakeLink: plaidFakeLink,
+    environment: plaidConfig?.environment ?? null,
+    historyWindows: HISTORY_WINDOWS.map((w) => ({ days: w.days, label: w.label })),
+    accountOptions: activeAccounts.map((account) => ({
+      id: account.id,
+      name: account.name,
+      currency: account.currency,
+    })),
+    mfa: { enrolled: passkeyRecords.length > 0, freshUntil: security.freshUntil },
+    items: plaidItems.map((item) => ({
+      id: item.id,
+      institutionName: item.institutionName ?? "Your bank",
+      status: item.status,
+      errorMessage: item.errorMessage,
+      // Read from the stored cutoff rather than recomputed, so what the user was promised
+      // when they linked cannot drift as days pass.
+      historyLine: describeHistorySetting(item.requestedDays, item.historyCutoff),
+      shortfallLine: describeShortfall({
+        institutionName: item.institutionName,
+        requestedDays: item.requestedDays,
+        requestedCutoff: item.historyCutoff,
+        earliestObserved: item.initialSyncDoneAt ? item.earliestObservedAt : null,
+      }),
+      lastSyncedLabel: item.lastSyncedAt ? formatDateOnlyUtc(item.lastSyncedAt) : null,
+      consentExpiresLabel: item.consentExpiresAt ? formatDateOnlyUtc(item.consentExpiresAt) : null,
+      accounts: item.plaidAccounts.map((account) => ({
+        id: account.id,
+        name: account.name,
+        officialName: account.officialName,
+        mask: account.mask,
+        typeLabel: account.plaidSubtype
+          ? `${account.plaidType} · ${account.plaidSubtype}`
+          : account.plaidType,
+        currency: account.currency,
+        accountId: account.accountId,
+        syncEnabled: account.syncEnabled,
+      })),
+    })),
+  };
+
   return (
     <main className="mx-auto my-6 w-full max-w-6xl space-y-5 px-4 pb-10 pt-2 text-slate-100 sm:px-5 lg:my-10 lg:space-y-6 lg:px-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
@@ -199,6 +259,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
         budgetAlertEmailEnabled={user.budgetAlertEmailEnabled}
         apiTokens={apiTokens}
         security={security}
+        plaid={plaid}
       />
     </main>
   );

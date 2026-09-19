@@ -36,6 +36,7 @@ import {
 import { ExpenseCsvImportForm } from "./expense-forms";
 import { SubscriptionsPanel, type SubscriptionView } from "@/components/subscriptions-panel";
 import { ApiTokensPanel, type ApiTokenRow, type ApiTokensMfaState } from "@/components/api-tokens-panel";
+import { PlaidConnectionsPanel, type PlaidConnectionsPanelProps } from "@/components/plaid-connections-panel";
 import { SecurityPanel, type SecurityPanelProps } from "@/components/security-panel";
 
 export function BudgetForm({ expenseCategories }: { expenseCategories: Option[] }) {
@@ -280,7 +281,7 @@ export function InvestmentForms({ accounts }: { accounts: Option[] }) {
   );
 }
 
-type SettingsTabId = "profile" | "data" | "subscriptions" | "budgets" | "integrations" | "advanced";
+type SettingsTabId = "profile" | "data" | "banks" | "subscriptions" | "budgets" | "integrations" | "advanced";
 
 const SETTINGS_TAB_META: { id: SettingsTabId; label: string; labelCompact: string; hint: string }[] = [
   {
@@ -294,6 +295,12 @@ const SETTINGS_TAB_META: { id: SettingsTabId; label: string; labelCompact: strin
     label: "Import & accounts",
     labelCompact: "Import",
     hint: "CSV import and financial accounts",
+  },
+  {
+    id: "banks",
+    label: "Banks",
+    labelCompact: "Banks",
+    hint: "Connect a bank and sync transactions",
   },
   {
     id: "subscriptions",
@@ -337,6 +344,7 @@ export function SettingsForms({
   budgetAlertEmailEnabled,
   apiTokens,
   security,
+  plaid,
 }: {
   defaults: { displayName: string; countryCode: string; timezone: string };
   profileEmail: string;
@@ -352,6 +360,7 @@ export function SettingsForms({
   budgetAlertEmailEnabled: boolean;
   apiTokens: ApiTokenRow[];
   security: SecurityPanelProps;
+  plaid: PlaidConnectionsPanelProps;
 }) {
   const [tab, setTab] = useState<SettingsTabId>("profile");
   const tablistRef = useRef<HTMLDivElement | null>(null);
@@ -379,6 +388,7 @@ export function SettingsForms({
       if (h === "#budgets") setTab("budgets");
       else if (h === "#subscriptions" || h === "#subs") setTab("subscriptions");
       else if (h === "#data" || h === "#import" || h === "#accounts") setTab("data");
+      else if (h === "#banks" || h === "#plaid") setTab("banks");
       else if (h === "#integrations" || h === "#api" || h === "#tokens") setTab("integrations");
       else if (h === "#advanced") setTab("advanced");
       else if (h === "#profile" || h === "#security") setTab("profile");
@@ -1068,6 +1078,8 @@ export function SettingsForms({
             </section>
           </div>
         ) : null}
+
+        {tab === "banks" ? <PlaidConnectionsPanel {...plaid} /> : null}
 
         {tab === "integrations" ? (
           <ApiTokensPanel tokens={apiTokens} mfa={{ enrolled: security.passkeys.length > 0, freshUntil: security.freshUntil } satisfies ApiTokensMfaState} />

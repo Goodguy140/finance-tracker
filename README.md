@@ -79,6 +79,18 @@ Configure under **Settings → Server admin → OAuth** (encrypted in the databa
 <details>
 <summary>Plaid bank sync (env overrides admin UI)</summary>
 
+Once configured, users connect a bank under **Settings → Banks**. Connecting or disconnecting
+requires a passkey assertion from the last few minutes, the same bar as minting an API token.
+
+Each Plaid account must be mapped to one of the user's accounts before anything syncs, and a
+mapping is refused when the currencies differ — amounts are stored as plain cents against the
+account's own currency and there is no conversion layer, so mixing them would silently corrupt
+every total.
+
+Disconnecting calls Plaid's `/item/remove` **before** deleting anything locally, and refuses the
+whole operation if that fails. Deleting the local rows alone would leave the connection live at
+Plaid, still billing and still holding access to the bank account.
+
 Configure under **Settings → Server admin → Plaid** (encrypted in the database with
 `SERVER_SETTINGS_ENCRYPTION_KEY`). `PLAID_CLIENT_ID` and `PLAID_SECRET` in the environment take
 precedence when **both** are set, in which case `PLAID_ENV` selects the host; a half-set pair is

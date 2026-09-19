@@ -53,6 +53,10 @@ function getE2eEnv(): Record<string, string> {
   env.PLAID_CLIENT_ID = "";
   env.PLAID_SECRET = "";
   env.PLAID_ENV = "";
+  // Swaps in the deterministic in-memory Plaid, so the link/mapping/unlink flows run
+  // against a real browser and database without a Plaid account — and so no spec can
+  // reach the live API even if credentials leak into the environment some other way.
+  env.PLAID_FAKE_CLIENT = "1";
   return env;
 }
 

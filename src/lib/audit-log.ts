@@ -41,6 +41,11 @@ export const AUDIT_ACTIONS = {
   sso_link_rejected: "sso_link_rejected",
   sso_account_unlinked: "sso_account_unlinked",
   plaid_settings_updated: "plaid_settings_updated",
+  plaid_link_started: "plaid_link_started",
+  plaid_item_linked: "plaid_item_linked",
+  plaid_item_unlinked: "plaid_item_unlinked",
+  plaid_item_unlink_failed: "plaid_item_unlink_failed",
+  plaid_account_mapped: "plaid_account_mapped",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

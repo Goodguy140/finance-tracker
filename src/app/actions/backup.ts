@@ -10,6 +10,7 @@ import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { userBackupSchema } from "@/lib/backup-schema";
 import { resolveBackupUserProfileFields } from "@/lib/backup-restore";
 import { revokePlaidItemsForUser } from "@/lib/plaid/unlink";
+import { tryMakePlaidItemRevoker } from "@/lib/plaid/service";
 import {
   getFormValue,
   LONG_TRANSACTION_OPTIONS,
@@ -24,7 +25,7 @@ export const clearUserFinancialDataAction = formAction(async (formData: FormData
 
   // A reset drops the Plaid rows along with everything else, so the connections have to be
   // revoked at Plaid first or they outlive the data they were feeding.
-  await revokePlaidItemsForUser(prisma, user.id);
+  await revokePlaidItemsForUser(prisma, user.id, await tryMakePlaidItemRevoker());
 
   await prisma.$transaction(async (tx) => {
     await tx.user.update({

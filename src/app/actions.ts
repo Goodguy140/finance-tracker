@@ -59,3 +59,4 @@ export {
   unlinkSsoProviderAction,
 } from "./actions/mfa";
 export { setBudgetAlertEmailAction } from "./actions/preferences";
+export { mapPlaidAccountAction } from "./actions/plaid";
