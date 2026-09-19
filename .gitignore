@@ -14,6 +14,9 @@
 /coverage
 /.data/
 prisma/.data/
+/test-results/
+/playwright-report/
+/blob-report/
 
 # next.js
 /.next/
