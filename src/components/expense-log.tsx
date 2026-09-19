@@ -5,6 +5,7 @@ import { useActionState, useEffect, useId, useMemo, useState, useSyncExternalSto
 import { useRouter } from "next/navigation";
 import { deleteExpenseTransactionAction, updateExpenseAction } from "@/app/actions";
 import { MetaChip } from "@/components/meta-chip";
+import { VerifiedBadge, verificationTooltip, type VerificationInfo } from "@/components/verified-badge";
 import {
   type ExpenseGroupSummary,
   groupExpenseLogEntries,
@@ -49,6 +50,8 @@ export type ExpenseLogEntry = {
   accountLabel: string;
   categoryLabel: string;
   isSplit: boolean;
+  /** Set once the transaction has been confirmed against a bank record. */
+  verification: VerificationInfo | null;
 };
 
 type UpdateState = { ok: true } | { ok: false; error: string | null };
@@ -152,6 +155,7 @@ function ExpenseChipRow({ txn }: { txn: ExpenseLogEntry }) {
     <div className="mt-1 flex flex-wrap gap-1.5">
       <MetaChip label="Category">{txn.categoryLabel}</MetaChip>
       <MetaChip label="Account">{txn.accountLabel}</MetaChip>
+      {txn.verification ? <VerifiedBadge info={txn.verification} /> : null}
       <MetaChip label="Transaction">{txn.dateDisplay}</MetaChip>
       {txn.postedDateDisplay ? <MetaChip label="Posted">{txn.postedDateDisplay}</MetaChip> : null}
       {txn.note ? <MetaChip label="Note">{txn.note}</MetaChip> : null}
@@ -171,9 +175,16 @@ function ExpenseLogMeta({
   if (density === "compact") {
     const parts: string[] = [txn.categoryLabel, txn.accountLabel, txn.dateDisplay];
     if (txn.postedDateDisplay) parts.push(`posted ${txn.postedDateDisplay}`);
+    if (txn.verification) parts.push("Verified");
     if (txn.note) parts.push(txn.note);
     const line = parts.join(" · ");
-    const fullTitle = [isSplit ? "Split (view only)" : null, line].filter(Boolean).join(" · ");
+    // `title` never fires on touch, so the verification detail is spelled out here
+    // rather than living only in the badge tooltip.
+    const fullTitle = [
+      isSplit ? "Split (view only)" : null,
+      line,
+      txn.verification ? verificationTooltip(txn.verification) : null,
+    ].filter(Boolean).join(" · ");
     return (
       <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-slate-400 sm:text-xs" title={fullTitle}>
         {isSplit ? (

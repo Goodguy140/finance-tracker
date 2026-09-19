@@ -30,6 +30,78 @@ function state(): FakeState {
   return globalState.__plaidFakeState;
 }
 
+/** `YYYY-MM-DD`, `daysAgo` before today. Keeps fixtures inside any history window. */
+function daysAgo(days: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * The transactions a first sync returns. Chosen to exercise each path the review queue
+ * has to handle, and deterministic so a test can set up the matching side by hand:
+ *
+ *  - LOBLAWS is an ordinary new expense with nothing to match against;
+ *  - BLUE BOTTLE is priced and dated to match a hand-entered transaction the test creates;
+ *  - PAYROLL is income, so the income branch of the category map is exercised;
+ *  - REFUND is a negative non-income amount, which must book as a negative expense.
+ */
+export const FAKE_SYNC_AMOUNTS = {
+  groceries: 84.21,
+  coffee: 12.0,
+  payroll: -2500.0,
+  refund: -45.9,
+} as const;
+
+export function fakeSyncTransactions(): PlaidApiTransaction[] {
+  return [
+    {
+      transaction_id: "fake-txn-groceries",
+      account_id: "fake-acct-chequing",
+      amount: FAKE_SYNC_AMOUNTS.groceries,
+      iso_currency_code: "CAD",
+      date: daysAgo(3),
+      name: "LOBLAWS #1234 TORONTO ON",
+      merchant_name: "Loblaws",
+      pending: false,
+      personal_finance_category: { primary: "FOOD_AND_DRINK", detailed: "GROCERIES" },
+    },
+    {
+      transaction_id: "fake-txn-coffee",
+      account_id: "fake-acct-chequing",
+      amount: FAKE_SYNC_AMOUNTS.coffee,
+      iso_currency_code: "CAD",
+      date: daysAgo(2),
+      name: "SQ *BLUE BOTTLE #412 TORONTO ON",
+      merchant_name: "Blue Bottle Coffee",
+      pending: false,
+      personal_finance_category: { primary: "FOOD_AND_DRINK", detailed: "COFFEE" },
+    },
+    {
+      transaction_id: "fake-txn-payroll",
+      account_id: "fake-acct-chequing",
+      amount: FAKE_SYNC_AMOUNTS.payroll,
+      iso_currency_code: "CAD",
+      date: daysAgo(5),
+      name: "ACME PAYROLL",
+      merchant_name: "Acme Inc",
+      pending: false,
+      personal_finance_category: { primary: "INCOME", detailed: "INCOME_WAGES" },
+    },
+    {
+      transaction_id: "fake-txn-refund",
+      account_id: "fake-acct-chequing",
+      amount: FAKE_SYNC_AMOUNTS.refund,
+      iso_currency_code: "CAD",
+      date: daysAgo(1),
+      name: "AMZN MKTP REFUND",
+      merchant_name: "Amazon",
+      pending: false,
+      personal_finance_category: { primary: "GENERAL_MERCHANDISE", detailed: "RETURN" },
+    },
+  ];
+}
+
 export const FAKE_INSTITUTION_NAME = "Test Credit Union";
 export const FAKE_PUBLIC_TOKEN_PREFIX = "public-sandbox-";
 
@@ -103,11 +175,15 @@ export function createFakePlaidClient(): PlaidClient {
           httpStatus: 400,
         });
       }
-      // The token's suffix names the item, so a test can deliberately re-link the same
-      // institution and exercise the "already linked" and re-auth paths.
+      // Every exchange yields a distinct item, as real Plaid does: two people linking the
+      // same institution get different item_ids. Deriving the id from the fixture token
+      // instead made two specs collide on the "already linked here" guard, which was the
+      // guard working correctly against a fake that did not behave like Plaid.
       const suffix = publicToken.slice(FAKE_PUBLIC_TOKEN_PREFIX.length) || "default";
-      const itemId = `fake-item-${suffix}`;
-      const accessToken = `access-sandbox-${suffix}-${Date.now()}`;
+      const s = state();
+      s.counter += 1;
+      const itemId = `fake-item-${suffix}-${s.counter}-${Date.now()}`;
+      const accessToken = `access-sandbox-${itemId}`;
       state().items.set(itemId, {
         itemId,
         accessToken,
@@ -142,13 +218,23 @@ export function createFakePlaidClient(): PlaidClient {
       return { institution: { institution_id: institutionId, name: FAKE_INSTITUTION_NAME } };
     },
 
-    async transactionsSync() {
-      // Phase 4 fills this in; linking and mapping do not sync.
+    async transactionsSync({ cursor }) {
+      // First walk returns the fixture; every later one is empty, exactly as a real item
+      // behaves once its cursor is current.
+      if (cursor) {
+        return {
+          added: [],
+          modified: [],
+          removed: [],
+          next_cursor: cursor,
+          has_more: false,
+        };
+      }
       return {
-        added: [] as PlaidApiTransaction[],
-        modified: [] as PlaidApiTransaction[],
+        added: fakeSyncTransactions(),
+        modified: [],
         removed: [],
-        next_cursor: "fake-cursor-empty",
+        next_cursor: "fake-cursor-1",
         has_more: false,
       };
     },

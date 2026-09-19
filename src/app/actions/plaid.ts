@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { PlaidItemStatus, type User } from "@prisma/client";
+import { PlaidItemStatus, PlaidStagedStatus, type User } from "@prisma/client";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { prisma } from "@/lib/prisma";
 import { PlaidApiError } from "@/lib/plaid/client";
@@ -21,7 +21,17 @@ import {
 } from "@/lib/plaid/window";
 import { formatDateOnlyUtc } from "@/lib/date-only";
 import { MfaStepUpRequiredError, requireFreshMfa, requireUser, type MfaStepUpCode } from "@/lib/session";
-import { formAction, getFormValue } from "./_helpers";
+import { syncPlaidItem } from "@/lib/plaid/sync";
+import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
+import {
+  assertUserOwnsAccount,
+  assertUserOwnsCategory,
+  categoryKindForTransactionType,
+  formAction,
+  getFormValue,
+  LONG_TRANSACTION_OPTIONS,
+  parseJsonField,
+} from "./_helpers";
 
 const SETTINGS_PATH = "/settings";
 
@@ -406,3 +416,273 @@ export async function unlinkPlaidItemAction(
   revalidatePath("/");
   return { ok: true, institutionName: item.institutionName ?? "Your bank" };
 }
+
+/** Runs a sync for one bank now. Nothing enters the log — rows land in the review queue. */
+export const syncPlaidItemAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const plaidItemId = getFormValue(formData, "plaidItemId");
+  const item = await prisma.plaidItem.findFirst({
+    where: { id: plaidItemId, userId: user.id },
+    select: { id: true, institutionName: true },
+  });
+  if (!item) throw new Error("That bank connection was not found.");
+
+  const client = await requirePlaidClient();
+  const { createSyncStore } = await import("@/lib/plaid/sync-store");
+
+  try {
+    const summary = await syncPlaidItem({ client, store: createSyncStore() }, item.id);
+    await recordAuditLog(prisma, {
+      userId: user.id,
+      action: AUDIT_ACTIONS.plaid_item_sync_succeeded,
+      targetType: "PlaidItem",
+      targetId: item.id,
+      metadata: {
+        institution: item.institutionName,
+        staged: summary.staged,
+        pages: summary.pages,
+        skippedUnmapped: summary.skipped.unmapped,
+        skippedBeforeCutoff: summary.skipped.beforeCutoff,
+      },
+      headers: await headers(),
+    });
+  } catch (err) {
+    const needsReauth = err instanceof PlaidApiError && err.needsReauth;
+    await recordAuditLog(prisma, {
+      userId: user.id,
+      action: needsReauth
+        ? AUDIT_ACTIONS.plaid_item_reauth_required
+        : AUDIT_ACTIONS.plaid_item_sync_failed,
+      targetType: "PlaidItem",
+      targetId: item.id,
+      metadata: { institution: item.institutionName, error: describePlaidFailure(err) },
+      headers: await headers(),
+    });
+    if (needsReauth) {
+      throw new Error(
+        `${item.institutionName ?? "Your bank"} needs you to sign in again before it will share new transactions. Use “Sign in again” on the bank below.`,
+      );
+    }
+    throw new Error(describePlaidFailure(err));
+  }
+
+  revalidatePath("/");
+  revalidatePath(SETTINGS_PATH);
+});
+
+/**
+ * Commits one reviewed row: link it to a transaction the user already entered, add it as
+ * a new one, or ignore it.
+ *
+ * Not gated on a passkey. Linking a bank is a standing grant and is; approving a single
+ * transaction is ordinary bookkeeping, and a prompt per row would make the queue unusable.
+ */
+export const resolveStagedTransactionAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const stagedId = getFormValue(formData, "stagedId");
+  const decision = getFormValue(formData, "decision");
+  const categoryId = getFormValue(formData, "categoryId");
+  const linkTransactionId = getFormValue(formData, "linkTransactionId");
+
+  const staged = await prisma.plaidStagedTransaction.findFirst({
+    where: { id: stagedId, userId: user.id },
+    include: { plaidItem: { select: { id: true, institutionName: true } } },
+  });
+  if (!staged) throw new Error("That synced transaction was not found.");
+  if (staged.status !== PlaidStagedStatus.NEEDS_REVIEW) {
+    throw new Error("That synced transaction has already been reviewed.");
+  }
+
+  if (decision === "ignore") {
+    await prisma.plaidStagedTransaction.update({
+      where: { id: staged.id },
+      data: { status: PlaidStagedStatus.IGNORED, resolvedAt: new Date() },
+    });
+    revalidatePath("/");
+    return;
+  }
+
+  const resolvedCategoryId = categoryId || staged.suggestedCategoryId;
+  if (!resolvedCategoryId) throw new Error("Choose a category for this transaction.");
+  await assertUserOwnsCategory(user.id, resolvedCategoryId, categoryKindForTransactionType(staged.type));
+  if (staged.suggestedAccountId) await assertUserOwnsAccount(user.id, staged.suggestedAccountId);
+
+  const verificationBase = {
+    userId: user.id,
+    plaidTransactionId: staged.plaidTransactionId,
+    plaidItemId: staged.plaidItem.id,
+    plaidAccountRowId: staged.plaidAccountRowId,
+    institutionName: staged.plaidItem.institutionName,
+  };
+
+  await prisma.$transaction(async (tx) => {
+    if (decision === "link") {
+      const target = await tx.transaction.findFirst({
+        where: { id: linkTransactionId, userId: user.id },
+        include: { verification: true },
+      });
+      if (!target) throw new Error("The transaction to link to was not found.");
+      if (target.verification) {
+        throw new Error("That transaction is already confirmed against another bank record.");
+      }
+      if (target.type !== staged.type) {
+        throw new Error("An expense cannot be linked to an income entry.");
+      }
+
+      await tx.transactionVerification.create({
+        data: { ...verificationBase, transactionId: target.id, source: "MATCHED" },
+      });
+      // The bank's posted date is better information than none, but the amount, category
+      // and title the user chose are left exactly as they are.
+      if (!target.postedDate && (staged.postedDate || staged.date)) {
+        await tx.transaction.update({
+          where: { id: target.id },
+          data: { postedDate: staged.postedDate ?? staged.date },
+        });
+      }
+      await tx.plaidStagedTransaction.update({
+        where: { id: staged.id },
+        data: {
+          status: PlaidStagedStatus.LINKED,
+          resolvedTransactionId: target.id,
+          resolvedAt: new Date(),
+        },
+      });
+      return;
+    }
+
+    if (decision !== "add") throw new Error("Choose whether to link, add, or ignore this row.");
+
+    const created = await tx.transaction.create({
+      data: {
+        userId: user.id,
+        accountId: staged.suggestedAccountId,
+        categoryId: resolvedCategoryId,
+        type: staged.type,
+        amountCents: staged.amountCents,
+        date: staged.date,
+        postedDate: staged.postedDate,
+        title: staged.merchantName ?? staged.name,
+      },
+      select: { id: true },
+    });
+    await tx.transactionVerification.create({
+      data: { ...verificationBase, transactionId: created.id, source: "IMPORTED" },
+    });
+    await tx.plaidStagedTransaction.update({
+      where: { id: staged.id },
+      data: {
+        status: PlaidStagedStatus.ADDED,
+        resolvedTransactionId: created.id,
+        resolvedAt: new Date(),
+      },
+    });
+  });
+
+  scheduleBudgetAlertEmails(user.id);
+  revalidatePath("/");
+});
+
+/** Adds every unmatched row of one bank in a single step. */
+export const bulkAddStagedTransactionsAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const stagedIds = parseJsonField<string[]>(
+    getFormValue(formData, "stagedIdsJson"),
+    [],
+    "The selected transactions could not be read. Reload and try again.",
+  );
+  if (stagedIds.length === 0) return;
+
+  const rows = await prisma.plaidStagedTransaction.findMany({
+    where: { id: { in: stagedIds }, userId: user.id, status: PlaidStagedStatus.NEEDS_REVIEW },
+    include: { plaidItem: { select: { id: true, institutionName: true } } },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    for (const staged of rows) {
+      if (!staged.suggestedCategoryId) continue;
+      const created = await tx.transaction.create({
+        data: {
+          userId: user.id,
+          accountId: staged.suggestedAccountId,
+          categoryId: staged.suggestedCategoryId,
+          type: staged.type,
+          amountCents: staged.amountCents,
+          date: staged.date,
+          postedDate: staged.postedDate,
+          title: staged.merchantName ?? staged.name,
+        },
+        select: { id: true },
+      });
+      await tx.transactionVerification.create({
+        data: {
+          userId: user.id,
+          transactionId: created.id,
+          source: "IMPORTED",
+          plaidTransactionId: staged.plaidTransactionId,
+          plaidItemId: staged.plaidItem.id,
+          plaidAccountRowId: staged.plaidAccountRowId,
+          institutionName: staged.plaidItem.institutionName,
+        },
+      });
+      await tx.plaidStagedTransaction.update({
+        where: { id: staged.id },
+        data: {
+          status: PlaidStagedStatus.ADDED,
+          resolvedTransactionId: created.id,
+          resolvedAt: new Date(),
+        },
+      });
+    }
+  }, LONG_TRANSACTION_OPTIONS);
+
+  await recordAuditLog(prisma, {
+    userId: user.id,
+    action: AUDIT_ACTIONS.plaid_transactions_committed,
+    metadata: { added: rows.length },
+    headers: await headers(),
+  });
+
+  scheduleBudgetAlertEmails(user.id);
+  revalidatePath("/");
+});
+
+/** Applies the bank's revised values to a transaction the user already committed. */
+export const applyBankRevisionAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const stagedId = getFormValue(formData, "stagedId");
+  const staged = await prisma.plaidStagedTransaction.findFirst({
+    where: { id: stagedId, userId: user.id },
+  });
+  if (!staged?.resolvedTransactionId) throw new Error("That revision was not found.");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.transaction.updateMany({
+      where: { id: staged.resolvedTransactionId!, userId: user.id },
+      data: {
+        amountCents: staged.amountCents,
+        date: staged.date,
+        postedDate: staged.postedDate,
+      },
+    });
+    await tx.plaidStagedTransaction.update({
+      where: { id: staged.id },
+      data: { revisedAfterResolveAt: null },
+    });
+  });
+
+  scheduleBudgetAlertEmails(user.id);
+  revalidatePath("/");
+});
+
+/** Dismisses a revision, keeping what the user originally approved. */
+export const dismissBankRevisionAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const stagedId = getFormValue(formData, "stagedId");
+  const updated = await prisma.plaidStagedTransaction.updateMany({
+    where: { id: stagedId, userId: user.id },
+    data: { revisedAfterResolveAt: null },
+  });
+  if (updated.count === 0) throw new Error("That revision was not found.");
+  revalidatePath("/");
+});

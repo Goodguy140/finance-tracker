@@ -10,6 +10,7 @@ import { usePlaidLink } from "@/components/plaid-link-button";
 import { usePasskeyStepUp } from "@/components/mfa/passkey-client";
 import { inputClass, primaryBtnClass, secondaryBtnClass } from "@/components/forms/shared";
 import { mapPlaidAccountAction } from "@/app/actions";
+import { syncPlaidItemAction } from "@/app/actions/plaid";
 import {
   createPlaidLinkTokenAction,
   exchangePlaidPublicTokenAction,
@@ -288,6 +289,12 @@ export function PlaidConnectionsPanel({
                   <PlaidStatusPill status={item.status} />
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <ServerActionForm action={syncPlaidItemAction}>
+                    <input type="hidden" name="plaidItemId" value={item.id} />
+                    <button className={secondaryBtnClass} type="submit" disabled={busy}>
+                      Sync now
+                    </button>
+                  </ServerActionForm>
                   {item.status === "LOGIN_REQUIRED" ? (
                     <button
                       type="button"
