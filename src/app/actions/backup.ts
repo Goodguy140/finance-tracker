@@ -9,6 +9,7 @@ import { requireUser } from "@/lib/session";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { userBackupSchema } from "@/lib/backup-schema";
 import { resolveBackupUserProfileFields } from "@/lib/backup-restore";
+import { revokePlaidItemsForUser } from "@/lib/plaid/unlink";
 import {
   getFormValue,
   LONG_TRANSACTION_OPTIONS,
@@ -21,6 +22,10 @@ export const clearUserFinancialDataAction = formAction(async (formData: FormData
     throw new Error('Type RESET FINANCIAL DATA exactly to confirm.');
   }
 
+  // A reset drops the Plaid rows along with everything else, so the connections have to be
+  // revoked at Plaid first or they outlive the data they were feeding.
+  await revokePlaidItemsForUser(prisma, user.id);
+
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: user.id },
@@ -31,6 +36,14 @@ export const clearUserFinancialDataAction = formAction(async (formData: FormData
     await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
     await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
     await tx.portfolioSnapshot.deleteMany({ where: { userId: user.id } });
+    // Plaid rows reference Transaction and Account, so they go before both. Staged rows and
+    // items are dropped outright rather than kept: a bank connection is not financial
+    // history, and leaving stale cursors behind would make a later re-link re-propose
+    // transactions against records that no longer exist.
+    await tx.plaidStagedTransaction.deleteMany({ where: { userId: user.id } });
+    await tx.transactionVerification.deleteMany({ where: { userId: user.id } });
+    await tx.plaidAccount.deleteMany({ where: { userId: user.id } });
+    await tx.plaidItem.deleteMany({ where: { userId: user.id } });
     await tx.transaction.deleteMany({ where: { userId: user.id } });
     await tx.account.deleteMany({ where: { userId: user.id } });
     await tx.category.deleteMany({ where: { userId: user.id } });
@@ -70,12 +83,21 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
     await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
     await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
     await tx.portfolioSnapshot.deleteMany({ where: { userId: user.id } });
+    // Plaid rows reference Transaction and Account, so they go before both. Staged rows and
+    // items are dropped outright rather than kept: a bank connection is not financial
+    // history, and leaving stale cursors behind would make a later re-link re-propose
+    // transactions against records that no longer exist.
+    await tx.plaidStagedTransaction.deleteMany({ where: { userId: user.id } });
+    await tx.transactionVerification.deleteMany({ where: { userId: user.id } });
+    await tx.plaidAccount.deleteMany({ where: { userId: user.id } });
+    await tx.plaidItem.deleteMany({ where: { userId: user.id } });
     await tx.transaction.deleteMany({ where: { userId: user.id } });
     await tx.account.deleteMany({ where: { userId: user.id } });
     await tx.category.deleteMany({ where: { userId: user.id } });
 
     const accountIdMap = new Map<string, string>();
     const categoryIdMap = new Map<string, string>();
+    const transactionIdMap = new Map<string, string>();
 
     const profileFields = resolveBackupUserProfileFields({
       currentUser: { role: user.role, passwordHash: user.passwordHash },
@@ -207,7 +229,8 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
         throw new Error("Backup references unknown recurring transaction.");
       }
       // Split parts are nested rather than written in a second pass: it removes a
-      // round trip per part and makes the transaction id map unnecessary.
+      // round trip per part. (The id map below exists for verifications, which are keyed
+      // by the exported transaction id and written after every row is in.)
       const splitParts = row.splitParts.map((part) => {
         const mappedSplitCategoryId = categoryIdMap.get(part.categoryId);
         if (!mappedSplitCategoryId) {
@@ -220,7 +243,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
         };
       });
 
-      await tx.transaction.create({
+      const createdTransaction = await tx.transaction.create({
         data: {
           userId: user.id,
           accountId: mappedAccountId ?? null,
@@ -242,6 +265,28 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
           ...(splitParts.length > 0 ? { splitParts: { create: splitParts } } : {}),
         },
         select: { id: true },
+      });
+      transactionIdMap.set(row.id, createdTransaction.id);
+    }
+
+    // Verification rows carry no Plaid identifiers — the export strips them, because a
+    // Plaid transaction id belongs to the Plaid client of whichever deployment produced
+    // it. A restored badge therefore says the transaction was confirmed against a bank
+    // without claiming a live connection, which is exactly what is true.
+    for (const row of parsed.transactionVerifications ?? []) {
+      const mappedTransactionId = transactionIdMap.get(row.transactionId);
+      if (!mappedTransactionId) {
+        throw new Error("Backup references unknown verified transaction.");
+      }
+      await tx.transactionVerification.create({
+        data: {
+          userId: user.id,
+          transactionId: mappedTransactionId,
+          source: row.source,
+          institutionName: row.institutionName,
+          verifiedAt: new Date(row.verifiedAt),
+          removedByPlaidAt: row.removedByPlaidAt ? new Date(row.removedByPlaidAt) : null,
+        },
       });
     }
 
