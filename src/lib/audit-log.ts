@@ -40,6 +40,7 @@ export const AUDIT_ACTIONS = {
   sso_account_linked: "sso_account_linked",
   sso_link_rejected: "sso_link_rejected",
   sso_account_unlinked: "sso_account_unlinked",
+  plaid_settings_updated: "plaid_settings_updated",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

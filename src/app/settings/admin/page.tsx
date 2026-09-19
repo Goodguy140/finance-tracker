@@ -7,9 +7,10 @@ import { AdminMigrationHealthPanel } from "@/components/admin-migration-health";
 import { AdminOauthWarnings } from "@/components/admin-oauth-warnings";
 import { AdminRuntimeMetricsPanel } from "@/components/admin-runtime-metrics";
 import { AdminSystemHealthPanel } from "@/components/admin-system-health";
-import { AdminOauthForm, AdminPasswordLoginForm } from "@/components/forms";
+import { AdminOauthForm, AdminPasswordLoginForm, AdminPlaidForm } from "@/components/forms";
 import { getAdminAnalytics } from "@/lib/admin-analytics";
 import { getAdminOauthStatus } from "@/lib/admin-oauth-status";
+import { getPlaidAdminStatus } from "@/lib/plaid/config";
 import { getAdminRuntimeMetrics } from "@/lib/admin-runtime-metrics";
 import { getAdminSystemHealth } from "@/lib/admin-system-health";
 import { getMigrationHealth, tryDecryptServerSetting } from "@/lib/migration-health";
@@ -37,12 +38,13 @@ export default async function AdminSettingsPage() {
   const runtimeMetrics = getAdminRuntimeMetrics();
   const passwordLoginDisabled = await isPasswordLoginDisabled();
   const passwordLoginViaEnv = resolvePasswordLoginDisabledEnv() !== null;
-  const [health, systemHealth, analytics, oauthStatus, googleEnabledRow, googleIdRow, authentikEnabledRow, authentikIssuerRow, authentikIdRow] =
+  const [health, systemHealth, analytics, oauthStatus, plaidStatus, googleEnabledRow, googleIdRow, authentikEnabledRow, authentikIssuerRow, authentikIdRow] =
     await Promise.all([
       getMigrationHealth(prisma),
       getAdminSystemHealth(prisma),
       getAdminAnalytics(prisma),
       getAdminOauthStatus(prisma),
+      getPlaidAdminStatus(),
       prisma.serverSetting.findUnique({ where: { key: "oauth.google.enabled" } }),
       prisma.serverSetting.findUnique({ where: { key: "oauth.google.clientId" } }),
       prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.enabled" } }),
@@ -98,6 +100,13 @@ export default async function AdminSettingsPage() {
         authentikIssuer={authentikIssuer}
         authentikClientId={authentikClientId}
         authentikConfiguredViaEnv={authentikConfiguredViaEnv}
+      />
+      <AdminPlaidForm
+        enabled={plaidStatus.enabledRequested}
+        clientId={plaidStatus.storedClientId}
+        environment={plaidStatus.environment}
+        configuredViaEnv={plaidStatus.source === "environment" || plaidStatus.source === "mixed"}
+        warnings={plaidStatus.warnings}
       />
       <AdminBackupPanel />
       <AdminAuditLog />

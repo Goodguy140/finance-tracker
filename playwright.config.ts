@@ -46,6 +46,13 @@ function getE2eEnv(): Record<string, string> {
   // Every spec signs in from the same socket, so the whole suite shares one per-IP login
   // budget; at the default of 30 the last few logins of a run fail with a lockout.
   env.LOGIN_MAX_PER_IP = process.env.LOGIN_MAX_PER_IP?.trim() || "1000";
+  // Blanked, not inherited: a developer's own `.env` usually holds real Plaid credentials,
+  // and a complete PLAID_CLIENT_ID/PLAID_SECRET pair overrides whatever the admin UI stores.
+  // The suite exercises the stored-credentials path, so it must not depend on what happens
+  // to be in the environment — and no spec should ever be able to call Plaid for real.
+  env.PLAID_CLIENT_ID = "";
+  env.PLAID_SECRET = "";
+  env.PLAID_ENV = "";
   return env;
 }
 

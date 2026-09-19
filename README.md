@@ -20,6 +20,8 @@ npm run dev
 | `ALLOW_PUBLIC_SIGNUP` | `false` recommended on public deployments |
 | `AUDIT_LOG_RETENTION_DAYS` | Optional. Audit rows older than this are pruned (default `365`) |
 | `RECURRING_AUTO_POST_SCHEDULER` | Optional. Set `false` to disable the hourly in-process sweep that posts recurring rules in "automatic" mode |
+| `PLAID_CLIENT_ID` / `PLAID_SECRET` | Optional. Plaid API credentials. Both must be set to override what is stored in the admin UI |
+| `PLAID_ENV` | Optional. `sandbox` (default) or `production`. Only consulted when the two vars above are set |
 
 `DATABASE_URL` defaults to `file:/data/app.db` (production) or `file:./dev.db` (development).
 
@@ -71,6 +73,22 @@ npm run dev   # or: npm run build && npm run start
 <summary>Google / Authentik via admin UI</summary>
 
 Configure under **Settings → Server admin → OAuth** (encrypted in the database). Env-based Authentik vars take precedence when all three are set.
+
+</details>
+
+<details>
+<summary>Plaid bank sync (env overrides admin UI)</summary>
+
+Configure under **Settings → Server admin → Plaid** (encrypted in the database with
+`SERVER_SETTINGS_ENCRYPTION_KEY`). `PLAID_CLIENT_ID` and `PLAID_SECRET` in the environment take
+precedence when **both** are set, in which case `PLAID_ENV` selects the host; a half-set pair is
+ignored and the stored values are used instead.
+
+`sandbox` returns fake data and never touches a real bank. `production` requires Plaid approval and
+is billed per linked item.
+
+Rotating `SERVER_SETTINGS_ENCRYPTION_KEY` makes stored credentials unreadable — the admin page says
+so rather than erroring, but every linked bank has to be relinked.
 
 </details>
 

@@ -44,6 +44,7 @@ export { clearUserFinancialDataAction, importUserBackupAction } from "./actions/
 export {
   updateAdminOauthSettingsAction,
   updatePasswordLoginSettingAction,
+  updateAdminPlaidSettingsAction,
 } from "./actions/admin";
 export {
   setUserRoleAction,
