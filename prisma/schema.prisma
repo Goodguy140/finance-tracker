@@ -58,6 +58,36 @@ enum InvestmentFlowDirection {
   WITHDRAWAL
 }
 
+enum PlaidItemStatus {
+  ACTIVE
+  /// ITEM_LOGIN_REQUIRED — the bank needs the user to re-authenticate before syncing again.
+  LOGIN_REQUIRED
+  ERROR
+  /// /item/remove succeeded; the row is kept briefly so the audit trail has something to point at.
+  REMOVED
+}
+
+enum PlaidStagedStatus {
+  NEEDS_REVIEW
+  /// Attached to a Transaction the user had already entered by hand.
+  LINKED
+  /// Created a new Transaction.
+  ADDED
+  /// User declined it. Sticky: a re-sync must never re-propose it.
+  IGNORED
+  /// Plaid withdrew the record before the user decided anything.
+  REMOVED_BY_PLAID
+  /// A pending row whose posted successor took over.
+  SUPERSEDED
+}
+
+enum TransactionVerificationSource {
+  /// The Transaction was created from the bank record.
+  IMPORTED
+  /// A hand-entered Transaction the user linked to a bank record.
+  MATCHED
+}
+
 model User {
   id                      String    @id @default(cuid())
   email                   String    @unique
@@ -97,26 +127,30 @@ model User {
 
   defaultExpenseAccount Account? @relation("UserDefaultExpenseAccount", fields: [defaultExpenseAccountId], references: [id], onDelete: SetNull)
 
-  authAccounts          AuthAccount[]
-  sessions              Session[]
-  resetTokens           PasswordResetToken[]
-  personalAccessTokens  PersonalAccessToken[]
-  webAuthnCredentials   WebAuthnCredential[]
-  mfaChallenges         MfaChallenge[]
-  recoveryCodes         RecoveryCode[]
-  accounts              Account[]
-  categories            Category[]
-  transactions          Transaction[]
-  splitTransaction      SplitTransactionPart[]
-  budgets               Budget[]
-  recurringTransactions RecurringTransaction[]
-  investmentFlows       InvestmentFlow[]
-  portfolioSnapshots    PortfolioSnapshot[]
-  updatedServerConfig   ServerSetting[]        @relation("ServerSettingUpdatedBy")
-  auditLogs             AuditLog[]
+  authAccounts              AuthAccount[]
+  sessions                  Session[]
+  resetTokens               PasswordResetToken[]
+  personalAccessTokens      PersonalAccessToken[]
+  webAuthnCredentials       WebAuthnCredential[]
+  mfaChallenges             MfaChallenge[]
+  recoveryCodes             RecoveryCode[]
+  accounts                  Account[]
+  categories                Category[]
+  transactions              Transaction[]
+  splitTransaction          SplitTransactionPart[]
+  budgets                   Budget[]
+  recurringTransactions     RecurringTransaction[]
+  investmentFlows           InvestmentFlow[]
+  portfolioSnapshots        PortfolioSnapshot[]
+  updatedServerConfig       ServerSetting[]           @relation("ServerSettingUpdatedBy")
+  auditLogs                 AuditLog[]
   subscriptionMembers       SubscriptionMember[]
   subscriptionShareStatuses SubscriptionShareStatus[]
   budgetAlertNotifications  BudgetAlertNotification[]
+  plaidItems                PlaidItem[]
+  plaidAccounts             PlaidAccount[]
+  plaidStagedTransactions   PlaidStagedTransaction[]
+  transactionVerifications  TransactionVerification[]
 }
 
 /**
@@ -263,7 +297,9 @@ model MfaChallenge {
   @@index([userId])
 }
 
-/** Single-use recovery codes (bcrypt-hashed) issued alongside the first passkey. */
+/**
+ * Single-use recovery codes (bcrypt-hashed) issued alongside the first passkey.
+ */
 model RecoveryCode {
   id        String    @id @default(cuid())
   userId    String
@@ -307,6 +343,7 @@ model Account {
   recurringTransactions  RecurringTransaction[]
   investmentFlows        InvestmentFlow[]
   portfolioSnapshots     PortfolioSnapshot[]
+  plaidAccounts          PlaidAccount[]
 }
 
 model Category {
@@ -323,6 +360,7 @@ model Category {
   splitParts            SplitTransactionPart[]
   budgets               Budget[]
   recurringTransactions RecurringTransaction[]
+  plaidItemDefaults     PlaidItem[]
 
   @@unique([userId, name, kind])
 }
@@ -356,12 +394,17 @@ model Transaction {
   createdAt              DateTime        @default(now())
   updatedAt              DateTime        @updatedAt
 
-  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account    Account?               @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  category   Category               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  splitParts SplitTransactionPart[]
+  user         User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account      Account?                 @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  category     Category                 @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  splitParts   SplitTransactionPart[]
+  verification TransactionVerification?
 
   @@unique([userId, recurringTransactionId, recurringExpectedDate])
+  /// The dashboard runs four `userId + type + date` range queries per page load and the
+  /// Plaid matcher scans one date window per sync; the unique above only offers a `userId`
+  /// prefix, leaving both as a filter-then-sort over everything that user owns.
+  @@index([userId, date])
 }
 
 model SplitTransactionPart {
@@ -493,4 +536,174 @@ model RateLimitEntry {
   key     String   @id
   count   Int
   resetAt DateTime
+}
+
+/// One linked bank connection (Plaid calls it an Item). Holds the credential that lets the
+/// server pull that bank's transactions, so it is the most sensitive row in the database
+/// after the password hash — encrypted at rest and never exported in a backup.
+model PlaidItem {
+  id                 String          @id @default(cuid())
+  userId             String
+  /// Plaid's item_id. Unique at Plaid and here, so re-linking the same bank is caught.
+  itemId             String          @unique
+  /// AES-256-GCM via encryptSecret(). Never logged, never a form value, never exported.
+  accessTokenEnc     String
+  institutionId      String?
+  institutionName    String?
+  /// /transactions/sync cursor. NULL means never synced, so the first call walks full history.
+  cursor             String?
+  status             PlaidItemStatus @default(ACTIVE)
+  errorCode          String?
+  errorMessage       String?
+  consentExpiresAt   DateTime?
+  /// What the user asked for at link time: 30, 90, 365 or 730.
+  requestedDays      Int
+  /// UTC midnight, resolved once at link time and never recomputed. The UI states this exact
+  /// date rather than deriving it, so what the user was promised cannot drift.
+  historyCutoff      DateTime
+  /// Earliest date the institution actually returned. NULL until the first full sync ends;
+  /// later than historyCutoff means the bank gave us less than was asked for.
+  earliestObservedAt DateTime?
+  initialSyncDoneAt  DateTime?
+  lastSyncedAt       DateTime?
+  lastSyncError      String?
+  /// Set while a sync is in flight. A value older than the stale threshold is ignored, so a
+  /// crashed sync cannot wedge the item forever.
+  syncingSince       DateTime?
+  /// Per-item fallback when the personal_finance_category map does not hit.
+  defaultCategoryId  String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  user            User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultCategory Category?                @relation(fields: [defaultCategoryId], references: [id], onDelete: SetNull)
+  plaidAccounts   PlaidAccount[]
+  stagedRows      PlaidStagedTransaction[]
+
+  @@index([userId])
+  /// The sweep's "which items are due" query.
+  @@index([status, lastSyncedAt])
+}
+
+/// One account inside a linked bank, and the app Account it feeds. Plaid's own type/subtype
+/// are kept verbatim rather than mapped onto AccountType: they are a much larger vocabulary,
+/// and guessing wrong would silently misfile transactions.
+model PlaidAccount {
+  id             String  @id @default(cuid())
+  userId         String
+  plaidItemId    String
+  plaidAccountId String
+  name           String
+  officialName   String?
+  mask           String?
+  plaidType      String
+  plaidSubtype   String?
+  currency       String?
+  /// NULL until the user maps it. An unmapped account is not synced.
+  accountId      String?
+  syncEnabled    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plaidItem               PlaidItem                @relation(fields: [plaidItemId], references: [id], onDelete: Cascade)
+  account                 Account?                 @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  plaidStagedTransactions PlaidStagedTransaction[]
+
+  @@unique([userId, plaidAccountId])
+  @@index([plaidItemId])
+  @@index([accountId])
+}
+
+/// A transaction pulled from the bank that has not been committed to the log yet.
+///
+/// Nothing here is visible in the expense or income log: the user decides per row whether to
+/// link it to something they already entered, add it as new, or ignore it. Rows are kept
+/// forever, including IGNORED ones — the (userId, plaidTransactionId) pair is the
+/// idempotency key for the whole feature, so pruning would let a re-sync re-propose
+/// transactions the user has already declined.
+model PlaidStagedTransaction {
+  id                        String  @id @default(cuid())
+  userId                    String
+  plaidItemId               String
+  plaidAccountRowId         String
+  plaidTransactionId        String
+  /// Plaid's pending_transaction_id: the pending row this posted row replaces.
+  pendingPlaidTransactionId String?
+  isPending                 Boolean @default(false)
+
+  name         String
+  merchantName String?
+  /// Sign already resolved to this app's semantics: positive for an outflow, negative for a
+  /// refund staged as an expense credit. Income rows are always positive.
+  amountCents  Int
+  type         TransactionType
+  currency     String?
+  date         DateTime
+  postedDate   DateTime?
+  pfcPrimary   String?
+  pfcDetailed  String?
+
+  suggestedCategoryId String?
+  suggestedAccountId  String?
+  status              PlaidStagedStatus @default(NEEDS_REVIEW)
+
+  matchTransactionId String?
+  matchScore         Int?
+  matchTier          String?
+  /// JSON array of human-readable reasons, shown under the proposed match.
+  matchReasonsJson   String?
+
+  resolvedTransactionId String?
+  resolvedAt            DateTime?
+  /// Plaid revised a row the user had already committed. The new values live in the columns
+  /// above; the committed Transaction is never rewritten without a click.
+  revisedAfterResolveAt DateTime?
+
+  firstSeenAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plaidItem    PlaidItem    @relation(fields: [plaidItemId], references: [id], onDelete: Cascade)
+  plaidAccount PlaidAccount @relation(fields: [plaidAccountRowId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, plaidTransactionId])
+  @@index([userId, status, date])
+  /// Pending → posted lookup.
+  @@index([pendingPlaidTransactionId])
+}
+
+/// Marks a Transaction as confirmed against a bank record — what the Verified badge reads.
+///
+/// A separate table rather than columns on Transaction: the data is sparse (only verified
+/// rows), and Transaction is the one table whose columns must also be mirrored in
+/// REQUIRED_SCHEMA_COLUMNS, the repair script, and the backup payload.
+model TransactionVerification {
+  id                 String                        @id @default(cuid())
+  userId             String
+  transactionId      String                        @unique
+  source             TransactionVerificationSource
+  /// NULL on a restored backup: exports carry the fact of verification but no Plaid ids,
+  /// which are meaningless outside the deployment that created them.
+  plaidTransactionId String?
+  plaidItemId        String?
+  plaidAccountRowId  String?
+  /// Denormalised on purpose — the badge must still name the bank after the item is unlinked
+  /// and the PlaidItem row is gone.
+  institutionName    String?
+  verifiedAt         DateTime                      @default(now())
+  /// Plaid said the bank record disappeared. Never deletes the user's Transaction.
+  removedByPlaidAt   DateTime?
+  /// The PlaidItem was unlinked; the badge says so rather than implying a live link.
+  itemRemovedAt      DateTime?
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  /// A bank record may back at most one transaction. SQLite treats NULLs as distinct, so any
+  /// number of restored rows with a NULL plaidTransactionId coexist — which is exactly why
+  /// the column is nullable.
+  @@unique([userId, plaidTransactionId])
+  @@index([userId])
 }
