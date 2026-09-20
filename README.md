@@ -108,6 +108,19 @@ Admins manage accounts at **Settings → Server admin → Users** (change role, 
 </details>
 
 <details>
+<summary><strong>Data retention and disposal</strong></summary>
+
+What is stored, how long it is kept, how it is destroyed, and how to answer an access, portability, or erasure request: **[docs/data-retention.md](docs/data-retention.md)**.
+
+Financial records have **no automatic expiry** — they are kept until the user deletes them. Users export their full history from **Settings → Data → Export**, wipe it with **Reset financial data**, or close the account entirely under **Settings → Danger zone**.
+
+Two operator notes worth reading before relying on any of that: a backup export contains the password hash and live OAuth tokens, so treat the file as a credential; and deleting rows does not erase them from disk — run `VACUUM` after bulk deletion, and remember that dataset snapshots still hold whatever you deleted.
+
+**[docs/data-retention-external.md](docs/data-retention-external.md)** is the shareable version of the same policy — for users, customers, or a third-party security review. It carries no table names, environment variables, commands, or internal findings. Fill in the bracketed placeholders (organization, contact, effective date, backup retention window) before sending it anywhere.
+
+</details>
+
+<details>
 <summary><strong>API access (personal access tokens)</strong></summary>
 
 External apps (e.g. a personal dashboard) can read your data with a scoped token.
