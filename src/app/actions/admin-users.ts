@@ -10,6 +10,8 @@ import {
 } from "@/lib/admin-users";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/session";
+import { revokePlaidItemsForUser } from "@/lib/plaid/unlink";
+import { tryMakePlaidItemRevoker } from "@/lib/plaid/service";
 import {
   adminDeleteUserSchema,
   adminSetUserDisabledSchema,
@@ -122,6 +124,10 @@ export const deleteUserAction = formAction(async (formData: FormData) => {
   if (payload.confirmEmail !== target.email.toLowerCase()) {
     throw new Error("The email you typed does not match this account.");
   }
+
+  // Refuses the delete if any of the target's bank connections cannot be revoked at Plaid;
+  // an orphaned item keeps billing and keeps its access, with nothing left pointing at it.
+  await revokePlaidItemsForUser(prisma, target.id, await tryMakePlaidItemRevoker());
 
   // Written before the delete: `AuditLog.userId` is SetNull on the *actor*, but the target
   // is only a plain string column, so the row survives the cascade with its subject intact.

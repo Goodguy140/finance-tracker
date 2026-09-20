@@ -40,6 +40,16 @@ export const AUDIT_ACTIONS = {
   sso_account_linked: "sso_account_linked",
   sso_link_rejected: "sso_link_rejected",
   sso_account_unlinked: "sso_account_unlinked",
+  plaid_settings_updated: "plaid_settings_updated",
+  plaid_link_started: "plaid_link_started",
+  plaid_item_linked: "plaid_item_linked",
+  plaid_item_unlinked: "plaid_item_unlinked",
+  plaid_item_unlink_failed: "plaid_item_unlink_failed",
+  plaid_account_mapped: "plaid_account_mapped",
+  plaid_item_sync_succeeded: "plaid_item_sync_succeeded",
+  plaid_item_sync_failed: "plaid_item_sync_failed",
+  plaid_item_reauth_required: "plaid_item_reauth_required",
+  plaid_transactions_committed: "plaid_transactions_committed",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

@@ -8,6 +8,8 @@ import { getDefaultTimezone } from "@/lib/country-config";
 import { ensureDefaultDataForUser } from "@/lib/defaults";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { revokePlaidItemsForUser } from "@/lib/plaid/unlink";
+import { tryMakePlaidItemRevoker } from "@/lib/plaid/service";
 import { AUDIT_ACTIONS, clientMetaFromHeaders, recordAuditLog } from "@/lib/audit-log";
 import { isPasswordLoginDisabled } from "@/lib/oauth-provider-config";
 import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
@@ -155,6 +157,9 @@ export const deleteAccountAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const confirmation = getFormValue(formData, "confirmation");
   if (confirmation !== "DELETE") throw new Error("Type DELETE to confirm.");
+  // Before the cascade, not after: deleting the PlaidItem rows does not end the bank
+  // connections, and once they are gone there is no record of what to revoke.
+  await revokePlaidItemsForUser(prisma, user.id, await tryMakePlaidItemRevoker());
   const h = await headers();
   await recordAuditLog(prisma, {
     userId: user.id,

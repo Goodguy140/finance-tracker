@@ -38,7 +38,7 @@ export function AdminBackupPanel() {
         <p>
           There is no in-app destructive restore. To restore the whole app: stop traffic, replace the SQLite database
           file on disk, restart the container, then verify login, dashboard, and transactions. To merge a per-user JSON
-          file, use <strong>Settings → Import backup</strong> (same email only).
+          file, use <strong>Settings → Advanced → Backup and restore</strong> (same email only).
         </p>
       </div>
     </section>

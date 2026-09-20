@@ -128,7 +128,7 @@ Depending on where you live, you have some or all of the following rights. We re
 
 | Right | What you get | How to exercise it |
 |-------|--------------|--------------------|
-| **Access** | A complete copy of the personal information held about you | Export your data in-app, under Settings → Data |
+| **Access** | A complete copy of the personal information held about you | Export your data in-app, under Settings → Advanced |
 | **Portability** | The same copy in a structured, machine-readable format | As above — the export is JSON |
 | **Correction** | Inaccurate information amended | Edit your records and profile directly in the app |
 | **Erasure** | Your data destroyed, subject to [section 5](#5-how-data-is-destroyed) | Close your account, or erase your financial history only, under Settings |

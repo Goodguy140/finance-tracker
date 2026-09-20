@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { CategoryKind, RecurringCadence, TransactionType } from "@prisma/client";
+import { CategoryKind, PlaidStagedStatus, RecurringCadence, TransactionType } from "@prisma/client";
 import Link from "next/link";
 import {
   AddFormsDropdown,
@@ -36,6 +36,8 @@ import {
 } from "@/lib/budget-progress";
 import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
+import type { VerificationInfo } from "@/components/verified-badge";
+import { PlaidReviewQueue } from "@/components/plaid-review-queue";
 import { buildExpenseTitleSuggestions } from "@/lib/expense-title-suggestions";
 import { formatCurrency } from "@/lib/money";
 import {
@@ -63,6 +65,20 @@ type SearchParams = Promise<{ month?: string | string[]; range?: string | string
 
 export const dynamic = "force-dynamic";
 
+/** Shapes a stored verification for the log badge; null for unverified rows. */
+function toVerificationInfo(
+  row: { source: string; institutionName: string | null; verifiedAt: Date; removedByPlaidAt: Date | null; itemRemovedAt: Date | null } | null,
+): VerificationInfo | null {
+  if (!row) return null;
+  return {
+    source: row.source === "MATCHED" ? "MATCHED" : "IMPORTED",
+    institutionName: row.institutionName,
+    verifiedAtDisplay: formatDateOnlyUtc(row.verifiedAt),
+    removedByPlaid: row.removedByPlaidAt !== null,
+    itemRemoved: row.itemRemovedAt !== null,
+  };
+}
+
 export default async function Home({ searchParams }: { searchParams: SearchParams }) {
   const user = await requireUser();
   const sp = await searchParams;
@@ -85,7 +101,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const categoryUsageCutoff = new Date(now);
   categoryUsageCutoff.setMonth(categoryUsageCutoff.getMonth() - 3);
 
-  const [accounts, categories, budgets, recurringTransactions, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage] =
+  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -98,13 +114,30 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       include: { category: true, account: true },
       orderBy: [{ enabled: "desc" }, { nextExpectedDate: "asc" }],
     }),
+    prisma.plaidStagedTransaction.findMany({
+      where: { userId: user.id, status: PlaidStagedStatus.NEEDS_REVIEW },
+      include: { plaidItem: { select: { institutionName: true } } },
+      orderBy: [{ date: "desc" }, { name: "asc" }],
+      take: 200,
+    }),
+    prisma.plaidStagedTransaction.findMany({
+      where: { userId: user.id, revisedAfterResolveAt: { not: null } },
+      include: { plaidItem: { select: { institutionName: true } } },
+      orderBy: { revisedAfterResolveAt: "desc" },
+      take: 50,
+    }),
     prisma.transaction.findMany({
       where: {
         userId: user.id,
         type: TransactionType.EXPENSE,
         ...transactionDateFilter,
       },
-      include: { category: true, account: true, splitParts: { include: { category: true } } },
+      include: {
+        category: true,
+        account: true,
+        splitParts: { include: { category: true } },
+        verification: true,
+      },
       orderBy: { date: "desc" },
     }),
     prisma.transaction.findMany({
@@ -113,7 +146,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         type: TransactionType.INCOME,
         ...transactionDateFilter,
       },
-      include: { category: true, account: true },
+      include: { category: true, account: true, verification: true },
       orderBy: { date: "desc" },
     }),
     prisma.transaction.aggregate({
@@ -368,6 +401,84 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     .filter((s) => s.cents !== 0)
     .sort((a, b) => Math.abs(b.cents) - Math.abs(a.cents));
 
+  // The matcher stores the candidate id; the queue needs enough of that transaction to
+  // show what it is proposing, so the referenced rows are fetched in one go.
+  const matchCandidateIds = stagedRows.map((row) => row.matchTransactionId).filter((id): id is string => Boolean(id));
+  const matchCandidates = matchCandidateIds.length
+    ? await prisma.transaction.findMany({
+        where: { userId: user.id, id: { in: matchCandidateIds } },
+        select: { id: true, title: true, amountCents: true, date: true },
+      })
+    : [];
+  const matchCandidateById = new Map(matchCandidates.map((row) => [row.id, row]));
+
+  const expenseCategoryOptionsForQueue = categories
+    .filter((c) => c.kind === CategoryKind.EXPENSE)
+    .map((c) => ({ id: c.id, name: c.name }));
+  const incomeCategoryOptionsForQueue = categories
+    .filter((c) => c.kind === CategoryKind.INCOME)
+    .map((c) => ({ id: c.id, name: c.name }));
+
+  const reviewRows = stagedRows.map((row) => {
+    const candidate = row.matchTransactionId ? matchCandidateById.get(row.matchTransactionId) : undefined;
+    const reasons = row.matchReasonsJson ? (JSON.parse(row.matchReasonsJson) as string[]) : [];
+    return {
+      id: row.id,
+      institutionName: row.plaidItem.institutionName ?? "Your bank",
+      heading: row.merchantName ?? row.name,
+      amountCents: row.amountCents,
+      typeLabel: row.type === TransactionType.INCOME ? "Income" : "Expense",
+      dateDisplay: formatDateOnlyUtc(row.date),
+      accountLabel:
+        accounts.find((a) => a.id === row.suggestedAccountId)?.name ?? "Unmapped account",
+      categoryOptions:
+        row.type === TransactionType.INCOME
+          ? incomeCategoryOptionsForQueue
+          : expenseCategoryOptionsForQueue,
+      suggestedCategoryId: row.suggestedCategoryId ?? "",
+      isPending: row.isPending,
+      match:
+        candidate && row.matchTier
+          ? {
+              candidate: {
+                id: candidate.id,
+                title: candidate.title ?? "Untitled",
+                amountCents: candidate.amountCents,
+                dateDisplay: formatDateOnlyUtc(candidate.date),
+              },
+              tier: row.matchTier === "high" ? ("high" as const) : ("low" as const),
+              reasons,
+            }
+          : null,
+    };
+  });
+
+  const revisionCandidateIds = revisedRows
+    .map((row) => row.resolvedTransactionId)
+    .filter((id): id is string => Boolean(id));
+  const revisionTargets = revisionCandidateIds.length
+    ? await prisma.transaction.findMany({
+        where: { userId: user.id, id: { in: revisionCandidateIds } },
+        select: { id: true, amountCents: true },
+      })
+    : [];
+  const revisionTargetById = new Map(revisionTargets.map((row) => [row.id, row]));
+
+  const revisionRows = revisedRows.flatMap((row) => {
+    const target = row.resolvedTransactionId ? revisionTargetById.get(row.resolvedTransactionId) : undefined;
+    if (!target) return [];
+    return [
+      {
+        id: row.id,
+        heading: row.merchantName ?? row.name,
+        institutionName: row.plaidItem.institutionName ?? "Your bank",
+        approvedAmountCents: target.amountCents,
+        bankAmountCents: row.amountCents,
+        bankDateDisplay: formatDateOnlyUtc(row.date),
+      },
+    ];
+  });
+
   const expenseLogEntries = periodExpenses.map((txn) => ({
     id: txn.id,
     amountCents: txn.amountCents,
@@ -387,6 +498,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       : (txn.accountDescription ?? "Removed account"),
     categoryLabel: txn.category.name,
     isSplit: txn.splitParts.length > 0,
+    verification: toVerificationInfo(txn.verification),
   }));
 
   const incomeLogEntries = periodIncomes.map((txn) => ({
@@ -402,6 +514,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     accountLabel: txn.account
       ? `${txn.account.name} (${formatAccountTypeLabel(txn.account.type)})`
       : (txn.accountDescription ?? "Removed account"),
+    verification: toVerificationInfo(txn.verification),
   }));
 
   const recurringListItems = recurringTransactions.map((rule) => ({
@@ -620,6 +733,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                   {periodDescription} · {periodExpenses.length} transaction{periodExpenses.length === 1 ? "" : "s"}
                 </p>
               </div>
+              <PlaidReviewQueue rows={reviewRows} revisions={revisionRows} />
               <ExpenseLogPanel
                 entries={expenseLogEntries}
                 accounts={accountOptions}

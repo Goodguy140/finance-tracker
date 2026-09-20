@@ -51,6 +51,14 @@ async function createMinimalSchema(prisma: PrismaClient) {
       "archived" BOOLEAN NOT NULL DEFAULT false
     )
   `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "PlaidItem" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "consecutiveSyncFailures" INTEGER NOT NULL DEFAULT 0,
+      "nextSyncAttemptAt" DATETIME
+    )
+  `);
 }
 
 describe("migration-health", () => {

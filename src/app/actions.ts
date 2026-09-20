@@ -44,6 +44,7 @@ export { clearUserFinancialDataAction, importUserBackupAction } from "./actions/
 export {
   updateAdminOauthSettingsAction,
   updatePasswordLoginSettingAction,
+  updateAdminPlaidSettingsAction,
 } from "./actions/admin";
 export {
   setUserRoleAction,
@@ -58,3 +59,4 @@ export {
   unlinkSsoProviderAction,
 } from "./actions/mfa";
 export { setBudgetAlertEmailAction } from "./actions/preferences";
+export { mapPlaidAccountAction } from "./actions/plaid";

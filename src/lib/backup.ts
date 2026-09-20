@@ -134,6 +134,26 @@ export type UserBackupPayload = {
     note: string | null;
     createdAt: IsoString;
   }>;
+  /**
+   * Which transactions were confirmed against a bank record, keyed by the exported
+   * `transactions[].id` (remapped on import like every other cross-reference).
+   *
+   * Deliberately carries no Plaid identifiers: a transaction id, item id, or access token
+   * is bound to the Plaid client of the deployment that created it, and restoring one
+   * elsewhere would at best be meaningless and at worst a bank-connection takeover. The
+   * bank connections themselves (PlaidItem, PlaidAccount, PlaidStagedTransaction) are not
+   * exported at all, for the same reason WebAuthn credentials are not.
+   *
+   * Optional: backups written before this existed must still import.
+   */
+  transactionVerifications?: Array<{
+    /** References `transactions[].id`. */
+    transactionId: string;
+    source: "IMPORTED" | "MATCHED";
+    institutionName: string | null;
+    verifiedAt: IsoString;
+    removedByPlaidAt: IsoString | null;
+  }>;
 };
 
 /** Remove secrets before writing backup JSON to disk or HTTP responses. */
@@ -173,6 +193,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       },
       investmentFlows: true,
       portfolioSnapshots: true,
+      transactionVerifications: true,
     },
   });
 
@@ -303,6 +324,13 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       totalValueCents: row.totalValueCents,
       note: row.note,
       createdAt: row.createdAt.toISOString(),
+    })),
+    transactionVerifications: user.transactionVerifications.map((row) => ({
+      transactionId: row.transactionId,
+      source: row.source,
+      institutionName: row.institutionName,
+      verifiedAt: row.verifiedAt.toISOString(),
+      removedByPlaidAt: toIso(row.removedByPlaidAt),
     })),
   });
 }

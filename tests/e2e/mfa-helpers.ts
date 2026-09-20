@@ -70,8 +70,8 @@ export async function openSettingsTab(page: Page, hash: string) {
 /** Enrols the first passkey through the Settings UI and returns the recovery codes shown once. */
 export async function enrolFirstPasskey(page: Page, password: string, name = "E2E virtual passkey") {
   await openSettingsTab(page, "security");
-  const panel = page.getByRole("tabpanel", { name: "Profile" });
-  const security = panel.locator("#security");
+  // Security is its own tab now, rather than a section at the bottom of Profile.
+  const security = page.getByRole("tabpanel", { name: "Security" }).locator("#security");
   await security.getByPlaceholder("MacBook Touch ID").fill(name);
   // LabeledField renders a <span>, not a <label>; the only password field inside #security
   // is the "turn passkeys on" confirmation.

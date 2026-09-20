@@ -14,6 +14,10 @@ const mockPrisma = vi.hoisted(() => ({
   transaction: { deleteMany: vi.fn(), create: vi.fn() },
   account: { deleteMany: vi.fn(), create: vi.fn() },
   category: { deleteMany: vi.fn(), create: vi.fn() },
+  plaidItem: { deleteMany: vi.fn() },
+  plaidAccount: { deleteMany: vi.fn() },
+  plaidStagedTransaction: { deleteMany: vi.fn() },
+  transactionVerification: { deleteMany: vi.fn(), create: vi.fn() },
   $transaction: vi.fn(),
 }));
 

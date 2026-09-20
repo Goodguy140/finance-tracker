@@ -36,6 +36,7 @@ import {
 import { ExpenseCsvImportForm } from "./expense-forms";
 import { SubscriptionsPanel, type SubscriptionView } from "@/components/subscriptions-panel";
 import { ApiTokensPanel, type ApiTokenRow, type ApiTokensMfaState } from "@/components/api-tokens-panel";
+import { PlaidConnectionsPanel, type PlaidConnectionsPanelProps } from "@/components/plaid-connections-panel";
 import { SecurityPanel, type SecurityPanelProps } from "@/components/security-panel";
 
 export function BudgetForm({ expenseCategories }: { expenseCategories: Option[] }) {
@@ -280,26 +281,29 @@ export function InvestmentForms({ accounts }: { accounts: Option[] }) {
   );
 }
 
-type SettingsTabId = "profile" | "data" | "subscriptions" | "budgets" | "integrations" | "advanced";
+type SettingsTabId = "profile" | "security" | "accounts" | "budgets" | "subscriptions" | "advanced";
 
 const SETTINGS_TAB_META: { id: SettingsTabId; label: string; labelCompact: string; hint: string }[] = [
   {
     id: "profile",
     label: "Profile",
     labelCompact: "Profile",
-    hint: "Name, region, timezone, password, and passkeys",
+    hint: "Your name, region, and timezone",
   },
   {
-    id: "data",
-    label: "Import & accounts",
-    labelCompact: "Import",
-    hint: "CSV import and financial accounts",
+    id: "security",
+    label: "Security",
+    labelCompact: "Security",
+    hint: "Password, passkeys, recovery codes, and linked sign-ins",
   },
   {
-    id: "subscriptions",
-    label: "Subscriptions",
-    labelCompact: "Subs",
-    hint: "Shared subscriptions and who has paid",
+    id: "accounts",
+    // Accounts, the banks that feed them, and CSV import all answer the same question —
+    // where transactions come from — so they belong on one page. Mapping a bank account
+    // to one of yours is impossible to do sensibly from a different tab.
+    label: "Accounts",
+    labelCompact: "Accounts",
+    hint: "Your accounts, connected banks, and CSV import",
   },
   {
     id: "budgets",
@@ -308,16 +312,16 @@ const SETTINGS_TAB_META: { id: SettingsTabId; label: string; labelCompact: strin
     hint: "Monthly limits by expense category",
   },
   {
-    id: "integrations",
-    label: "API tokens",
-    labelCompact: "API",
-    hint: "Connect external apps to read your budgets",
+    id: "subscriptions",
+    label: "Subscriptions",
+    labelCompact: "Subs",
+    hint: "Shared subscriptions and who has paid",
   },
   {
     id: "advanced",
     label: "Advanced",
     labelCompact: "Advanced",
-    hint: "Clear financial data or delete your login",
+    hint: "API tokens, backup and restore, and account deletion",
   },
 ];
 
@@ -337,6 +341,7 @@ export function SettingsForms({
   budgetAlertEmailEnabled,
   apiTokens,
   security,
+  plaid,
 }: {
   defaults: { displayName: string; countryCode: string; timezone: string };
   profileEmail: string;
@@ -352,6 +357,7 @@ export function SettingsForms({
   budgetAlertEmailEnabled: boolean;
   apiTokens: ApiTokenRow[];
   security: SecurityPanelProps;
+  plaid: PlaidConnectionsPanelProps;
 }) {
   const [tab, setTab] = useState<SettingsTabId>("profile");
   const tablistRef = useRef<HTMLDivElement | null>(null);
@@ -376,12 +382,16 @@ export function SettingsForms({
     const syncFromHash = () => {
       if (typeof window === "undefined") return;
       const h = window.location.hash.toLowerCase();
+      // Old anchors are kept pointing at wherever their section now lives, so existing
+      // links and bookmarks do not quietly land on the wrong page.
       if (h === "#budgets") setTab("budgets");
       else if (h === "#subscriptions" || h === "#subs") setTab("subscriptions");
-      else if (h === "#data" || h === "#import" || h === "#accounts") setTab("data");
-      else if (h === "#integrations" || h === "#api" || h === "#tokens") setTab("integrations");
+      else if (h === "#accounts" || h === "#data" || h === "#import") setTab("accounts");
+      else if (h === "#banks" || h === "#plaid") setTab("accounts");
+      else if (h === "#integrations" || h === "#api" || h === "#tokens") setTab("advanced");
       else if (h === "#advanced") setTab("advanced");
-      else if (h === "#profile" || h === "#security") setTab("profile");
+      else if (h === "#security") setTab("security");
+      else if (h === "#profile") setTab("profile");
     };
     syncFromHash();
     window.addEventListener("hashchange", syncFromHash);
@@ -464,8 +474,8 @@ export function SettingsForms({
             <header className="space-y-2 border-b border-slate-800/80 pb-6">
               <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Profile</h2>
               <p className="max-w-prose text-sm leading-relaxed text-slate-400">
-                Manage how you appear in the app, your regional defaults for new accounts, and your password when you use
-                email sign-in.
+                How you appear in the app, and the regional defaults applied to new accounts. Sign-in and passkeys
+                live under Security.
               </p>
             </header>
 
@@ -554,6 +564,19 @@ export function SettingsForms({
               </ServerActionForm>
             </section>
 
+          </div>
+        ) : null}
+
+        {tab === "security" ? (
+          <div className="mx-auto max-w-2xl space-y-6" role="tabpanel" aria-label="Security">
+            <header className="space-y-2 border-b border-slate-800/80 pb-6">
+              <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Security</h2>
+              <p className="max-w-prose text-sm leading-relaxed text-slate-400">
+                How you sign in, and what protects this account. Passkeys are also what gate connecting a bank or
+                minting an API token.
+              </p>
+            </header>
+
             <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-5 shadow-lg sm:p-6">
               <div className="space-y-1 border-b border-slate-800/90 pb-4">
                 <h3 className="flex items-center gap-2 text-base font-semibold text-slate-100">
@@ -567,7 +590,7 @@ export function SettingsForms({
                       />
                     </svg>
                   </span>
-                  Security
+                  Password
                 </h3>
                 <p className="max-w-prose text-sm text-slate-400">
                   {hasPassword
@@ -648,20 +671,15 @@ export function SettingsForms({
           </div>
         ) : null}
 
-        {tab === "data" ? (
-          <div className="mx-auto max-w-3xl space-y-6" role="tabpanel" aria-label="Import and accounts">
+        {tab === "accounts" ? (
+          <div className="mx-auto max-w-3xl space-y-6" role="tabpanel" aria-label="Accounts">
             <header className="space-y-2 border-b border-slate-800/80 pb-6">
-              <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Import &amp; accounts</h2>
+              <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Accounts</h2>
               <p className="max-w-prose text-sm leading-relaxed text-slate-400">
-                Import transactions from a CSV statement and manage the financial accounts that back your expenses,
-                income, recurring transactions, and imports.
+                The accounts your expenses, income and recurring transactions are recorded against — plus the two
+                ways transactions get in: a connected bank, or a CSV statement.
               </p>
             </header>
-            <ExpenseCsvImportForm
-              accounts={accounts}
-              expenseCategories={expenseCategories}
-              defaultExpenseAccountId={defaultExpenseAccountId}
-            />
             <div className="space-y-6 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/85 to-slate-900/55 p-4 shadow-lg lg:space-y-8 lg:p-6">
               <div className="flex flex-col gap-3 border-b border-slate-800/80 pb-4 lg:flex-row lg:items-end lg:justify-between lg:pb-5">
                 <div className="min-w-0 space-y-1">
@@ -815,9 +833,22 @@ export function SettingsForms({
                         </li>
                       ))}
                   </ul>
+
                 </div>
               ) : null}
             </div>
+
+            {/* Below the accounts themselves. Both of these feed those accounts, so they read
+                as "and here is how transactions get into them" — rather than greeting someone
+                with a wall of bank UI before they have seen what they own. */}
+            <PlaidConnectionsPanel {...plaid} />
+
+            <ExpenseCsvImportForm
+              accounts={accounts}
+              expenseCategories={expenseCategories}
+              defaultExpenseAccountId={defaultExpenseAccountId}
+            />
+
             {editingAccount && typeof document !== "undefined"
               ? createPortal(
                   <div className="fixed inset-0 z-[70] bg-black/50 p-4">
@@ -1069,19 +1100,25 @@ export function SettingsForms({
           </div>
         ) : null}
 
-        {tab === "integrations" ? (
-          <ApiTokensPanel tokens={apiTokens} mfa={{ enrolled: security.passkeys.length > 0, freshUntil: security.freshUntil } satisfies ApiTokensMfaState} />
-        ) : null}
-
         {tab === "advanced" ? (
           <div className="mx-auto max-w-3xl space-y-6" role="tabpanel" aria-label="Advanced">
             <header className="space-y-2 border-b border-slate-800/80 pb-6">
               <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Advanced</h2>
               <p className="max-w-prose text-sm leading-relaxed text-slate-400">
-                Back up or restore this account, clear your financial data, or permanently delete your login. These
-                actions affect your whole account, so review each one carefully.
+                Connect external apps, back up or restore this account, clear your financial data, or permanently
+                delete your login. These affect your whole account, so review each one carefully.
               </p>
             </header>
+
+            <ApiTokensPanel
+              tokens={apiTokens}
+              mfa={
+                {
+                  enrolled: security.passkeys.length > 0,
+                  freshUntil: security.freshUntil,
+                } satisfies ApiTokensMfaState
+              }
+            />
             <section className="space-y-3 rounded-2xl border border-sky-800/60 bg-sky-950/25 p-4 lg:p-5">
               <h3 className="text-base font-semibold text-sky-200 lg:text-lg">Backup and restore</h3>
               <p className="text-sm text-sky-100/85">

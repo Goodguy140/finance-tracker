@@ -1,16 +1,55 @@
 import type { NextConfig } from "next";
 
+const isDev = process.env.NODE_ENV !== "production";
+
+/**
+ * The Plaid Link policy, sent **report-only** to begin with, as the note that used to sit
+ * here promised.
+ *
+ * Link loads its script from cdn.plaid.com, renders in an iframe from the same host,
+ * injects its own inline styles into the parent document, and talks to *.plaid.com. OAuth
+ * institutions navigate out to *.plaid.com and post back, hence `form-action`.
+ *
+ * Report-only rather than enforcing on day one because a CSP that blocks Link fails
+ * *silently* from the user's point of view — the button simply does nothing. Collect
+ * violations from a real release first, then promote this to the enforcing header.
+ *
+ * Two deliberate weaknesses, both worth revisiting separately:
+ *  - `script-src 'unsafe-inline'`: the alternative is the nonce pattern, which forces
+ *    dynamic rendering on every route. `/` is already force-dynamic but not everything is,
+ *    and that change does not belong in the same release as a payments integration.
+ *  - `style-src 'unsafe-inline'`: unavoidable regardless — Tailwind v4 and Next both
+ *    inject inline styles, and Link injects its own into this document.
+ *
+ * No `report-uri`: on a self-hosted deployment the browser console is the right level, and
+ * a reporting endpoint would be a new unauthenticated write route for no benefit.
+ */
+const plaidCspReportOnly = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://cdn.plaid.com`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https://*.plaid.com",
+  "font-src 'self' data:",
+  "connect-src 'self' https://*.plaid.com",
+  "frame-src 'self' https://cdn.plaid.com https://*.plaid.com",
+  "form-action 'self' https://*.plaid.com",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "upgrade-insecure-requests",
+].join("; ");
+
 /**
  * Response headers applied to every route.
  *
- * `Content-Security-Policy` is deliberately absent for now: Plaid Link renders in an
- * iframe and loads its own scripts, so the policy is written alongside that integration
- * (report-only first) rather than guessed at here. Everything below is independent of it.
+ * The enforcing `Content-Security-Policy` stays limited to `frame-ancestors` until the
+ * report-only policy above has been through a release without violations.
  */
 const securityHeaders = [
   // Clickjacking. `frame-ancestors` is the modern control; X-Frame-Options covers
   // older agents. Revisit only if this app is ever legitimately embedded.
   { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+  { key: "Content-Security-Policy-Report-Only", value: plaidCspReportOnly },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

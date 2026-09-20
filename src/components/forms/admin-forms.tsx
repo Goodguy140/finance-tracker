@@ -4,9 +4,11 @@ import { ServerActionForm } from "@/components/server-action-form";
 import {
   inputClass,
   primaryBtnClass,
+  selectClass,
 } from "./shared";
 import {
   updateAdminOauthSettingsAction,
+  updateAdminPlaidSettingsAction,
   updatePasswordLoginSettingAction,
 } from "@/app/actions";
 
@@ -114,6 +116,68 @@ export function AdminPasswordLoginForm({
         <button className={primaryBtnClass} disabled={configuredViaEnv}>
           Save sign-in settings
         </button>
+      </section>
+    </ServerActionForm>
+  );
+}
+
+
+export function AdminPlaidForm({
+  enabled,
+  clientId,
+  environment,
+  configuredViaEnv,
+  warnings,
+}: {
+  enabled: boolean;
+  clientId: string;
+  environment: "sandbox" | "production";
+  configuredViaEnv: boolean;
+  warnings: string[];
+}) {
+  return (
+    <ServerActionForm action={updateAdminPlaidSettingsAction} className="space-y-2">
+      <section className="space-y-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+        <h3 className="font-semibold text-slate-100">Plaid (bank transaction sync)</h3>
+        {warnings.map((warning) => (
+          <p key={warning} className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+            {warning}
+          </p>
+        ))}
+        {configuredViaEnv ? (
+          <p className="text-xs text-slate-400">
+            PLAID_CLIENT_ID and PLAID_SECRET are set in the environment and override the fields
+            below. Both are required for the environment to take over.
+          </p>
+        ) : null}
+        <label className="flex items-center gap-2 text-slate-300">
+          <input type="checkbox" name="plaidEnabled" value="true" defaultChecked={enabled} />
+          Enable Plaid bank sync
+        </label>
+        <input
+          name="plaidClientId"
+          defaultValue={clientId}
+          placeholder="Plaid client ID"
+          className={inputClass}
+        />
+        <input
+          name="plaidSecret"
+          type="password"
+          placeholder="Plaid secret (leave blank to keep)"
+          className={inputClass}
+        />
+        <label className="block text-xs text-slate-400">
+          Environment
+          <select name="plaidEnv" defaultValue={environment} className={selectClass}>
+            <option value="sandbox">Sandbox — fake data, no real bank</option>
+            <option value="production">Production — real accounts, billed per item</option>
+          </select>
+        </label>
+        <p className="text-xs text-slate-500">
+          Credentials are encrypted with SERVER_SETTINGS_ENCRYPTION_KEY. Rotating that key makes
+          them unreadable and every linked bank has to be relinked.
+        </p>
+        <button className={primaryBtnClass}>Save Plaid settings</button>
       </section>
     </ServerActionForm>
   );

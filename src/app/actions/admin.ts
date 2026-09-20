@@ -15,6 +15,8 @@ import {
 import { setServerSetting } from "@/lib/server-settings";
 import { adminSetPasswordLoginDisabledSchema } from "@/lib/validation";
 import { resolveAuthentikOauthSettings, resolveGoogleOauthSettings } from "@/lib/oauth-settings";
+import { invalidatePlaidConfigCache } from "@/lib/plaid/config";
+import { PLAID_SETTING_KEYS, resolvePlaidSettings } from "@/lib/plaid/settings";
 import {
   getFormValue,
   formAction,
@@ -79,6 +81,62 @@ export const updateAdminOauthSettingsAction = formAction(async (formData: FormDa
       authentikEnabled: authentikResolved.enabled,
     },
     headers: h,
+  });
+  revalidatePath("/settings/admin");
+});
+
+/**
+ * Stores the Plaid client credentials, encrypted, alongside the OAuth ones.
+ *
+ * Blank secret fields mean "keep what is stored" — the form never renders the secret back,
+ * so an operator editing only the environment dropdown must not wipe it. `PLAID_CLIENT_ID`
+ * and `PLAID_SECRET` in the environment override whatever is saved here (both halves
+ * required); the admin page says so when that is in play.
+ */
+export const updateAdminPlaidSettingsAction = formAction(async (formData: FormData) => {
+  const user = await requireAdmin();
+  const [clientIdRow, secretRow, envRow] = await Promise.all([
+    prisma.serverSetting.findUnique({ where: { key: PLAID_SETTING_KEYS.clientId } }),
+    prisma.serverSetting.findUnique({ where: { key: PLAID_SETTING_KEYS.secret } }),
+    prisma.serverSetting.findUnique({ where: { key: PLAID_SETTING_KEYS.env } }),
+  ]);
+
+  const resolved = resolvePlaidSettings({
+    enabledRaw: getFormValue(formData, "plaidEnabled"),
+    clientIdRaw: getFormValue(formData, "plaidClientId"),
+    secretRaw: getFormValue(formData, "plaidSecret"),
+    envRaw: getFormValue(formData, "plaidEnv"),
+    existingClientId: clientIdRow ? tryDecryptSecret(clientIdRow.encryptedValue) ?? "" : "",
+    existingSecret: secretRow ? tryDecryptSecret(secretRow.encryptedValue) ?? "" : "",
+    existingEnv: envRow ? tryDecryptSecret(envRow.encryptedValue) ?? "" : "",
+  });
+
+  const entries = [
+    { key: PLAID_SETTING_KEYS.enabled, value: resolved.enabled },
+    { key: PLAID_SETTING_KEYS.clientId, value: resolved.clientId },
+    { key: PLAID_SETTING_KEYS.secret, value: resolved.secret },
+    { key: PLAID_SETTING_KEYS.env, value: resolved.env },
+  ];
+  for (const entry of entries) {
+    await prisma.serverSetting.upsert({
+      where: { key: entry.key },
+      create: { key: entry.key, encryptedValue: encryptSecret(entry.value), updatedByUserId: user.id },
+      update: { encryptedValue: encryptSecret(entry.value), updatedByUserId: user.id },
+    });
+  }
+  invalidatePlaidConfigCache();
+
+  await recordAuditLog(prisma, {
+    userId: user.id,
+    action: AUDIT_ACTIONS.plaid_settings_updated,
+    // No credential values: `scrubAuditMetadata` would drop a key named "secret" anyway,
+    // but the point is not to hand it one.
+    metadata: {
+      enabled: resolved.enabled,
+      environment: resolved.env,
+      clientIdConfigured: Boolean(resolved.clientId),
+    },
+    headers: await headers(),
   });
   revalidatePath("/settings/admin");
 });

@@ -20,6 +20,10 @@ npm run dev
 | `ALLOW_PUBLIC_SIGNUP` | `false` recommended on public deployments |
 | `AUDIT_LOG_RETENTION_DAYS` | Optional. Audit rows older than this are pruned (default `365`) |
 | `RECURRING_AUTO_POST_SCHEDULER` | Optional. Set `false` to disable the hourly in-process sweep that posts recurring rules in "automatic" mode |
+| `PLAID_CLIENT_ID` / `PLAID_SECRET` | Optional. Plaid API credentials. Both must be set to override what is stored in the admin UI |
+| `PLAID_ENV` | Optional. `sandbox` (default) or `production`. Only consulted when the two vars above are set |
+| `PLAID_SYNC_SCHEDULER` | Optional. Set `false` to disable the background sweep that pulls new bank transactions |
+| `PLAID_SYNC_INTERVAL_MINUTES` | Optional. How often that sweep runs (default `60`, minimum `15`) |
 
 `DATABASE_URL` defaults to `file:/data/app.db` (production) or `file:./dev.db` (development).
 
@@ -75,6 +79,87 @@ Configure under **Settings → Server admin → OAuth** (encrypted in the databa
 </details>
 
 <details>
+<summary>Plaid bank sync (env overrides admin UI)</summary>
+
+Once configured, users connect a bank under **Settings → Accounts**. Connecting or disconnecting
+requires a passkey assertion from the last few minutes, the same bar as minting an API token.
+
+Each Plaid account must be mapped to one of the user's accounts before anything syncs, and a
+mapping is refused when the currencies differ — amounts are stored as plain cents against the
+account's own currency and there is no conversion layer, so mixing them would silently corrupt
+every total.
+
+Disconnecting calls Plaid's `/item/remove` **before** deleting anything locally, and refuses the
+whole operation if that fails. Deleting the local rows alone would leave the connection live at
+Plaid, still billing and still holding access to the bank account.
+
+**Plaid bills per connected bank per month**, so the integration is built to avoid paying for
+connections that cannot earn their keep. The same bank cannot be connected twice (a second attempt
+is refused *and* revoked at Plaid, since exchanging a token creates a billable item whether or not
+it is stored). Banks that need re-authentication, whose consent has lapsed, or that feed no account
+are flagged in the panel with a reminder that they are still being charged for. Disconnecting calls
+`/item/remove`, which is what actually stops the billing.
+
+The history window is chosen once, when you connect, and later syncs only pick up new
+transactions. There is deliberately **no "fetch more history" button**: Plaid's
+`days_requested` is set when the item is created, and whether raising it in update mode
+actually backfills has not been confirmed against a live account. A button that silently
+did nothing would be worse than its absence — to widen the window, disconnect the bank and
+connect it again, choosing the longer period.
+
+Connected banks are also swept in the background, hourly by default, so the review queue is
+already waiting when you next open the dashboard. The sweep skips anything a call could not help:
+unmapped banks, lapsed consent, banks awaiting re-authentication, and banks in failure backoff —
+a repeatedly failing connection is retried on a doubling delay up to once a day rather than
+every hour. Nothing the sweep fetches is posted anywhere —
+synced transactions sit in the queue until you review them — so it cannot change your books while
+you are not looking. `PLAID_SYNC_INTERVAL_MINUTES` changes the cadence (minimum 15; below that it
+is rate-limit pressure rather than a refresh), and `PLAID_SYNC_SCHEDULER=false` turns it off so
+**Sync now** is the only trigger. Banks waiting on re-authentication are skipped until you sign in
+again, rather than being retried every hour.
+
+Configure under **Settings → Server admin → Plaid** (encrypted in the database with
+`SERVER_SETTINGS_ENCRYPTION_KEY`). `PLAID_CLIENT_ID` and `PLAID_SECRET` in the environment take
+precedence when **both** are set, in which case `PLAID_ENV` selects the host; a half-set pair is
+ignored and the stored values are used instead.
+
+`sandbox` returns fake data and never touches a real bank. `production` requires Plaid approval and
+is billed per linked item.
+
+Rotating `SERVER_SETTINGS_ENCRYPTION_KEY` makes stored credentials unreadable — the admin page says
+so rather than erroring, but every linked bank has to be relinked.
+
+The end-to-end tests run against a deterministic in-memory Plaid (`PLAID_FAKE_CLIENT=1`,
+permitted only when the environment resolves to `sandbox`), so `npm test` and the Playwright
+suite never touch the network. That is also their limitation: they prove the code agrees
+with a fake written from the published API, not that the API behaves that way.
+
+```bash
+npm run verify:plaid
+```
+
+checks the assumptions against the **real** Plaid sandbox — free, fabricated data, no real
+bank. It needs only sandbox credentials from the Plaid dashboard in `PLAID_CLIENT_ID` and
+`PLAID_SECRET`; it refuses to run if `PLAID_ENV` is anything but `sandbox`, mints a public
+token without the Link UI, walks a full sync, and removes the item afterwards.
+
+Run against Plaid's sandbox on 2026-09-20 it confirmed: the sign convention (positive means
+money out), that all returned rows normalise, that every
+`personal_finance_category.primary` Plaid sent is one the map knows, that `days_requested`
+is honoured exactly (30 requested, oldest transaction exactly 30 days old), and that
+pagination and cursor reuse behave as assumed. The sandbox produced no pending→posted
+transition, so that one path is still only covered by the fake.
+
+It asserts the things nothing else can: that every field the ingest layer reads is present
+and the right type, that a positive `amount` still means money *out*, that every returned
+row survives normalisation, that no `personal_finance_category.primary` arrives that the
+category map does not know (those would silently become "Uncategorized"), that
+`days_requested` is honoured, and that a current cursor returns nothing new. Worth running
+after any Plaid-side change, and before pointing a deployment at production.
+
+</details>
+
+<details>
 <summary>SMTP (password reset & budget alert email)</summary>
 
 Requires `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (optional `SMTP_PORT`, default `587`). Enable budget email alerts under **Settings → Budgets** when configured: after any change to the current month's spending, each category that has reached 80% of its limit (and again when it goes over) is emailed once per month.
@@ -112,7 +197,7 @@ Admins manage accounts at **Settings → Server admin → Users** (change role, 
 
 What is stored, how long it is kept, how it is destroyed, and how to answer an access, portability, or erasure request: **[docs/data-retention.md](docs/data-retention.md)**.
 
-Financial records have **no automatic expiry** — they are kept until the user deletes them. Users export their full history from **Settings → Data → Export**, wipe it with **Reset financial data**, or close the account entirely under **Settings → Danger zone**.
+Financial records have **no automatic expiry** — they are kept until the user deletes them. Users export their full history from **Settings → Advanced → Backup and restore**, wipe it with **Reset financial data**, or close the account entirely under **Settings → Advanced → Delete account**.
 
 Two operator notes worth reading before relying on any of that: a backup export contains the password hash and live OAuth tokens, so treat the file as a credential; and deleting rows does not erase them from disk — run `VACUUM` after bulk deletion, and remember that dataset snapshots still hold whatever you deleted.
 
@@ -125,7 +210,7 @@ Two operator notes worth reading before relying on any of that: a backup export 
 
 External apps (e.g. a personal dashboard) can read your data with a scoped token.
 
-1. **Settings → API tokens → Create token.** The raw token is shown **once** — copy it immediately; only a SHA-256 hash is stored. Revoke anytime.
+1. **Settings → Advanced → API tokens → Create token.** The raw token is shown **once** — copy it immediately; only a SHA-256 hash is stored. Revoke anytime.
 2. Call the versioned API with a bearer token:
 
    ```bash

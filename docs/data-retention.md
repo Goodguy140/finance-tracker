@@ -69,21 +69,34 @@ directly harm the person.
 | Audit trail | `AuditLog` (actor, target, **IP address**, **user agent**, scrubbed metadata) | ● | Security and accountability. IP and UA are personal data in their own right. |
 | Alert bookkeeping | `BudgetAlertNotification` (month, category, severity) | | Stops one alert per severity per month repeating. |
 | Transient auth state | `MfaChallenge`, `PasswordResetToken`, `RateLimitEntry` | | Single ceremonies and abuse limits. |
-| Server configuration | `ServerSetting` (encrypted at rest) | | OAuth secrets and sign-in policy. |
+| Bank connections | `PlaidItem` (`accessTokenEnc`, institution, sync cursor), `PlaidAccount` | ● | Plaid bank sync. The access token is a **live credential for the user's bank feed**, encrypted at rest with `SERVER_SETTINGS_ENCRYPTION_KEY` — unlike `AuthAccount`'s OAuth tokens, which are plaintext. |
+| Un-reviewed bank transactions | `PlaidStagedTransaction` | ● | Transactions pulled from the bank that the user has not yet linked, added, or ignored. Full financial detail, not yet in the log. |
+| Verification marks | `TransactionVerification` | | Records that a transaction was confirmed against a bank record; drives the Verified badge. |
+| Server configuration | `ServerSetting` (encrypted at rest) | | OAuth **and Plaid** secrets, sign-in policy. |
 | Unused | `Session` | | **Dead table.** Sessions are stateless JWTs; nothing reads or writes this model. |
 
 ## Retention schedule
 
 | Data | Retained for | Disposal mechanism |
 |------|--------------|--------------------|
-| All financial records | **Until the user deletes them.** No automatic expiry. | Cascade on account deletion; bulk wipe via **Settings → Data → Reset financial data** |
+| All financial records | **Until the user deletes them.** No automatic expiry. | Cascade on account deletion; bulk wipe via **Settings → Advanced → Reset financial data** |
 | `User`, credentials, passkeys, recovery codes, SSO links, API tokens | Life of the account | `onDelete: Cascade` from `User` |
 | `AuditLog` | `AUDIT_LOG_RETENTION_DAYS`, **default 365** | Probabilistic sweep, ~1 write in 200 |
 | `MfaChallenge` | Minutes. Deleted the moment it is consumed | Delete on use; sweep ~1 ceremony in 20 |
 | `RateLimitEntry` | Until `resetAt` | Cleared on success; sweep ~1 check in 50 |
 | `PasswordResetToken` | Unusable after 30 min — **but the row is never deleted** | None. See [Known gaps](#known-gaps) |
 | `BudgetAlertNotification` | Indefinite | Only on account deletion, reset, or restore |
+| `PlaidItem`, `PlaidAccount` | Until the user unlinks the bank, or the account is deleted | `/item/remove` at Plaid **then** cascade — see [Bank connections](#bank-connections-plaid) |
+| `PlaidStagedTransaction` | **Indefinite, by design** | Only on unlink or account deletion. See below. |
+| `TransactionVerification` | Life of the transaction it marks | `onDelete: Cascade` from `Transaction` |
 | `ServerSetting` | Life of the deployment | Overwritten on change |
+
+`PlaidStagedTransaction` rows are kept even after the user has dealt with them, including ones they
+chose to ignore. The `(userId, plaidTransactionId)` pair is the idempotency key for the whole sync:
+it is what stops a re-sync re-proposing a transaction that was already added, or re-suggesting one the
+user explicitly declined. Pruning them would trade a little storage for duplicate financial records,
+which is the wrong trade. The alternative — a tombstone table holding only the ids — keeps the same
+personal data under a different name, so it is not a genuine improvement.
 
 ### Why financial records have no expiry
 
@@ -103,7 +116,7 @@ substance of the rest of this document.**
 
 ### What account deletion actually destroys
 
-Both paths — self-service (**Settings → Danger zone**, type `DELETE`) and admin
+Both paths — self-service (**Settings → Advanced → Delete account**, type `DELETE`) and admin
 (**Settings → Server admin → Users**, type the account's email) — run
 `prisma.user.delete`, and every user-owned relation cascades: transactions, splits,
 accounts, categories, budgets, recurring rules, subscription members and their share
@@ -129,7 +142,7 @@ reason `AUDIT_LOG_RETENTION_DAYS=0` is rejected rather than treated as "keep not
 reason you should not raise the value without a stated reason.
 ### Erasing financial data without closing the account
 
-**Settings → Data → Reset financial data**, confirmed by typing `RESET FINANCIAL DATA`,
+**Settings → Advanced → Reset financial data**, confirmed by typing `RESET FINANCIAL DATA`,
 drops every financial row in one transaction and re-seeds default categories. The account,
 its credentials, and its audit history remain. Use this when someone wants their history
 gone but their login kept.
@@ -210,10 +223,10 @@ out-of-band confirmation you already trust.
 
 | Right | How to satisfy it | Where |
 |-------|-------------------|-------|
-| **Access** (PIPEDA 4.9, GDPR 15) | The JSON export is the complete user-scoped record | **Settings → Data → Export**, or `GET /api/backup/export/me` |
+| **Access** (PIPEDA 4.9, GDPR 15) | The JSON export is the complete user-scoped record | **Settings → Advanced → Backup and restore**, or `GET /api/backup/export/me` |
 | **Portability** (GDPR 20, Law 25) | Same export — structured, machine-readable JSON | as above |
 | **Correction** (PIPEDA 4.9.5, GDPR 16) | The user edits their own records directly; profile via **Settings → Profile** | in-app |
-| **Erasure** (GDPR 17, Law 25) | Delete the account, or reset financial data only | **Settings → Danger zone** / admin **Users** |
+| **Erasure** (GDPR 17, Law 25) | Delete the account, or reset financial data only | **Settings → Advanced** / admin **Users** |
 | **Withdraw consent** (PIPEDA 4.3.8) | Suspend, then delete if asked. Suspension halts processing without destroying data | admin **Users** |
 | **Object / restrict** (GDPR 18, 21) | Suspension is the mechanism — all access and token use stops | admin **Users** |
 
@@ -260,6 +273,42 @@ is outside your jurisdiction. Self-hosting the relay, or leaving `budgetAlertEma
 avoids this entirely.
 Your OIDC providers (Google, Authentik) are likewise processors for the identity data they
 return.
+
+### Bank connections (Plaid)
+
+When a user links a bank, **Plaid holds its own copy of that account's transaction history**,
+under Plaid's retention policy and not this one, processed in the United States. Plaid is a
+processor: if your deployment is in scope for PIPEDA or GDPR you need a data processing
+agreement with them and a cross-border transfer assessment. Nothing in this repository can
+delete data from Plaid's side — that is a request to Plaid.
+
+**Unlinking is the only thing that actually ends access.** Deleting the `PlaidItem` row does
+not: the item stays live at Plaid, keeps billing, and keeps its standing permission on the
+bank account — and once the local row is gone, nothing records which item to revoke. Plaid's
+`/item/remove` must therefore be called *first*, and the local row deleted only once it
+succeeds.
+
+Account deletion, admin deletion of a user, and **Settings → Advanced → Reset financial data**
+each route through `revokePlaidItemsForUser` (`src/lib/plaid/unlink.ts`) before anything
+cascades, and **refuse the whole operation if any connection cannot be revoked** — the user
+is told to retry or unlink manually rather than having a connection silently stranded. The
+refusal names the affected item ids so they can be removed from the Plaid dashboard by hand.
+
+A connection that cannot be revoked because Plaid is switched off at the server level is
+also refused rather than deleted: the bank is still live at Plaid whatever this deployment
+thinks, so removing the only record of it would strand it permanently.
+
+**Plaid bills per connected bank per month, working or not.** Connections that cannot sync —
+awaiting re-authentication, lapsed consent, or feeding no account — are therefore flagged in
+**Settings → Accounts** as costing money for nothing, and connecting the same bank twice is
+refused outright (the second, redundant connection is revoked at Plaid rather than merely
+discarded, since exchanging a token creates a billable item whether or not it is stored).
+
+Bank connections are **never included in a backup export** — not the access token, not the
+item, not the staged transactions — for the same reason passkeys are not: restoring one on
+another deployment would hand that deployment a working connection to someone's bank. An
+export does carry `TransactionVerification` rows, but stripped of every Plaid identifier, so a
+restored transaction still shows as verified without implying a live link.
 
 ## Known gaps
 
@@ -313,7 +362,9 @@ Once a year, alongside the quarterly access review in the access control policy:
       the real ones.
 - [ ] Confirm suspended accounts still need their data kept. Suspension is not disposal —
       an account suspended two years ago is retention without a purpose.
-- [ ] Re-check the processor list: `SMTP_HOST`, OIDC providers, and where backups are stored.
+- [ ] Re-check the processor list: `SMTP_HOST`, OIDC providers, Plaid, and where backups are stored.
+- [ ] Reconcile linked Plaid items against the Plaid dashboard: any item live there but absent here is
+      an orphan still holding bank access, and should be removed.
 - [ ] `VACUUM` the database if there has been bulk deletion since the last review.
 
 ## Related environment variables
@@ -323,5 +374,7 @@ Once a year, alongside the quarterly access review in the access control policy:
 | `AUDIT_LOG_RETENTION_DAYS` | How long audit rows — including IPs and deleted users' emails — are kept. Default 365. `0` is rejected. |
 | `DATABASE_URL` | Where the data lives. Defaults to `file:/data/app.db`; that volume's snapshot policy is part of your real retention period. |
 | `SMTP_HOST` / `SMTP_USER` / `SMTP_FROM` | Sends financial detail to a third party under their retention policy. Unset means no alert mail leaves the deployment. |
-| `SERVER_SETTINGS_ENCRYPTION_KEY` | Encrypts `ServerSetting` at rest. Rotate on decommission. |
+| `SERVER_SETTINGS_ENCRYPTION_KEY` | Encrypts `ServerSetting` **and every Plaid access token** at rest. Rotate on decommission — note that rotating it on a live deployment makes linked banks unreadable and they must be relinked. |
+| `PLAID_CLIENT_ID` / `PLAID_SECRET` | Plaid API credentials. Override the encrypted `plaid.*` server settings when **both** are set. Do not determine retention, but govern whether bank data is pulled at all. |
+| `PLAID_ENV` | `sandbox` (default) or `production`. Only consulted when the two above are set. Sandbox items hold no real bank data. |
 | `NEXTAUTH_SECRET` | Signs sessions. Rotate on decommission so old volumes are inert. |

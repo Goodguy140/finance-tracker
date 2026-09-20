@@ -188,6 +188,20 @@ export const userBackupSchema = z.object({
       createdAt: isoDate,
     }),
   ),
+  // Optional with a default so every backup written before Plaid sync existed still
+  // validates, the same way earlier additions were handled.
+  transactionVerifications: z
+    .array(
+      z.object({
+        transactionId: z.string().min(1),
+        source: z.enum(["IMPORTED", "MATCHED"]),
+        institutionName: z.string().max(120).nullable(),
+        verifiedAt: isoDate,
+        removedByPlaidAt: isoDate.nullable(),
+      }),
+    )
+    .optional()
+    .default([]),
 });
 
 export type ParsedUserBackup = z.infer<typeof userBackupSchema>;
