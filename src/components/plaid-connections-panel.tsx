@@ -10,7 +10,7 @@ import { usePlaidLink } from "@/components/plaid-link-button";
 import { usePasskeyStepUp } from "@/components/mfa/passkey-client";
 import { inputClass, primaryBtnClass, secondaryBtnClass } from "@/components/forms/shared";
 import { mapPlaidAccountAction } from "@/app/actions";
-import { syncPlaidItemAction } from "@/app/actions/plaid";
+import { syncAllPlaidItemsAction, syncPlaidItemAction } from "@/app/actions/plaid";
 import {
   createPlaidLinkTokenAction,
   exchangePlaidPublicTokenAction,
@@ -174,7 +174,10 @@ export function PlaidConnectionsPanel({
     (unlinkState.ok === false ? unlinkState.error : null);
 
   return (
-    <section aria-labelledby="connected-banks-heading" className="space-y-6">
+    <section
+      aria-labelledby="connected-banks-heading"
+      className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/85 to-slate-900/55 p-4 shadow-lg lg:space-y-6 lg:p-6"
+    >
       <header className="space-y-2">
         <h3 id="connected-banks-heading" className="text-lg font-semibold tracking-tight text-slate-100 lg:text-xl">
           Connected banks
@@ -277,6 +280,14 @@ export function PlaidConnectionsPanel({
             {busy ? "Working…" : "Connect a bank"}
           </button>
         </section>
+      ) : null}
+
+      {items.length > 1 ? (
+        <ServerActionForm action={syncAllPlaidItemsAction}>
+          <button className={secondaryBtnClass} type="submit" disabled={busy}>
+            Sync all due banks
+          </button>
+        </ServerActionForm>
       ) : null}
 
       {items.length === 0 ? (

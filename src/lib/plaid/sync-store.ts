@@ -1,4 +1,4 @@
-import { CategoryKind, PlaidItemStatus, PlaidStagedStatus, Prisma } from "@prisma/client";
+import { CategoryKind, PlaidItemStatus, PlaidStagedStatus } from "@prisma/client";
 import { LONG_TRANSACTION_OPTIONS } from "@/app/actions/_helpers";
 import { prisma } from "@/lib/prisma";
 import { UNCATEGORIZED_NAME } from "@/lib/plaid/category-map";
@@ -360,8 +360,3 @@ export function createSyncStore(): SyncStore {
     },
   };
 }
-
-/** Rows the review queue renders, shaped for the client. */
-export type StagedQueueRow = Prisma.PlaidStagedTransactionGetPayload<{
-  include: { plaidItem: { select: { institutionName: true } } };
-}>;

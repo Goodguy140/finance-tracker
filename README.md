@@ -81,7 +81,7 @@ Configure under **Settings → Server admin → OAuth** (encrypted in the databa
 <details>
 <summary>Plaid bank sync (env overrides admin UI)</summary>
 
-Once configured, users connect a bank under **Settings → Banks**. Connecting or disconnecting
+Once configured, users connect a bank under **Settings → Accounts**. Connecting or disconnecting
 requires a passkey assertion from the last few minutes, the same bar as minting an API token.
 
 Each Plaid account must be mapped to one of the user's accounts before anything syncs, and a
@@ -99,6 +99,13 @@ is refused *and* revoked at Plaid, since exchanging a token creates a billable i
 it is stored). Banks that need re-authentication, whose consent has lapsed, or that feed no account
 are flagged in the panel with a reminder that they are still being charged for. Disconnecting calls
 `/item/remove`, which is what actually stops the billing.
+
+The history window is chosen once, when you connect, and later syncs only pick up new
+transactions. There is deliberately **no "fetch more history" button**: Plaid's
+`days_requested` is set when the item is created, and whether raising it in update mode
+actually backfills has not been confirmed against a live account. A button that silently
+did nothing would be worse than its absence — to widen the window, disconnect the bank and
+connect it again, choosing the longer period.
 
 Connected banks are also swept in the background, hourly by default, so the review queue is
 already waiting when you next open the dashboard. The sweep skips anything a call could not help:
@@ -121,6 +128,14 @@ is billed per linked item.
 
 Rotating `SERVER_SETTINGS_ENCRYPTION_KEY` makes stored credentials unreadable — the admin page says
 so rather than erroring, but every linked bank has to be relinked.
+
+The end-to-end tests run against a deterministic in-memory Plaid (`PLAID_FAKE_CLIENT=1`,
+permitted only when the environment resolves to `sandbox`), so no test run can reach the
+real API. That also means **the integration has never been exercised against Plaid itself**:
+the request shapes, the sign convention, `days_requested` and the
+`personal_finance_category` values the category map keys on are all written from the
+published API rather than verified against it. Connect one sandbox account before trusting
+this with a real bank.
 
 </details>
 
@@ -162,7 +177,7 @@ Admins manage accounts at **Settings → Server admin → Users** (change role, 
 
 What is stored, how long it is kept, how it is destroyed, and how to answer an access, portability, or erasure request: **[docs/data-retention.md](docs/data-retention.md)**.
 
-Financial records have **no automatic expiry** — they are kept until the user deletes them. Users export their full history from **Settings → Data → Export**, wipe it with **Reset financial data**, or close the account entirely under **Settings → Danger zone**.
+Financial records have **no automatic expiry** — they are kept until the user deletes them. Users export their full history from **Settings → Advanced → Backup and restore**, wipe it with **Reset financial data**, or close the account entirely under **Settings → Advanced → Delete account**.
 
 Two operator notes worth reading before relying on any of that: a backup export contains the password hash and live OAuth tokens, so treat the file as a credential; and deleting rows does not erase them from disk — run `VACUUM` after bulk deletion, and remember that dataset snapshots still hold whatever you deleted.
 
@@ -175,7 +190,7 @@ Two operator notes worth reading before relying on any of that: a backup export 
 
 External apps (e.g. a personal dashboard) can read your data with a scoped token.
 
-1. **Settings → API tokens → Create token.** The raw token is shown **once** — copy it immediately; only a SHA-256 hash is stored. Revoke anytime.
+1. **Settings → Advanced → API tokens → Create token.** The raw token is shown **once** — copy it immediately; only a SHA-256 hash is stored. Revoke anytime.
 2. Call the versioned API with a bearer token:
 
    ```bash

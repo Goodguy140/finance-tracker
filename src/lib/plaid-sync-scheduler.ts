@@ -91,8 +91,6 @@ export type SweepSummary = {
   busy: number;
   needsReauth: number;
   failed: number;
-  /** Due, but skipped because nothing about them could produce a transaction. */
-  skippedUnusable: number;
 };
 
 /**
@@ -127,7 +125,6 @@ export async function sweepDuePlaidItems(
     busy: 0,
     needsReauth: 0,
     failed: 0,
-    skippedUnusable: 0,
   };
 
   // Cheap exit when Plaid is not set up at all, which is the common case for most

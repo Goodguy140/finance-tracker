@@ -49,3 +49,9 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# Local docs working files: rendered copies of tracked markdown, and screenshots nothing
+# references. They have sat untracked across many commits and only clutter `git status`.
+# If one becomes part of the documentation, commit it deliberately with `git add -f`.
+/docs/*.pdf
+/docs/*.png

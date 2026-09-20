@@ -23,6 +23,7 @@ import {
 import { formatDateOnlyUtc } from "@/lib/date-only";
 import { MfaStepUpRequiredError, requireFreshMfa, requireUser, type MfaStepUpCode } from "@/lib/session";
 import { syncPlaidItem } from "@/lib/plaid/sync";
+import { sweepDuePlaidItems } from "@/lib/plaid-sync-scheduler";
 import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
 import {
   assertUserOwnsAccount,
@@ -510,6 +511,32 @@ export const syncPlaidItemAction = formAction(async (formData: FormData) => {
       );
     }
     throw new Error(describePlaidFailure(err));
+  }
+
+  revalidatePath("/");
+  revalidatePath(SETTINGS_PATH);
+});
+
+/**
+ * Syncs every one of this user's banks that is due.
+ *
+ * Deliberately respects the same interval the background sweep uses, rather than forcing a
+ * fetch: with several banks connected, a button that ignored it would let someone spend
+ * their Plaid rate limit on a row of connections that were refreshed minutes ago. Banks
+ * already up to date are simply left alone, and their "Last sync" chip says so.
+ */
+export const syncAllPlaidItemsAction = formAction(async (formData: FormData) => {
+  void formData;
+  const user = await requireUser();
+  const summary = await sweepDuePlaidItems(new Date(), { userId: user.id });
+
+  if (summary.synced > 0) {
+    await recordAuditLog(prisma, {
+      userId: user.id,
+      action: AUDIT_ACTIONS.plaid_item_sync_succeeded,
+      metadata: { mode: "sync-all", banks: summary.synced, staged: summary.staged },
+      headers: await headers(),
+    });
   }
 
   revalidatePath("/");

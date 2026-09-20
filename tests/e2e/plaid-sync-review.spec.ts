@@ -90,15 +90,27 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
   await openSettingsTab(page, "accounts");
   await page.getByRole("region", { name: "Connected banks" }).getByRole("button", { name: "Sync now" }).click();
 
+  // Polled on the match, not the row count. Matching runs after the whole walk commits, so
+  // all four rows exist with null match fields for a moment first — waiting on the count
+  // and then reading matchTransactionId reads that gap, which is exactly how this flaked.
   await expect
     .poll(
-      async () =>
-        prisma.plaidStagedTransaction.count({
-          where: { userId: user.id, status: "NEEDS_REVIEW" },
-        }),
+      async () => {
+        const row = await prisma.plaidStagedTransaction.findFirst({
+          where: { userId: user.id, plaidTransactionId: "fake-txn-coffee" },
+          select: { matchTransactionId: true },
+        });
+        return row?.matchTransactionId ?? null;
+      },
       { timeout: 20_000 },
     )
-    .toBe(4);
+    .toBe(manual.id);
+
+  expect(
+    await prisma.plaidStagedTransaction.count({
+      where: { userId: user.id, status: "NEEDS_REVIEW" },
+    }),
+  ).toBe(4);
 
   // Nothing reached the log: the manual row is still the only transaction.
   expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(1);
@@ -114,7 +126,6 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
 
   // The matcher proposed the hand-entered coffee, and nothing else claimed it.
   const coffee = byId.get("fake-txn-coffee")!;
-  expect(coffee.matchTransactionId).toBe(manual.id);
   expect(coffee.matchTier).toBe("high");
   expect(byId.get("fake-txn-groceries")!.matchTransactionId).toBeNull();
 

@@ -76,7 +76,7 @@ stored setting, so recovery never requires editing the database.
 
 External integrations authenticate with personal access tokens (`Authorization: Bearer ft_…`).
 
-- Created per-user under **Settings → Integrations**, and only after a passkey step-up.
+- Created per-user under **Settings → Advanced → API tokens**, and only after a passkey step-up.
 - 256 bits of entropy; only a SHA-256 hash is stored. The raw value is shown exactly once.
 - **Scoped** — currently `budgets:read` only. A token carries no rights beyond its scopes.
 - **Expiring** — 30, 90, or 365 days, or never. Default 90.
