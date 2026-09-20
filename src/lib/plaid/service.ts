@@ -62,7 +62,11 @@ export async function requirePlaidClient(): Promise<PlaidClient> {
   const config = await getPlaidConfig();
   if (!config) throw new PlaidNotConfiguredError();
   if (plaidFakeClientAllowed(config.environment)) {
-    const { createFakePlaidClient } = await import("@/lib/plaid/fake-client");
+    // Relative, not "@/lib/plaid/fake-client", and deliberately so. Bundlers rewrite
+    // *static* aliased imports ahead of time, but this one is resolved at runtime by
+    // whatever loader happens to be executing — and Playwright's does not rewrite it, so
+    // the alias form fails with "Cannot find module" in CI while working locally.
+    const { createFakePlaidClient } = await import("./fake-client");
     return createFakePlaidClient();
   }
   return createPlaidClient(config);

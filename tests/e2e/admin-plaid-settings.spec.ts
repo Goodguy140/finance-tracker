@@ -52,7 +52,11 @@ test("an admin can store Plaid credentials, and the secret is encrypted and neve
   await section.getByRole("checkbox").check();
   await section.getByPlaceholder("Plaid client ID").fill("test-client-id");
   await section.getByPlaceholder("Plaid secret (leave blank to keep)").fill("test-secret-value");
-  await section.getByRole("combobox").selectOption("production");
+  // Deliberately NOT "production". `plaid.env` is a global server setting shared by every
+  // spec, and plaidFakeClientAllowed() refuses the in-memory Plaid unless it reads
+  // "sandbox" — so writing production here sent whatever else was mid-run to the real API.
+  // That environment round-trips through resolvePlaidSettings, which is unit-tested.
+  await section.getByRole("combobox").selectOption("sandbox");
   await section.getByRole("button", { name: "Save Plaid settings" }).click();
 
   // Polled on the audit row, which the action writes last. Waiting on anything earlier
@@ -69,7 +73,7 @@ test("an admin can store Plaid credentials, and the secret is encrypted and neve
   expect(await readPlaidSetting("plaid.clientId")).toBe("test-client-id");
   expect(await readPlaidSetting("plaid.secret")).toBe("test-secret-value");
   expect(await readPlaidSetting("plaid.enabled")).toBe("true");
-  expect(await readPlaidSetting("plaid.env")).toBe("production");
+  expect(await readPlaidSetting("plaid.env")).toBe("sandbox");
 
   // Stored ciphertext must not contain the plaintext secret.
   const secretRow = await prisma.serverSetting.findUnique({ where: { key: "plaid.secret" } });
@@ -82,13 +86,13 @@ test("an admin can store Plaid credentials, and the secret is encrypted and neve
   });
   expect(audit).not.toBeNull();
   expect(audit?.metadataJson ?? "").not.toContain("test-secret-value");
-  expect(audit?.metadataJson ?? "").toContain("production");
+  expect(audit?.metadataJson ?? "").toContain("sandbox");
 
   // Reloading echoes the client id back but never the secret.
   await page.reload();
   await expect(section.getByPlaceholder("Plaid client ID")).toHaveValue("test-client-id");
   await expect(section.getByPlaceholder("Plaid secret (leave blank to keep)")).toHaveValue("");
-  await expect(section.getByRole("combobox")).toHaveValue("production");
+  await expect(section.getByRole("combobox")).toHaveValue("sandbox");
 
   // A blank secret field on re-save keeps the stored secret rather than wiping it.
   await section.getByPlaceholder("Plaid client ID").fill("second-client-id");

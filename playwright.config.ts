@@ -57,6 +57,12 @@ function getE2eEnv(): Record<string, string> {
   // against a real browser and database without a Plaid account — and so no spec can
   // reach the live API even if credentials leak into the environment some other way.
   env.PLAID_FAKE_CLIENT = "1";
+  // The background sweep is started by instrumentation.ts 45s after boot and syncs every
+  // due bank for every user. A full two-project run lasts longer than that, so it would
+  // fire mid-suite, take a spec's sync lock and advance its cursor — which is exactly the
+  // kind of intermittent failure that is miserable to chase. The sweep itself is covered
+  // directly by plaid-sync-sweep.spec.ts, which calls it scoped to its own user.
+  env.PLAID_SYNC_SCHEDULER = "false";
   return env;
 }
 
