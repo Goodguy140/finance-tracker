@@ -40,6 +40,8 @@ export type PlaidItemRow = {
   shortfallLine: string | null;
   lastSyncedLabel: string | null;
   consentExpiresLabel: string | null;
+  /** Set when this connection is billable at Plaid but cannot currently sync. */
+  costWarning: string | null;
   accounts: PlaidAccountRow[];
 };
 
@@ -343,6 +345,12 @@ export function PlaidConnectionsPanel({
                 <p className="rounded-lg border border-amber-500/35 bg-amber-950/30 px-3 py-2 text-xs text-amber-100">
                   This revokes access at Plaid as well as here. Transactions already in your log
                   stay, and keep their verified badge — it will note that the link was removed.
+                </p>
+              ) : null}
+
+              {item.costWarning ? (
+                <p className="rounded-lg border border-amber-500/35 bg-amber-950/25 px-3 py-2 text-xs text-amber-100">
+                  {item.costWarning}
                 </p>
               ) : null}
 

@@ -10,6 +10,7 @@ import { getAuthentikProvider, getGoogleProvider } from "@/lib/oauth-provider-co
 import { prisma } from "@/lib/prisma";
 import { requireLoadedUser } from "@/lib/session";
 import { getPlaidConfig } from "@/lib/plaid/config";
+import { describePlaidCostWarning } from "@/lib/plaid/cost";
 import { plaidFakeClientEnabled } from "@/lib/plaid/service";
 import {
   describeHistorySetting,
@@ -201,6 +202,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
         requestedDays: item.requestedDays,
         requestedCutoff: item.historyCutoff,
         earliestObserved: item.initialSyncDoneAt ? item.earliestObservedAt : null,
+      }),
+      // Plaid bills per connected item per month, whether or not it works. A connection
+      // that cannot sync is money leaving with nothing coming back, so say so plainly
+      // rather than leaving a quietly broken row in the list.
+      costWarning: describePlaidCostWarning({
+        status: item.status,
+        consentExpiresAt: item.consentExpiresAt,
+        hasMappedAccount: item.plaidAccounts.some((a) => a.accountId !== null && a.syncEnabled),
       }),
       lastSyncedLabel: item.lastSyncedAt ? formatDateOnlyUtc(item.lastSyncedAt) : null,
       consentExpiresLabel: item.consentExpiresAt ? formatDateOnlyUtc(item.consentExpiresAt) : null,

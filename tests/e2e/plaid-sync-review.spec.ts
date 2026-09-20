@@ -2,26 +2,11 @@ import { expect, test, type Page } from "@playwright/test";
 import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
-import { encryptSecret } from "../../src/lib/security";
+import { configurePlaidForTests } from "./plaid-helpers";
 import { expectDashboardHome } from "./expect-dashboard-home";
 import { addVirtualAuthenticator, enrolFirstPasskey, openSettingsTab } from "./mfa-helpers";
 
 const PASSWORD = "e2e-password-123";
-
-async function configurePlaid() {
-  for (const [key, value] of [
-    ["plaid.enabled", "true"],
-    ["plaid.clientId", "e2e-client-id"],
-    ["plaid.secret", "e2e-secret"],
-    ["plaid.env", "sandbox"],
-  ]) {
-    await prisma.serverSetting.upsert({
-      where: { key },
-      create: { key, encryptedValue: encryptSecret(value) },
-      update: { encryptedValue: encryptSecret(value) },
-    });
-  }
-}
 
 function daysAgoUtc(days: number): Date {
   const d = new Date();
@@ -42,7 +27,7 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
   await addVirtualAuthenticator(page);
   const stamp = `${Date.now()}-${testInfo.parallelIndex}`;
   const email = `plaid-sync-${stamp}@example.com`;
-  await configurePlaid();
+  await configurePlaidForTests();
 
   const user = await prisma.user.create({
     data: {

@@ -93,8 +93,18 @@ Disconnecting calls Plaid's `/item/remove` **before** deleting anything locally,
 whole operation if that fails. Deleting the local rows alone would leave the connection live at
 Plaid, still billing and still holding access to the bank account.
 
+**Plaid bills per connected bank per month**, so the integration is built to avoid paying for
+connections that cannot earn their keep. The same bank cannot be connected twice (a second attempt
+is refused *and* revoked at Plaid, since exchanging a token creates a billable item whether or not
+it is stored). Banks that need re-authentication, whose consent has lapsed, or that feed no account
+are flagged in the panel with a reminder that they are still being charged for. Disconnecting calls
+`/item/remove`, which is what actually stops the billing.
+
 Connected banks are also swept in the background, hourly by default, so the review queue is
-already waiting when you next open the dashboard. Nothing the sweep fetches is posted anywhere —
+already waiting when you next open the dashboard. The sweep skips anything a call could not help:
+unmapped banks, lapsed consent, banks awaiting re-authentication, and banks in failure backoff —
+a repeatedly failing connection is retried on a doubling delay up to once a day rather than
+every hour. Nothing the sweep fetches is posted anywhere —
 synced transactions sit in the queue until you review them — so it cannot change your books while
 you are not looking. `PLAID_SYNC_INTERVAL_MINUTES` changes the cadence (minimum 15; below that it
 is rate-limit pressure rather than a refresh), and `PLAID_SYNC_SCHEDULER=false` turns it off so

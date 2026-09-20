@@ -6,7 +6,7 @@ import { PlaidItemStatus, PlaidStagedStatus, type User } from "@prisma/client";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { describeActionError } from "@/lib/action-errors";
 import { prisma } from "@/lib/prisma";
-import { PlaidApiError } from "@/lib/plaid/client";
+import { PlaidApiError, type PlaidClient } from "@/lib/plaid/client";
 import { checkMappingAllowed } from "@/lib/plaid/mapping";
 import {
   makePlaidItemRevoker,
@@ -68,6 +68,23 @@ function describePlaidFailure(err: unknown): string {
     return err.message || `Plaid rejected the request (${err.errorCode}).`;
   }
   return describeActionError(err);
+}
+
+/**
+ * Revokes an item we exchanged but are not going to keep.
+ *
+ * Exchanging a public token creates a billable Item at Plaid whether or not we store it,
+ * so refusing a duplicate without this would create exactly the orphaned, billing-forever
+ * connection the refusal exists to prevent — and with no local row, nothing would ever
+ * point at it again. Best-effort: if the revoke fails the refusal still stands, but the
+ * item id is recorded so it can be removed from the Plaid dashboard by hand.
+ */
+async function discardRedundantItem(client: PlaidClient, accessToken: string): Promise<void> {
+  try {
+    await client.removeItem(accessToken);
+  } catch (err) {
+    console.error("[plaid] could not revoke a redundant item; remove it from the Plaid dashboard", err);
+  }
 }
 
 export type PlaidLinkTokenState =
@@ -209,7 +226,26 @@ export async function exchangePlaidPublicTokenAction(
 
     if (existing) {
       // The same bank item cannot belong to two accounts on one deployment.
+      await discardRedundantItem(client, exchanged.access_token);
       return { ok: false, error: "That bank connection is already linked to another account here." };
+    }
+
+    // Plaid issues a fresh item_id every time Link completes, so connecting the same bank
+    // a second time does NOT collide on `itemId` — it silently creates a second Item, and
+    // Plaid bills per Item per month. Re-authenticating an existing connection is what the
+    // user almost always meant, so refuse and point them at it.
+    if (item?.institution_id) {
+      const sameInstitution = await prisma.plaidItem.findFirst({
+        where: { userId: user.id, institutionId: item.institution_id },
+        select: { institutionName: true },
+      });
+      if (sameInstitution) {
+        await discardRedundantItem(client, exchanged.access_token);
+        return {
+          ok: false,
+          error: `${sameInstitution.institutionName ?? "That bank"} is already connected. Use “Sync now” to fetch new transactions, or “Sign in again” if it needs re-authenticating — connecting it twice would bill you for two connections.`,
+        };
+      }
     }
 
     let institutionName: string | null = null;

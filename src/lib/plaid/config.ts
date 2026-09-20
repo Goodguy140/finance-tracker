@@ -112,11 +112,6 @@ export async function getPlaidConfig(): Promise<PlaidConfig | null> {
   return cached.enabled ? cached.config : null;
 }
 
-/** True when an operator has turned Plaid on *and* usable credentials resolved. */
-export async function isPlaidConfigured(): Promise<boolean> {
-  return (await getPlaidConfig()) !== null;
-}
-
 /** Everything the admin page renders, including which source is actually in play. */
 export async function getPlaidAdminStatus(): Promise<PlaidAdminStatus & { storedClientId: string }> {
   const env = envVars();

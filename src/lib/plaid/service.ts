@@ -68,10 +68,6 @@ export async function requirePlaidClient(): Promise<PlaidClient> {
   return createPlaidClient(config);
 }
 
-export async function plaidConfigured(): Promise<boolean> {
-  return (await getPlaidConfig()) !== null;
-}
-
 /** Encrypts an access token for storage. The plaintext must never be persisted or logged. */
 export function sealAccessToken(accessToken: string): string {
   return encryptSecret(accessToken);

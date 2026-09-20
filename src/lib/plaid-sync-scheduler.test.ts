@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PLAID_SYNC_INTERVAL_MINUTES,
   MIN_PLAID_SYNC_INTERVAL_MINUTES,
+  MAX_SYNC_BACKOFF_MINUTES,
+  plaidSyncBackoffMinutes,
   plaidSyncDueBefore,
   plaidSyncSchedulerEnabled,
   resolvePlaidSyncIntervalMinutes,
@@ -66,5 +68,36 @@ describe("plaidSyncDueBefore", () => {
     expect(new Date("2026-09-19T11:00:01Z") < cutoff).toBe(false);
     // A clock skew into the future must not read as overdue.
     expect(new Date("2026-09-19T13:00:00Z") < cutoff).toBe(false);
+  });
+});
+
+describe("plaidSyncBackoffMinutes", () => {
+  it("doubles per consecutive failure, starting at the normal interval", () => {
+    expect(plaidSyncBackoffMinutes(1)).toBe(60);
+    expect(plaidSyncBackoffMinutes(2)).toBe(120);
+    expect(plaidSyncBackoffMinutes(3)).toBe(240);
+    expect(plaidSyncBackoffMinutes(4)).toBe(480);
+  });
+
+  it("caps at a day, so a connection fixed later is still picked up promptly", () => {
+    // 60 · 2^4 = 960, still under the cap; the cap first bites on the sixth failure.
+    expect(plaidSyncBackoffMinutes(5)).toBe(960);
+    expect(plaidSyncBackoffMinutes(6)).toBe(MAX_SYNC_BACKOFF_MINUTES);
+    expect(plaidSyncBackoffMinutes(50)).toBe(MAX_SYNC_BACKOFF_MINUTES);
+    // No overflow from a runaway counter.
+    expect(Number.isFinite(plaidSyncBackoffMinutes(10_000))).toBe(true);
+    expect(plaidSyncBackoffMinutes(10_000)).toBe(MAX_SYNC_BACKOFF_MINUTES);
+  });
+
+  it("treats a first failure and a zeroed counter the same", () => {
+    expect(plaidSyncBackoffMinutes(0)).toBe(60);
+    expect(plaidSyncBackoffMinutes(-3)).toBe(60);
+  });
+
+  it("turns a permanently broken bank from 24 calls a day into 1", () => {
+    // The whole point: a connection nobody fixes must stop costing rate limit, and on
+    // per-request pricing, money.
+    const callsPerDayAtCap = (24 * 60) / plaidSyncBackoffMinutes(6);
+    expect(callsPerDayAtCap).toBe(1);
   });
 });

@@ -1,5 +1,5 @@
 /** Keep in sync with SCHEMA_REPAIR_VERSION in src/lib/migration-health.ts */
-const SCHEMA_REPAIR_VERSION = "3";
+const SCHEMA_REPAIR_VERSION = "4";
 const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
 
@@ -40,6 +40,16 @@ const COLUMN_REPAIRS = [
     column: "disabledAt",
     ddl: 'ALTER TABLE "User" ADD COLUMN "disabledAt" DATETIME',
   },
+  {
+    table: "PlaidItem",
+    column: "consecutiveSyncFailures",
+    ddl: 'ALTER TABLE "PlaidItem" ADD COLUMN "consecutiveSyncFailures" INTEGER NOT NULL DEFAULT 0',
+  },
+  {
+    table: "PlaidItem",
+    column: "nextSyncAttemptAt",
+    ddl: 'ALTER TABLE "PlaidItem" ADD COLUMN "nextSyncAttemptAt" DATETIME',
+  },
 ];
 
 async function tableColumns(prisma, table) {
@@ -78,6 +88,11 @@ async function runRepair(prisma) {
 
   for (const repair of COLUMN_REPAIRS) {
     const columns = await tableColumns(prisma, repair.table);
+    // A table that does not exist at all is not drift this script can fix — PRAGMA
+    // table_info returns nothing for it, which is indistinguishable from "column missing",
+    // and the ALTER would throw and take startup down with it. Creating tables is the
+    // migrations' job; this only ever adds columns to tables that are already there.
+    if (columns.size === 0) continue;
     if (columns.has(repair.column)) continue;
     await prisma.$executeRawUnsafe(repair.ddl);
     console.log(`repair-sqlite-schema: added ${repair.table}.${repair.column}`);

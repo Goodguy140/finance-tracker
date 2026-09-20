@@ -137,10 +137,6 @@ export const FAKE_ACCOUNTS = [
   },
 ] as const;
 
-export function resetFakePlaidState(): void {
-  globalState.__plaidFakeState = { items: new Map(), counter: 0 };
-}
-
 export function createFakePlaidClient(): PlaidClient {
   return {
     async createLinkToken(input) {

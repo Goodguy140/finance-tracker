@@ -2,27 +2,11 @@ import { expect, test, type Page } from "@playwright/test";
 import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
-import { encryptSecret } from "../../src/lib/security";
+import { configurePlaidForTests } from "./plaid-helpers";
 import { expectDashboardHome } from "./expect-dashboard-home";
 import { addVirtualAuthenticator, enrolFirstPasskey, openSettingsTab } from "./mfa-helpers";
 
 const PASSWORD = "e2e-password-123";
-
-/** Plaid must be configured server-side before the Banks panel offers anything. */
-async function configurePlaid() {
-  for (const [key, value] of [
-    ["plaid.enabled", "true"],
-    ["plaid.clientId", "e2e-client-id"],
-    ["plaid.secret", "e2e-secret"],
-    ["plaid.env", "sandbox"],
-  ]) {
-    await prisma.serverSetting.upsert({
-      where: { key },
-      create: { key, encryptedValue: encryptSecret(value) },
-      update: { encryptedValue: encryptSecret(value) },
-    });
-  }
-}
 
 async function createUser(email: string) {
   const user = await prisma.user.create({
@@ -52,7 +36,7 @@ test("connecting a bank records the item, maps accounts, refuses a currency mism
   await addVirtualAuthenticator(page);
   const stamp = `${Date.now()}-${testInfo.parallelIndex}`;
   const email = `plaid-link-${stamp}@example.com`;
-  await configurePlaid();
+  await configurePlaidForTests();
   const user = await createUser(email);
 
   await signIn(page, email);

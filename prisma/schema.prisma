@@ -542,38 +542,44 @@ model RateLimitEntry {
 /// server pull that bank's transactions, so it is the most sensitive row in the database
 /// after the password hash — encrypted at rest and never exported in a backup.
 model PlaidItem {
-  id                 String          @id @default(cuid())
-  userId             String
+  id                      String          @id @default(cuid())
+  userId                  String
   /// Plaid's item_id. Unique at Plaid and here, so re-linking the same bank is caught.
-  itemId             String          @unique
+  itemId                  String          @unique
   /// AES-256-GCM via encryptSecret(). Never logged, never a form value, never exported.
-  accessTokenEnc     String
-  institutionId      String?
-  institutionName    String?
+  accessTokenEnc          String
+  institutionId           String?
+  institutionName         String?
   /// /transactions/sync cursor. NULL means never synced, so the first call walks full history.
-  cursor             String?
-  status             PlaidItemStatus @default(ACTIVE)
-  errorCode          String?
-  errorMessage       String?
-  consentExpiresAt   DateTime?
+  cursor                  String?
+  status                  PlaidItemStatus @default(ACTIVE)
+  errorCode               String?
+  errorMessage            String?
+  consentExpiresAt        DateTime?
   /// What the user asked for at link time: 30, 90, 365 or 730.
-  requestedDays      Int
+  requestedDays           Int
   /// UTC midnight, resolved once at link time and never recomputed. The UI states this exact
   /// date rather than deriving it, so what the user was promised cannot drift.
-  historyCutoff      DateTime
+  historyCutoff           DateTime
   /// Earliest date the institution actually returned. NULL until the first full sync ends;
   /// later than historyCutoff means the bank gave us less than was asked for.
-  earliestObservedAt DateTime?
-  initialSyncDoneAt  DateTime?
-  lastSyncedAt       DateTime?
-  lastSyncError      String?
+  earliestObservedAt      DateTime?
+  initialSyncDoneAt       DateTime?
+  lastSyncedAt            DateTime?
+  lastSyncError           String?
+  /// Reset to 0 on any successful sync. Drives how far the next retry is pushed out.
+  consecutiveSyncFailures Int             @default(0)
+  /// Earliest the sweep may try this bank again. NULL means "whenever it is next due".
+  /// Without it a permanently broken connection is retried every hour forever, which
+  /// spends rate limit and, on per-request pricing, money — for a call that cannot work.
+  nextSyncAttemptAt       DateTime?
   /// Set while a sync is in flight. A value older than the stale threshold is ignored, so a
   /// crashed sync cannot wedge the item forever.
-  syncingSince       DateTime?
+  syncingSince            DateTime?
   /// Per-item fallback when the personal_finance_category map does not hit.
-  defaultCategoryId  String?
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+  defaultCategoryId       String?
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
 
   user            User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   defaultCategory Category?                @relation(fields: [defaultCategoryId], references: [id], onDelete: SetNull)

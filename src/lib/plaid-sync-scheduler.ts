@@ -68,6 +68,22 @@ export function plaidSyncDueBefore(now: Date, intervalMinutes: number): Date {
   return new Date(now.getTime() - intervalMinutes * 60_000);
 }
 
+/** Caps the backoff so a connection fixed days later is still picked up promptly. */
+export const MAX_SYNC_BACKOFF_MINUTES = 24 * 60;
+
+/**
+ * How long to wait before trying a failing bank again.
+ *
+ * Doubles per consecutive failure from one hour, capped at a day. A connection that is
+ * broken until a person fixes it therefore costs one call a day instead of twenty-four,
+ * while a one-off network blip is retried within the hour.
+ */
+export function plaidSyncBackoffMinutes(consecutiveFailures: number): number {
+  const exponent = Math.max(0, consecutiveFailures - 1);
+  const minutes = DEFAULT_PLAID_SYNC_INTERVAL_MINUTES * 2 ** Math.min(exponent, 10);
+  return Math.min(minutes, MAX_SYNC_BACKOFF_MINUTES);
+}
+
 export type SweepSummary = {
   considered: number;
   synced: number;
@@ -75,6 +91,8 @@ export type SweepSummary = {
   busy: number;
   needsReauth: number;
   failed: number;
+  /** Due, but skipped because nothing about them could produce a transaction. */
+  skippedUnusable: number;
 };
 
 /**
@@ -86,7 +104,22 @@ export type SweepSummary = {
  * SQLite takes a write lock per commit, and a burst of concurrent syncs would contend with
  * whatever the user is doing in the app right now.
  */
-export async function sweepDuePlaidItems(now = new Date()): Promise<SweepSummary> {
+export type SweepOptions = {
+  /**
+   * Restrict the sweep to one user's banks.
+   *
+   * The scheduled sweep passes nothing and covers everyone. Scoping exists so a caller can
+   * refresh a single account's connections without touching anyone else's — and it is what
+   * lets the sweep be tested hermetically, since an unscoped sweep in a parallel test run
+   * will happily pick up another spec's bank, take its sync lock and advance its cursor.
+   */
+  userId?: string;
+};
+
+export async function sweepDuePlaidItems(
+  now = new Date(),
+  options: SweepOptions = {},
+): Promise<SweepSummary> {
   const summary: SweepSummary = {
     considered: 0,
     synced: 0,
@@ -94,6 +127,7 @@ export async function sweepDuePlaidItems(now = new Date()): Promise<SweepSummary
     busy: 0,
     needsReauth: 0,
     failed: 0,
+    skippedUnusable: 0,
   };
 
   // Cheap exit when Plaid is not set up at all, which is the common case for most
@@ -103,11 +137,24 @@ export async function sweepDuePlaidItems(now = new Date()): Promise<SweepSummary
   const intervalMinutes = resolvePlaidSyncIntervalMinutes();
   const dueBefore = plaidSyncDueBefore(now, intervalMinutes);
 
+  // Every clause here exists to avoid paying for a call that cannot produce anything.
   // Served by @@index([status, lastSyncedAt]).
   const due = await prisma.plaidItem.findMany({
     where: {
       status: PlaidItemStatus.ACTIVE,
-      OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: dueBefore } }],
+      ...(options.userId ? { userId: options.userId } : {}),
+      // At least one account actually feeding somewhere. Without this, a bank the user
+      // connected but never mapped is fetched every hour and stages precisely nothing.
+      plaidAccounts: { some: { accountId: { not: null }, syncEnabled: true } },
+      // Each nullable column is compared as an explicit "null OR in range" pair rather
+      // than a NOT. In SQL, `NOT (col < x)` is NULL — not true — when col is NULL, so a
+      // NOT here would have excluded every bank that has no consent expiry, which is
+      // nearly all of them, and quietly disabled the whole sweep.
+      AND: [
+        { OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: dueBefore } }] },
+        { OR: [{ nextSyncAttemptAt: null }, { nextSyncAttemptAt: { lte: now } }] },
+        { OR: [{ consentExpiresAt: null }, { consentExpiresAt: { gte: now } }] },
+      ],
     },
     select: { id: true, institutionName: true },
     orderBy: { lastSyncedAt: "asc" },
@@ -123,26 +170,52 @@ export async function sweepDuePlaidItems(now = new Date()): Promise<SweepSummary
       const result = await syncPlaidItem({ client, store }, item.id);
       summary.synced += 1;
       summary.staged += result.staged;
+      await clearBackoff(item.id);
     } catch (err) {
       if (err instanceof PlaidSyncBusyError) {
         // Someone pressed "Sync now" for this bank, or a previous sweep is still going.
-        // Not a failure; it will be picked up next time.
+        // Not a failure; it will be picked up next time and must not count towards backoff.
         summary.busy += 1;
         continue;
       }
       if (err instanceof PlaidApiError && err.needsReauth) {
         // `syncPlaidItem` has already flipped the item to LOGIN_REQUIRED, so it drops out
-        // of the next sweep until the user signs in again.
+        // of the next sweep until the user signs in again — no backoff needed.
         summary.needsReauth += 1;
         continue;
       }
       // One bank's problem must not stop the others.
       summary.failed += 1;
+      await recordBackoff(item.id, now);
       console.error(`[plaid] sync failed for ${item.institutionName ?? item.id}`, err);
     }
   }
 
   return summary;
+}
+
+/** A successful sync clears any backoff, so the next failure starts from one hour again. */
+async function clearBackoff(itemId: string): Promise<void> {
+  await prisma.plaidItem.updateMany({
+    where: { id: itemId, OR: [{ consecutiveSyncFailures: { gt: 0 } }, { nextSyncAttemptAt: { not: null } }] },
+    data: { consecutiveSyncFailures: 0, nextSyncAttemptAt: null },
+  });
+}
+
+/** Pushes the next attempt out, further each time this bank fails in a row. */
+async function recordBackoff(itemId: string, now: Date): Promise<void> {
+  const current = await prisma.plaidItem.findUnique({
+    where: { id: itemId },
+    select: { consecutiveSyncFailures: true },
+  });
+  const failures = (current?.consecutiveSyncFailures ?? 0) + 1;
+  await prisma.plaidItem.update({
+    where: { id: itemId },
+    data: {
+      consecutiveSyncFailures: failures,
+      nextSyncAttemptAt: new Date(now.getTime() + plaidSyncBackoffMinutes(failures) * 60_000),
+    },
+  });
 }
 
 export function startPlaidSyncScheduler(): boolean {
