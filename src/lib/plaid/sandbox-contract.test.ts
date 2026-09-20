@@ -71,9 +71,16 @@ describe.skipIf(!enabled)("Plaid sandbox contract", () => {
       expect(typeof institution.institution.name).toBe("string");
 
       // --- the sync walk, exactly as syncPlaidItem drives it ---
+      //
+      // Plaid generates a sandbox item's transactions asynchronously, so the first sync
+      // after creation legitimately returns nothing. Poll from the start until they
+      // appear: the first version of this test treated empty as acceptable and therefore
+      // passed while verifying none of the assertions that matter.
       const collected: PlaidApiTransaction[] = [];
       let cursor: string | null = null;
       let pages = 0;
+      const deadline = Date.now() + 90_000;
+
       for (;;) {
         const page = await client.transactionsSync({ accessToken: exchanged.access_token, cursor });
         expect(Array.isArray(page.added)).toBe(true);
@@ -81,16 +88,30 @@ describe.skipIf(!enabled)("Plaid sandbox contract", () => {
         expect(Array.isArray(page.removed)).toBe(true);
         expect(typeof page.next_cursor).toBe("string");
         expect(typeof page.has_more).toBe("boolean");
+        pages += 1;
+
         collected.push(...page.added);
         cursor = page.next_cursor;
-        pages += 1;
-        if (!page.has_more || pages > 20) break;
+
+        if (page.has_more && pages <= 20) continue;
+        if (collected.length > 0) break;
+        if (Date.now() > deadline) break;
+        // Nothing yet: wait and restart from the beginning, since no cursor has been
+        // committed anywhere.
+        await new Promise((resolve) => setTimeout(resolve, 3_000));
+        cursor = null;
       }
-      // A brand-new sandbox item can take a moment to generate transactions; an empty
-      // result is not a contract violation, but it does mean the checks below prove less.
+
       notes.push(`pages walked: ${pages}, transactions returned: ${collected.length}`);
 
-      if (collected.length > 0) {
+      // Unconditional: an empty sandbox means this check proved nothing, which must read
+      // as a failure rather than a pass.
+      expect(
+        collected.length,
+        "sandbox returned no transactions within 90s — the assertions below would verify nothing",
+      ).toBeGreaterThan(0);
+
+      {
         // Every field the ingest layer depends on.
         for (const txn of collected) {
           expect(typeof txn.transaction_id).toBe("string");

@@ -143,6 +143,13 @@ bank. It needs only sandbox credentials from the Plaid dashboard in `PLAID_CLIEN
 `PLAID_SECRET`; it refuses to run if `PLAID_ENV` is anything but `sandbox`, mints a public
 token without the Link UI, walks a full sync, and removes the item afterwards.
 
+Run against Plaid's sandbox on 2026-09-20 it confirmed: the sign convention (positive means
+money out), that all returned rows normalise, that every
+`personal_finance_category.primary` Plaid sent is one the map knows, that `days_requested`
+is honoured exactly (30 requested, oldest transaction exactly 30 days old), and that
+pagination and cursor reuse behave as assumed. The sandbox produced no pending→posted
+transition, so that one path is still only covered by the fake.
+
 It asserts the things nothing else can: that every field the ingest layer reads is present
 and the right type, that a positive `amount` still means money *out*, that every returned
 row survives normalisation, that no `personal_finance_category.primary` arrives that the
