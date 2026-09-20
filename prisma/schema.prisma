@@ -678,6 +678,10 @@ model PlaidStagedTransaction {
   @@index([userId, status, date])
   /// Pending → posted lookup.
   @@index([pendingPlaidTransactionId])
+  /// The dashboard asks for revised-but-already-committed rows on every load. Staged rows
+  /// are kept forever (they are the idempotency key), so without this the query scans a
+  /// range that only grows, to find a column that is almost always null.
+  @@index([userId, revisedAfterResolveAt])
 }
 
 /// Marks a Transaction as confirmed against a bank record — what the Verified badge reads.

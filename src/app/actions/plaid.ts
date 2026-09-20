@@ -671,14 +671,23 @@ export const bulkAddStagedTransactionsAction = formAction(async (formData: FormD
     include: { plaidItem: { select: { id: true, institutionName: true } } },
   });
 
+  // A row with no suggested category cannot be written -- Transaction.categoryId is
+  // non-nullable. Refusing the batch beats silently adding fewer rows than the button
+  // promised, which is invisible to the person who pressed it.
+  const uncategorised = rows.filter((row) => !row.suggestedCategoryId);
+  if (uncategorised.length > 0) {
+    throw new Error(
+      `${uncategorised.length} of these have no category yet. Open each one and pick a category, or add them individually.`,
+    );
+  }
+
   await prisma.$transaction(async (tx) => {
     for (const staged of rows) {
-      if (!staged.suggestedCategoryId) continue;
       const created = await tx.transaction.create({
         data: {
           userId: user.id,
           accountId: staged.suggestedAccountId,
-          categoryId: staged.suggestedCategoryId,
+          categoryId: staged.suggestedCategoryId!,
           type: staged.type,
           amountCents: staged.amountCents,
           date: staged.date,
