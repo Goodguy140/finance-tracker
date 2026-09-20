@@ -22,6 +22,8 @@ npm run dev
 | `RECURRING_AUTO_POST_SCHEDULER` | Optional. Set `false` to disable the hourly in-process sweep that posts recurring rules in "automatic" mode |
 | `PLAID_CLIENT_ID` / `PLAID_SECRET` | Optional. Plaid API credentials. Both must be set to override what is stored in the admin UI |
 | `PLAID_ENV` | Optional. `sandbox` (default) or `production`. Only consulted when the two vars above are set |
+| `PLAID_SYNC_SCHEDULER` | Optional. Set `false` to disable the background sweep that pulls new bank transactions |
+| `PLAID_SYNC_INTERVAL_MINUTES` | Optional. How often that sweep runs (default `60`, minimum `15`) |
 
 `DATABASE_URL` defaults to `file:/data/app.db` (production) or `file:./dev.db` (development).
 
@@ -90,6 +92,14 @@ every total.
 Disconnecting calls Plaid's `/item/remove` **before** deleting anything locally, and refuses the
 whole operation if that fails. Deleting the local rows alone would leave the connection live at
 Plaid, still billing and still holding access to the bank account.
+
+Connected banks are also swept in the background, hourly by default, so the review queue is
+already waiting when you next open the dashboard. Nothing the sweep fetches is posted anywhere —
+synced transactions sit in the queue until you review them — so it cannot change your books while
+you are not looking. `PLAID_SYNC_INTERVAL_MINUTES` changes the cadence (minimum 15; below that it
+is rate-limit pressure rather than a refresh), and `PLAID_SYNC_SCHEDULER=false` turns it off so
+**Sync now** is the only trigger. Banks waiting on re-authentication are skipped until you sign in
+again, rather than being retried every hour.
 
 Configure under **Settings → Server admin → Plaid** (encrypted in the database with
 `SERVER_SETTINGS_ENCRYPTION_KEY`). `PLAID_CLIENT_ID` and `PLAID_SECRET` in the environment take
