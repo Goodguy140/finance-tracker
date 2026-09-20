@@ -1,5 +1,9 @@
-import { PlaidApiError, type PlaidClient } from "@/lib/plaid/client";
-import type { PlaidApiTransaction } from "@/lib/plaid/types";
+// Sibling imports in this file are relative, not "@/lib/plaid/...", and must stay that way.
+// This module is reached only through a runtime `await import()` in service.ts, so nothing
+// rewrites its aliases ahead of time -- the loader resolves them as written. Under
+// Playwright that fails with "Cannot find module '@/lib/plaid/client'".
+import { PlaidApiError, type PlaidClient } from "./client";
+import type { PlaidApiTransaction } from "./types";
 
 /**
  * A deterministic stand-in for Plaid, used by end-to-end tests.

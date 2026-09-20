@@ -1,10 +1,12 @@
-import { PLAID_HOSTS, type PlaidEnvironment } from "@/lib/plaid/settings";
+// Relative for the same reason as fake-client.ts: this module is pulled in through that
+// file's runtime dynamic import, so its own aliases would be resolved as written too.
+import { PLAID_HOSTS, type PlaidEnvironment } from "./settings";
 import type {
   CreateLinkTokenInput,
   PlaidApiAccount,
   PlaidApiItem,
   PlaidSyncPage,
-} from "@/lib/plaid/types";
+} from "./types";
 
 /**
  * A small typed `fetch` wrapper over the six Plaid endpoints this app uses.
