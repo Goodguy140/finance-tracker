@@ -159,9 +159,12 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
 
   // --- the badge appears in the log ---
   await page.goto("/");
-  await expect(page.getByTitle(/Matched to Test Credit Union/i).first()).toBeVisible({
-    timeout: 15_000,
-  });
+  // Both layouts are always in the DOM with one hidden by CSS, so the badge matches twice
+  // and a bare .first() picks whichever comes first in source order — hidden on whichever
+  // viewport is not in play. Match the visible one, as `expectExpenseInLog` does.
+  await expect(
+    page.getByTitle(/Matched to Test Credit Union/i).filter({ visible: true }).first(),
+  ).toBeVisible({ timeout: 15_000 });
 
   // --- adding a new one does create a transaction, with a badge of its own ---
   const groceriesCard = page

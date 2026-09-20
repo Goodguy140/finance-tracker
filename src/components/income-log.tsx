@@ -5,7 +5,7 @@ import { useActionState, useEffect, useId, useState, useSyncExternalStore } from
 import { useRouter } from "next/navigation";
 import { deleteIncomeTransactionAction, updateIncomeAction } from "@/app/actions";
 import { MetaChip } from "@/components/meta-chip";
-import { VerifiedBadge, type VerificationInfo } from "@/components/verified-badge";
+import { VerifiedBadge, verificationTooltip, type VerificationInfo } from "@/components/verified-badge";
 import { formatCurrency } from "@/lib/money";
 import { MOBILE_OVERLAY_ROOT_Z_CLASS } from "@/lib/mobile-z-index";
 import {
@@ -146,7 +146,12 @@ function IncomeLogMobileCard({
       <div className="flex flex-wrap gap-1.5">
         <MetaChip label="Account">{entry.accountLabel}</MetaChip>
         <MetaChip label="Date">{entry.dateDisplay}</MetaChip>
+        {entry.verification ? <VerifiedBadge info={entry.verification} /> : null}
       </div>
+      {/* `title` never fires on touch, so the badge's detail is spelled out on the card. */}
+      {entry.verification ? (
+        <p className="text-xs leading-snug text-slate-500">{verificationTooltip(entry.verification)}</p>
+      ) : null}
       {entry.note ? <p className="text-xs leading-snug text-slate-400">{entry.note}</p> : null}
     </div>
   );

@@ -232,6 +232,7 @@ function ExpenseLogMobileCard({
       </div>
       <div className="flex flex-wrap gap-1.5">
         <MetaChip label="Category">{txn.categoryLabel}</MetaChip>
+        {txn.verification ? <VerifiedBadge info={txn.verification} /> : null}
         {isSplit ? (
           <span className="inline-flex items-center rounded-full border border-amber-500/35 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-100">
             Split — view only
@@ -246,6 +247,14 @@ function ExpenseLogMobileCard({
           <>
             <span className="text-slate-600"> · </span>
             <span>posted {txn.postedDateDisplay}</span>
+          </>
+        ) : null}
+        {/* The badge carries its detail in `title`, which never fires on touch — so on a
+            phone the same sentence is spelled out here instead. */}
+        {txn.verification ? (
+          <>
+            <span className="text-slate-600"> · </span>
+            <span>{verificationTooltip(txn.verification)}</span>
           </>
         ) : null}
       </p>
