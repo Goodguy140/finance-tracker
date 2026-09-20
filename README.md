@@ -130,12 +130,25 @@ Rotating `SERVER_SETTINGS_ENCRYPTION_KEY` makes stored credentials unreadable â€
 so rather than erroring, but every linked bank has to be relinked.
 
 The end-to-end tests run against a deterministic in-memory Plaid (`PLAID_FAKE_CLIENT=1`,
-permitted only when the environment resolves to `sandbox`), so no test run can reach the
-real API. That also means **the integration has never been exercised against Plaid itself**:
-the request shapes, the sign convention, `days_requested` and the
-`personal_finance_category` values the category map keys on are all written from the
-published API rather than verified against it. Connect one sandbox account before trusting
-this with a real bank.
+permitted only when the environment resolves to `sandbox`), so `npm test` and the Playwright
+suite never touch the network. That is also their limitation: they prove the code agrees
+with a fake written from the published API, not that the API behaves that way.
+
+```bash
+npm run verify:plaid
+```
+
+checks the assumptions against the **real** Plaid sandbox â€” free, fabricated data, no real
+bank. It needs only sandbox credentials from the Plaid dashboard in `PLAID_CLIENT_ID` and
+`PLAID_SECRET`; it refuses to run if `PLAID_ENV` is anything but `sandbox`, mints a public
+token without the Link UI, walks a full sync, and removes the item afterwards.
+
+It asserts the things nothing else can: that every field the ingest layer reads is present
+and the right type, that a positive `amount` still means money *out*, that every returned
+row survives normalisation, that no `personal_finance_category.primary` arrives that the
+category map does not know (those would silently become "Uncategorized"), that
+`days_requested` is honoured, and that a current cursor returns nothing new. Worth running
+after any Plaid-side change, and before pointing a deployment at production.
 
 </details>
 

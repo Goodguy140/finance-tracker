@@ -81,6 +81,14 @@ export type PlaidClient = {
     count?: number;
   }): Promise<PlaidSyncPage>;
   removeItem(accessToken: string): Promise<void>;
+  /**
+   * Mints a public token without the Link UI. Sandbox only — Plaid rejects it anywhere
+   * else — which is what makes the contract check against a real Plaid runnable headlessly.
+   */
+  sandboxCreatePublicToken(input: {
+    institutionId: string;
+    daysRequested?: number;
+  }): Promise<{ public_token: string }>;
 };
 
 /** Plaid's cap. Fewer, larger pages means fewer transactions per commit boundary. */
@@ -225,6 +233,16 @@ export function createPlaidClient(config: PlaidConfig): PlaidClient {
 
     async removeItem(accessToken) {
       await call("/item/remove", { access_token: accessToken });
+    },
+
+    async sandboxCreatePublicToken(input) {
+      return call("/sandbox/public_token/create", {
+        institution_id: input.institutionId,
+        initial_products: ["transactions"],
+        ...(input.daysRequested
+          ? { options: { transactions: { days_requested: input.daysRequested } } }
+          : {}),
+      });
     },
   };
 }

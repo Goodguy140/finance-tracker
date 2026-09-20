@@ -235,6 +235,11 @@ export function createFakePlaidClient(): PlaidClient {
       };
     },
 
+    async sandboxCreatePublicToken() {
+      // The fake never needs Link either, so a caller can use the same shape as sandbox.
+      return { public_token: `${FAKE_PUBLIC_TOKEN_PREFIX}fake` };
+    },
+
     async removeItem(accessToken) {
       const item = [...state().items.values()].find((i) => i.accessToken === accessToken);
       if (!item) {
