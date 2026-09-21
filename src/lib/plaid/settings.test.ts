@@ -4,6 +4,8 @@ import {
   envCredentialsComplete,
   normalizePlaidEnvironment,
   resolvePlaidSettings,
+  plaidSweepAllowed,
+  plaidSweepSwitchEnabled,
   PLAID_HOSTS,
 } from "@/lib/plaid/settings";
 
@@ -30,6 +32,7 @@ describe("normalizePlaidEnvironment", () => {
 
 describe("resolvePlaidSettings", () => {
   const existing = {
+    syncSchedulerRaw: "true",
     existingClientId: "stored-client",
     existingSecret: "stored-secret",
     existingEnv: "production",
@@ -45,6 +48,7 @@ describe("resolvePlaidSettings", () => {
     });
     expect(resolved).toEqual({
       enabled: "true",
+      syncScheduler: "true",
       clientId: "stored-client",
       secret: "stored-secret",
       env: "production",
@@ -74,6 +78,7 @@ describe("resolvePlaidSettings", () => {
     });
     expect(resolved).toEqual({
       enabled: "true",
+      syncScheduler: "true",
       clientId: "new-client",
       secret: "new-secret",
       env: "sandbox",
@@ -85,6 +90,50 @@ describe("resolvePlaidSettings", () => {
     expect(resolvePlaidSettings({ enabledRaw: "", clientIdRaw: "", secretRaw: "", envRaw: "", ...existing }).enabled).toBe(
       "false",
     );
+  });
+
+  it("writes the background sweep off when its checkbox is absent", () => {
+    // Same contract, and the one that actually turns the sweep off: an admin who unticks
+    // the box posts nothing for it, and a saved "false" is what the scheduler reads.
+    const resolved = resolvePlaidSettings({
+      ...existing,
+      enabledRaw: "true",
+      syncSchedulerRaw: "",
+      clientIdRaw: "",
+      secretRaw: "",
+      envRaw: "",
+    });
+    expect(resolved.syncScheduler).toBe("false");
+    expect(plaidSweepSwitchEnabled(resolved.syncScheduler)).toBe(false);
+  });
+});
+
+describe("plaidSweepSwitchEnabled", () => {
+  it("is on unless explicitly switched off", () => {
+    // Unset must read as on: no deployment predating this setting has the row, and
+    // defaulting the other way would stop every existing sweep the moment it shipped.
+    for (const raw of [undefined, null, "", "   ", "true", "yes", "1"]) {
+      expect(plaidSweepSwitchEnabled(raw)).toBe(true);
+    }
+    for (const raw of ["false", "FALSE", " 0 ", "0"]) {
+      expect(plaidSweepSwitchEnabled(raw)).toBe(false);
+    }
+  });
+});
+
+describe("plaidSweepAllowed", () => {
+  it("runs only when neither switch says no", () => {
+    expect(plaidSweepAllowed({})).toBe(true);
+    expect(plaidSweepAllowed({ envRaw: "true", storedRaw: "true" })).toBe(true);
+    expect(plaidSweepAllowed({ envRaw: "true", storedRaw: "false" })).toBe(false);
+    expect(plaidSweepAllowed({ envRaw: "false", storedRaw: "true" })).toBe(false);
+    expect(plaidSweepAllowed({ envRaw: "false", storedRaw: "false" })).toBe(false);
+  });
+
+  it("lets the environment overrule a ticked checkbox, not the other way round", () => {
+    // The container's kill switch wins: an admin in the app should not be able to start a
+    // sweep the operator switched off on the box it runs on.
+    expect(plaidSweepAllowed({ envRaw: "0", storedRaw: "true" })).toBe(false);
   });
 });
 
@@ -187,6 +236,40 @@ describe("buildPlaidAdminStatus", () => {
       envVars: emptyEnv,
     });
     expect(status.warnings.some((w) => w.includes("sandbox"))).toBe(true);
+  });
+
+  it("reports the sweep on when the row has never been saved", () => {
+    const status = buildPlaidAdminStatus({ enabled: "true", clientId: "cid", secret: "sec", env: "sandbox", envVars: emptyEnv });
+    expect(status.syncSchedulerRequested).toBe(true);
+    expect(status.syncSchedulerForcedOffByEnv).toBe(false);
+  });
+
+  it("reports the sweep off once it has been switched off", () => {
+    const status = buildPlaidAdminStatus({
+      enabled: "true",
+      syncScheduler: "false",
+      clientId: "cid",
+      secret: "sec",
+      env: "sandbox",
+      envVars: emptyEnv,
+    });
+    expect(status.syncSchedulerRequested).toBe(false);
+    // No point telling an admin the environment overrules a box they have already unticked.
+    expect(status.warnings.some((w) => w.includes("PLAID_SYNC_SCHEDULER"))).toBe(false);
+  });
+
+  it("warns when the environment holds the sweep off against a ticked box", () => {
+    const status = buildPlaidAdminStatus({
+      enabled: "true",
+      syncScheduler: "true",
+      clientId: "cid",
+      secret: "sec",
+      env: "sandbox",
+      envVars: { ...emptyEnv, syncScheduler: "false" },
+    });
+    expect(status.syncSchedulerRequested).toBe(true);
+    expect(status.syncSchedulerForcedOffByEnv).toBe(true);
+    expect(status.warnings.some((w) => w.includes("PLAID_SYNC_SCHEDULER"))).toBe(true);
   });
 
   it("stays quiet while Plaid is turned off", () => {

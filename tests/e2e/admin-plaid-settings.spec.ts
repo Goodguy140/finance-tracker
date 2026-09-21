@@ -49,7 +49,9 @@ test("an admin can store Plaid credentials, and the secret is encrypted and neve
   });
   await expect(section).toBeVisible();
 
-  await section.getByRole("checkbox").check();
+  // Named, not positional: the section has a second checkbox (the background sweep), and
+  // an unqualified getByRole("checkbox") is a strict-mode violation the moment it lands.
+  await section.getByRole("checkbox", { name: "Enable Plaid bank sync" }).check();
   await section.getByPlaceholder("Plaid client ID").fill("test-client-id");
   await section.getByPlaceholder("Plaid secret (leave blank to keep)").fill("test-secret-value");
   // Deliberately NOT "production". `plaid.env` is a global server setting shared by every
@@ -74,6 +76,10 @@ test("an admin can store Plaid credentials, and the secret is encrypted and neve
   expect(await readPlaidSetting("plaid.secret")).toBe("test-secret-value");
   expect(await readPlaidSetting("plaid.enabled")).toBe("true");
   expect(await readPlaidSetting("plaid.env")).toBe("sandbox");
+  // The background sweep ships on, so saving the form with the box untouched stores "true".
+  // Switching it off is asserted in the unit tests: `plaid.*` rows are global to the suite
+  // and a stored "false" would be visible to every other spec's server process.
+  expect(await readPlaidSetting("plaid.syncScheduler")).toBe("true");
 
   // Stored ciphertext must not contain the plaintext secret.
   const secretRow = await prisma.serverSetting.findUnique({ where: { key: "plaid.secret" } });
@@ -93,6 +99,7 @@ test("an admin can store Plaid credentials, and the secret is encrypted and neve
   await expect(section.getByPlaceholder("Plaid client ID")).toHaveValue("test-client-id");
   await expect(section.getByPlaceholder("Plaid secret (leave blank to keep)")).toHaveValue("");
   await expect(section.getByRole("combobox")).toHaveValue("sandbox");
+  await expect(section.getByRole("checkbox", { name: "Sync connected banks in the background" })).toBeChecked();
 
   // A blank secret field on re-save keeps the stored secret rather than wiping it.
   await section.getByPlaceholder("Plaid client ID").fill("second-client-id");

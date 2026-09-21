@@ -124,12 +124,16 @@ export function AdminPasswordLoginForm({
 
 export function AdminPlaidForm({
   enabled,
+  syncSchedulerEnabled,
+  syncSchedulerForcedOffByEnv,
   clientId,
   environment,
   configuredViaEnv,
   warnings,
 }: {
   enabled: boolean;
+  syncSchedulerEnabled: boolean;
+  syncSchedulerForcedOffByEnv: boolean;
   clientId: string;
   environment: "sandbox" | "production";
   configuredViaEnv: boolean;
@@ -154,6 +158,20 @@ export function AdminPlaidForm({
           <input type="checkbox" name="plaidEnabled" value="true" defaultChecked={enabled} />
           Enable Plaid bank sync
         </label>
+        <label className="flex items-center gap-2 text-slate-300">
+          <input
+            type="checkbox"
+            name="plaidSyncScheduler"
+            value="true"
+            defaultChecked={syncSchedulerEnabled}
+          />
+          Sync connected banks in the background
+        </label>
+        <p className="text-xs text-slate-500">
+          {syncSchedulerForcedOffByEnv
+            ? "PLAID_SYNC_SCHEDULER is false in the environment, so the sweep stays off whatever is ticked here. Saved anyway, and it takes effect if that variable is removed."
+            : "Off means banks are only refreshed when someone presses Sync now or Sync all. Nothing the sweep finds is posted to your books either way — it waits in the review queue."}
+        </p>
         <input
           name="plaidClientId"
           defaultValue={clientId}

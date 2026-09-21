@@ -103,6 +103,8 @@ export default async function AdminSettingsPage() {
       />
       <AdminPlaidForm
         enabled={plaidStatus.enabledRequested}
+        syncSchedulerEnabled={plaidStatus.syncSchedulerRequested}
+        syncSchedulerForcedOffByEnv={plaidStatus.syncSchedulerForcedOffByEnv}
         clientId={plaidStatus.storedClientId}
         environment={plaidStatus.environment}
         configuredViaEnv={plaidStatus.source === "environment" || plaidStatus.source === "mixed"}
