@@ -1,7 +1,8 @@
 import { PlaidItemStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { PlaidApiError } from "@/lib/plaid/client";
-import { getPlaidConfig } from "@/lib/plaid/config";
+import { getPlaidConfig, getPlaidSweepEnabled } from "@/lib/plaid/config";
+import { plaidSweepSwitchEnabled } from "@/lib/plaid/settings";
 import { requirePlaidClient } from "@/lib/plaid/service";
 import { PlaidSyncBusyError, syncPlaidItem } from "@/lib/plaid/sync";
 import { createSyncStore } from "@/lib/plaid/sync-store";
@@ -30,12 +31,18 @@ const INITIAL_DELAY_MS = 45 * 1000;
 
 const globalState = globalThis as unknown as { __plaidSyncScheduler?: boolean };
 
-/** `PLAID_SYNC_SCHEDULER=false` (or `0`) turns the sweep off; anything else leaves it on. */
+/**
+ * `PLAID_SYNC_SCHEDULER=false` (or `0`) turns the sweep off; anything else leaves it on.
+ *
+ * This is the environment half only, and it is checked once at boot because an env var
+ * cannot change under a running process. The other half — **Settings → Server admin →
+ * Plaid → Sync connected banks in the background** — is stored in the database and so is
+ * re-read on every tick, which is what lets an admin stop the sweep without a restart.
+ */
 export function plaidSyncSchedulerEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  const raw = env.PLAID_SYNC_SCHEDULER?.trim().toLowerCase();
-  return raw !== "false" && raw !== "0";
+  return plaidSweepSwitchEnabled(env.PLAID_SYNC_SCHEDULER);
 }
 
 /**
@@ -224,6 +231,10 @@ export function startPlaidSyncScheduler(): boolean {
 
   const sweep = async () => {
     try {
+      // Re-read per tick rather than per boot: the admin switch lives in the database
+      // precisely so turning the sweep off does not mean restarting the container. Costs
+      // one cached-config check, which is the same query the sweep would make anyway.
+      if (!(await getPlaidSweepEnabled())) return;
       const summary = await sweepDuePlaidItems();
       if (summary.synced > 0 || summary.failed > 0) {
         console.log(

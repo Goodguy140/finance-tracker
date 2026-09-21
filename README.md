@@ -22,7 +22,7 @@ npm run dev
 | `RECURRING_AUTO_POST_SCHEDULER` | Optional. Set `false` to disable the hourly in-process sweep that posts recurring rules in "automatic" mode |
 | `PLAID_CLIENT_ID` / `PLAID_SECRET` | Optional. Plaid API credentials. Both must be set to override what is stored in the admin UI |
 | `PLAID_ENV` | Optional. `sandbox` (default) or `production`. Only consulted when the two vars above are set |
-| `PLAID_SYNC_SCHEDULER` | Optional. Set `false` to disable the background sweep that pulls new bank transactions |
+| `PLAID_SYNC_SCHEDULER` | Optional. Set `false` to disable the background sweep that pulls new bank transactions, overriding the admin checkbox |
 | `PLAID_SYNC_INTERVAL_MINUTES` | Optional. How often that sweep runs (default `60`, minimum `15`) |
 
 `DATABASE_URL` defaults to `file:/data/app.db` (production) or `file:./dev.db` (development).
@@ -114,8 +114,10 @@ a repeatedly failing connection is retried on a doubling delay up to once a day 
 every hour. Nothing the sweep fetches is posted anywhere —
 synced transactions sit in the queue until you review them — so it cannot change your books while
 you are not looking. `PLAID_SYNC_INTERVAL_MINUTES` changes the cadence (minimum 15; below that it
-is rate-limit pressure rather than a refresh), and `PLAID_SYNC_SCHEDULER=false` turns it off so
-**Sync now** is the only trigger. Banks waiting on re-authentication are skipped until you sign in
+is rate-limit pressure rather than a refresh). **Settings → Server admin → Plaid → Sync
+connected banks in the background** turns the sweep off without a restart, leaving **Sync now**
+and **Sync all** as the only triggers; `PLAID_SYNC_SCHEDULER=false` does the same from the
+environment and overrules the checkbox while it is set. Banks waiting on re-authentication are skipped until you sign in
 again, rather than being retried every hour.
 
 Configure under **Settings → Server admin → Plaid** (encrypted in the database with

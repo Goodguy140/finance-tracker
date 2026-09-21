@@ -5,6 +5,7 @@ import {
   buildPlaidAdminStatus,
   envCredentialsComplete,
   normalizePlaidEnvironment,
+  plaidSweepAllowed,
   type PlaidAdminStatus,
   type PlaidEnvironment,
 } from "@/lib/plaid/settings";
@@ -22,7 +23,13 @@ export type PlaidConfig = {
  * hour; an edit made in the admin UI, by another instance, or straight in the database
  * still shows up on the next call at the cost of one aggregate query.
  */
-type CachedPlaidConfig = { signature: string; config: PlaidConfig | null; enabled: boolean };
+type CachedPlaidConfig = {
+  signature: string;
+  config: PlaidConfig | null;
+  enabled: boolean;
+  /** Whether the *scheduled* sweep may run. Manual syncs ignore this. */
+  sweepEnabled: boolean;
+};
 
 let configCache: CachedPlaidConfig | null = null;
 let configCacheInFlight: Promise<CachedPlaidConfig> | null = null;
@@ -37,6 +44,7 @@ function envVars() {
     clientId: process.env.PLAID_CLIENT_ID?.trim() ?? "",
     secret: process.env.PLAID_SECRET?.trim() ?? "",
     env: process.env.PLAID_ENV?.trim() ?? "",
+    syncScheduler: process.env.PLAID_SYNC_SCHEDULER?.trim() ?? "",
   };
 }
 
@@ -56,14 +64,18 @@ async function readSetting(key: string): Promise<string> {
   return tryDecryptSecret(row.encryptedValue) ?? "";
 }
 
-async function resolvePlaidConfig(): Promise<{ config: PlaidConfig | null; enabled: boolean }> {
+async function resolvePlaidConfig(): Promise<Omit<CachedPlaidConfig, "signature">> {
   const env = envVars();
-  const [enabledRaw, storedClientId, storedSecret, storedEnv] = await Promise.all([
+  const [enabledRaw, storedClientId, storedSecret, storedEnv, storedSweepRaw] = await Promise.all([
     readSetting(PLAID_SETTING_KEYS.enabled),
     readSetting(PLAID_SETTING_KEYS.clientId),
     readSetting(PLAID_SETTING_KEYS.secret),
     readSetting(PLAID_SETTING_KEYS.env),
+    readSetting(PLAID_SETTING_KEYS.syncScheduler),
   ]);
+  // `readSetting` returns "" for a missing row, which reads as on — the sweep keeps its
+  // current behaviour on every deployment that has never saved this setting.
+  const sweepEnabled = plaidSweepAllowed({ envRaw: env.syncScheduler, storedRaw: storedSweepRaw });
 
   // The env pair wins outright when both halves are set, mirroring how Authentik env
   // credentials override the stored ones. `plaid.enabled` still gates the feature either
@@ -71,6 +83,7 @@ async function resolvePlaidConfig(): Promise<{ config: PlaidConfig | null; enabl
   if (envCredentialsComplete(env)) {
     return {
       enabled: enabledRaw.trim() === "true",
+      sweepEnabled,
       config: {
         clientId: env.clientId,
         secret: env.secret,
@@ -79,9 +92,12 @@ async function resolvePlaidConfig(): Promise<{ config: PlaidConfig | null; enabl
     };
   }
 
-  if (!storedClientId || !storedSecret) return { config: null, enabled: enabledRaw.trim() === "true" };
+  if (!storedClientId || !storedSecret) {
+    return { config: null, enabled: enabledRaw.trim() === "true", sweepEnabled };
+  }
   return {
     enabled: enabledRaw.trim() === "true",
+    sweepEnabled,
     config: {
       clientId: storedClientId,
       secret: storedSecret,
@@ -95,8 +111,8 @@ async function getCachedPlaidConfig(): Promise<CachedPlaidConfig> {
   if (configCache && configCache.signature === signature) return configCache;
   if (!configCacheInFlight) {
     configCacheInFlight = resolvePlaidConfig()
-      .then(({ config, enabled }) => {
-        configCache = { signature, config, enabled };
+      .then((resolved) => {
+        configCache = { signature, ...resolved };
         return configCache;
       })
       .finally(() => {
@@ -112,10 +128,28 @@ export async function getPlaidConfig(): Promise<PlaidConfig | null> {
   return cached.enabled ? cached.config : null;
 }
 
+/**
+ * Whether the background sweep is allowed to run right now.
+ *
+ * Shares the config cache, so the scheduler's hourly tick costs one aggregate query rather
+ * than a decrypt, and an admin toggling the checkbox takes effect on the next tick without
+ * a restart — the save invalidates the cache. Deliberately not consulted by
+ * `sweepDuePlaidItems`: a person pressing **Sync all** has asked for it out loud.
+ */
+export async function getPlaidSweepEnabled(): Promise<boolean> {
+  const cached = await getCachedPlaidConfig();
+  return cached.enabled && cached.config !== null && cached.sweepEnabled;
+}
+
 /** Everything the admin page renders, including which source is actually in play. */
 export async function getPlaidAdminStatus(): Promise<PlaidAdminStatus & { storedClientId: string }> {
   const env = envVars();
-  const keys = [PLAID_SETTING_KEYS.clientId, PLAID_SETTING_KEYS.secret, PLAID_SETTING_KEYS.env];
+  const keys = [
+    PLAID_SETTING_KEYS.clientId,
+    PLAID_SETTING_KEYS.secret,
+    PLAID_SETTING_KEYS.env,
+    PLAID_SETTING_KEYS.syncScheduler,
+  ];
   const rows = await prisma.serverSetting.findMany({ where: { key: { in: [...keys, PLAID_SETTING_KEYS.enabled] } } });
   const byKey = new Map(rows.map((row) => [row.key, row]));
 
@@ -135,9 +169,13 @@ export async function getPlaidAdminStatus(): Promise<PlaidAdminStatus & { stored
   const clientId = read(PLAID_SETTING_KEYS.clientId);
   const secret = read(PLAID_SETTING_KEYS.secret);
   const storedEnv = read(PLAID_SETTING_KEYS.env);
+  const storedSweep = byKey.has(PLAID_SETTING_KEYS.syncScheduler)
+    ? read(PLAID_SETTING_KEYS.syncScheduler)
+    : undefined;
 
   const status = buildPlaidAdminStatus({
     enabled,
+    syncScheduler: storedSweep,
     clientId,
     secret,
     env: storedEnv,

@@ -92,6 +92,9 @@ export const updateAdminOauthSettingsAction = formAction(async (formData: FormDa
  * so an operator editing only the environment dropdown must not wipe it. `PLAID_CLIENT_ID`
  * and `PLAID_SECRET` in the environment override whatever is saved here (both halves
  * required); the admin page says so when that is in play.
+ *
+ * `plaid.syncScheduler` rides along in the same form: it only gates the background sweep,
+ * never a sync a person asked for, and `PLAID_SYNC_SCHEDULER=false` still overrules it.
  */
 export const updateAdminPlaidSettingsAction = formAction(async (formData: FormData) => {
   const user = await requireAdmin();
@@ -103,6 +106,7 @@ export const updateAdminPlaidSettingsAction = formAction(async (formData: FormDa
 
   const resolved = resolvePlaidSettings({
     enabledRaw: getFormValue(formData, "plaidEnabled"),
+    syncSchedulerRaw: getFormValue(formData, "plaidSyncScheduler"),
     clientIdRaw: getFormValue(formData, "plaidClientId"),
     secretRaw: getFormValue(formData, "plaidSecret"),
     envRaw: getFormValue(formData, "plaidEnv"),
@@ -113,6 +117,7 @@ export const updateAdminPlaidSettingsAction = formAction(async (formData: FormDa
 
   const entries = [
     { key: PLAID_SETTING_KEYS.enabled, value: resolved.enabled },
+    { key: PLAID_SETTING_KEYS.syncScheduler, value: resolved.syncScheduler },
     { key: PLAID_SETTING_KEYS.clientId, value: resolved.clientId },
     { key: PLAID_SETTING_KEYS.secret, value: resolved.secret },
     { key: PLAID_SETTING_KEYS.env, value: resolved.env },
@@ -133,6 +138,7 @@ export const updateAdminPlaidSettingsAction = formAction(async (formData: FormDa
     // but the point is not to hand it one.
     metadata: {
       enabled: resolved.enabled,
+      backgroundSync: resolved.syncScheduler,
       environment: resolved.env,
       clientIdConfigured: Boolean(resolved.clientId),
     },

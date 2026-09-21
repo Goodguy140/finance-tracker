@@ -12,7 +12,36 @@ export const PLAID_SETTING_KEYS = {
   clientId: "plaid.clientId",
   secret: "plaid.secret",
   env: "plaid.env",
+  syncScheduler: "plaid.syncScheduler",
 } as const;
+
+/**
+ * Parses an off switch: `false` or `0` mean off, and *everything else — including unset —
+ * means on*.
+ *
+ * Default-on is the point. This is read both from `PLAID_SYNC_SCHEDULER` and from the
+ * `plaid.syncScheduler` row, and every deployment that predates that row has no row at
+ * all; defaulting the other way would silently stop the sweep the moment this shipped.
+ */
+export function plaidSweepSwitchEnabled(raw: string | undefined | null): boolean {
+  const value = raw?.trim().toLowerCase();
+  return value !== "false" && value !== "0";
+}
+
+/**
+ * Whether the *scheduled* sweep may run, given both switches.
+ *
+ * The environment wins when it says no: an operator who set `PLAID_SYNC_SCHEDULER=false`
+ * on the container did so to stop it running at all, and an admin ticking a checkbox in
+ * the app should not be able to overrule the box it runs on. Either switch alone is enough
+ * to turn it off.
+ *
+ * Neither switch touches **Sync now** or **Sync all**, which a person is standing right
+ * there having asked for.
+ */
+export function plaidSweepAllowed(input: { envRaw?: string | null; storedRaw?: string | null }): boolean {
+  return plaidSweepSwitchEnabled(input.envRaw) && plaidSweepSwitchEnabled(input.storedRaw);
+}
 
 /** Plaid retired the standalone `development` environment; these are the only two hosts. */
 export const PLAID_ENVIRONMENTS = ["sandbox", "production"] as const;
@@ -34,6 +63,7 @@ export function normalizePlaidEnvironment(raw: string | undefined | null): Plaid
 
 export type PlaidSettingsInput = {
   enabledRaw: string;
+  syncSchedulerRaw: string;
   clientIdRaw: string;
   secretRaw: string;
   envRaw: string;
@@ -44,6 +74,7 @@ export type PlaidSettingsInput = {
 
 export type ResolvedPlaidSettings = {
   enabled: string;
+  syncScheduler: string;
   clientId: string;
   secret: string;
   env: PlaidEnvironment;
@@ -51,16 +82,23 @@ export type ResolvedPlaidSettings = {
 
 export function resolvePlaidSettings(input: PlaidSettingsInput): ResolvedPlaidSettings {
   const enabled = input.enabledRaw || "false";
+  // Unchecked checkboxes post nothing, so an absent field here means the admin cleared it.
+  // That is not the same as the row never having existed, which reads as on.
+  const syncScheduler = input.syncSchedulerRaw || "false";
   const clientId = input.clientIdRaw.trim() ? input.clientIdRaw.trim() : input.existingClientId;
   const secret = input.secretRaw.trim() ? input.secretRaw.trim() : input.existingSecret;
   const env = normalizePlaidEnvironment(input.envRaw.trim() ? input.envRaw : input.existingEnv);
-  return { enabled, clientId, secret, env };
+  return { enabled, syncScheduler, clientId, secret, env };
 }
 
 export type PlaidCredentialSource = "environment" | "database" | "mixed" | "none";
 
 export type PlaidAdminStatus = {
   enabledRequested: boolean;
+  /** What the stored switch says, independent of the environment overriding it. */
+  syncSchedulerRequested: boolean;
+  /** True when `PLAID_SYNC_SCHEDULER` is holding the sweep off regardless of the above. */
+  syncSchedulerForcedOffByEnv: boolean;
   /** True when a usable client id + secret pair resolved from somewhere. */
   configured: boolean;
   source: PlaidCredentialSource;
@@ -70,12 +108,14 @@ export type PlaidAdminStatus = {
 
 export type PlaidAdminStatusInput = {
   enabled: string;
+  /** The `plaid.syncScheduler` row. Absent reads as on — see `plaidSweepSwitchEnabled`. */
+  syncScheduler?: string;
   clientId: string;
   secret: string;
   env: string;
   /** Null when a stored value could not be decrypted (rotated encryption key). */
   decryptFailedKeys?: string[];
-  envVars: { clientId: string; secret: string; env: string };
+  envVars: { clientId: string; secret: string; env: string; syncScheduler?: string };
 };
 
 function nonEmpty(value: string | undefined | null): boolean {
@@ -100,6 +140,8 @@ export function buildPlaidAdminStatus(input: PlaidAdminStatusInput): PlaidAdminS
   const dbComplete = nonEmpty(input.clientId) && nonEmpty(input.secret);
   const dbHasAnything = nonEmpty(input.clientId) || nonEmpty(input.secret);
   const enabledRequested = input.enabled.trim() === "true";
+  const syncSchedulerRequested = plaidSweepSwitchEnabled(input.syncScheduler);
+  const syncSchedulerForcedOffByEnv = !plaidSweepSwitchEnabled(input.envVars.syncScheduler);
 
   let source: PlaidCredentialSource = "none";
   if (envComplete && dbHasAnything) source = "mixed";
@@ -129,5 +171,19 @@ export function buildPlaidAdminStatus(input: PlaidAdminStatusInput): PlaidAdminS
     warnings.push("Plaid is pointed at the sandbox. Sandbox items return fake data and never touch a real bank.");
   }
 
-  return { enabledRequested, configured, source, environment, warnings };
+  if (enabledRequested && syncSchedulerRequested && syncSchedulerForcedOffByEnv) {
+    warnings.push(
+      "PLAID_SYNC_SCHEDULER is set to false in the environment, so the background sweep stays off no matter what is saved here. Sync now and Sync all still work.",
+    );
+  }
+
+  return {
+    enabledRequested,
+    syncSchedulerRequested,
+    syncSchedulerForcedOffByEnv,
+    configured,
+    source,
+    environment,
+    warnings,
+  };
 }
