@@ -41,6 +41,23 @@ and skips a repair whose table does not exist.
 root was an empty April leftover and is gone. Prisma resolves `file:./dev.db` relative to the
 schema directory, not the repo root.
 
+**`prisma/dev.db` has a divergent `_prisma_migrations` history.** It carries a row for
+`20260515190000_add_audit_log`, a name that does not exist in `prisma/migrations/` — the repo
+ships `20260515140000_add_audit_log` instead. That row is marked rolled back with
+`applied_steps_count` 0, so it changed nothing and is inert. `npm run db:deploy` steps over it
+and applies whatever is genuinely pending. `prisma migrate dev` does not: it reads the unknown
+name as drift and offers to reset the database, discarding your local data to resolve a row
+that never mattered. That is the reason for the rule above.
+
+**A long-running `next dev` pins the Prisma client it booted with.** `prisma generate` — which
+the `postinstall` hook also runs — rewrites `node_modules/.prisma/client`, but a server already
+running keeps the old client in its require cache; Turbopack recompiles your code, not a
+`node_modules` dependency. The symptom is a `PrismaClientValidationError` for a column that is
+plainly present in `schema.prisma`, absent from the error's "Available options" list while its
+schema neighbours are there. Restart the dev server. Check `npm run db:deploy` as well: if the
+column is new, that same session likely never applied its migration either, and restarting
+alone only trades the validation error for a `P2022`.
+
 ## Tests
 
 **Wait on the last thing an operation writes, never an earlier one.** This has caused three
