@@ -67,7 +67,7 @@ export function BudgetForm({ expenseCategories }: { expenseCategories: Option[] 
         </datalist>
       </LabeledField>
 
-      <div className={`${spanFullSm} rounded-xl border border-slate-700/90 bg-slate-950/45 p-4`}>
+      <div className={`${spanFullSm} rounded-xl border border-slate-700/90 bg-slate-950/45 p-3`}>
         <label className="flex cursor-pointer items-start gap-3">
           <input
             type="checkbox"
@@ -421,12 +421,11 @@ export function SettingsForms({
       : "";
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <nav
-        className="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/95 pb-1 pt-2 backdrop-blur supports-[backdrop-filter]:bg-slate-950/80"
+        className="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/95 pb-1.5 pt-2 backdrop-blur supports-[backdrop-filter]:bg-slate-950/80"
         aria-label="Settings sections"
       >
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Sections</p>
         <div className="relative">
           <div
             ref={tablistRef}
@@ -470,8 +469,8 @@ export function SettingsForms({
 
       <div className="min-w-0 space-y-4">
         {tab === "profile" ? (
-          <div className="mx-auto max-w-2xl space-y-6" role="tabpanel" aria-label="Profile">
-            <header className="space-y-2 border-b border-slate-800/80 pb-6">
+          <div className="space-y-4" role="tabpanel" aria-label="Profile">
+            <header className="space-y-1.5 border-b border-slate-800/80 pb-3">
               <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Profile</h2>
               <p className="max-w-prose text-sm leading-relaxed text-slate-400">
                 How you appear in the app, and the regional defaults applied to new accounts. Sign-in and passkeys
@@ -479,7 +478,7 @@ export function SettingsForms({
               </p>
             </header>
 
-            <div className="flex flex-col gap-4 rounded-2xl border border-slate-700/80 bg-gradient-to-br from-slate-800/50 via-slate-900/80 to-slate-950 p-5 shadow-lg ring-1 ring-white/5 sm:flex-row sm:items-center sm:gap-6">
+            <div className="flex flex-col gap-4 rounded-2xl border border-slate-700/80 bg-gradient-to-br from-slate-800/50 via-slate-900/80 to-slate-950 p-4 shadow-lg ring-1 ring-white/5 sm:flex-row sm:items-center sm:gap-6">
               <div
                 className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500/35 to-indigo-600/25 text-lg font-semibold tracking-tight text-blue-50 shadow-inner ring-1 ring-blue-400/25"
                 aria-hidden
@@ -498,7 +497,7 @@ export function SettingsForms({
               </div>
             </div>
 
-            <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-5 shadow-lg sm:p-6">
+            <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-4 shadow-lg sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800/90 pb-4">
                 <div className="space-y-1">
                   <h3 className="flex items-center gap-2 text-base font-semibold text-slate-100">
@@ -568,8 +567,8 @@ export function SettingsForms({
         ) : null}
 
         {tab === "security" ? (
-          <div className="mx-auto max-w-2xl space-y-6" role="tabpanel" aria-label="Security">
-            <header className="space-y-2 border-b border-slate-800/80 pb-6">
+          <div className="space-y-4" role="tabpanel" aria-label="Security">
+            <header className="space-y-1.5 border-b border-slate-800/80 pb-3">
               <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Security</h2>
               <p className="max-w-prose text-sm leading-relaxed text-slate-400">
                 How you sign in, and what protects this account. Passkeys are also what gate connecting a bank or
@@ -577,7 +576,7 @@ export function SettingsForms({
               </p>
             </header>
 
-            <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-5 shadow-lg sm:p-6">
+            <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-4 shadow-lg sm:p-5">
               <div className="space-y-1 border-b border-slate-800/90 pb-4">
                 <h3 className="flex items-center gap-2 text-base font-semibold text-slate-100">
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800 text-slate-300 ring-1 ring-slate-700">
@@ -672,15 +671,15 @@ export function SettingsForms({
         ) : null}
 
         {tab === "accounts" ? (
-          <div className="mx-auto max-w-3xl space-y-6" role="tabpanel" aria-label="Accounts">
-            <header className="space-y-2 border-b border-slate-800/80 pb-6">
+          <div className="space-y-4" role="tabpanel" aria-label="Accounts">
+            <header className="space-y-1.5 border-b border-slate-800/80 pb-3">
               <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Accounts</h2>
               <p className="max-w-prose text-sm leading-relaxed text-slate-400">
                 The accounts your expenses, income and recurring transactions are recorded against — plus the two
                 ways transactions get in: a connected bank, or a CSV statement.
               </p>
             </header>
-            <div className="space-y-6 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/85 to-slate-900/55 p-4 shadow-lg lg:space-y-8 lg:p-6">
+            <div className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/85 to-slate-900/55 p-3.5 shadow-lg lg:space-y-5 lg:p-4">
               <div className="flex flex-col gap-3 border-b border-slate-800/80 pb-4 lg:flex-row lg:items-end lg:justify-between lg:pb-5">
                 <div className="min-w-0 space-y-1">
                   <h3 className="text-lg font-semibold tracking-tight text-slate-100 lg:text-xl">Your accounts</h3>
@@ -695,7 +694,7 @@ export function SettingsForms({
                 </p>
               </div>
 
-              <div className="rounded-xl border border-slate-800/90 bg-slate-950/35 p-4 lg:p-5">
+              <div className="rounded-xl border border-slate-800/90 bg-slate-950/35 p-3 lg:p-3.5">
                 <h4 className="mb-1 text-sm font-medium text-slate-200">Default expense account</h4>
                 <p className="mb-4 max-w-prose text-xs leading-relaxed text-slate-500">
                   Preselects this account on the dashboard Add Expense form and in CSV import defaults. Choose None to use
@@ -728,7 +727,7 @@ export function SettingsForms({
                 </ServerActionForm>
               </div>
 
-              <div className="rounded-xl border border-slate-800/90 bg-slate-950/35 p-4 lg:p-5">
+              <div className="rounded-xl border border-slate-800/90 bg-slate-950/35 p-3 lg:p-3.5">
                 <h4 className="mb-1 text-sm font-medium text-slate-200">Add a new account</h4>
                 <p className="mb-4 text-xs text-slate-500">Choose a clear name and the account category that fits best.</p>
                 <ServerActionForm action={createFinancialAccountAction} className={`${formGridResponsive} sm:grid-cols-2`}>
@@ -764,7 +763,7 @@ export function SettingsForms({
                   </p>
                 </div>
                 {accountItems.every((a) => a.archived) ? (
-                  <p className="rounded-xl border border-dashed border-slate-700 bg-slate-950/40 px-3 py-6 text-center text-sm text-slate-500">
+                  <p className="rounded-xl border border-dashed border-slate-700 bg-slate-950/40 px-3 py-5 text-center text-sm text-slate-500">
                     No active accounts yet. Add one above, or restore an archived account.
                   </p>
                 ) : null}
@@ -779,7 +778,7 @@ export function SettingsForms({
                         <button
                           type="button"
                           onClick={() => setEditingAccount(account)}
-                          className="w-full rounded-xl p-3.5 text-left transition hover:bg-slate-900/40 sm:p-4"
+                          className="w-full rounded-xl px-3 py-2.5 text-left transition hover:bg-slate-900/40 sm:px-3.5"
                         >
                           <div className="min-w-0 space-y-2">
                             <p className="truncate text-base font-semibold text-slate-100">{account.name}</p>
@@ -814,7 +813,7 @@ export function SettingsForms({
                           <button
                             type="button"
                             onClick={() => setEditingAccount(account)}
-                            className="w-full rounded-xl p-3.5 text-left transition hover:bg-slate-900/30 sm:p-4"
+                            className="w-full rounded-xl px-3 py-2.5 text-left transition hover:bg-slate-900/30 sm:px-3.5"
                           >
                             <div className="min-w-0 space-y-2">
                               <p className="truncate text-base font-semibold text-slate-200">{account.name}</p>
@@ -910,11 +909,11 @@ export function SettingsForms({
         {tab === "subscriptions" ? (
           <div
             id="subscriptions"
-            className="scroll-mt-24 mx-auto max-w-3xl space-y-6"
+            className="scroll-mt-24 space-y-4"
             role="tabpanel"
             aria-label="Subscriptions"
           >
-            <header className="space-y-2 border-b border-slate-800/80 pb-6">
+            <header className="space-y-1.5 border-b border-slate-800/80 pb-3">
               <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Subscriptions</h2>
               <p className="max-w-prose text-sm leading-relaxed text-slate-400">
                 Add and edit your recurring subscriptions, split them with other people, and track who has been sent the
@@ -934,11 +933,11 @@ export function SettingsForms({
         {tab === "budgets" ? (
           <div
             id="budgets"
-            className="budget-settings-card scroll-mt-24 mx-auto max-w-3xl space-y-8"
+            className="budget-settings-card scroll-mt-24 space-y-5"
             role="tabpanel"
             aria-label="Budgets"
           >
-            <header className="space-y-2 border-b border-slate-800/80 pb-6">
+            <header className="space-y-1.5 border-b border-slate-800/80 pb-3">
               <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Budgets</h2>
               <p className="max-w-prose text-sm leading-relaxed text-slate-400">
                 Set monthly spending caps per expense category. Rolling budgets apply from their period forward; you can
@@ -960,7 +959,7 @@ export function SettingsForms({
 
             <BudgetAlertPreferences emailConfigured={budgetAlertEmailConfigured} emailEnabled={budgetAlertEmailEnabled} />
 
-            <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-5 shadow-lg sm:p-6">
+            <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-4 shadow-lg sm:p-5">
               <div className="border-b border-slate-800/90 pb-4">
                 <h3 className="flex items-center gap-2 text-base font-semibold text-slate-100">
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/25">
@@ -1005,7 +1004,7 @@ export function SettingsForms({
               </div>
 
               {budgets.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-950/35 px-5 py-12 text-center">
+                <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-950/35 px-4 py-7 text-center">
                   <p className="text-sm font-medium text-slate-300">No budgets yet</p>
                   <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
                     Create your first cap above. Pick a category you already use for expenses, or type a new name to track a
@@ -1020,7 +1019,7 @@ export function SettingsForms({
                     return (
                       <li
                         key={budget.id}
-                        className="rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/80 to-slate-950/70 p-4 shadow-md ring-1 ring-white/5 sm:p-5"
+                        className="rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/80 to-slate-950/70 p-3.5 shadow-md ring-1 ring-white/5 sm:p-4"
                       >
                         <div className="mb-4 flex flex-col gap-3 border-b border-slate-800/80 pb-4 sm:flex-row sm:items-start sm:justify-between">
                           <div className="min-w-0 space-y-2">
@@ -1101,8 +1100,8 @@ export function SettingsForms({
         ) : null}
 
         {tab === "advanced" ? (
-          <div className="mx-auto max-w-3xl space-y-6" role="tabpanel" aria-label="Advanced">
-            <header className="space-y-2 border-b border-slate-800/80 pb-6">
+          <div className="space-y-4" role="tabpanel" aria-label="Advanced">
+            <header className="space-y-1.5 border-b border-slate-800/80 pb-3">
               <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Advanced</h2>
               <p className="max-w-prose text-sm leading-relaxed text-slate-400">
                 Connect external apps, back up or restore this account, clear your financial data, or permanently
@@ -1119,7 +1118,7 @@ export function SettingsForms({
                 } satisfies ApiTokensMfaState
               }
             />
-            <section className="space-y-3 rounded-2xl border border-sky-800/60 bg-sky-950/25 p-4 lg:p-5">
+            <section className="space-y-3 rounded-2xl border border-sky-800/60 bg-sky-950/25 p-3.5 lg:p-4">
               <h3 className="text-base font-semibold text-sky-200 lg:text-lg">Backup and restore</h3>
               <p className="text-sm text-sky-100/85">
                 Export all data associated with this user account to a JSON file, then import it later to restore this
@@ -1131,7 +1130,7 @@ export function SettingsForms({
               >
                 Export backup JSON
               </a>
-              <ServerActionForm action={importUserBackupAction} className="space-y-2 rounded-xl border border-sky-800/70 bg-sky-950/35 p-3">
+              <ServerActionForm action={importUserBackupAction} className="space-y-2 rounded-xl border border-sky-800/70 bg-sky-950/35 p-2.5">
                 <p className="text-xs text-sky-200/85">Import a previous backup JSON for this same account email.</p>
                 <input
                   name="backupJson"
@@ -1148,7 +1147,7 @@ export function SettingsForms({
                 </button>
               </ServerActionForm>
             </section>
-            <ServerActionForm action={clearUserFinancialDataAction} className="space-y-2 rounded-2xl border border-amber-800/60 bg-amber-950/25 p-4 lg:p-5">
+            <ServerActionForm action={clearUserFinancialDataAction} className="space-y-2 rounded-2xl border border-amber-800/60 bg-amber-950/25 p-3.5 lg:p-4">
               <h3 className="text-base font-semibold text-amber-200 lg:text-lg">Clear financial data</h3>
               <p className="text-sm text-amber-100/85">
                 Permanently removes transactions (including splits), budgets, financial accounts, categories,
@@ -1167,7 +1166,7 @@ export function SettingsForms({
                 Clear all financial data
               </button>
             </ServerActionForm>
-            <ServerActionForm action={deleteAccountAction} className="space-y-2 rounded-2xl border border-red-900/60 bg-red-950/30 p-4 lg:p-5">
+            <ServerActionForm action={deleteAccountAction} className="space-y-2 rounded-2xl border border-red-900/60 bg-red-950/30 p-3.5 lg:p-4">
               <h3 className="text-base font-semibold text-red-300 lg:text-lg">Delete account</h3>
               <p className="text-sm text-red-200/80">Type DELETE to confirm irreversible account removal.</p>
               <input name="confirmation" className={inputClass} />

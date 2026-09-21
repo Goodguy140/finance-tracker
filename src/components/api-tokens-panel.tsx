@@ -89,7 +89,7 @@ export function ApiTokensPanel({ tokens, mfa }: { tokens: ApiTokenRow[]; mfa: Ap
       </header>
 
       {state.ok === true ? (
-        <div className="space-y-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/40 p-4">
+        <div className="space-y-3 rounded-2xl border border-emerald-500/40 bg-emerald-950/40 p-3.5">
           <p className="text-sm font-medium text-emerald-200">
             Token “{state.name}” created — copy it now. For your security it won’t be shown again.
           </p>

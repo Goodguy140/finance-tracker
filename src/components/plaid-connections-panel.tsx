@@ -176,7 +176,7 @@ export function PlaidConnectionsPanel({
   return (
     <section
       aria-labelledby="connected-banks-heading"
-      className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/85 to-slate-900/55 p-4 shadow-lg lg:space-y-6 lg:p-6"
+      className="space-y-3.5 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/85 to-slate-900/55 p-3.5 shadow-lg lg:space-y-4 lg:p-4"
     >
       <header className="space-y-2">
         <h3 id="connected-banks-heading" className="text-lg font-semibold tracking-tight text-slate-100 lg:text-xl">
@@ -246,7 +246,7 @@ export function PlaidConnectionsPanel({
       ) : null}
 
       {configured ? (
-        <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+        <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
           <h3 className="font-semibold text-slate-100">Connect a bank</h3>
           <label className="block space-y-1.5">
             <span className="text-sm font-medium text-slate-300">How far back to fetch</span>
@@ -297,7 +297,7 @@ export function PlaidConnectionsPanel({
       ) : (
         <ul className="space-y-4">
           {items.map((item) => (
-            <li key={item.id} className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+            <li key={item.id} className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <h3 className="truncate font-semibold text-slate-100">{item.institutionName}</h3>
@@ -389,7 +389,7 @@ export function PlaidConnectionsPanel({
                 {item.accounts.map((account) => (
                   <li
                     key={account.id}
-                    className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/50 p-3 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-slate-100">
