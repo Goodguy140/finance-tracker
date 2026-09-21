@@ -16,6 +16,7 @@ import {
   primaryBtnClass,
   secondaryBtnClass,
   LabeledField,
+  FieldHintModeProvider,
   CurrencyAmountInput,
   DateField,
   type Option,
@@ -132,6 +133,7 @@ export function ExpenseTitleAndCategoryFields({
       <LabeledField
         label="Title"
         hint="Required. Pick a previous title or type a new one; category updates when you match a past entry."
+        hintInline
         className={`${spanFullSm} mb-3`}
       >
         <ExpenseTitleAutocomplete
@@ -714,6 +716,7 @@ export function ExpenseForm({
   }
 
   return (
+    <FieldHintModeProvider mode="info">
     <ServerActionForm action={createExpenseAction} className={formLayoutClass} onSuccess={onSuccess}>
       <div className={`${titleCatOrder} ${spanFullSm}`}>
         <ExpenseTitleAndCategoryFields
@@ -728,7 +731,11 @@ export function ExpenseForm({
       <div className={`${amountOrder} ${spanFullSm}`}>
         {!receiptBreakdown ? (
           <>
-            <LabeledField label="Amount" hint="Tip: use a negative amount for full refunds or chargebacks.">
+            <LabeledField
+              label="Amount"
+              hint="Tip: use a negative amount for full refunds or chargebacks."
+              hintInline
+            >
               <CurrencyAmountInput
                 name="amount"
                 placeholder="0.00 (negative for credits)"
@@ -872,6 +879,7 @@ export function ExpenseForm({
             name="postedDate"
             label="Posted date"
             hint="Optional. When the transaction cleared on your statement, if different from the transaction date."
+            hintInline
           />
         </div>
       ) : (
@@ -892,6 +900,7 @@ export function ExpenseForm({
         Add expense
       </button>
     </ServerActionForm>
+    </FieldHintModeProvider>
   );
 }
 
