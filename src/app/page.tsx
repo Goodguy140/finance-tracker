@@ -615,7 +615,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     <main className="min-h-screen bg-slate-950 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-0 text-slate-100 lg:p-4 lg:pb-4">
       <div className="mx-auto max-w-7xl space-y-3 lg:space-y-4">
         <header className="relative z-40 max-lg:-mx-4 max-lg:border-x-0 max-lg:border-t-0 max-lg:border-b max-lg:border-slate-800/90 max-lg:bg-gradient-to-b max-lg:from-slate-900/95 max-lg:to-slate-900/80 max-lg:px-4 max-lg:pb-3 max-lg:pt-[max(0.625rem,env(safe-area-inset-top))] max-lg:shadow-lg max-lg:backdrop-blur-sm lg:rounded-2xl lg:border lg:border-slate-800/90 lg:bg-gradient-to-b lg:from-slate-900/90 lg:to-slate-900/70 lg:p-4 lg:shadow-xl lg:backdrop-blur">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
             <div className="flex items-start justify-between gap-3 lg:block lg:shrink-0">
               <div className="min-w-0">
                 <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Finance Tracker</h1>
@@ -634,7 +634,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
               </div>
             </div>
 
-            <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-end lg:items-center">
+            <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-end lg:flex-nowrap lg:items-center lg:justify-between">
               <Suspense
                 fallback={
                   <span className="text-xs text-slate-500" aria-hidden>
@@ -642,7 +642,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                   </span>
                 }
               >
-                <DashboardMonthFilter serverAnchorYm={anchorYm} className="w-full sm:max-w-md lg:max-w-none" />
+                <DashboardMonthFilter serverAnchorYm={anchorYm} className="w-full sm:max-w-md lg:w-auto lg:max-w-none" />
               </Suspense>
               <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto">
                 <BudgetAlertsPanel
