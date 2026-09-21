@@ -246,7 +246,7 @@ export function ExpenseCsvImportForm({
   return (
     <ServerActionForm action={importExpensesCsvAction} className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
       <div>
-        <h3 className="font-semibold text-slate-100">Import Expenses from CSV</h3>
+        <h3 className="font-semibold text-slate-100">Import expenses from CSV</h3>
         <p className="text-xs text-slate-400">
           Upload any CSV, map each column to a field, and import expenses. Credits (refunds, reversals) may appear as
           negative amounts or parentheses, e.g. <code className="text-slate-300">-12.34</code> or{" "}
