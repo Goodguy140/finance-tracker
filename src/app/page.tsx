@@ -35,7 +35,7 @@ import {
   selectActiveBudgetsByCategory,
   type BudgetProgressRow,
 } from "@/lib/budget-progress";
-import { buildCumulativeSpendSeries } from "@/lib/cumulative-spend";
+import { buildCumulativeSpendSeries, resolveMonthlyExpected } from "@/lib/cumulative-spend";
 import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
 import type { VerificationInfo } from "@/components/verified-badge";
@@ -97,13 +97,14 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const periodDescription = describeDashboardPeriod(period);
   const transactionDateFilter = period.transactionDateFilter;
   const recurringIncomeAnchorYm = period.range === "lifetime" ? anchorYm : period.ym;
-  const pastIncomeMonthsYm = getPastMonthYmsBefore(recurringIncomeAnchorYm, 3);
+  // Shared by the recurring income average and the cumulative chart's expected baseline.
+  const pastThreeMonthYms = getPastMonthYmsBefore(recurringIncomeAnchorYm, 3);
   // Categories not touched by a transaction (or split part) in the last 3 months are
   // hidden from the "add" pickers to keep the list focused on what's actually in use.
   const categoryUsageCutoff = new Date(now);
   categoryUsageCutoff.setMonth(categoryUsageCutoff.getMonth() - 3);
 
-  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount] =
+  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -175,7 +176,18 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         userId: user.id,
         type: TransactionType.INCOME,
         date: {
-          gte: startOfMonthYm(pastIncomeMonthsYm[0]),
+          gte: startOfMonthYm(pastThreeMonthYms[0]),
+          lt: endExclusiveOfMonthYm(recurringIncomeAnchorYm),
+        },
+      },
+      select: { amountCents: true, date: true },
+    }),
+    prisma.transaction.findMany({
+      where: {
+        userId: user.id,
+        type: TransactionType.EXPENSE,
+        date: {
+          gte: startOfMonthYm(pastThreeMonthYms[0]),
           lt: endExclusiveOfMonthYm(recurringIncomeAnchorYm),
         },
       },
@@ -398,10 +410,26 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const currentSpendCents = periodExpenses.reduce((sum, row) => sum + row.amountCents, 0);
 
   const cumulativeSpendGranularity = period.range === "month" ? ("day" as const) : ("month" as const);
+  // One month's worth of budget, whatever the selected range: the YTD and lifetime totals
+  // sum many months and would overstate a per-month baseline.
+  const budgetedMonthlyCents = Array.from(selectActiveBudgetsByCategory(budgets, period.ym).values()).reduce(
+    (sum, budget) => sum + budget.limitCents,
+    0,
+  );
+  const spendByPastYm = new Map<string, number>();
+  for (const txn of pastExpenseTransactions) {
+    const ym = ymdFromDateUtc(txn.date).slice(0, 7);
+    spendByPastYm.set(ym, (spendByPastYm.get(ym) ?? 0) + txn.amountCents);
+  }
+  const monthlyExpected = resolveMonthlyExpected(
+    budgetedMonthlyCents,
+    pastThreeMonthYms.map((ym) => spendByPastYm.get(ym) ?? 0),
+  );
   const cumulativeSpendPoints = buildCumulativeSpendSeries(periodExpenses, {
     range: period.range,
     ym: period.ym,
     todayYmd: currentYmdInTimeZone(user.timezone, now),
+    monthlyExpected,
   });
 
   const categoryPieSlices = Array.from(spendByCategory.entries())
@@ -566,7 +594,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         ? { start: startOfMonthYm(period.ym), endExclusive: endExclusiveOfMonthYm(period.ym), label: periodDescription }
         : { start: startOfMonthYm(anchorYm), endExclusive: endExclusiveOfMonthYm(anchorYm), label: "Current month" };
   const expectedIncomeCents = computeThreeMonthAverageIncomeCents(
-    pastIncomeMonthsYm,
+    pastThreeMonthYms,
     bucketIncomeCentsByYm(pastIncomeTransactions),
   );
   const recurringCashFlow = computeRecurringCashFlowSummary(recurringTransactions, recurringForecastPeriod, {
@@ -668,6 +696,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                   periodDescription,
                   points: cumulativeSpendPoints,
                   granularity: cumulativeSpendGranularity,
+                  expectedBasis: monthlyExpected?.basis ?? null,
                 }}
               />
             </div>
@@ -738,6 +767,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                 periodDescription={periodDescription}
                 points={cumulativeSpendPoints}
                 granularity={cumulativeSpendGranularity}
+                expectedBasis={monthlyExpected?.basis ?? null}
               />
             </div>
             <section className="hidden rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg sm:p-4 lg:block">

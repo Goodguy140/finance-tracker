@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCumulativeSpendSeries } from "./cumulative-spend";
+import { buildCumulativeSpendSeries, resolveMonthlyExpected } from "./cumulative-spend";
 
 const utc = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
 
@@ -110,5 +110,79 @@ describe("buildCumulativeSpendSeries", () => {
     );
 
     expect(series.map((p) => p.cumulativeCents)).toEqual([5_000, 3_000]);
+  });
+});
+
+describe("resolveMonthlyExpected", () => {
+  it("prefers budgets over the trailing average", () => {
+    expect(resolveMonthlyExpected(30_000, [10_000, 12_000, 11_000])).toEqual({
+      cents: 30_000,
+      basis: "budgets",
+    });
+  });
+
+  it("averages the recent months when nothing is budgeted", () => {
+    expect(resolveMonthlyExpected(0, [10_000, 12_000, 11_000])).toEqual({
+      cents: 11_000,
+      basis: "average",
+    });
+  });
+
+  it("counts a zero-spend month in the average rather than dropping it", () => {
+    expect(resolveMonthlyExpected(0, [12_000, 0, 6_000])).toEqual({ cents: 6_000, basis: "average" });
+  });
+
+  it("gives no baseline without budgets or history", () => {
+    expect(resolveMonthlyExpected(0, [])).toBeNull();
+    expect(resolveMonthlyExpected(0, [0, 0, 0])).toBeNull();
+  });
+});
+
+describe("buildCumulativeSpendSeries expected baseline", () => {
+  it("prorates a month's expected spend across that month's days", () => {
+    const series = buildCumulativeSpendSeries([], {
+      range: "month",
+      ym: "2026-04", // 30 days
+      todayYmd: "2026-04-30",
+      monthlyExpected: { cents: 30_000, basis: "budgets" },
+    });
+
+    expect(series[0].expectedCents).toBe(1_000);
+    expect(series[14].expectedCents).toBe(15_000);
+    // Full month's expectation is reached on the last day, not before or after it.
+    expect(series[series.length - 1].expectedCents).toBe(30_000);
+  });
+
+  it("keeps prorating against the whole month when the view stops at today", () => {
+    const series = buildCumulativeSpendSeries([], {
+      range: "month",
+      ym: "2026-04",
+      todayYmd: "2026-04-10",
+      monthlyExpected: { cents: 30_000, basis: "budgets" },
+    });
+
+    expect(series).toHaveLength(10);
+    expect(series[9].expectedCents).toBe(10_000);
+  });
+
+  it("adds a whole month of expected spend per monthly bucket", () => {
+    const series = buildCumulativeSpendSeries([{ date: utc(2026, 1, 5), amountCents: 1 }], {
+      range: "ytd",
+      ym: "2026-03",
+      todayYmd: "2026-03-15",
+      monthlyExpected: { cents: 20_000, basis: "average" },
+    });
+
+    expect(series.map((p) => p.expectedCents)).toEqual([20_000, 40_000, 60_000]);
+  });
+
+  it("leaves the baseline null when there is nothing to expect", () => {
+    const series = buildCumulativeSpendSeries([{ date: utc(2026, 3, 1), amountCents: 500 }], {
+      range: "month",
+      ym: "2026-03",
+      todayYmd: "2026-03-02",
+    });
+
+    expect(series.every((p) => p.expectedCents === null)).toBe(true);
   });
 });

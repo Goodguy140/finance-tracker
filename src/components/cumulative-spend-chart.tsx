@@ -2,15 +2,16 @@
 
 import type { TooltipProps } from "recharts";
 import {
+  Bar,
   CartesianGrid,
+  ComposedChart,
   Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
-import type { CumulativeSpendPoint } from "@/lib/cumulative-spend";
+import type { CumulativeSpendPoint, ExpectedSpendBasis } from "@/lib/cumulative-spend";
 import { formatCurrency, fromCents } from "@/lib/money";
 
 export type CumulativeSpendGranularity = "day" | "month";
@@ -22,11 +23,12 @@ function formatAxisAmount(cents: number): string {
   return String(Math.round(units));
 }
 
-function buildTooltip(granularity: CumulativeSpendGranularity) {
+function buildTooltip(granularity: CumulativeSpendGranularity, expectedLabel: string | null) {
   return function CumulativeSpendTooltip({ active, payload }: TooltipProps<number, string>) {
     if (!active || !payload?.length) return null;
     const row = payload[0]?.payload as CumulativeSpendPoint | undefined;
     if (!row) return null;
+    const gapCents = row.expectedCents === null ? null : row.cumulativeCents - row.expectedCents;
     return (
       <div className="rounded-lg border border-slate-600 bg-slate-900/95 px-2.5 py-2 text-xs shadow-lg backdrop-blur">
         <p className="font-medium text-slate-100">{row.fullLabel}</p>
@@ -37,6 +39,16 @@ function buildTooltip(granularity: CumulativeSpendGranularity) {
             {formatCurrency(Math.abs(row.bucketCents))} this {granularity}
           </p>
         ) : null}
+        {row.expectedCents !== null && gapCents !== null ? (
+          <p className="mt-1 border-t border-slate-700 pt-1 tabular-nums text-indigo-200">
+            {formatCurrency(row.expectedCents)} expected
+            {expectedLabel ? ` (${expectedLabel})` : ""}
+            <span className={gapCents > 0 ? "text-red-300" : "text-emerald-300"}>
+              {" · "}
+              {formatCurrency(Math.abs(gapCents))} {gapCents > 0 ? "over" : "under"}
+            </span>
+          </p>
+        ) : null}
       </div>
     );
   };
@@ -45,18 +57,24 @@ function buildTooltip(granularity: CumulativeSpendGranularity) {
 export function CumulativeSpendChart({
   data,
   granularity,
+  expectedBasis,
 }: {
   data: CumulativeSpendPoint[];
   granularity: CumulativeSpendGranularity;
+  expectedBasis: ExpectedSpendBasis | null;
 }) {
   if (data.length === 0) {
     return <p className="mt-2 text-sm text-slate-400">No spending in this period yet.</p>;
   }
 
+  const hasExpected = expectedBasis !== null && data.some((p) => p.expectedCents !== null);
+  const expectedLabel =
+    expectedBasis === "budgets" ? "budgeted" : expectedBasis === "average" ? "3-month average" : null;
+
   return (
     <div className="mt-2 w-full" style={{ minHeight: 220 }}>
       <ResponsiveContainer width="100%" height={220}>
-        <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barCategoryGap={1}>
           <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
           <XAxis
             dataKey="label"
@@ -72,7 +90,22 @@ export function CumulativeSpendChart({
             width={48}
             tickFormatter={formatAxisAmount}
           />
-          <Tooltip content={buildTooltip(granularity)} cursor={{ stroke: "#475569", strokeDasharray: "3 3" }} />
+          <Tooltip
+            content={buildTooltip(granularity, expectedLabel)}
+            cursor={{ fill: "#1e293b", fillOpacity: 0.4 }}
+          />
+          {/* Declared first so it paints behind the actual-spend line. */}
+          {hasExpected ? (
+            <Bar
+              dataKey="expectedCents"
+              fill="#818cf8"
+              fillOpacity={0.22}
+              stroke="#818cf8"
+              strokeOpacity={0.35}
+              strokeWidth={1}
+              isAnimationActive={false}
+            />
+          ) : null}
           <Line
             type="monotone"
             dataKey="cumulativeCents"
@@ -82,7 +115,7 @@ export function CumulativeSpendChart({
             activeDot={{ r: 4, fill: "#38bdf8", stroke: "#0f172a", strokeWidth: 2 }}
             isAnimationActive={false}
           />
-        </LineChart>
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );

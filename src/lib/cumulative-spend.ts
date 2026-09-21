@@ -14,7 +14,18 @@ export type CumulativeSpendPoint = {
   bucketCents: number;
   /** Running total from the first bucket of the period through this one. */
   cumulativeCents: number;
+  /** Running total the period was expected to reach by this bucket; null when nothing predicts it. */
+  expectedCents: number | null;
 };
+
+/** Where the expected line came from, so the card can say so. */
+export type ExpectedSpendBasis = "budgets" | "average";
+
+export type MonthlyExpected = {
+  /** Expected spend for one whole month. */
+  cents: number;
+  basis: ExpectedSpendBasis;
+} | null;
 
 type SpendRow = { date: Date; amountCents: number };
 
@@ -24,7 +35,29 @@ type SeriesOptions = {
   ym: string;
   /** Today in the user's timezone (`YYYY-MM-DD`); trims buckets that have not happened yet. */
   todayYmd: string;
+  /** Expected spend for one month, spread evenly across the buckets; omitted for no baseline. */
+  monthlyExpected?: MonthlyExpected;
 };
+
+/**
+ * What one month of spending is expected to come to.
+ *
+ * Budgets win when they exist — they are a deliberate statement of intent, where the
+ * trailing average only restates habit. Months with no spend at all still count toward
+ * that average: a quiet month is information, and dropping it would bias the baseline
+ * upward. A user with neither budgets nor history gets no baseline rather than a zero
+ * one, so the chart omits the comparison instead of implying a target of nothing.
+ */
+export function resolveMonthlyExpected(
+  budgetedMonthlyCents: number,
+  recentMonthlySpendCents: readonly number[],
+): MonthlyExpected {
+  if (budgetedMonthlyCents > 0) return { cents: budgetedMonthlyCents, basis: "budgets" };
+  if (recentMonthlySpendCents.length === 0) return null;
+  const sum = recentMonthlySpendCents.reduce((total, cents) => total + cents, 0);
+  if (sum <= 0) return null;
+  return { cents: Math.round(sum / recentMonthlySpendCents.length), basis: "average" };
+}
 
 function ymOf(ymd: string): string {
   return ymd.slice(0, 7);
@@ -50,7 +83,7 @@ function daysInMonthYm(ym: string): number {
  */
 export function buildCumulativeSpendSeries(
   expenses: SpendRow[],
-  { range, ym, todayYmd }: SeriesOptions,
+  { range, ym, todayYmd, monthlyExpected = null }: SeriesOptions,
 ): CumulativeSpendPoint[] {
   const buckets = new Map<string, number>();
   for (const row of expenses) {
@@ -107,6 +140,15 @@ export function buildCumulativeSpendSeries(
     }
   }
 
+  // The baseline accrues evenly: one month's expected spend prorated across that month's
+  // days, or one whole month per bucket once the buckets are months.
+  const monthDaysForExpected = range === "month" ? daysInMonthYm(ym) : 0;
+  const expectedAt = (index: number): number | null => {
+    if (!monthlyExpected) return null;
+    if (range === "month") return Math.round((monthlyExpected.cents * (index + 1)) / monthDaysForExpected);
+    return monthlyExpected.cents * (index + 1);
+  };
+
   let running = 0;
   return keys.map((key, index) => {
     const bucketCents = buckets.get(key) ?? 0;
@@ -116,6 +158,7 @@ export function buildCumulativeSpendSeries(
       fullLabel: fullLabels[index],
       bucketCents,
       cumulativeCents: running,
+      expectedCents: expectedAt(index),
     };
   });
 }
