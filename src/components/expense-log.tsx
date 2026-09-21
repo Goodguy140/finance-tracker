@@ -4,7 +4,9 @@ import { isActionFailure } from "@/lib/action-result";
 import { useActionState, useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { deleteExpenseTransactionAction, updateExpenseAction } from "@/app/actions";
+import { syncAllPlaidItemsAction } from "@/app/actions/plaid";
 import { MetaChip } from "@/components/meta-chip";
+import { ServerActionForm } from "@/components/server-action-form";
 import { VerifiedBadge, verificationTooltip, type VerificationInfo } from "@/components/verified-badge";
 import {
   type ExpenseGroupSummary,
@@ -123,6 +125,11 @@ function ExpenseAmountBlock({ txn, size }: { txn: ExpenseLogEntry; size: "defaul
           ) : null}
         </div>
       ) : null}
+      {/* The verification mark sits under the amount rather than in the chip row: it is a
+          statement about this figure, and the chip row is already the longest line here. */}
+      {txn.verification ? (
+        <VerifiedBadge info={txn.verification} variant={size === "compact" ? "text" : "chip"} />
+      ) : null}
     </div>
   );
 }
@@ -155,7 +162,6 @@ function ExpenseChipRow({ txn }: { txn: ExpenseLogEntry }) {
     <div className="mt-1 flex flex-wrap gap-1.5">
       <MetaChip label="Category">{txn.categoryLabel}</MetaChip>
       <MetaChip label="Account">{txn.accountLabel}</MetaChip>
-      {txn.verification ? <VerifiedBadge info={txn.verification} /> : null}
       <MetaChip label="Transaction">{txn.dateDisplay}</MetaChip>
       {txn.postedDateDisplay ? <MetaChip label="Posted">{txn.postedDateDisplay}</MetaChip> : null}
       {txn.note ? <MetaChip label="Note">{txn.note}</MetaChip> : null}
@@ -175,7 +181,6 @@ function ExpenseLogMeta({
   if (density === "compact") {
     const parts: string[] = [txn.categoryLabel, txn.accountLabel, txn.dateDisplay];
     if (txn.postedDateDisplay) parts.push(`posted ${txn.postedDateDisplay}`);
-    if (txn.verification) parts.push("Verified");
     if (txn.note) parts.push(txn.note);
     const line = parts.join(" · ");
     // `title` never fires on touch, so the verification detail is spelled out here
@@ -232,7 +237,6 @@ function ExpenseLogMobileCard({
       </div>
       <div className="flex flex-wrap gap-1.5">
         <MetaChip label="Category">{txn.categoryLabel}</MetaChip>
-        {txn.verification ? <VerifiedBadge info={txn.verification} /> : null}
         {isSplit ? (
           <span className="inline-flex items-center rounded-full border border-amber-500/35 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-100">
             Split — view only
@@ -260,6 +264,48 @@ function ExpenseLogMobileCard({
       </p>
       {txn.note ? <p className="text-xs leading-snug text-slate-400">{txn.note}</p> : null}
     </div>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5" fill="none">
+      <path
+        d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <path
+        d="M13.5 2.5V5H11"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Pulls new transactions from the connected banks without leaving the log.
+ *
+ * Same action as "Sync all due banks" in settings, and deliberately so: it respects the
+ * sync interval instead of forcing a fetch, so leaning on this icon cannot burn through
+ * the Plaid rate limit. Nothing it finds is posted — rows land in the review queue above.
+ */
+function RefreshLinkedAccountsButton() {
+  return (
+    <ServerActionForm action={syncAllPlaidItemsAction} className="flex">
+      <button
+        type="submit"
+        title="Refresh linked accounts — new transactions arrive in the review queue"
+        aria-label="Refresh linked accounts"
+        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-700 text-slate-400 transition hover:border-blue-500/40 hover:text-blue-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 touch-manipulation"
+      >
+        <RefreshIcon />
+      </button>
+    </ServerActionForm>
   );
 }
 
@@ -916,11 +962,14 @@ export function ExpenseLogPanel({
   accounts,
   categories,
   titleSuggestions,
+  hasLinkedAccounts = false,
 }: {
   entries: ExpenseLogEntry[];
   accounts: Option[];
   categories: Option[];
   titleSuggestions: ExpenseTitleSuggestion[];
+  /** False when no bank is connected, which is when the refresh control would do nothing. */
+  hasLinkedAccounts?: boolean;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -958,11 +1007,14 @@ export function ExpenseLogPanel({
               />
             </label>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-slate-500">
-                {trimmedSearch
-                  ? `${filteredEntries.length} of ${entries.length} shown`
-                  : `${entries.length} transaction${entries.length === 1 ? "" : "s"}`}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-slate-500">
+                  {trimmedSearch
+                    ? `${filteredEntries.length} of ${entries.length} shown`
+                    : `${entries.length} transaction${entries.length === 1 ? "" : "s"}`}
+                </p>
+                {hasLinkedAccounts ? <RefreshLinkedAccountsButton /> : null}
+              </div>
               <div className="hidden sm:block">
                 <ExpenseLogDensityToggle density={density} onChange={persistExpenseLogDensity} />
               </div>
