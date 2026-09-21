@@ -43,7 +43,19 @@ function CheckIcon() {
   );
 }
 
-export function VerifiedBadge({ info }: { info: VerificationInfo }) {
+/**
+ * `chip` is the bordered pill; `text` is the same mark as bare text, for the compact log
+ * layout where a pill on every line would undo the density that layout exists for.
+ */
+export type VerifiedBadgeVariant = "chip" | "text";
+
+export function VerifiedBadge({
+  info,
+  variant = "chip",
+}: {
+  info: VerificationInfo;
+  variant?: VerifiedBadgeVariant;
+}) {
   // A withdrawn or disconnected record is still verified — it happened — but the badge
   // should not imply a link that is no longer there.
   const stale = info.removedByPlaid || info.itemRemoved;
@@ -51,6 +63,19 @@ export function VerifiedBadge({ info }: { info: VerificationInfo }) {
     ? "border-slate-500/40 bg-slate-500/10 text-slate-300"
     : "border-emerald-500/35 bg-emerald-500/10 text-emerald-100";
   const tooltip = verificationTooltip(info);
+  if (variant === "text") {
+    return (
+      <span
+        title={tooltip}
+        className={`inline-flex max-w-full items-center gap-1 text-[10px] font-medium leading-tight ${
+          stale ? "text-slate-400" : "text-emerald-300/95"
+        }`}
+      >
+        <CheckIcon />
+        <span>Verified</span>
+      </span>
+    );
+  }
   return (
     <span
       // `title` is the same tooltip mechanism MetaChip already uses, so this needs no

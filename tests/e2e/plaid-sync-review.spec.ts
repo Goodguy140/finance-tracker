@@ -197,4 +197,36 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
     }),
   ).toBe(2);
   expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(2);
+
+  // --- the refresh control in the log runs that same sweep ---
+  // The sweep only touches banks that are due, so the item is aged past the interval
+  // first; without this the click is a legitimate no-op and would assert nothing.
+  const dueBefore = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  await prisma.plaidItem.updateMany({
+    where: { userId: user.id },
+    data: { lastSyncedAt: dueBefore },
+  });
+  const syncAuditsBefore = await prisma.auditLog.count({
+    where: { userId: user.id, action: "plaid_item_sync_succeeded" },
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Refresh linked accounts" }).click();
+
+  // The audit row is the last thing the action writes — the sweep commits first — so
+  // waiting on it cannot read the gap between the sync and the record of it.
+  await expect
+    .poll(
+      async () =>
+        prisma.auditLog.count({
+          where: { userId: user.id, action: "plaid_item_sync_succeeded" },
+        }),
+      { timeout: 20_000 },
+    )
+    .toBe(syncAuditsBefore + 1);
+
+  const refreshed = await prisma.plaidItem.findFirstOrThrow({ where: { userId: user.id } });
+  expect(refreshed.lastSyncedAt!.getTime()).toBeGreaterThan(dueBefore.getTime());
+  // Still nothing posted behind the user's back.
+  expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(2);
 });

@@ -101,7 +101,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const categoryUsageCutoff = new Date(now);
   categoryUsageCutoff.setMonth(categoryUsageCutoff.getMonth() - 3);
 
-  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage] =
+  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -218,6 +218,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       select: { categoryId: true },
       distinct: ["categoryId"],
     }),
+    // Only decides whether the log's refresh control is worth showing.
+    prisma.plaidItem.count({ where: { userId: user.id } }),
   ]);
 
   const expenseCategories = categories.filter((c) => c.kind === CategoryKind.EXPENSE);
@@ -739,6 +741,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                 accounts={accountOptions}
                 categories={expenseCategoryOptions}
                 titleSuggestions={expenseTitleSuggestions}
+                hasLinkedAccounts={plaidItemCount > 0}
               />
             </section>
           </div>
