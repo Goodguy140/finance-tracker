@@ -12,8 +12,8 @@ export type CumulativeSpendPoint = {
   fullLabel: string;
   /** Spend falling in this bucket alone. */
   bucketCents: number;
-  /** Running total from the first bucket of the period through this one. */
-  cumulativeCents: number;
+  /** Running total through this bucket; null once past the last bucket that has happened. */
+  cumulativeCents: number | null;
   /** Running total the period was expected to reach by this bucket; null when nothing predicts it. */
   expectedCents: number | null;
 };
@@ -33,7 +33,7 @@ type SeriesOptions = {
   range: DashboardRange;
   /** Viewed month, or the through-month for YTD. */
   ym: string;
-  /** Today in the user's timezone (`YYYY-MM-DD`); trims buckets that have not happened yet. */
+  /** Today in the user's timezone (`YYYY-MM-DD`); ends the actual-spend run. */
   todayYmd: string;
   /** Expected spend for one month, spread evenly across the buckets; omitted for no baseline. */
   monthlyExpected?: MonthlyExpected;
@@ -98,15 +98,21 @@ export function buildCumulativeSpendSeries(
   const labels: string[] = [];
   const fullLabels: string[] = [];
 
+  // Index of the last bucket the actual-spend line runs to. Buckets past it are still
+  // plotted — the axis covers the whole month so the baseline's final value is on screen —
+  // but they carry a null total rather than flat-lining the actual line into days that
+  // have not happened.
+  let actualThroughIndex: number;
+
   if (range === "month") {
     const monthDays = daysInMonthYm(ym);
     const throughDay = ymOf(todayYmd) === ym ? Math.min(Number(todayYmd.slice(8, 10)), monthDays) : monthDays;
     // A future-dated expense still has to appear, or the curve would end below the total
     // the rest of the dashboard reports for the same period.
     const lastSpendDay = Math.max(0, ...Array.from(buckets.keys(), Number));
-    const lastDay = Math.min(monthDays, Math.max(throughDay, lastSpendDay));
+    actualThroughIndex = Math.min(monthDays, Math.max(throughDay, lastSpendDay)) - 1;
     const monthLabel = formatYmShortLabel(ym, false);
-    for (let day = 1; day <= lastDay; day += 1) {
+    for (let day = 1; day <= monthDays; day += 1) {
       keys.push(String(day));
       labels.push(String(day));
       fullLabels.push(`${monthLabel} ${day}`);
@@ -138,6 +144,8 @@ export function buildCumulativeSpendSeries(
       labels.push(formatYmShortLabel(cursor, withYear));
       fullLabels.push(formatYmShortLabel(cursor, true));
     }
+    // YTD and lifetime already end on a bucket that has happened.
+    actualThroughIndex = keys.length - 1;
   }
 
   // The baseline accrues evenly: one month's expected spend prorated across that month's
@@ -157,8 +165,33 @@ export function buildCumulativeSpendSeries(
       label: labels[index],
       fullLabel: fullLabels[index],
       bucketCents,
-      cumulativeCents: running,
+      cumulativeCents: index <= actualThroughIndex ? running : null,
       expectedCents: expectedAt(index),
     };
   });
+}
+
+/**
+ * The figures the card heading quotes: spend so far, and the baseline at that same point.
+ *
+ * Both come from the last bucket that has actually happened, not the last on the axis —
+ * a month view now plots every day, so the final bucket's baseline is a whole month's
+ * expectation and comparing today's spend against it would read as wildly under budget.
+ */
+export function summarizeCumulativeSpend(points: readonly CumulativeSpendPoint[]): {
+  totalCents: number;
+  expectedCents: number | null;
+  gapCents: number | null;
+} {
+  let last: CumulativeSpendPoint | null = null;
+  for (const point of points) {
+    if (point.cumulativeCents !== null) last = point;
+  }
+  const totalCents = last?.cumulativeCents ?? 0;
+  const expectedCents = last?.expectedCents ?? null;
+  return {
+    totalCents,
+    expectedCents,
+    gapCents: expectedCents === null ? null : totalCents - expectedCents,
+  };
 }

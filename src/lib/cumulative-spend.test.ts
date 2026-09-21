@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildCumulativeSpendSeries, resolveMonthlyExpected } from "./cumulative-spend";
+import {
+  buildCumulativeSpendSeries,
+  resolveMonthlyExpected,
+  summarizeCumulativeSpend,
+} from "./cumulative-spend";
 
 const utc = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
 
@@ -14,23 +18,37 @@ describe("buildCumulativeSpendSeries", () => {
       { range: "month", ym: "2026-03", todayYmd: "2026-03-04" },
     );
 
-    expect(series.map((p) => p.label)).toEqual(["1", "2", "3", "4"]);
-    expect(series.map((p) => p.cumulativeCents)).toEqual([1_000, 1_000, 1_750, 1_750]);
-    expect(series.map((p) => p.bucketCents)).toEqual([1_000, 0, 750, 0]);
+    expect(series.slice(0, 4).map((p) => p.label)).toEqual(["1", "2", "3", "4"]);
+    expect(series.slice(0, 4).map((p) => p.cumulativeCents)).toEqual([1_000, 1_000, 1_750, 1_750]);
+    expect(series.slice(0, 4).map((p) => p.bucketCents)).toEqual([1_000, 0, 750, 0]);
   });
 
-  it("stops at today in the current month instead of flat-lining to month end", () => {
+  it("plots the whole month mid-month so the baseline's last day stays on the axis", () => {
+    const series = buildCumulativeSpendSeries([{ date: utc(2026, 3, 2), amountCents: 400 }], {
+      range: "month",
+      ym: "2026-03",
+      todayYmd: "2026-03-05",
+      monthlyExpected: { cents: 31_000, basis: "budgets" },
+    });
+
+    expect(series).toHaveLength(31);
+    expect(series[30].label).toBe("31");
+    expect(series[30].expectedCents).toBe(31_000);
+  });
+
+  it("ends the actual line at today rather than flat-lining through the rest of the month", () => {
     const series = buildCumulativeSpendSeries([{ date: utc(2026, 3, 2), amountCents: 400 }], {
       range: "month",
       ym: "2026-03",
       todayYmd: "2026-03-05",
     });
 
-    expect(series).toHaveLength(5);
     expect(series[4].cumulativeCents).toBe(400);
+    expect(series[5].cumulativeCents).toBeNull();
+    expect(series.slice(5).every((p) => p.cumulativeCents === null)).toBe(true);
   });
 
-  it("runs to month end for a month that is already over", () => {
+  it("runs the actual line to month end for a month that is already over", () => {
     const series = buildCumulativeSpendSeries([{ date: utc(2026, 2, 2), amountCents: 400 }], {
       range: "month",
       ym: "2026-02",
@@ -38,9 +56,10 @@ describe("buildCumulativeSpendSeries", () => {
     });
 
     expect(series).toHaveLength(28);
+    expect(series[27].cumulativeCents).toBe(400);
   });
 
-  it("extends past today to include a future-dated expense so the curve matches the period total", () => {
+  it("carries the actual line past today to a future-dated expense so it matches the period total", () => {
     const rows = [
       { date: utc(2026, 3, 2), amountCents: 400 },
       { date: utc(2026, 3, 20), amountCents: 600 },
@@ -51,10 +70,8 @@ describe("buildCumulativeSpendSeries", () => {
       todayYmd: "2026-03-05",
     });
 
-    expect(series).toHaveLength(20);
-    expect(series[series.length - 1].cumulativeCents).toBe(
-      rows.reduce((sum, r) => sum + r.amountCents, 0),
-    );
+    expect(series[19].cumulativeCents).toBe(rows.reduce((sum, r) => sum + r.amountCents, 0));
+    expect(series[20].cumulativeCents).toBeNull();
   });
 
   it("buckets YTD by month from January through today", () => {
@@ -109,7 +126,7 @@ describe("buildCumulativeSpendSeries", () => {
       { range: "month", ym: "2026-03", todayYmd: "2026-03-02" },
     );
 
-    expect(series.map((p) => p.cumulativeCents)).toEqual([5_000, 3_000]);
+    expect(series.slice(0, 2).map((p) => p.cumulativeCents)).toEqual([5_000, 3_000]);
   });
 });
 
@@ -153,7 +170,7 @@ describe("buildCumulativeSpendSeries expected baseline", () => {
     expect(series[series.length - 1].expectedCents).toBe(30_000);
   });
 
-  it("keeps prorating against the whole month when the view stops at today", () => {
+  it("keeps the baseline running to the end of the month mid-month", () => {
     const series = buildCumulativeSpendSeries([], {
       range: "month",
       ym: "2026-04",
@@ -161,8 +178,10 @@ describe("buildCumulativeSpendSeries expected baseline", () => {
       monthlyExpected: { cents: 30_000, basis: "budgets" },
     });
 
-    expect(series).toHaveLength(10);
+    expect(series).toHaveLength(30);
     expect(series[9].expectedCents).toBe(10_000);
+    expect(series[29].expectedCents).toBe(30_000);
+    expect(series[29].cumulativeCents).toBeNull();
   });
 
   it("adds a whole month of expected spend per monthly bucket", () => {
@@ -184,5 +203,45 @@ describe("buildCumulativeSpendSeries expected baseline", () => {
     });
 
     expect(series.every((p) => p.expectedCents === null)).toBe(true);
+  });
+});
+
+describe("summarizeCumulativeSpend", () => {
+  it("compares spend so far against the baseline at that same day, not at month end", () => {
+    const series = buildCumulativeSpendSeries([{ date: utc(2026, 4, 3), amountCents: 12_000 }], {
+      range: "month",
+      ym: "2026-04", // 30 days
+      todayYmd: "2026-04-10",
+      monthlyExpected: { cents: 30_000, basis: "budgets" },
+    });
+
+    // Day 10 of 30 expects 10_000, not the whole month's 30_000.
+    expect(summarizeCumulativeSpend(series)).toEqual({
+      totalCents: 12_000,
+      expectedCents: 10_000,
+      gapCents: 2_000,
+    });
+  });
+
+  it("reports no gap when there is no baseline", () => {
+    const series = buildCumulativeSpendSeries([{ date: utc(2026, 4, 3), amountCents: 12_000 }], {
+      range: "month",
+      ym: "2026-04",
+      todayYmd: "2026-04-10",
+    });
+
+    expect(summarizeCumulativeSpend(series)).toEqual({
+      totalCents: 12_000,
+      expectedCents: null,
+      gapCents: null,
+    });
+  });
+
+  it("is zero for an empty series", () => {
+    expect(summarizeCumulativeSpend([])).toEqual({
+      totalCents: 0,
+      expectedCents: null,
+      gapCents: null,
+    });
   });
 });

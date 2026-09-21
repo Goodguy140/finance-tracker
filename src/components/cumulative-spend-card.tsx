@@ -2,7 +2,11 @@ import {
   CumulativeSpendChart,
   type CumulativeSpendGranularity,
 } from "@/components/cumulative-spend-chart";
-import type { CumulativeSpendPoint, ExpectedSpendBasis } from "@/lib/cumulative-spend";
+import {
+  summarizeCumulativeSpend,
+  type CumulativeSpendPoint,
+  type ExpectedSpendBasis,
+} from "@/lib/cumulative-spend";
 import { formatCurrency } from "@/lib/money";
 
 export type CumulativeSpendCardProps = {
@@ -24,10 +28,7 @@ export function CumulativeSpendCard({
   granularity,
   expectedBasis,
 }: CumulativeSpendCardProps) {
-  const last = points.length > 0 ? points[points.length - 1] : null;
-  const totalCents = last?.cumulativeCents ?? 0;
-  const expectedCents = last?.expectedCents ?? null;
-  const gapCents = expectedCents === null ? null : totalCents - expectedCents;
+  const { totalCents, gapCents } = summarizeCumulativeSpend(points);
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">

@@ -27,25 +27,34 @@ function buildTooltip(granularity: CumulativeSpendGranularity, expectedLabel: st
     if (!active || !payload?.length) return null;
     const row = payload[0]?.payload as CumulativeSpendPoint | undefined;
     if (!row) return null;
-    const gapCents = row.expectedCents === null ? null : row.cumulativeCents - row.expectedCents;
+    const gapCents =
+      row.expectedCents === null || row.cumulativeCents === null
+        ? null
+        : row.cumulativeCents - row.expectedCents;
     return (
       <div className="rounded-lg border border-slate-600 bg-slate-900/95 px-2.5 py-2 text-xs shadow-lg backdrop-blur">
         <p className="font-medium text-slate-100">{row.fullLabel}</p>
-        <p className="tabular-nums text-slate-200">{formatCurrency(row.cumulativeCents)} total</p>
+        {row.cumulativeCents === null ? (
+          <p className="text-slate-400">Not yet</p>
+        ) : (
+          <p className="tabular-nums text-slate-200">{formatCurrency(row.cumulativeCents)} total</p>
+        )}
         {row.bucketCents !== 0 ? (
           <p className="tabular-nums text-slate-400">
             {row.bucketCents > 0 ? "+" : "−"}
             {formatCurrency(Math.abs(row.bucketCents))} this {granularity}
           </p>
         ) : null}
-        {row.expectedCents !== null && gapCents !== null ? (
+        {row.expectedCents !== null ? (
           <p className="mt-1 border-t border-slate-700 pt-1 tabular-nums text-indigo-200">
             {formatCurrency(row.expectedCents)} expected
             {expectedLabel ? ` (${expectedLabel})` : ""}
-            <span className={gapCents > 0 ? "text-red-300" : "text-emerald-300"}>
-              {" · "}
-              {formatCurrency(Math.abs(gapCents))} {gapCents > 0 ? "over" : "under"}
-            </span>
+            {gapCents !== null ? (
+              <span className={gapCents > 0 ? "text-red-300" : "text-emerald-300"}>
+                {" · "}
+                {formatCurrency(Math.abs(gapCents))} {gapCents > 0 ? "over" : "under"}
+              </span>
+            ) : null}
           </p>
         ) : null}
       </div>
@@ -114,6 +123,7 @@ export function CumulativeSpendChart({
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4, fill: "#38bdf8", stroke: "#0f172a", strokeWidth: 2 }}
+            connectNulls={false}
             isAnimationActive={false}
           />
         </LineChart>
