@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CategorySpendPieChart, type CategorySpendSlice } from "@/components/category-spend-pie";
+import { CumulativeSpendCard, type CumulativeSpendCardProps } from "@/components/cumulative-spend-card";
 import type { DashboardRange } from "@/lib/dashboard-period";
 import { formatCurrency } from "@/lib/money";
 
@@ -22,6 +23,7 @@ type DashboardBudgetsSpendSectionProps = {
   totalBudgetCents: number;
   budgetProgressItems: DashboardBudgetProgressItem[];
   categoryPieSlices: CategorySpendSlice[];
+  cumulativeSpend: CumulativeSpendCardProps;
 };
 
 const PANEL_SHELL = "rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg";
@@ -110,8 +112,37 @@ function SpendingByCategoryPanel({
 }
 
 function MobileSwipePanels(props: DashboardBudgetsSpendSectionProps) {
+  const slides: Array<{ label: string; content: ReactNode }> = [
+    {
+      label: "Categories",
+      content: (
+        <SpendingByCategoryPanel
+          periodDescription={props.periodDescription}
+          categoryPieSlices={props.categoryPieSlices}
+        />
+      ),
+    },
+    {
+      label: "Budgets",
+      content: (
+        <BudgetsPanel
+          periodRange={props.periodRange}
+          spendVsBudgetLabel={props.spendVsBudgetLabel}
+          currentSpendCents={props.currentSpendCents}
+          totalBudgetCents={props.totalBudgetCents}
+          budgetProgressItems={props.budgetProgressItems}
+        />
+      ),
+    },
+    {
+      label: "Trend",
+      content: <CumulativeSpendCard {...props.cumulativeSpend} />,
+    },
+  ];
+  const slideCount = slides.length;
+
   const [activeIndex, setActiveIndex] = useState(0);
-  const [panelHeights, setPanelHeights] = useState<[number, number]>([0, 0]);
+  const [panelHeights, setPanelHeights] = useState<number[]>(() => new Array(slideCount).fill(0));
   const contentRefs = useRef<(HTMLDivElement | null)[]>([]);
   const viewportRef = useRef<HTMLDivElement>(null);
   const activeIndexRef = useRef(0);
@@ -124,19 +155,22 @@ function MobileSwipePanels(props: DashboardBudgetsSpendSectionProps) {
       const height = Math.ceil(node.offsetHeight);
       setPanelHeights((prev) => {
         if (prev[index] === height) return prev;
-        const next: [number, number] = [...prev] as [number, number];
+        const next = [...prev];
         next[index] = height;
         return next;
       });
     });
   }, []);
 
-  const goToIndex = useCallback((index: number) => {
-    setActiveIndex((prev) => {
-      const next = Math.max(0, Math.min(1, index));
-      return prev === next ? prev : next;
-    });
-  }, []);
+  const goToIndex = useCallback(
+    (index: number) => {
+      setActiveIndex((prev) => {
+        const next = Math.max(0, Math.min(slideCount - 1, index));
+        return prev === next ? prev : next;
+      });
+    },
+    [slideCount],
+  );
 
   useEffect(() => {
     activeIndexRef.current = activeIndex;
@@ -144,7 +178,12 @@ function MobileSwipePanels(props: DashboardBudgetsSpendSectionProps) {
 
   useLayoutEffect(() => {
     measureSlideHeights();
-  }, [measureSlideHeights, props.budgetProgressItems.length, props.categoryPieSlices.length]);
+  }, [
+    measureSlideHeights,
+    props.budgetProgressItems.length,
+    props.categoryPieSlices.length,
+    props.cumulativeSpend.points.length,
+  ]);
 
   useEffect(() => {
     const observers: ResizeObserver[] = [];
@@ -157,7 +196,12 @@ function MobileSwipePanels(props: DashboardBudgetsSpendSectionProps) {
     });
 
     return () => observers.forEach((observer) => observer.disconnect());
-  }, [measureSlideHeights, props.budgetProgressItems.length, props.categoryPieSlices.length]);
+  }, [
+    measureSlideHeights,
+    props.budgetProgressItems.length,
+    props.categoryPieSlices.length,
+    props.cumulativeSpend.points.length,
+  ]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -221,7 +265,7 @@ function MobileSwipePanels(props: DashboardBudgetsSpendSectionProps) {
     };
   }, [goToIndex]);
 
-  const activeHeight = panelHeights[activeIndex];
+  const activeHeight = panelHeights[activeIndex] ?? 0;
   const heightReady = activeHeight > 0;
 
   return (
@@ -231,59 +275,41 @@ function MobileSwipePanels(props: DashboardBudgetsSpendSectionProps) {
         className="relative touch-pan-y overflow-hidden transition-[height] duration-300 ease-out"
         style={{ height: heightReady ? activeHeight : undefined }}
         aria-roledescription="carousel"
-        aria-label="Spending by category and budgets"
+        aria-label="Spending by category, budgets and cumulative spending"
       >
         <div
-          className="absolute inset-x-0 top-0 flex w-[200%] items-start transition-transform duration-300 ease-out"
-          style={{ transform: `translateX(-${activeIndex * 50}%)` }}
+          className="absolute inset-x-0 top-0 flex items-start transition-transform duration-300 ease-out"
+          style={{
+            width: `${slideCount * 100}%`,
+            transform: `translateX(-${(activeIndex * 100) / slideCount}%)`,
+          }}
         >
-          <div
-            id="dashboard-panel-0"
-            className="w-1/2 shrink-0"
-            role="tabpanel"
-            aria-hidden={activeIndex !== 0}
-            aria-label="Spending by category"
-            inert={activeIndex !== 0 ? true : undefined}
-          >
+          {slides.map((slide, index) => (
             <div
-              ref={(node) => {
-                contentRefs.current[0] = node;
-              }}
+              key={slide.label}
+              id={`dashboard-panel-${index}`}
+              className="shrink-0"
+              style={{ width: `${100 / slideCount}%` }}
+              role="tabpanel"
+              aria-hidden={activeIndex !== index}
+              aria-label={slide.label}
+              inert={activeIndex !== index ? true : undefined}
             >
-              <SpendingByCategoryPanel
-                periodDescription={props.periodDescription}
-                categoryPieSlices={props.categoryPieSlices}
-              />
+              <div
+                ref={(node) => {
+                  contentRefs.current[index] = node;
+                }}
+              >
+                {slide.content}
+              </div>
             </div>
-          </div>
-          <div
-            id="dashboard-panel-1"
-            className="w-1/2 shrink-0"
-            role="tabpanel"
-            aria-hidden={activeIndex !== 1}
-            aria-label="Budgets"
-            inert={activeIndex !== 1 ? true : undefined}
-          >
-            <div
-              ref={(node) => {
-                contentRefs.current[1] = node;
-              }}
-            >
-              <BudgetsPanel
-                periodRange={props.periodRange}
-                spendVsBudgetLabel={props.spendVsBudgetLabel}
-                currentSpendCents={props.currentSpendCents}
-                totalBudgetCents={props.totalBudgetCents}
-                budgetProgressItems={props.budgetProgressItems}
-              />
-            </div>
-          </div>
+          ))}
         </div>
       </div>
       <div className="flex items-center justify-center gap-2" role="tablist" aria-label="Dashboard panels">
-        {(["Categories", "Budgets"] as const).map((label, index) => (
+        {slides.map((slide, index) => (
           <button
-            key={label}
+            key={slide.label}
             type="button"
             role="tab"
             aria-selected={activeIndex === index}
@@ -295,7 +321,7 @@ function MobileSwipePanels(props: DashboardBudgetsSpendSectionProps) {
                 : "text-slate-400 hover:bg-slate-800/80 hover:text-slate-200"
             }`}
           >
-            {label}
+            {slide.label}
           </button>
         ))}
       </div>

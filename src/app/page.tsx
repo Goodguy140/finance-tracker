@@ -10,6 +10,7 @@ import { DashboardMobileActions } from "@/components/dashboard-mobile-actions";
 import { DashboardMonthFilter } from "@/components/dashboard-month-filter";
 import { BudgetAlertsPanel } from "@/components/budget-alerts-panel";
 import { DashboardBudgetsSpendSection } from "@/components/dashboard-budgets-spend-section";
+import { CumulativeSpendCard } from "@/components/cumulative-spend-card";
 import { ExpenseLogPanel } from "@/components/expense-log";
 import { IncomeLogPanel } from "@/components/income-log";
 import { RecurringTransactionsPanel } from "@/components/recurring-transactions-panel";
@@ -34,6 +35,7 @@ import {
   selectActiveBudgetsByCategory,
   type BudgetProgressRow,
 } from "@/lib/budget-progress";
+import { buildCumulativeSpendSeries } from "@/lib/cumulative-spend";
 import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
 import type { VerificationInfo } from "@/components/verified-badge";
@@ -47,7 +49,7 @@ import {
   getPastMonthYmsBefore,
   getRecurringDateStatus,
 } from "@/lib/recurring-transactions";
-import { currentYmInTimeZone } from "@/lib/period-month";
+import { currentYmdInTimeZone, currentYmInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
 import { autoPostDueRecurringTransactions } from "@/lib/recurring-post";
 import { requireUser } from "@/lib/session";
@@ -395,6 +397,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
   const currentSpendCents = periodExpenses.reduce((sum, row) => sum + row.amountCents, 0);
 
+  const cumulativeSpendGranularity = period.range === "month" ? ("day" as const) : ("month" as const);
+  const cumulativeSpendPoints = buildCumulativeSpendSeries(periodExpenses, {
+    range: period.range,
+    ym: period.ym,
+    todayYmd: currentYmdInTimeZone(user.timezone, now),
+  });
+
   const categoryPieSlices = Array.from(spendByCategory.entries())
     .map(([categoryId, cents]) => {
       const cat = categories.find((c) => c.id === categoryId);
@@ -655,6 +664,11 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                 totalBudgetCents={totalBudgetCents}
                 budgetProgressItems={budgetProgressItems}
                 categoryPieSlices={categoryPieSlices}
+                cumulativeSpend={{
+                  periodDescription,
+                  points: cumulativeSpendPoints,
+                  granularity: cumulativeSpendGranularity,
+                }}
               />
             </div>
 
@@ -719,6 +733,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           </div>
 
           <div className="order-2 flex flex-col gap-4 lg:col-span-7 lg:row-start-1">
+            <div className="hidden lg:block">
+              <CumulativeSpendCard
+                periodDescription={periodDescription}
+                points={cumulativeSpendPoints}
+                granularity={cumulativeSpendGranularity}
+              />
+            </div>
             <section className="hidden rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg sm:p-4 lg:block">
               <h2 className="mb-3 text-lg font-semibold">Add Expense</h2>
               <ExpenseForm
