@@ -2,10 +2,9 @@
 
 import type { TooltipProps } from "recharts";
 import {
-  Bar,
   CartesianGrid,
-  ComposedChart,
   Line,
+  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -74,7 +73,7 @@ export function CumulativeSpendChart({
   return (
     <div className="mt-2 w-full" style={{ minHeight: 220 }}>
       <ResponsiveContainer width="100%" height={220}>
-        <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barCategoryGap={1}>
+        <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
           <XAxis
             dataKey="label"
@@ -92,17 +91,19 @@ export function CumulativeSpendChart({
           />
           <Tooltip
             content={buildTooltip(granularity, expectedLabel)}
-            cursor={{ fill: "#1e293b", fillOpacity: 0.4 }}
+            cursor={{ stroke: "#475569", strokeDasharray: "3 3" }}
           />
           {/* Declared first so it paints behind the actual-spend line. */}
           {hasExpected ? (
-            <Bar
+            <Line
+              type="linear"
               dataKey="expectedCents"
-              fill="#818cf8"
-              fillOpacity={0.22}
               stroke="#818cf8"
-              strokeOpacity={0.35}
-              strokeWidth={1}
+              strokeOpacity={0.55}
+              strokeWidth={2}
+              strokeDasharray="5 4"
+              dot={false}
+              activeDot={false}
               isAnimationActive={false}
             />
           ) : null}
@@ -115,7 +116,7 @@ export function CumulativeSpendChart({
             activeDot={{ r: 4, fill: "#38bdf8", stroke: "#0f172a", strokeWidth: 2 }}
             isAnimationActive={false}
           />
-        </ComposedChart>
+        </LineChart>
       </ResponsiveContainer>
     </div>
   );

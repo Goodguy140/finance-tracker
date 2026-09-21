@@ -55,10 +55,7 @@ export function CumulativeSpendCard({
             Actual
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span
-              className="h-2.5 w-4 rounded-sm border border-indigo-400/40 bg-indigo-400/25"
-              aria-hidden
-            />
+            <span className="h-0 w-4 border-t-2 border-dashed border-indigo-400/70" aria-hidden />
             Expected pace from {EXPECTED_SOURCE_LABEL[expectedBasis]}
           </span>
         </div>
