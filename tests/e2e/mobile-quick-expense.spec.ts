@@ -3,7 +3,7 @@ import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { expectExpenseInLog } from "./helpers";
+import { expectExpenseInLog, uniqueStamp } from "./helpers";
 
 test("mobile viewport: quick add expense appears in log", async ({ page }, testInfo) => {
   test.skip(
@@ -11,7 +11,7 @@ test("mobile viewport: quick add expense appears in log", async ({ page }, testI
     "Quick add FAB is only rendered below the lg breakpoint",
   );
 
-  const stamp = `${Date.now()}-${testInfo.parallelIndex}`;
+  const stamp = uniqueStamp();
   const email = `e2e-mobile-${stamp}@example.com`;
   const password = "e2e-password-123";
 

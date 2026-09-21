@@ -3,7 +3,7 @@ import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { expectExpenseInLog } from "./helpers";
+import { expectExpenseInLog, uniqueStamp } from "./helpers";
 
 function recurringExpenseDates(reference = new Date()) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -21,7 +21,7 @@ function recurringExpenseDates(reference = new Date()) {
 test("desktop: create and post a recurring expense", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium", "Desktop add menu flow is covered by the chromium project");
 
-  const stamp = Date.now();
+  const stamp = uniqueStamp();
   const email = `e2e-recurring-${stamp}@example.com`;
   const password = "e2e-password-123";
 

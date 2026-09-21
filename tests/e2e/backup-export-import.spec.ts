@@ -6,10 +6,15 @@ import { join } from "path";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { addExpenseOnDashboard, expectExpenseInLog, openSettingsAdvancedTab } from "./helpers";
+import {
+  addExpenseOnDashboard,
+  expectExpenseInLog,
+  openSettingsAdvancedTab,
+  uniqueStamp,
+} from "./helpers";
 
 test("user can export and re-import sanitized backup", async ({ page }, testInfo) => {
-  const stamp = `${Date.now()}-${testInfo.parallelIndex}`;
+  const stamp = uniqueStamp();
   const email = `e2e-backup-roundtrip-${stamp}@example.com`;
   const password = "e2e-password-123";
   const title = `Roundtrip ${stamp}`;
@@ -68,7 +73,7 @@ test("user can export and re-import sanitized backup", async ({ page }, testInfo
 test("a verified transaction keeps its badge across an export/import, without carrying Plaid ids", async ({
   page,
 }, testInfo) => {
-  const stamp = `${Date.now()}-${testInfo.parallelIndex}`;
+  const stamp = uniqueStamp();
   const email = `e2e-backup-verified-${stamp}@example.com`;
   const password = "e2e-password-123";
   const title = `Verified ${stamp}`;

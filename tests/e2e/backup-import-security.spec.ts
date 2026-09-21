@@ -6,10 +6,10 @@ import { join } from "path";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { openSettingsAdvancedTab } from "./helpers";
+import { openSettingsAdvancedTab, uniqueStamp } from "./helpers";
 
 test("backup import cannot escalate user to server admin", async ({ page }) => {
-  const stamp = Date.now();
+  const stamp = uniqueStamp();
   const email = `e2e-backup-sec-${stamp}@example.com`;
   const password = "e2e-password-123";
   const iso = "2026-01-01T00:00:00.000Z";

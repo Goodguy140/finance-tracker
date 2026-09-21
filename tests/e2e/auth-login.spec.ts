@@ -3,9 +3,10 @@ import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
+import { uniqueStamp } from "./helpers";
 
 test("user can login with email/password", async ({ page }) => {
-  const stamp = Date.now();
+  const stamp = uniqueStamp();
   const email = `e2e-${stamp}@example.com`;
   const password = "e2e-password-123";
 
@@ -31,7 +32,7 @@ test("user can login with email/password", async ({ page }) => {
 });
 
 test("user can login with email/password when optional Google settings are unreadable", async ({ page }) => {
-  const stamp = Date.now();
+  const stamp = uniqueStamp();
   const email = `e2e-bad-google-${stamp}@example.com`;
   const password = "e2e-password-123";
 
@@ -67,7 +68,7 @@ test("user can login with email/password when optional Google settings are unrea
 });
 
 test("user can logout and is redirected to login", async ({ page }) => {
-  const stamp = Date.now();
+  const stamp = uniqueStamp();
   const email = `e2e-logout-${stamp}@example.com`;
   const password = "e2e-password-123";
 

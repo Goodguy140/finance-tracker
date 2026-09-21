@@ -2,6 +2,7 @@ import { expect, type Page } from "@playwright/test";
 import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
+import { uniqueStamp } from "./helpers";
 
 /**
  * Chromium's virtual authenticator (via CDP): a resident, user-verifying "internal"
@@ -25,7 +26,7 @@ export async function addVirtualAuthenticator(page: Page) {
 }
 
 export async function seedUser(prefix: string) {
-  const email = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
+  const email = `${prefix}-${uniqueStamp()}@example.com`;
   const password = "e2e-password-123";
   const user = await prisma.user.create({
     data: {

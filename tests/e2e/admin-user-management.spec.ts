@@ -3,6 +3,7 @@ import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
+import { uniqueStamp } from "./helpers";
 
 const PASSWORD = "e2e-password-123";
 
@@ -43,7 +44,7 @@ async function signIn(browser: Browser, email: string) {
 }
 
 test("an admin suspending a user ends that user's live session", async ({ browser }) => {
-  const stamp = Date.now();
+  const stamp = uniqueStamp();
   const adminEmail = `e2e-admin-${stamp}@example.com`;
   const memberEmail = `e2e-member-${stamp}@example.com`;
   await createUser(adminEmail, "SERVER_ADMIN");
@@ -78,7 +79,7 @@ test("an admin suspending a user ends that user's live session", async ({ browse
 });
 
 test("an admin cannot remove the last admin who can sign in", async ({ browser }) => {
-  const stamp = Date.now();
+  const stamp = uniqueStamp();
   const adminEmail = `e2e-solo-admin-${stamp}@example.com`;
   await createUser(adminEmail, "SERVER_ADMIN");
 

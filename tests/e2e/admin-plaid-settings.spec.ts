@@ -4,6 +4,7 @@ import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { decryptSecret } from "../../src/lib/security";
 import { expectDashboardHome } from "./expect-dashboard-home";
+import { uniqueStamp } from "./helpers";
 
 const PASSWORD = "e2e-password-123";
 
@@ -39,7 +40,7 @@ async function readPlaidSetting(key: string): Promise<string | null> {
 test("an admin can store Plaid credentials, and the secret is encrypted and never rendered back", async ({
   page,
 }) => {
-  const email = `plaid-admin-${Date.now()}@example.com`;
+  const email = `plaid-admin-${uniqueStamp()}@example.com`;
   const user = await createAdmin(email);
   await signIn(page, email);
 
