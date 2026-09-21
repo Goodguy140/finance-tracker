@@ -4,6 +4,7 @@ import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { encryptSecret } from "../../src/lib/security";
 import { configurePlaidForTests } from "./plaid-helpers";
+import { uniqueStamp } from "./helpers";
 import { sweepDuePlaidItems } from "../../src/lib/plaid-sync-scheduler";
 
 /**
@@ -69,7 +70,7 @@ async function linkedItem(
 }
 
 test("the sweep stages transactions for a due bank, then leaves it alone until it is due again", async () => {
-  const stamp = `${Date.now()}`;
+  const stamp = uniqueStamp();
   await configurePlaidForTests();
   const { user, item } = await linkedItem(stamp);
 
@@ -100,7 +101,7 @@ test("the sweep stages transactions for a due bank, then leaves it alone until i
 });
 
 test("the sweep skips a bank waiting on re-authentication", async () => {
-  const stamp = `${Date.now()}-reauth`;
+  const stamp = `${uniqueStamp()}-reauth`;
   await configurePlaidForTests();
   const { user } = await linkedItem(stamp, { status: PlaidItemStatus.LOGIN_REQUIRED });
 
@@ -121,7 +122,7 @@ test("the sweep skips a bank waiting on re-authentication", async () => {
 test("the sweep does not call Plaid for a bank whose accounts are not mapped", async () => {
   // Connecting a bank and never mapping it is easy to do. Syncing it every hour fetches
   // pages that can stage nothing — pure rate limit, and on per-request pricing, money.
-  const stamp = `${Date.now()}-unmapped`;
+  const stamp = `${uniqueStamp()}-unmapped`;
   await configurePlaidForTests();
   const { user, item } = await linkedItem(stamp, { mapped: false });
 
@@ -135,7 +136,7 @@ test("the sweep does not call Plaid for a bank whose accounts are not mapped", a
 });
 
 test("the sweep does not call Plaid for a bank whose consent has expired", async () => {
-  const stamp = `${Date.now()}-consent`;
+  const stamp = `${uniqueStamp()}-consent`;
   await configurePlaidForTests();
   const { user, item } = await linkedItem(stamp, {
     consentExpiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
@@ -148,7 +149,7 @@ test("the sweep does not call Plaid for a bank whose consent has expired", async
 });
 
 test("a bank in backoff is left alone until its next attempt is due", async () => {
-  const stamp = `${Date.now()}-backoff`;
+  const stamp = `${uniqueStamp()}-backoff`;
   await configurePlaidForTests();
   const { user, item } = await linkedItem(stamp);
   await prisma.plaidItem.update({

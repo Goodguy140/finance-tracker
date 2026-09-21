@@ -3,7 +3,7 @@ import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { addExpenseOnDashboard } from "./helpers";
+import { addExpenseOnDashboard, uniqueStamp } from "./helpers";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -11,7 +11,7 @@ function todayYmd(reference = new Date()) {
   return `${reference.getFullYear()}-${pad(reference.getMonth() + 1)}-${pad(reference.getDate())}`;
 }
 
-async function createUser(stamp: number, label: string) {
+async function createUser(stamp: string, label: string) {
   const email = `e2e-subs-${label}-${stamp}@example.com`;
   const password = "e2e-password-123";
   const user = await prisma.user.create({
@@ -45,7 +45,7 @@ async function openSubscriptionsTab(page: Page) {
 }
 
 test("settings: create a shared subscription and toggle paid / bill-sent", async ({ page }) => {
-  const stamp = Date.now();
+  const stamp = uniqueStamp();
   const { user, email, password } = await createUser(stamp, "create");
 
   await login(page, email, password);
@@ -98,7 +98,7 @@ test("settings: create a shared subscription and toggle paid / bill-sent", async
 });
 
 test("dashboard: skip a subscription by linking an existing expense", async ({ page }) => {
-  const stamp = Date.now();
+  const stamp = uniqueStamp();
   const { user, email, password } = await createUser(stamp, "skip");
 
   const account = await prisma.account.findFirstOrThrow({ where: { userId: user.id } });

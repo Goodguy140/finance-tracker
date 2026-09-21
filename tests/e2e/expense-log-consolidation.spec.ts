@@ -4,12 +4,10 @@ import { CategoryKind, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { expenseLogLocator } from "./helpers";
+import { expenseLogLocator, uniqueStamp } from "./helpers";
 
-test("consolidates same day/title/account expenses and keeps each editable", async ({
-  page,
-}, testInfo) => {
-  const stamp = `${Date.now()}-${testInfo.parallelIndex}`;
+test("consolidates same day/title/account expenses and keeps each editable", async ({ page }) => {
+  const stamp = uniqueStamp();
   const email = `e2e-consolidate-${stamp}@example.com`;
   const password = "e2e-password-123";
 

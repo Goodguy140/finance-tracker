@@ -1,5 +1,26 @@
 import { expect, type Page } from "@playwright/test";
 
+let stampSequence = 0;
+
+/**
+ * A suffix that makes a test-scoped identifier — an email, an expense title, a Plaid id —
+ * unique across the whole suite.
+ *
+ * `Date.now()` on its own is not: every spec runs under both the chromium and
+ * mobile-chromium projects, in parallel workers, so two copies of the same `createUser`
+ * can land in one millisecond and collide on `User.email`'s unique index. The retry then
+ * collides again, this time with the row the first attempt left behind.
+ *
+ * So the timestamp only orders things for a human reading the database; the pid separates
+ * concurrent workers, the counter separates calls within a worker, and the random tail
+ * separates a retry from the attempt before it (a retry runs in a fresh worker process,
+ * but nothing guarantees it a different pid).
+ */
+export function uniqueStamp(): string {
+  stampSequence += 1;
+  return `${Date.now()}-${process.pid}-${stampSequence}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export function expenseLogLocator(page: Page) {
   return page.getByRole("heading", { name: "Expense Log" }).locator("..").locator("..");
 }

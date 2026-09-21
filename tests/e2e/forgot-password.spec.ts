@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
+import { uniqueStamp } from "./helpers";
 
 test("forgot password creates a reset token", async ({ page }) => {
-  const stamp = Date.now();
+  const stamp = uniqueStamp();
   const email = "e2e-forgot-" + stamp + "@example.com";
 
   await prisma.user.create({

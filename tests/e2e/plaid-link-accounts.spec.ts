@@ -4,6 +4,7 @@ import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { configurePlaidForTests } from "./plaid-helpers";
 import { expectDashboardHome } from "./expect-dashboard-home";
+import { uniqueStamp } from "./helpers";
 import { addVirtualAuthenticator, enrolFirstPasskey, openSettingsTab } from "./mfa-helpers";
 
 const PASSWORD = "e2e-password-123";
@@ -32,9 +33,9 @@ async function signIn(page: Page, email: string) {
 
 test("connecting a bank records the item, maps accounts, refuses a currency mismatch, and unlinking revokes it", async ({
   page,
-}, testInfo) => {
+}) => {
   await addVirtualAuthenticator(page);
-  const stamp = `${Date.now()}-${testInfo.parallelIndex}`;
+  const stamp = uniqueStamp();
   const email = `plaid-link-${stamp}@example.com`;
   await configurePlaidForTests();
   const user = await createUser(email);
