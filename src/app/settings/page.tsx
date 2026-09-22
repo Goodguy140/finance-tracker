@@ -229,7 +229,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
   };
 
   return (
-    <main className="mx-auto my-6 w-full max-w-6xl space-y-5 px-4 pb-10 pt-2 text-slate-100 sm:px-5 lg:my-10 lg:space-y-6 lg:px-8">
+    <main className="mx-auto my-4 w-full max-w-4xl space-y-4 px-4 pb-8 pt-2 text-slate-100 sm:px-5 lg:my-6 lg:space-y-5 lg:px-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Settings</h1>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">

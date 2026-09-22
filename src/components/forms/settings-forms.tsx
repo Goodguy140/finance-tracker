@@ -1,7 +1,7 @@
 "use client";
 
 import { signOut } from "next-auth/react";
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AccountTypePill } from "@/components/account-type-pill";
 import { ServerActionForm } from "@/components/server-action-form";
@@ -17,6 +17,8 @@ import {
   primaryBtnClass,
   secondaryBtnClass,
   LabeledField,
+  FieldHintModeProvider,
+  hintToggleClass,
   CurrencyAmountInput,
   DateField,
   type Option,
@@ -50,6 +52,7 @@ export function BudgetForm({ expenseCategories }: { expenseCategories: Option[] 
       <LabeledField
         label="Expense category"
         hint="Match an existing category or type a new name to create one for this budget."
+        hintInline
         className={spanFullSm}
       >
         <input
@@ -67,7 +70,7 @@ export function BudgetForm({ expenseCategories }: { expenseCategories: Option[] 
         </datalist>
       </LabeledField>
 
-      <div className={`${spanFullSm} rounded-xl border border-slate-700/90 bg-slate-950/45 p-4`}>
+      <div className={`${spanFullSm} rounded-xl border border-slate-700/90 bg-slate-950/45 p-3`}>
         <label className="flex cursor-pointer items-start gap-3">
           <input
             type="checkbox"
@@ -283,6 +286,49 @@ export function InvestmentForms({ accounts }: { accounts: Option[] }) {
 
 type SettingsTabId = "profile" | "security" | "accounts" | "budgets" | "subscriptions" | "advanced";
 
+/** A nested card's own explanation, folded behind the same "?" the fields use. */
+function CardHeading({ title, hint }: { title: string; hint: string }) {
+  const [open, setOpen] = useState(false);
+  const hintId = useId();
+  return (
+    <div className="mb-2">
+      <div className="flex items-center gap-1.5">
+        <h4 className="text-sm font-medium text-slate-200">{title}</h4>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-controls={hintId}
+          aria-label={`About ${title}: ${hint}`}
+          title={hint}
+          className={hintToggleClass}
+        >
+          ?
+        </button>
+      </div>
+      {open ? (
+        <p id={hintId} className="mt-1 max-w-prose text-xs leading-relaxed text-slate-500">
+          {hint}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Row-level edit affordance: the whole row is the button, this just says so without a caption. */
+function EditPencil() {
+  return (
+    <span
+      aria-hidden
+      className="shrink-0 text-slate-600 transition group-hover:text-slate-300 group-focus-visible:text-slate-300"
+    >
+      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.86 4.49a2.1 2.1 0 112.97 2.97L8.5 18.79l-3.96.99.99-3.96L16.86 4.49z" />
+      </svg>
+    </span>
+  );
+}
+
 const SETTINGS_TAB_META: { id: SettingsTabId; label: string; labelCompact: string; hint: string }[] = [
   {
     id: "profile",
@@ -360,10 +406,6 @@ export function SettingsForms({
   plaid: PlaidConnectionsPanelProps;
 }) {
   const [tab, setTab] = useState<SettingsTabId>("profile");
-  const tablistRef = useRef<HTMLDivElement | null>(null);
-  // Mobile-only: show a trailing fade + chevron while the tab strip can still scroll right,
-  // so off-screen sections (e.g. Advanced) are discoverable instead of silently clipped.
-  const [canScrollRight, setCanScrollRight] = useState(false);
   const [editingAccount, setEditingAccount] = useState<{
     id: string;
     name: string;
@@ -398,19 +440,6 @@ export function SettingsForms({
     return () => window.removeEventListener("hashchange", syncFromHash);
   }, []);
 
-  useEffect(() => {
-    const el = tablistRef.current;
-    if (!el) return;
-    const update = () => setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
-    update();
-    el.addEventListener("scroll", update, { passive: true });
-    window.addEventListener("resize", update);
-    return () => {
-      el.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
-    };
-  }, []);
-
   const activeAccountCount = accountItems.filter((a) => !a.archived).length;
   const archivedAccountCount = accountItems.filter((a) => a.archived).length;
   const budgetRowCount = budgets.length;
@@ -421,17 +450,15 @@ export function SettingsForms({
       : "";
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <nav
-        className="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/95 pb-1 pt-2 backdrop-blur supports-[backdrop-filter]:bg-slate-950/80"
+        className="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/95 pb-1.5 pt-2 backdrop-blur supports-[backdrop-filter]:bg-slate-950/80"
         aria-label="Settings sections"
       >
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Sections</p>
-        <div className="relative">
+        <div>
           <div
-            ref={tablistRef}
             role="tablist"
-            className="flex flex-row flex-nowrap gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-wrap lg:overflow-visible"
+            className="flex flex-row flex-wrap gap-1.5 pb-1 sm:gap-2"
           >
             {SETTINGS_TAB_META.map((t) => {
               const selected = tab === t.id;
@@ -442,7 +469,7 @@ export function SettingsForms({
                   role="tab"
                   aria-selected={selected}
                   title={t.hint}
-                  className={`touch-manipulation rounded-xl border px-3.5 py-2.5 text-center text-sm font-medium transition sm:px-4 ${
+                  className={`touch-manipulation rounded-xl border px-3 py-2 text-center text-[13px] font-medium transition sm:px-4 sm:py-2.5 sm:text-sm ${
                     selected
                       ? "border-slate-600 bg-slate-800 text-slate-50 shadow-sm ring-1 ring-slate-700/80"
                       : "border-transparent bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:bg-slate-900/90 hover:text-slate-200"
@@ -455,23 +482,14 @@ export function SettingsForms({
               );
             })}
           </div>
-          <div
-            aria-hidden
-            className={`pointer-events-none absolute inset-y-0 right-0 flex items-center pb-1 pl-6 pr-0.5 text-slate-400 transition-opacity duration-200 bg-gradient-to-l from-slate-950 via-slate-950/85 to-transparent lg:hidden ${
-              canScrollRight ? "opacity-100" : "opacity-0"
-            }`}
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-            </svg>
-          </div>
         </div>
       </nav>
 
+      <FieldHintModeProvider mode="info">
       <div className="min-w-0 space-y-4">
         {tab === "profile" ? (
-          <div className="mx-auto max-w-2xl space-y-6" role="tabpanel" aria-label="Profile">
-            <header className="space-y-2 border-b border-slate-800/80 pb-6">
+          <div className="space-y-4" role="tabpanel" aria-label="Profile">
+            <header className="space-y-1.5 border-b border-slate-800/80 pb-3">
               <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Profile</h2>
               <p className="max-w-prose text-sm leading-relaxed text-slate-400">
                 How you appear in the app, and the regional defaults applied to new accounts. Sign-in and passkeys
@@ -479,7 +497,7 @@ export function SettingsForms({
               </p>
             </header>
 
-            <div className="flex flex-col gap-4 rounded-2xl border border-slate-700/80 bg-gradient-to-br from-slate-800/50 via-slate-900/80 to-slate-950 p-5 shadow-lg ring-1 ring-white/5 sm:flex-row sm:items-center sm:gap-6">
+            <div className="flex flex-col gap-4 rounded-2xl border border-slate-700/80 bg-gradient-to-br from-slate-800/50 via-slate-900/80 to-slate-950 p-4 shadow-lg ring-1 ring-white/5 sm:flex-row sm:items-center sm:gap-6">
               <div
                 className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500/35 to-indigo-600/25 text-lg font-semibold tracking-tight text-blue-50 shadow-inner ring-1 ring-blue-400/25"
                 aria-hidden
@@ -498,7 +516,7 @@ export function SettingsForms({
               </div>
             </div>
 
-            <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-5 shadow-lg sm:p-6">
+            <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-4 shadow-lg sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800/90 pb-4">
                 <div className="space-y-1">
                   <h3 className="flex items-center gap-2 text-base font-semibold text-slate-100">
@@ -532,6 +550,7 @@ export function SettingsForms({
                 <LabeledField
                   label="Country / region"
                   hint="ISO 3166-1 alpha-2 code (e.g. CA, US, GB). Used as the default region for new accounts."
+                  hintInline
                 >
                   <input
                     name="countryCode"
@@ -547,6 +566,7 @@ export function SettingsForms({
                 <LabeledField
                   label="Timezone"
                   hint="IANA name such as America/Toronto or Europe/London. Used for dates and summaries."
+                  hintInline
                 >
                   <input
                     name="timezone"
@@ -568,8 +588,8 @@ export function SettingsForms({
         ) : null}
 
         {tab === "security" ? (
-          <div className="mx-auto max-w-2xl space-y-6" role="tabpanel" aria-label="Security">
-            <header className="space-y-2 border-b border-slate-800/80 pb-6">
+          <div className="space-y-4" role="tabpanel" aria-label="Security">
+            <header className="space-y-1.5 border-b border-slate-800/80 pb-3">
               <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Security</h2>
               <p className="max-w-prose text-sm leading-relaxed text-slate-400">
                 How you sign in, and what protects this account. Passkeys are also what gate connecting a bank or
@@ -577,7 +597,7 @@ export function SettingsForms({
               </p>
             </header>
 
-            <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-5 shadow-lg sm:p-6">
+            <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-4 shadow-lg sm:p-5">
               <div className="space-y-1 border-b border-slate-800/90 pb-4">
                 <h3 className="flex items-center gap-2 text-base font-semibold text-slate-100">
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800 text-slate-300 ring-1 ring-slate-700">
@@ -672,39 +692,39 @@ export function SettingsForms({
         ) : null}
 
         {tab === "accounts" ? (
-          <div className="mx-auto max-w-3xl space-y-6" role="tabpanel" aria-label="Accounts">
-            <header className="space-y-2 border-b border-slate-800/80 pb-6">
+          <div className="space-y-4" role="tabpanel" aria-label="Accounts">
+            <header className="space-y-1.5 border-b border-slate-800/80 pb-3">
               <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Accounts</h2>
               <p className="max-w-prose text-sm leading-relaxed text-slate-400">
                 The accounts your expenses, income and recurring transactions are recorded against — plus the two
                 ways transactions get in: a connected bank, or a CSV statement.
               </p>
             </header>
-            <div className="space-y-6 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/85 to-slate-900/55 p-4 shadow-lg lg:space-y-8 lg:p-6">
-              <div className="flex flex-col gap-3 border-b border-slate-800/80 pb-4 lg:flex-row lg:items-end lg:justify-between lg:pb-5">
-                <div className="min-w-0 space-y-1">
+            <div className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/85 to-slate-900/55 p-3.5 shadow-lg lg:space-y-5 lg:p-4">
+              <div className="min-w-0 space-y-1 border-b border-slate-800/80 pb-3">
+                <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
                   <h3 className="text-lg font-semibold tracking-tight text-slate-100 lg:text-xl">Your accounts</h3>
-                  <p className="max-w-prose text-sm leading-relaxed text-slate-400">
-                    Accounts back expenses, income, recurring transactions, and CSV imports. Active accounts appear in dashboard
-                    pickers; archived ones stay out of the way until you restore them.
+                  <p className="text-xs tabular-nums text-slate-500">
+                    {activeAccountCount} active
+                    {archivedAccountCount > 0 ? ` · ${archivedAccountCount} archived` : ""}
                   </p>
                 </div>
-                <p className="shrink-0 text-xs tabular-nums text-slate-500">
-                  {activeAccountCount} active
-                  {archivedAccountCount > 0 ? ` · ${archivedAccountCount} archived` : ""}
+                <p className="max-w-prose text-sm leading-relaxed text-slate-400">
+                  Accounts back expenses, income, recurring transactions, and CSV imports. Active accounts appear in dashboard
+                  pickers; archived ones stay out of the way until you restore them.
                 </p>
               </div>
 
-              <div className="rounded-xl border border-slate-800/90 bg-slate-950/35 p-4 lg:p-5">
-                <h4 className="mb-1 text-sm font-medium text-slate-200">Default expense account</h4>
-                <p className="mb-4 max-w-prose text-xs leading-relaxed text-slate-500">
-                  Preselects this account on the dashboard Add Expense form and in CSV import defaults. Choose None to use
-                  your first active account instead.
-                </p>
+              <div className="rounded-xl border border-slate-800/90 bg-slate-950/35 p-3 lg:p-3.5">
+                <CardHeading
+                  title="Default expense account"
+                  hint="Preselects this account on the dashboard Add Expense form and in CSV import defaults. Choose None to use your first active account instead."
+                />
                 <ServerActionForm action={updateDefaultExpenseAccountAction} className={`${formGridResponsive} items-end`}>
                   <LabeledField
                     label="Account"
                     hint="Only active accounts are listed. Archiving or removing an account clears this default."
+                    hintInline
                     className="sm:col-span-2"
                   >
                     <select
@@ -728,9 +748,11 @@ export function SettingsForms({
                 </ServerActionForm>
               </div>
 
-              <div className="rounded-xl border border-slate-800/90 bg-slate-950/35 p-4 lg:p-5">
-                <h4 className="mb-1 text-sm font-medium text-slate-200">Add a new account</h4>
-                <p className="mb-4 text-xs text-slate-500">Choose a clear name and the account category that fits best.</p>
+              <div className="rounded-xl border border-slate-800/90 bg-slate-950/35 p-3 lg:p-3.5">
+                <CardHeading
+                  title="Add a new account"
+                  hint="Choose a clear name and the account category that fits best."
+                />
                 <ServerActionForm action={createFinancialAccountAction} className={`${formGridResponsive} sm:grid-cols-2`}>
                   <LabeledField
                     label="Account name"
@@ -764,7 +786,7 @@ export function SettingsForms({
                   </p>
                 </div>
                 {accountItems.every((a) => a.archived) ? (
-                  <p className="rounded-xl border border-dashed border-slate-700 bg-slate-950/40 px-3 py-6 text-center text-sm text-slate-500">
+                  <p className="rounded-xl border border-dashed border-slate-700 bg-slate-950/40 px-3 py-5 text-center text-sm text-slate-500">
                     No active accounts yet. Add one above, or restore an archived account.
                   </p>
                 ) : null}
@@ -779,18 +801,19 @@ export function SettingsForms({
                         <button
                           type="button"
                           onClick={() => setEditingAccount(account)}
-                          className="w-full rounded-xl p-3.5 text-left transition hover:bg-slate-900/40 sm:p-4"
+                          aria-label={`Edit ${account.name}`}
+                          className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-slate-900/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 sm:px-3.5"
                         >
-                          <div className="min-w-0 space-y-2">
+                          <div className="min-w-0 flex-1 space-y-1.5">
                             <p className="truncate text-base font-semibold text-slate-100">{account.name}</p>
                             <div className="flex flex-wrap items-center gap-2">
                               <AccountTypePill accountType={account.type} />
                               <span className="rounded-md border border-slate-700/80 bg-slate-900/60 px-2 py-0.5 text-[11px] font-medium tabular-nums text-slate-400">
                                 {account.currency}
                               </span>
-                              <span className="text-xs text-slate-500">Click to edit</span>
                             </div>
                           </div>
+                          <EditPencil />
                         </button>
                       </li>
                     ))}
@@ -814,9 +837,10 @@ export function SettingsForms({
                           <button
                             type="button"
                             onClick={() => setEditingAccount(account)}
-                            className="w-full rounded-xl p-3.5 text-left transition hover:bg-slate-900/30 sm:p-4"
+                            aria-label={`Edit ${account.name}`}
+                            className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-slate-900/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 sm:px-3.5"
                           >
-                            <div className="min-w-0 space-y-2">
+                            <div className="min-w-0 flex-1 space-y-1.5">
                               <p className="truncate text-base font-semibold text-slate-200">{account.name}</p>
                               <div className="flex flex-wrap items-center gap-2">
                                 <AccountTypePill accountType={account.type} />
@@ -826,9 +850,9 @@ export function SettingsForms({
                                 <span className="rounded-full border border-slate-600 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
                                   Hidden
                                 </span>
-                                <span className="text-xs text-slate-500">Click to edit</span>
                               </div>
                             </div>
+                            <EditPencil />
                           </button>
                         </li>
                       ))}
@@ -910,11 +934,11 @@ export function SettingsForms({
         {tab === "subscriptions" ? (
           <div
             id="subscriptions"
-            className="scroll-mt-24 mx-auto max-w-3xl space-y-6"
+            className="scroll-mt-24 space-y-4"
             role="tabpanel"
             aria-label="Subscriptions"
           >
-            <header className="space-y-2 border-b border-slate-800/80 pb-6">
+            <header className="space-y-1.5 border-b border-slate-800/80 pb-3">
               <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Subscriptions</h2>
               <p className="max-w-prose text-sm leading-relaxed text-slate-400">
                 Add and edit your recurring subscriptions, split them with other people, and track who has been sent the
@@ -934,11 +958,11 @@ export function SettingsForms({
         {tab === "budgets" ? (
           <div
             id="budgets"
-            className="budget-settings-card scroll-mt-24 mx-auto max-w-3xl space-y-8"
+            className="budget-settings-card scroll-mt-24 space-y-5"
             role="tabpanel"
             aria-label="Budgets"
           >
-            <header className="space-y-2 border-b border-slate-800/80 pb-6">
+            <header className="space-y-1.5 border-b border-slate-800/80 pb-3">
               <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Budgets</h2>
               <p className="max-w-prose text-sm leading-relaxed text-slate-400">
                 Set monthly spending caps per expense category. Rolling budgets apply from their period forward; you can
@@ -960,7 +984,7 @@ export function SettingsForms({
 
             <BudgetAlertPreferences emailConfigured={budgetAlertEmailConfigured} emailEnabled={budgetAlertEmailEnabled} />
 
-            <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-5 shadow-lg sm:p-6">
+            <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-4 shadow-lg sm:p-5">
               <div className="border-b border-slate-800/90 pb-4">
                 <h3 className="flex items-center gap-2 text-base font-semibold text-slate-100">
                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/25">
@@ -1005,7 +1029,7 @@ export function SettingsForms({
               </div>
 
               {budgets.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-950/35 px-5 py-12 text-center">
+                <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-950/35 px-4 py-7 text-center">
                   <p className="text-sm font-medium text-slate-300">No budgets yet</p>
                   <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
                     Create your first cap above. Pick a category you already use for expenses, or type a new name to track a
@@ -1013,36 +1037,41 @@ export function SettingsForms({
                   </p>
                 </div>
               ) : (
-                <ul className="space-y-4">
+                <ul className="space-y-2">
                   {budgets.map((budget) => {
                     const periodLabel = formatBudgetPeriodLabel(budget.periodMonth);
                     const displayName = budget.name ?? budget.categoryName;
                     return (
                       <li
                         key={budget.id}
-                        className="rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/80 to-slate-950/70 p-4 shadow-md ring-1 ring-white/5 sm:p-5"
+                        className="overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/80 to-slate-950/70 shadow-md ring-1 ring-white/5"
                       >
-                        <div className="mb-4 flex flex-col gap-3 border-b border-slate-800/80 pb-4 sm:flex-row sm:items-start sm:justify-between">
-                          <div className="min-w-0 space-y-2">
-                            <p className="truncate text-lg font-semibold text-slate-50">{budget.categoryName}</p>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="inline-flex items-center rounded-lg border border-slate-700 bg-slate-900/80 px-2.5 py-1 text-xs font-medium tabular-nums text-slate-300">
+                        {/* Collapsed by default: every row carried a full edit form, so a
+                            handful of budgets turned this tab into a wall of inputs. */}
+                        <details className="group">
+                          <summary className="flex cursor-pointer list-none items-center gap-3 px-3.5 py-2.5 transition hover:bg-slate-900/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 sm:px-4 [&::-webkit-details-marker]:hidden">
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-semibold text-slate-50">
+                                {budget.categoryName}
+                              </span>
+                              <span className="mt-0.5 block truncate text-xs tabular-nums text-slate-500">
                                 {periodLabel}
                               </span>
-                              <span className="text-xs text-slate-500">
-                                Period code <span className="font-mono text-slate-400">{budget.periodMonth}</span>
-                              </span>
-                            </div>
-                          </div>
-                          <p className="shrink-0 text-right">
-                            <span className="block text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                              Current limit
                             </span>
-                            <span className="text-lg font-semibold tabular-nums text-emerald-300/95">
+                            <span className="shrink-0 text-sm font-semibold tabular-nums text-emerald-300/95">
                               {formatCurrency(budget.limitCents)}
                             </span>
-                          </p>
-                        </div>
+                            <span aria-hidden className="shrink-0 text-slate-500 transition group-open:rotate-90">
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                              </svg>
+                            </span>
+                          </summary>
+
+                          <div className="border-t border-slate-800/80 px-3.5 pb-3.5 pt-3 sm:px-4">
+                        <p className="mb-3 text-xs text-slate-500">
+                          Period code <span className="font-mono text-slate-400">{budget.periodMonth}</span>
+                        </p>
 
                         <ServerActionForm
                           action={updateBudgetAction}
@@ -1079,7 +1108,7 @@ export function SettingsForms({
                           </div>
                         </ServerActionForm>
 
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/80 pt-4">
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/80 pt-3">
                           <p className="text-xs text-slate-500">
                             Deletes this budget rule only. Past transactions for{" "}
                             <span className="font-medium text-slate-400">{budget.categoryName}</span> are unchanged.
@@ -1091,6 +1120,8 @@ export function SettingsForms({
                             </button>
                           </ServerActionForm>
                         </div>
+                          </div>
+                        </details>
                       </li>
                     );
                   })}
@@ -1101,8 +1132,8 @@ export function SettingsForms({
         ) : null}
 
         {tab === "advanced" ? (
-          <div className="mx-auto max-w-3xl space-y-6" role="tabpanel" aria-label="Advanced">
-            <header className="space-y-2 border-b border-slate-800/80 pb-6">
+          <div className="space-y-4" role="tabpanel" aria-label="Advanced">
+            <header className="space-y-1.5 border-b border-slate-800/80 pb-3">
               <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Advanced</h2>
               <p className="max-w-prose text-sm leading-relaxed text-slate-400">
                 Connect external apps, back up or restore this account, clear your financial data, or permanently
@@ -1119,7 +1150,7 @@ export function SettingsForms({
                 } satisfies ApiTokensMfaState
               }
             />
-            <section className="space-y-3 rounded-2xl border border-sky-800/60 bg-sky-950/25 p-4 lg:p-5">
+            <section className="space-y-3 rounded-2xl border border-sky-800/60 bg-sky-950/25 p-3.5 lg:p-4">
               <h3 className="text-base font-semibold text-sky-200 lg:text-lg">Backup and restore</h3>
               <p className="text-sm text-sky-100/85">
                 Export all data associated with this user account to a JSON file, then import it later to restore this
@@ -1131,7 +1162,7 @@ export function SettingsForms({
               >
                 Export backup JSON
               </a>
-              <ServerActionForm action={importUserBackupAction} className="space-y-2 rounded-xl border border-sky-800/70 bg-sky-950/35 p-3">
+              <ServerActionForm action={importUserBackupAction} className="space-y-2 rounded-xl border border-sky-800/70 bg-sky-950/35 p-2.5">
                 <p className="text-xs text-sky-200/85">Import a previous backup JSON for this same account email.</p>
                 <input
                   name="backupJson"
@@ -1148,36 +1179,57 @@ export function SettingsForms({
                 </button>
               </ServerActionForm>
             </section>
-            <ServerActionForm action={clearUserFinancialDataAction} className="space-y-2 rounded-2xl border border-amber-800/60 bg-amber-950/25 p-4 lg:p-5">
-              <h3 className="text-base font-semibold text-amber-200 lg:text-lg">Clear financial data</h3>
-              <p className="text-sm text-amber-100/85">
-                Permanently removes transactions (including splits), budgets, financial accounts, categories,
-                recurring transactions, investment flows, and portfolio snapshots for your login. Your email, password, OAuth
-                links, profile fields (name, country, timezone), and sessions are kept. Default expense/income
-                categories and starter accounts are recreated so you can keep using the app.
-              </p>
-              <p className="text-xs text-amber-200/70">
-                Type <span className="font-mono text-amber-100">RESET FINANCIAL DATA</span> to confirm.
-              </p>
-              <input name="confirmation" className={inputClass} placeholder="RESET FINANCIAL DATA" autoComplete="off" />
-              <button
-                type="submit"
-                className="rounded-xl bg-amber-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-amber-600"
-              >
-                Clear all financial data
-              </button>
-            </ServerActionForm>
-            <ServerActionForm action={deleteAccountAction} className="space-y-2 rounded-2xl border border-red-900/60 bg-red-950/30 p-4 lg:p-5">
-              <h3 className="text-base font-semibold text-red-300 lg:text-lg">Delete account</h3>
-              <p className="text-sm text-red-200/80">Type DELETE to confirm irreversible account removal.</p>
-              <input name="confirmation" className={inputClass} />
-              <button className="rounded-xl bg-red-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-red-500">
-                Delete account
-              </button>
-            </ServerActionForm>
+            {/* Two irreversible actions sat in the same scroll as API tokens and backup.
+                They keep their own section, shut by default, so neither is one stray
+                click from a routine task. */}
+            <details className="group rounded-2xl border border-red-900/50 bg-red-950/15">
+              <summary className="flex cursor-pointer list-none items-center gap-3 rounded-2xl px-3.5 py-3 transition hover:bg-red-950/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-500/40 lg:px-4 [&::-webkit-details-marker]:hidden">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-base font-semibold text-red-300 lg:text-lg">Danger zone</span>
+                  <span className="mt-0.5 block text-sm text-red-200/70">
+                    Clear your financial data, or delete this login. Neither can be undone.
+                  </span>
+                </span>
+                <span aria-hidden className="shrink-0 text-red-400/70 transition group-open:rotate-90">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </span>
+              </summary>
+              <div className="space-y-3 border-t border-red-900/40 p-3.5 lg:p-4">
+                <ServerActionForm action={clearUserFinancialDataAction} className="space-y-2 rounded-2xl border border-amber-800/60 bg-amber-950/25 p-3.5 lg:p-4">
+                  <h3 className="text-base font-semibold text-amber-200 lg:text-lg">Clear financial data</h3>
+                  <p className="text-sm text-amber-100/85">
+                    Permanently removes transactions (including splits), budgets, financial accounts, categories,
+                    recurring transactions, investment flows, and portfolio snapshots for your login. Your email, password, OAuth
+                    links, profile fields (name, country, timezone), and sessions are kept. Default expense/income
+                    categories and starter accounts are recreated so you can keep using the app.
+                  </p>
+                  <p className="text-xs text-amber-200/70">
+                    Type <span className="font-mono text-amber-100">RESET FINANCIAL DATA</span> to confirm.
+                  </p>
+                  <input name="confirmation" className={inputClass} placeholder="RESET FINANCIAL DATA" autoComplete="off" />
+                  <button
+                    type="submit"
+                    className="rounded-xl bg-amber-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-amber-600"
+                  >
+                    Clear all financial data
+                  </button>
+                </ServerActionForm>
+                <ServerActionForm action={deleteAccountAction} className="space-y-2 rounded-2xl border border-red-900/60 bg-red-950/30 p-3.5 lg:p-4">
+                  <h3 className="text-base font-semibold text-red-300 lg:text-lg">Delete account</h3>
+                  <p className="text-sm text-red-200/80">Type DELETE to confirm irreversible account removal.</p>
+                  <input name="confirmation" className={inputClass} />
+                  <button className="rounded-xl bg-red-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-red-500">
+                    Delete account
+                  </button>
+                </ServerActionForm>
+              </div>
+            </details>
           </div>
         ) : null}
       </div>
+      </FieldHintModeProvider>
     </div>
   );
 }

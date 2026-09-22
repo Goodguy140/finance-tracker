@@ -16,6 +16,7 @@ import {
   primaryBtnClass,
   secondaryBtnClass,
   LabeledField,
+  FieldHintModeProvider,
   CurrencyAmountInput,
   DateField,
   type Option,
@@ -132,6 +133,7 @@ export function ExpenseTitleAndCategoryFields({
       <LabeledField
         label="Title"
         hint="Required. Pick a previous title or type a new one; category updates when you match a past entry."
+        hintInline
         className={`${spanFullSm} mb-3`}
       >
         <ExpenseTitleAutocomplete
@@ -246,7 +248,7 @@ export function ExpenseCsvImportForm({
   return (
     <ServerActionForm action={importExpensesCsvAction} className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
       <div>
-        <h3 className="font-semibold text-slate-100">Import Expenses from CSV</h3>
+        <h3 className="font-semibold text-slate-100">Import expenses from CSV</h3>
         <p className="text-xs text-slate-400">
           Upload any CSV, map each column to a field, and import expenses. Credits (refunds, reversals) may appear as
           negative amounts or parentheses, e.g. <code className="text-slate-300">-12.34</code> or{" "}
@@ -714,6 +716,7 @@ export function ExpenseForm({
   }
 
   return (
+    <FieldHintModeProvider mode="info">
     <ServerActionForm action={createExpenseAction} className={formLayoutClass} onSuccess={onSuccess}>
       <div className={`${titleCatOrder} ${spanFullSm}`}>
         <ExpenseTitleAndCategoryFields
@@ -728,7 +731,11 @@ export function ExpenseForm({
       <div className={`${amountOrder} ${spanFullSm}`}>
         {!receiptBreakdown ? (
           <>
-            <LabeledField label="Amount" hint="Tip: use a negative amount for full refunds or chargebacks.">
+            <LabeledField
+              label="Amount"
+              hint="Tip: use a negative amount for full refunds or chargebacks."
+              hintInline
+            >
               <CurrencyAmountInput
                 name="amount"
                 placeholder="0.00 (negative for credits)"
@@ -872,6 +879,7 @@ export function ExpenseForm({
             name="postedDate"
             label="Posted date"
             hint="Optional. When the transaction cleared on your statement, if different from the transaction date."
+            hintInline
           />
         </div>
       ) : (
@@ -892,6 +900,7 @@ export function ExpenseForm({
         Add expense
       </button>
     </ServerActionForm>
+    </FieldHintModeProvider>
   );
 }
 

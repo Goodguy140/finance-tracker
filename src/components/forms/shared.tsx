@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, type ChangeEvent, type ReactNode } from "react";
+import { createContext, useContext, useId, useState, type ChangeEvent, type ReactNode } from "react";
 import { type ExpenseTitleSuggestion } from "@/lib/expense-title-suggestions";
 
 export type Option = { id: string; name: string };
@@ -47,11 +47,88 @@ export function getProfileInitials(displayName: string, email: string) {
   const local = email.split("@")[0] ?? email;
   return local.slice(0, 2).toUpperCase();
 }
-export function LabeledField({ label, hint, className, children }: { label: string; hint?: string; className?: string; children: ReactNode }) {
+/**
+ * How a field's `hint` is presented inside this subtree.
+ *
+ * `"inline"` (the default everywhere else) keeps the old always-visible paragraph.
+ * `"info"` folds it behind a "?" next to the label, which is what Settings uses: a form
+ * whose every field carried a sentence of explanation cost more vertical space in help
+ * text than in inputs. A hint that a reader genuinely needs while filling the field in —
+ * a required format, a consequence they cannot guess — opts back out with `hintInline`.
+ */
+export const hintToggleClass =
+  "inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-slate-600 text-[10px] font-semibold leading-none text-slate-400 transition hover:border-slate-400 hover:bg-slate-800 hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40";
+
+export type FieldHintMode = "inline" | "info";
+
+const FieldHintModeContext = createContext<FieldHintMode>("inline");
+
+export function FieldHintModeProvider({ mode, children }: { mode: FieldHintMode; children: ReactNode }) {
+  return <FieldHintModeContext.Provider value={mode}>{children}</FieldHintModeContext.Provider>;
+}
+
+/**
+ * The hint stays in `title` and in the button's accessible name whether or not it is
+ * expanded, so hovering reveals it on a pointer and a screen reader reads it without
+ * having to toggle anything.
+ */
+function HintToggle({ hint, hintId, open, onToggle }: { hint: string; hintId: string; open: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-controls={hintId}
+      aria-label={`About this field: ${hint}`}
+      title={hint}
+      className={hintToggleClass}
+    >
+      ?
+    </button>
+  );
+}
+
+function useFieldHint(hint: string | undefined, hintInline: boolean | undefined) {
+  const mode = useContext(FieldHintModeContext);
+  const [open, setOpen] = useState(false);
+  const hintId = useId();
+  const collapsible = hint !== undefined && mode === "info" && !hintInline;
+  return {
+    hintId,
+    toggle: collapsible ? (
+      <HintToggle hint={hint} hintId={hintId} open={open} onToggle={() => setOpen((v) => !v)} />
+    ) : null,
+    showHint: hint !== undefined && (!collapsible || open),
+    collapsible,
+  };
+}
+
+export function LabeledField({
+  label,
+  hint,
+  hintInline,
+  className,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  /** Keep this hint visible even where the subtree folds hints behind a "?". */
+  hintInline?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  const { hintId, toggle, showHint, collapsible } = useFieldHint(hint, hintInline);
   return (
     <div className={`flex flex-col gap-1.5 ${className ?? ""}`}>
-      <span className="text-sm font-medium text-slate-200">{label}</span>
-      {hint ? <span className="text-xs leading-snug text-slate-500">{hint}</span> : null}
+      <span className="flex items-center gap-1.5 text-sm font-medium text-slate-200">
+        {label}
+        {toggle}
+      </span>
+      {showHint ? (
+        <span id={collapsible ? hintId : undefined} className="text-xs leading-snug text-slate-500">
+          {hint}
+        </span>
+      ) : null}
       {children}
     </div>
   );
@@ -116,6 +193,7 @@ export function DateField({
   name,
   label,
   hint,
+  hintInline,
   defaultValue,
   value,
   onChange,
@@ -126,6 +204,8 @@ export function DateField({
   name: string;
   label: string;
   hint?: string;
+  /** Keep this hint visible even where the subtree folds hints behind a "?". */
+  hintInline?: boolean;
   defaultValue?: string;
   /** Controlled value. When provided, the input is controlled and survives React's
       automatic form reset after a server action — useful for a "sticky" date. */
@@ -138,13 +218,21 @@ export function DateField({
   const autoId = useId();
   const fieldId = id ?? `date-${name}-${autoId}`;
   const controlled = value !== undefined;
+  const { hintId, toggle, showHint, collapsible } = useFieldHint(hint, hintInline);
   return (
     <div className={className}>
       <div className="flex flex-col gap-1.5">
-        <label htmlFor={fieldId} className="text-sm font-medium text-slate-200">
-          {label}
-        </label>
-        {hint ? <span className="text-xs leading-snug text-slate-500">{hint}</span> : null}
+        <span className="flex items-center gap-1.5">
+          <label htmlFor={fieldId} className="text-sm font-medium text-slate-200">
+            {label}
+          </label>
+          {toggle}
+        </span>
+        {showHint ? (
+          <span id={collapsible ? hintId : undefined} className="text-xs leading-snug text-slate-500">
+            {hint}
+          </span>
+        ) : null}
         <input
           id={fieldId}
           name={name}

@@ -160,7 +160,7 @@ function SubscriptionCard({
   const yourNetCents = subscription.amountCents - paidCents;
 
   return (
-    <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+    <div className="space-y-2.5 rounded-xl border border-slate-800 bg-slate-950/40 p-2.5">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <span className="block font-semibold text-slate-100">{subscription.name}</span>
@@ -277,7 +277,7 @@ export function SubscriptionsPanel({
 
   return (
     <div className="space-y-6">
-      <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-5 shadow-lg sm:p-6">
+      <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-4 shadow-lg sm:p-5">
         <div className="border-b border-slate-800/90 pb-4">
           <h3 className="text-base font-semibold text-slate-100">Add a subscription</h3>
           <p className="mt-2 max-w-prose text-sm text-slate-400">

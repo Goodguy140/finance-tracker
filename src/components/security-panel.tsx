@@ -105,7 +105,7 @@ function RecoveryCodesReveal({ codes, onClose }: { codes: string[]; onClose: () 
 
 function Card({ title, description, children }: { title: string; description: ReactNode; children: ReactNode }) {
   return (
-    <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-5 shadow-lg sm:p-6">
+    <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-4 shadow-lg sm:p-5">
       <div className="space-y-1 border-b border-slate-800/90 pb-4">
         <h3 className="text-base font-semibold text-slate-100">{title}</h3>
         <p className="max-w-prose text-sm text-slate-400">{description}</p>
