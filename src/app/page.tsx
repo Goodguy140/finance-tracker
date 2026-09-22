@@ -10,7 +10,7 @@ import { DashboardMobileActions } from "@/components/dashboard-mobile-actions";
 import { DashboardMonthFilter } from "@/components/dashboard-month-filter";
 import { BudgetAlertsPanel } from "@/components/budget-alerts-panel";
 import { CumulativeSpendCardBody } from "@/components/cumulative-spend-card";
-import { DashboardShell } from "@/components/dashboard-shell";
+import { DASHBOARD_CONTAINER_ID, DashboardShell } from "@/components/dashboard-shell";
 import type { DashboardCardContentMap } from "@/components/dashboard-grid";
 import { BudgetsCardActions, BudgetsCardBody } from "@/components/dashboard-cards/budgets-card";
 import { SpendingByCategoryCardBody } from "@/components/dashboard-cards/spending-by-category-card";
@@ -744,7 +744,17 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-0 text-slate-100 lg:p-4 lg:pb-4">
-      <div className="mx-auto max-w-7xl space-y-3 lg:space-y-4">
+      {/*
+        Two columns keep the original reading width; a third or fourth only earns its place
+        if the page is allowed to use the display. DashboardShell keeps this in sync when the
+        column count changes without a reload.
+      */}
+      <div
+        id={DASHBOARD_CONTAINER_ID}
+        className={`mx-auto space-y-3 lg:space-y-4 ${
+          storedLayout.columns.length > 2 ? "max-w-[1800px]" : "max-w-7xl"
+        }`}
+      >
         <header className="relative z-40 max-lg:-mx-4 max-lg:border-x-0 max-lg:border-t-0 max-lg:border-b max-lg:border-slate-800/90 max-lg:bg-gradient-to-b max-lg:from-slate-900/95 max-lg:to-slate-900/80 max-lg:px-4 max-lg:pb-3 max-lg:pt-[max(0.625rem,env(safe-area-inset-top))] max-lg:shadow-lg max-lg:backdrop-blur-sm lg:rounded-2xl lg:border lg:border-slate-800/90 lg:bg-gradient-to-b lg:from-slate-900/90 lg:to-slate-900/70 lg:p-4 lg:shadow-xl lg:backdrop-blur">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
             <div className="flex items-start justify-between gap-3 lg:block lg:shrink-0">

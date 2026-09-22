@@ -83,10 +83,13 @@ export function BudgetsCardBody({
       ) : (
         <div
           data-budget-rows={perRow}
-          // Driven by a CSS variable so changing the setting reflows instantly, with no
-          // re-render of the rows and no round trip to the server.
-          style={{ "--budgets-per-row": perRow } as React.CSSProperties}
-          className="mt-3 grid grid-cols-1 gap-2 @xs:grid-cols-[repeat(var(--budgets-per-row,1),minmax(0,1fr))]"
+          // The count comes from --budgets-per-row, which the card shell sets from the live
+          // client settings. This body is rendered on the server, so reading an inherited
+          // variable is what lets the setting reflow the rows without a server round trip.
+          // Applied unconditionally rather than behind a container-query floor: the count is
+          // an explicit choice, and minmax(0, 1fr) tracks shrink rather than overflow, so a
+          // narrow column makes the rows tighter instead of breaking the layout.
+          className="mt-3 grid gap-2 grid-cols-[repeat(var(--budgets-per-row,1),minmax(0,1fr))]"
         >
           {items.map((item) => (
             <div key={item.id} className="min-w-0 rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">

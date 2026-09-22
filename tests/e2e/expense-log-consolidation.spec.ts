@@ -102,7 +102,9 @@ test("consolidates same day/title/account expenses and keeps each editable", asy
   await search.fill(title);
 
   // The five transactions collapse to three rows: one group of 3 + two singletons.
-  const groupHeader = log.getByRole("button", { expanded: false });
+  // The card header's settings popover is an aria-expanded button too; the group headers are
+  // the ones that are not popover triggers.
+  const groupHeader = log.locator('button[aria-expanded="false"]:not([aria-haspopup])');
   await expect(groupHeader).toHaveCount(1);
   await expect(groupHeader).toContainText("3 transactions");
   await expect(groupHeader).toContainText("Paid $142.60");
@@ -118,7 +120,7 @@ test("consolidates same day/title/account expenses and keeps each editable", asy
   await expect(shownAmount("Paid $52.10")).toHaveCount(0);
 
   await groupHeader.click();
-  await expect(log.getByRole("button", { expanded: true })).toHaveCount(1);
+  await expect(log.locator('button[aria-expanded="true"]:not([aria-haspopup])')).toHaveCount(1);
   for (const amount of ["Paid $52.10", "Paid $60.00", "Paid $30.50"]) {
     await expect(shownAmount(amount)).toHaveCount(1);
   }

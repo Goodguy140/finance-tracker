@@ -21,8 +21,13 @@ export function uniqueStamp(): string {
   return `${Date.now()}-${process.pid}-${stampSequence}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * Every dashboard card is a labelled region, so locate by role rather than by climbing out of
+ * a heading — the card shell owns the heading now, and its depth is no longer the spec's
+ * business.
+ */
 export function expenseLogLocator(page: Page) {
-  return page.getByRole("heading", { name: "Expense Log" }).locator("..").locator("..");
+  return page.getByRole("region", { name: "Expense Log" });
 }
 
 export async function expectExpenseInLog(page: Page, title: string) {
@@ -61,12 +66,12 @@ export async function addExpenseOnDashboard(
     await sheet.locator('input[name="amount"]').fill(amount);
     await sheet.getByRole("button", { name: "Add expense" }).click();
   } else {
-    const section = page.locator("section").filter({
-      has: page.getByRole("heading", { name: "Add Expense" }),
-    });
+    const section = page.getByRole("region", { name: "Add Expense" });
     await section.getByPlaceholder("e.g. Weekly groceries, Shell fuel").fill(title);
     await section.locator('input[name="amount"]').fill(amount);
-    await section.getByRole("button", { name: "Add expense" }).click();
+    // Exact: every card header carries a settings button named "<card> settings", which a
+    // substring match on "Add expense" would also hit.
+    await section.getByRole("button", { name: "Add expense", exact: true }).click();
   }
   await expectExpenseInLog(page, title);
 }

@@ -6,11 +6,12 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCenter,
+  pointerWithin,
   useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
-  type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import {
@@ -20,7 +21,18 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { useRouter } from "next/navigation";
 import { saveDashboardLayoutAction } from "@/app/actions";
 import { DashboardCard, DragHandle } from "@/components/dashboard-cards/dashboard-card";
 import { CardSettingsControl, type CardSettingsChange } from "@/components/dashboard-cards/card-settings-forms";
@@ -48,6 +60,18 @@ import {
   type DashboardSlot,
 } from "@/lib/dashboard-layout/schema";
 
+/**
+ * Resolve the drop target from where the pointer actually is, not from where the dragged
+ * card's centre ended up. Cards here differ hugely in height, and `closestCenter` alone
+ * compares the dragged rect's centre — so dragging a tall card a short distance keeps its
+ * centre in the column it started in and it can never be dropped in the next one.
+ * `closestCenter` remains the fallback for when the pointer is over no droppable at all.
+ */
+const collisionDetection: CollisionDetection = (args) => {
+  const pointerHits = pointerWithin(args);
+  return pointerHits.length > 0 ? pointerHits : closestCenter(args);
+};
+
 const GAP_PX = 16;
 const SAVE_DEBOUNCE_MS = 600;
 
@@ -69,6 +93,8 @@ type DashboardGridProps = {
   cards: DashboardCardContentMap;
   editing: boolean;
   onEditingChange: (editing: boolean) => void;
+  /** Reported upward so the page container can widen past two columns. */
+  onColumnCountChange: (count: number) => void;
 };
 
 /**
@@ -77,7 +103,11 @@ type DashboardGridProps = {
  * thing this layout must never do — column minimums are enforced while dragging instead.
  */
 function trackTemplate(columns: readonly DashboardColumn[]): string {
-  return columns.map((column) => `minmax(0, ${column.weight}fr)`).join(" ");
+  // The gutters get explicit tracks rather than relying on `gap`. Each column wrapper is
+  // `display: contents`, so the gutter between two of them is a grid item in its own right —
+  // leave it out of the template and it claims a column's track, pushing the last column into
+  // an implicit one wider than the grid.
+  return columns.map((column) => `minmax(0, ${column.weight}fr)`).join(` ${GAP_PX}px `);
 }
 
 /**
@@ -85,16 +115,27 @@ function trackTemplate(columns: readonly DashboardColumn[]): string {
  * hide the wrong one — correct first paint on either form factor — and exactly one survives
  * once this resolves, so no card is ever mounted twice.
  */
+const DESKTOP_QUERY = "(min-width: 1024px)";
+
+function subscribeIsDesktop(onChange: () => void) {
+  const query = window.matchMedia(DESKTOP_QUERY);
+  query.addEventListener("change", onChange);
+  // Also on resize. The media query is the signal; this is a backstop, because if the value
+  // goes stale while CSS has already switched sides, both branches are hidden at once and the
+  // dashboard renders blank.
+  window.addEventListener("resize", onChange);
+  return () => {
+    query.removeEventListener("change", onChange);
+    window.removeEventListener("resize", onChange);
+  };
+}
+
+function getIsDesktop(): boolean {
+  return window.matchMedia(DESKTOP_QUERY).matches;
+}
+
 function useIsDesktop(): boolean | null {
-  return useSyncExternalStore(
-    (onChange) => {
-      const query = window.matchMedia("(min-width: 1024px)");
-      query.addEventListener("change", onChange);
-      return () => query.removeEventListener("change", onChange);
-    },
-    () => window.matchMedia("(min-width: 1024px)").matches,
-    () => null,
-  );
+  return useSyncExternalStore(subscribeIsDesktop, getIsDesktop, () => null);
 }
 
 export function DashboardGrid({
@@ -102,9 +143,15 @@ export function DashboardGrid({
   cards,
   editing,
   onEditingChange,
+  onColumnCountChange,
 }: DashboardGridProps) {
+  const router = useRouter();
   const isDesktop = useIsDesktop();
   const [stored, setStored] = useState<DashboardLayout>(storedLayout);
+  // Mirrors `stored`, updated synchronously. Every mutation needs the next layout in hand
+  // right away to hand it to the save; reading it out of a setState updater only appears to
+  // work, because React is free to run the updater later than the handler that queued it.
+  const storedRef = useRef(stored);
   const [saveStatus, setSaveStatus] = useState<LayoutSaveStatus>("idle");
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -123,6 +170,7 @@ export function DashboardGrid({
     const next = JSON.stringify(storedLayout);
     if (next === serverSnapshot.current || savingRef.current || pendingRef.current) return;
     serverSnapshot.current = next;
+    storedRef.current = storedLayout;
     setStored(storedLayout);
   }, [storedLayout]);
 
@@ -166,11 +214,10 @@ export function DashboardGrid({
 
   const mutate = useCallback(
     (fn: (current: DashboardLayout) => DashboardLayout) => {
-      setStored((current) => {
-        const next = fn(current);
-        scheduleSave(next);
-        return next;
-      });
+      const next = fn(storedRef.current);
+      storedRef.current = next;
+      setStored(next);
+      scheduleSave(next);
     },
     [scheduleSave],
   );
@@ -194,17 +241,31 @@ export function DashboardGrid({
     return () => document.removeEventListener("visibilitychange", onHidden);
   }, [flush]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = wrapperRef.current;
     if (!node) return;
-    const observer = new ResizeObserver(([entry]) => {
-      setContainerWidth(entry.contentRect.width);
-    });
+    // Measure directly as well as observing. The observer carries every later change, but its
+    // first delivery is asynchronous, and until a width arrives the grid has to assume every
+    // column fits — so take the width synchronously on mount rather than rendering one frame
+    // of a layout that does not fit.
+    const measure = () => {
+      const width = node.getBoundingClientRect().width;
+      if (width > 0) setContainerWidth(width);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [isDesktop]);
 
-  const rendered = useMemo(() => filterToAvailable(stored, available), [stored, available]);
+  useEffect(() => {
+    onColumnCountChange(stored.columns.length);
+  }, [stored.columns.length, onColumnCountChange]);
+
+  const rendered = useMemo(
+    () => filterToAvailable(stored, available, { keepEmptyColumns: editing }),
+    [stored, available, editing],
+  );
 
   // The column count that actually fits. This, not a media query, is what guarantees the
   // dashboard reaches one column without a horizontal scrollbar: the user chooses how many
@@ -225,15 +286,36 @@ export function DashboardGrid({
 
   const onSettingsChange = useCallback<CardSettingsChange>(
     (cardId, patch) => {
-      mutate((current) => ({
+      const current = storedRef.current;
+      const next: DashboardLayout = {
         ...current,
         settings: {
           ...current.settings,
           [cardId]: { ...(current.settings[cardId] ?? {}), ...patch },
         },
-      }));
+      };
+      storedRef.current = next;
+      setStored(next);
+      pendingRef.current = next;
+      // Card bodies are rendered on the server, so most settings only take effect once it
+      // re-renders them. Save straight away rather than on the drag debounce, then refresh —
+      // otherwise the refresh races the write and reads back the old value. Unlike a drag,
+      // this is a deliberate, occasional action, so one round trip is the right trade.
+      void flush().then(() => router.refresh());
     },
-    [mutate],
+    [flush, router],
+  );
+
+  /**
+   * Settings that CSS can express are also handed to the shell as custom properties, so the
+   * card reflows the moment the control is used rather than when the refresh lands.
+   */
+  const cardStyle = useCallback(
+    (cardId: DashboardCardId): CSSProperties | undefined =>
+      cardId === "budgets"
+        ? ({ "--budgets-per-row": settings.budgets?.perRow ?? 1 } as CSSProperties)
+        : undefined,
+    [settings],
   );
 
   const onActiveIndexChange = useCallback(
@@ -260,19 +342,12 @@ export function DashboardGrid({
     setActiveDragId(String(event.active.id));
   }, []);
 
-  const onDragOver = useCallback(
-    (event: DragOverEvent) => {
-      const { active, over } = event;
-      if (!over) return;
-      const activeId = String(active.id);
-      const overId = String(over.id);
-      if (activeId === overId || overId.startsWith("stack:")) return;
-
-      mutate((current) => moveSlot(current, activeId, overId));
-    },
-    [mutate],
-  );
-
+  /**
+   * The layout changes on drop, not on hover. Moving slots while the pointer is still down —
+   * the usual multi-container pattern — reflows the grid under the cursor on every frame, and
+   * the stale rects that leaves behind make the eventual drop land somewhere the user never
+   * pointed at. The drag overlay carries the feedback instead.
+   */
   const onDragEnd = useCallback(
     (event: DragEndEvent) => {
       setActiveDragId(null);
@@ -285,6 +360,10 @@ export function DashboardGrid({
       if (overId.startsWith("stack:")) {
         const targetId = overId.slice("stack:".length);
         if (targetId !== activeId) mutate((current) => mergeSlots(current, activeId, targetId));
+        return;
+      }
+      if (overId.startsWith("column:")) {
+        mutate((current) => moveSlotToColumn(current, activeId, overId.slice("column:".length)));
         return;
       }
       if (activeId !== overId) mutate((current) => moveSlot(current, activeId, overId));
@@ -340,6 +419,7 @@ export function DashboardGrid({
       editing={editing && mode === "tabs"}
       onSettingsChange={onSettingsChange}
       onActiveIndexChange={onActiveIndexChange}
+      cardStyle={cardStyle}
     />
   );
 
@@ -382,50 +462,43 @@ export function DashboardGrid({
 
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCenter}
+            collisionDetection={collisionDetection}
             onDragStart={onDragStart}
-            onDragOver={onDragOver}
             onDragEnd={onDragEnd}
             onDragCancel={() => setActiveDragId(null)}
           >
             <div
               ref={gridRef}
-              className="grid min-w-0 items-start gap-4"
+              className="grid min-w-0 items-start"
               style={{ gridTemplateColumns: trackTemplate(displayColumns) }}
             >
               {displayColumns.map((column, index) => (
                 <div key={column.id} className="contents">
-                  <div data-column-index={index} className="flex min-w-0 flex-col gap-4">
-                    {editing && !collapsed ? (
-                      <ColumnEditRail
+                  <GridColumn
+                    column={column}
+                    index={index}
+                    total={displayColumns.length}
+                    editing={editing && !collapsed}
+                    onRemove={() => removeColumn(index)}
+                  >
+                    {column.slots.map((slot) => renderSlot(slot, "tabs"))}
+                  </GridColumn>
+                  {index < displayColumns.length - 1 ? (
+                    editing && !collapsed ? (
+                      <DashboardColumnResizer
                         index={index}
-                        total={displayColumns.length}
-                        weight={column.weight}
-                        onRemove={() => removeColumn(index)}
+                        leftWeight={column.weight}
+                        rightWeight={displayColumns[index + 1].weight}
+                        minUnits={minUnits}
+                        gridRef={gridRef}
+                        onPreview={(delta) => previewTemplate(index, delta)}
+                        onCommit={(delta) => commitResize(index, delta)}
                       />
-                    ) : null}
-                    <SortableContext
-                      items={column.slots.map((slot) => slot.id)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      {column.slots.map((slot) => renderSlot(slot, "tabs"))}
-                    </SortableContext>
-                    {editing && column.slots.length === 0 ? (
-                      <p className="rounded-xl border border-dashed border-slate-700 p-6 text-center text-xs text-slate-500">
-                        Drag a card here
-                      </p>
-                    ) : null}
-                  </div>
-                  {editing && !collapsed && index < displayColumns.length - 1 ? (
-                    <DashboardColumnResizer
-                      index={index}
-                      leftWeight={column.weight}
-                      rightWeight={displayColumns[index + 1].weight}
-                      minUnits={minUnits}
-                      gridRef={gridRef}
-                      onPreview={(delta) => previewTemplate(index, delta)}
-                      onCommit={(delta) => commitResize(index, delta)}
-                    />
+                    ) : (
+                      // The gutter's track exists in every mode; when it is not draggable it
+                      // is just the gap between columns.
+                      <div aria-hidden />
+                    )
                   ) : null}
                 </div>
               ))}
@@ -462,6 +535,31 @@ function moveSlot(layout: DashboardLayout, activeId: string, overId: string): Da
   return { ...layout, columns: enforceMinimums(columns.filter((column) => column.slots.length > 0)) };
 }
 
+/**
+ * Appends the dragged slot to a column. This is what makes an empty column a usable target:
+ * with no slots of its own it has nothing for collision detection to land on, so the column
+ * registers as a droppable in its own right.
+ */
+function moveSlotToColumn(layout: DashboardLayout, activeId: string, columnId: string): DashboardLayout {
+  const columns = layout.columns.map((column) => ({ ...column, slots: [...column.slots] }));
+  const target = columns.find((column) => column.id === columnId);
+  if (!target) return layout;
+  if (target.slots.some((slot) => slot.id === activeId)) return layout;
+
+  let moved: DashboardSlot | null = null;
+  for (const column of columns) {
+    const index = column.slots.findIndex((slot) => slot.id === activeId);
+    if (index !== -1) {
+      moved = column.slots.splice(index, 1)[0];
+      break;
+    }
+  }
+  if (!moved) return layout;
+  target.slots.push(moved);
+  // Empty columns are kept here: while editing they are still drop targets.
+  return { ...layout, columns: enforceMinimums(columns) };
+}
+
 /** Folds the dragged slot's cards into the target slot, making it a tabbed stack. */
 function mergeSlots(layout: DashboardLayout, activeId: string, targetId: string): DashboardLayout {
   const columns = layout.columns.map((column) => ({ ...column, slots: [...column.slots] }));
@@ -487,33 +585,62 @@ function mergeSlots(layout: DashboardLayout, activeId: string, targetId: string)
   return layout;
 }
 
-function ColumnEditRail({
+/**
+ * One column of the grid. It registers as a droppable in its own right, which is what makes
+ * an empty column a usable target: with no slots inside, collision detection has nothing to
+ * land on and a card can never be dragged in.
+ */
+function GridColumn({
+  column,
   index,
   total,
-  weight,
+  editing,
   onRemove,
+  children,
 }: {
+  column: DashboardColumn;
   index: number;
   total: number;
-  weight: number;
+  editing: boolean;
   onRemove: () => void;
+  children: ReactNode;
 }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `column:${column.id}`, disabled: !editing });
   const destination = index === 0 ? "column 2" : `column ${index}`;
+
   return (
-    <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-2 py-1">
-      <span className="text-[11px] text-slate-400">
-        Column {index + 1} · {Math.round((weight / TOTAL_COLUMN_UNITS) * 100)}%
-      </span>
-      {total > 1 ? (
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label={`Remove column ${index + 1}`}
-          title={`Remove column ${index + 1} — its cards move to ${destination}`}
-          className="rounded px-1.5 text-xs text-slate-400 transition hover:bg-slate-800 hover:text-red-300"
-        >
-          ✕
-        </button>
+    <div
+      ref={setNodeRef}
+      data-column-index={index}
+      className={`flex min-w-0 flex-col gap-4 rounded-xl ${isOver ? "outline outline-2 outline-dashed outline-blue-400/50" : ""}`}
+    >
+      {editing ? (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-2 py-1">
+          <span className="text-[11px] text-slate-400">
+            Column {index + 1} · {Math.round((column.weight / TOTAL_COLUMN_UNITS) * 100)}%
+          </span>
+          {total > 1 ? (
+            <button
+              type="button"
+              onClick={onRemove}
+              aria-label={`Remove column ${index + 1}`}
+              title={`Remove column ${index + 1} — its cards move to ${destination}`}
+              className="rounded px-1.5 text-xs text-slate-400 transition hover:bg-slate-800 hover:text-red-300"
+            >
+              ✕
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <SortableContext items={column.slots.map((slot) => slot.id)} strategy={verticalListSortingStrategy}>
+        {children}
+      </SortableContext>
+
+      {editing && column.slots.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-slate-700 p-6 text-center text-xs text-slate-500">
+          Drag a card here
+        </p>
       ) : null}
     </div>
   );
@@ -539,6 +666,7 @@ function SlotView({
   editing,
   onSettingsChange,
   onActiveIndexChange,
+  cardStyle,
 }: {
   slot: DashboardSlot;
   mode: "tabs" | "swipe";
@@ -547,6 +675,7 @@ function SlotView({
   editing: boolean;
   onSettingsChange: CardSettingsChange;
   onActiveIndexChange: (slotId: string, index: number) => void;
+  cardStyle: (cardId: DashboardCardId) => CSSProperties | undefined;
 }) {
   // Destructured at the call rather than kept as an object: forwarding `sortable.setNodeRef`
   // straight into JSX reads as a ref access during render.
@@ -565,7 +694,11 @@ function SlotView({
     disabled: !editing,
   });
 
-  const activeIndex = Math.min(slot.activeIndex, slot.cards.length - 1);
+  // Mobile's slots are the frozen MOBILE_SLOTS, which by design are not part of the saved
+  // layout — so its carousel keeps its position in local state. Routing it through the layout
+  // would look up a slot id that does not exist there and silently do nothing.
+  const [swipeIndex, setSwipeIndex] = useState(slot.activeIndex);
+  const activeIndex = Math.min(mode === "swipe" ? swipeIndex : slot.activeIndex, slot.cards.length - 1);
   const activeCard = slot.cards[activeIndex];
 
   const slides = slot.cards.map((cardId) => ({
@@ -579,6 +712,7 @@ function SlotView({
           settings={settings}
           editing={false}
           onSettingsChange={onSettingsChange}
+          style={cardStyle(cardId)}
         />
       ) : (
         cards[cardId]?.body ?? null
@@ -590,7 +724,8 @@ function SlotView({
     mode: mode === "swipe" ? "swipe" : "tabs",
     slides,
     activeIndex,
-    onActiveIndexChange: (index) => onActiveIndexChange(slot.id, index),
+    onActiveIndexChange: (index) =>
+      mode === "swipe" ? setSwipeIndex(index) : onActiveIndexChange(slot.id, index),
     label: slotAccessibleName(slot.cards),
   });
 
@@ -609,6 +744,7 @@ function SlotView({
         settings={settings}
         editing={false}
         onSettingsChange={onSettingsChange}
+        style={cardStyle(slot.cards[0])}
       />
     );
   }
@@ -627,8 +763,9 @@ function SlotView({
 
   if (slot.cards.length === 1) {
     return (
-      <div ref={setSortableRef} style={style}>
-        <div ref={setStackDropRef}>
+      <div ref={setSortableRef} style={style} className="relative">
+        <StackDropZone setNodeRef={setStackDropRef} editing={editing} />
+        <div>
           <SingleCard
             cardId={slot.cards[0]}
             cards={cards}
@@ -636,6 +773,7 @@ function SlotView({
             editing={editing}
             onSettingsChange={onSettingsChange}
             isStackTarget={isStackOver}
+            style={cardStyle(slot.cards[0])}
             dragControl={
               editing ? (
                 <DragHandle
@@ -653,8 +791,9 @@ function SlotView({
   }
 
   return (
-    <div ref={setSortableRef} style={style}>
-      <div ref={setStackDropRef}>
+    <div ref={setSortableRef} style={style} className="relative">
+      <StackDropZone setNodeRef={setStackDropRef} editing={editing} />
+      <div>
         <DashboardCard
           cardId={slot.cards.join("+")}
           regionLabel={slotAccessibleName(slot.cards)}
@@ -663,6 +802,7 @@ function SlotView({
           headerActions={activeCard ? cards[activeCard]?.headerActions : undefined}
           editing={editing}
           className={isStackOver ? "ring-2 ring-blue-400/60" : ""}
+          style={activeCard ? cardStyle(activeCard) : undefined}
           settingsControl={
             activeCard ? (
               <CardSettingsControl cardId={activeCard} settings={settings} onChange={onSettingsChange} />
@@ -686,6 +826,23 @@ function SlotView({
   );
 }
 
+/**
+ * The band across a card's header that merges the dragged card into this one instead of
+ * reordering. Deliberately a thin strip rather than the whole card: dnd-kit picks the
+ * droppable whose centre is nearest the pointer, so a full-card target wins almost every
+ * comparison and an ordinary move between columns becomes impossible.
+ */
+function StackDropZone({
+  setNodeRef,
+  editing,
+}: {
+  setNodeRef: (node: HTMLElement | null) => void;
+  editing: boolean;
+}) {
+  if (!editing) return null;
+  return <div ref={setNodeRef} className="pointer-events-none absolute inset-x-0 top-0 z-10 h-10" aria-hidden />;
+}
+
 function SingleCard({
   cardId,
   cards,
@@ -694,6 +851,7 @@ function SingleCard({
   onSettingsChange,
   dragControl,
   isStackTarget,
+  style,
 }: {
   cardId: DashboardCardId;
   cards: DashboardCardContentMap;
@@ -702,6 +860,7 @@ function SingleCard({
   onSettingsChange: CardSettingsChange;
   dragControl?: ReactNode;
   isStackTarget?: boolean;
+  style?: CSSProperties;
 }) {
   const content = cards[cardId];
   if (!content) return null;
@@ -716,6 +875,7 @@ function SingleCard({
       headerActions={content.headerActions}
       editing={editing}
       className={isStackTarget ? "ring-2 ring-blue-400/60" : ""}
+      style={style}
       settingsControl={<CardSettingsControl cardId={cardId} settings={settings} onChange={onSettingsChange} />}
       dragControl={dragControl}
     >

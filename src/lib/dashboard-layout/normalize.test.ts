@@ -153,6 +153,22 @@ describe("filterToAvailable", () => {
     expect(json(layout)).toBe(before);
   });
 
+  it("collapses an empty column away for normal viewing", () => {
+    const layout = defaultBlob();
+    // Only the side column's cards survive, so the main column empties out.
+    const filtered = filterToAvailable(layout, ["budgets", "spending-by-category"]);
+    expect(filtered.columns).toHaveLength(1);
+  });
+
+  it("keeps an empty column while editing, so it can be dropped onto", () => {
+    const layout = defaultBlob();
+    layout.columns.push({ id: "col-new", weight: 6, slots: [] });
+    const filtered = filterToAvailable(layout, ALL, { keepEmptyColumns: true });
+
+    expect(filtered.columns.map((c) => c.id)).toEqual(["col-main", "col-side", "col-new"]);
+    expect(filtered.columns[2].slots).toEqual([]);
+  });
+
   it("collapses a stack down to the cards that are actually available", () => {
     const layout = defaultBlob();
     layout.columns[0].slots[0] = { id: "s", cards: ["cumulative-spend", "income"], activeIndex: 1 };

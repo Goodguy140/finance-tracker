@@ -101,7 +101,7 @@ export function DashboardColumnResizer({
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
       onKeyDown={onKeyDown}
-      className="group -mx-1.5 flex w-3 shrink-0 cursor-col-resize touch-none items-stretch justify-center rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
+      className="group flex w-full cursor-col-resize touch-none items-stretch justify-center rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
     >
       <span className="my-2 w-0.5 rounded-full bg-slate-700 transition group-hover:bg-blue-400 group-focus-visible:bg-blue-400" aria-hidden />
     </div>

@@ -59,7 +59,7 @@ test("desktop: create and post a recurring expense", async ({ page }, testInfo) 
 
   await expect(page.getByText(name, { exact: true })).toBeVisible({ timeout: 15_000 });
 
-  const recurringPanel = page.getByRole("heading", { name: "Recurring transactions" }).locator("..").locator("..");
+  const recurringPanel = page.getByRole("region", { name: "Recurring transactions" });
   await recurringPanel.getByRole("button", { name: "Post transaction" }).click();
 
   await expectExpenseInLog(page, name);

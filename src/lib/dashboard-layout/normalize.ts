@@ -173,6 +173,14 @@ function dropSettingsForMissingCards(settings: DashboardLayout["settings"]): Das
 export function filterToAvailable(
   layout: DashboardLayout,
   available: readonly DashboardCardId[],
+  options: {
+    /**
+     * Keep columns that end up with no cards. Normal viewing collapses them so an empty
+     * column is not dead space, but while editing they have to stay: a column just added,
+     * or one whose last card was dragged away, is the target you are about to drop onto.
+     */
+    keepEmptyColumns?: boolean;
+  } = {},
 ): DashboardLayout {
   const allowed = new Set(available);
   const columns = layout.columns
@@ -189,7 +197,7 @@ export function filterToAvailable(
         })
         .filter((slot) => slot.cards.length > 0),
     }))
-    .filter((column) => column.slots.length > 0);
+    .filter((column) => options.keepEmptyColumns || column.slots.length > 0);
 
   if (columns.length === 0) {
     return { version: layout.version, columns: [{ id: "col-empty", weight: 24, slots: [] }], settings: layout.settings };

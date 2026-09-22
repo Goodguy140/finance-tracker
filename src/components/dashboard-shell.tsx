@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { DashboardGrid, type DashboardCardContentMap } from "@/components/dashboard-grid";
 import type { DashboardLayout } from "@/lib/dashboard-layout/schema";
 
@@ -13,6 +13,12 @@ import type { DashboardLayout } from "@/lib/dashboard-layout/schema";
  * buttons — so an always-on drag sensor would compete with all of it, and drag handles and
  * resize gutters are noise on a dashboard that is mostly read.
  */
+/** The page container whose width follows the column count; see the note at its markup. */
+export const DASHBOARD_CONTAINER_ID = "dashboard-container";
+
+const WIDE_CLASS = "max-w-[1800px]";
+const NARROW_CLASS = "max-w-7xl";
+
 export function DashboardShell({
   storedLayout,
   cards,
@@ -21,6 +27,18 @@ export function DashboardShell({
   cards: DashboardCardContentMap;
 }) {
   const [editing, setEditing] = useState(false);
+  const [columnCount, setColumnCount] = useState(storedLayout.columns.length);
+
+  // The container is rendered by the server component above this one, so adding a third
+  // column has to reach it imperatively — the alternative is a full revalidate of a page
+  // that runs seventeen queries, mid-edit.
+  useLayoutEffect(() => {
+    const node = document.getElementById(DASHBOARD_CONTAINER_ID);
+    if (!node) return;
+    const wide = columnCount > 2;
+    node.classList.toggle(WIDE_CLASS, wide);
+    node.classList.toggle(NARROW_CLASS, !wide);
+  }, [columnCount]);
 
   return (
     <>
@@ -43,6 +61,7 @@ export function DashboardShell({
         cards={cards}
         editing={editing}
         onEditingChange={setEditing}
+        onColumnCountChange={setColumnCount}
       />
     </>
   );

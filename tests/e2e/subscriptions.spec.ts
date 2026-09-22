@@ -130,9 +130,7 @@ test("dashboard: skip a subscription by linking an existing expense", async ({ p
   await expectDashboardHome(page);
 
   const recurringPanel = page
-    .getByRole("heading", { name: "Recurring transactions" })
-    .locator("..")
-    .locator("..");
+    .getByRole("region", { name: "Recurring transactions" });
   await recurringPanel.getByRole("button", { name: "Skip" }).click();
 
   const modal = page.getByText(`Skip ${subName}`).locator("..");
