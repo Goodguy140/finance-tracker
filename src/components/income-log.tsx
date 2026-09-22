@@ -1,7 +1,9 @@
 "use client";
 
 import { isActionFailure } from "@/lib/action-result";
-import { useActionState, useEffect, useId, useState, useSyncExternalStore } from "react";
+import { useActionState, useEffect, useId, useState } from "react";
+import { COMPACT_LIST_MAX_HEIGHT_CLASS } from "@/lib/dashboard-layout/display";
+import type { ListHeight } from "@/lib/dashboard-layout/schema";
 import { useRouter } from "next/navigation";
 import { deleteIncomeTransactionAction, updateIncomeAction } from "@/app/actions";
 import { MetaChip } from "@/components/meta-chip";
@@ -44,43 +46,6 @@ type DeleteState = { ok: true } | { ok: false; error: string | null };
 
 type IncomeLogDensity = "expanded" | "compact";
 
-const INCOME_LOG_DENSITY_KEY = "finance-tracker-income-log-density";
-
-const incomeLogDensityListeners = new Set<() => void>();
-
-function subscribeIncomeLogDensity(listener: () => void) {
-  incomeLogDensityListeners.add(listener);
-  const onStorage = (e: StorageEvent) => {
-    if (e.key === INCOME_LOG_DENSITY_KEY || e.key === null) listener();
-  };
-  window.addEventListener("storage", onStorage);
-  return () => {
-    incomeLogDensityListeners.delete(listener);
-    window.removeEventListener("storage", onStorage);
-  };
-}
-
-function emitIncomeLogDensity() {
-  incomeLogDensityListeners.forEach((l) => l());
-}
-
-function getIncomeLogDensitySnapshot(): IncomeLogDensity {
-  if (typeof window === "undefined") return "expanded";
-  return window.localStorage.getItem(INCOME_LOG_DENSITY_KEY) === "compact" ? "compact" : "expanded";
-}
-
-function getIncomeLogDensityServerSnapshot(): IncomeLogDensity {
-  return "expanded";
-}
-
-function persistIncomeLogDensity(next: IncomeLogDensity) {
-  try {
-    window.localStorage.setItem(INCOME_LOG_DENSITY_KEY, next);
-  } catch {
-    /* private mode */
-  }
-  emitIncomeLogDensity();
-}
 
 function ReceivedPill({ cents, size = "default" }: { cents: number; size?: "default" | "compact" }) {
   const sizeClass =
@@ -157,36 +122,6 @@ function IncomeLogMobileCard({
   );
 }
 
-function IncomeLogDensityToggle({
-  density,
-  onChange,
-}: {
-  density: IncomeLogDensity;
-  onChange: (next: IncomeLogDensity) => void;
-}) {
-  const expanded = density === "expanded";
-  return (
-    <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
-      <span className={`text-xs ${expanded ? "text-slate-500" : "font-medium text-slate-200"}`}>Compact</span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={expanded}
-        aria-label="Income list layout: compact or expanded with chips"
-        title={expanded ? "Expanded: detail chips" : "Compact: dense summary"}
-        onClick={() => onChange(expanded ? "compact" : "expanded")}
-        className="relative h-7 w-11 shrink-0 rounded-full border border-slate-600 bg-slate-800 transition-colors hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 touch-manipulation"
-      >
-        <span
-          className={`absolute top-1 left-1 block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ease-out ${
-            expanded ? "translate-x-4" : "translate-x-0"
-          }`}
-        />
-      </button>
-      <span className={`text-xs ${expanded ? "font-medium text-slate-200" : "text-slate-500"}`}>Expanded</span>
-    </div>
-  );
-}
 
 function EditIncomeModal({
   entry,
@@ -432,17 +367,17 @@ export function IncomeLogPanel({
   entries,
   accounts,
   categories,
+  density = "expanded",
+  maxHeight = "default",
 }: {
   entries: IncomeLogEntry[];
   accounts: Option[];
   categories: Option[];
+  /** Card settings on the dashboard layout; see the note on ExpenseLogPanel. */
+  density?: IncomeLogDensity;
+  maxHeight?: ListHeight;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
-  const density = useSyncExternalStore(
-    subscribeIncomeLogDensity,
-    getIncomeLogDensitySnapshot,
-    getIncomeLogDensityServerSnapshot,
-  );
   const editing = editingId ? entries.find((e) => e.id === editingId) : null;
 
   const cardPad = density === "compact" ? "p-2" : "p-2.5";
@@ -450,12 +385,7 @@ export function IncomeLogPanel({
 
   return (
     <>
-      {entries.length > 0 ? (
-        <div className="mb-2 hidden justify-end sm:flex">
-          <IncomeLogDensityToggle density={density} onChange={persistIncomeLogDensity} />
-        </div>
-      ) : null}
-      <div className="max-h-[min(56vh,28rem)] min-h-0 space-y-2 overflow-y-auto overflow-x-hidden pr-1 [-webkit-overflow-scrolling:touch]">
+      <div className={`${COMPACT_LIST_MAX_HEIGHT_CLASS[maxHeight]} min-h-0 space-y-2 overflow-y-auto overflow-x-hidden pr-1 [-webkit-overflow-scrolling:touch]`}>
         {entries.length === 0 ? (
           <p className="text-sm text-slate-400">No income in this period.</p>
         ) : (

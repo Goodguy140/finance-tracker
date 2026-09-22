@@ -651,6 +651,7 @@ export function ExpenseForm({
   titleSuggestions = [],
   variant = "default",
   onSuccess,
+  fieldDefaults,
 }: {
   accounts: Option[];
   expenseCategories: Option[];
@@ -658,13 +659,23 @@ export function ExpenseForm({
   titleSuggestions?: ExpenseTitleSuggestion[];
   variant?: "default" | "mobileSheet";
   onSuccess?: () => void;
+  /**
+   * Which optional fields start open, from the Add Expense card's settings. Only seeds the
+   * initial state — the pills still toggle freely per entry. All default to closed, which is
+   * how the form behaved before the setting existed.
+   */
+  fieldDefaults?: {
+    showPostedDate?: boolean;
+    showNote?: boolean;
+    showReceiptBreakdown?: boolean;
+  };
 }) {
   const today = getTodayIsoDate();
   const fieldIds = useId();
   const accountSelectDefault = defaultExpenseAccountSelectValue(accounts, defaultExpenseAccountId);
-  const [receiptBreakdown, setReceiptBreakdown] = useState(false);
-  const [showPostedDate, setShowPostedDate] = useState(false);
-  const [showNote, setShowNote] = useState(false);
+  const [receiptBreakdown, setReceiptBreakdown] = useState(fieldDefaults?.showReceiptBreakdown ?? false);
+  const [showPostedDate, setShowPostedDate] = useState(fieldDefaults?.showPostedDate ?? false);
+  const [showNote, setShowNote] = useState(fieldDefaults?.showNote ?? false);
   // Controlled so the chosen date sticks across entries instead of snapping back to
   // today on React's automatic form reset — handy for batch-entering past transactions.
   const [dateValue, setDateValue] = useState(today);

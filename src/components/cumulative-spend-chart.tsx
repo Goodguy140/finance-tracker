@@ -66,10 +66,12 @@ export function CumulativeSpendChart({
   data,
   granularity,
   expectedBasis,
+  height = 220,
 }: {
   data: CumulativeSpendPoint[];
   granularity: CumulativeSpendGranularity;
   expectedBasis: ExpectedSpendBasis | null;
+  height?: number;
 }) {
   if (data.length === 0) {
     return <p className="mt-2 text-sm text-slate-400">No spending in this period yet.</p>;
@@ -80,8 +82,8 @@ export function CumulativeSpendChart({
     expectedBasis === "budgets" ? "budgeted" : expectedBasis === "average" ? "3-month average" : null;
 
   return (
-    <div className="mt-2 w-full" style={{ minHeight: 220 }}>
-      <ResponsiveContainer width="100%" height={220}>
+    <div className="mt-2 w-full" style={{ minHeight: height }}>
+      <ResponsiveContainer width="100%" height={height}>
         <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" vertical={false} />
           <XAxis

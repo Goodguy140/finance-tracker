@@ -151,6 +151,35 @@ model User {
   plaidAccounts             PlaidAccount[]
   plaidStagedTransactions   PlaidStagedTransaction[]
   transactionVerifications  TransactionVerification[]
+  dashboardLayout           DashboardLayout?
+}
+
+/**
+ * The desktop dashboard layout for one user: column widths, which card sits where, which
+ * cards are stacked together, and each card's own settings — all one validated JSON blob
+ * (`dashboardLayoutSchema` in src/lib/dashboard-layout/schema.ts).
+ *
+ * Its own table rather than a column on User: it is rewritten on every drag and read by
+ * exactly one page, so it has no business widening the row that every authenticated
+ * request loads. A new table also needs no REQUIRED_SCHEMA_COLUMNS / COLUMN_REPAIRS entry
+ * and no SCHEMA_REPAIR_VERSION bump, which a new column on User would have.
+ *
+ * Deliberately excluded from the user backup — see the exclusions note in src/lib/backup.ts.
+ */
+model DashboardLayout {
+  id     String @id @default(cuid())
+  userId String @unique
+  /// TEXT, not Json: the SQLite datasource has no native JSON type.
+  layoutJson String
+  /**
+   * Mirrors the `version` inside layoutJson. Duplicated as a column so a future migration
+   * sweep can find stale blobs without parsing every row.
+   */
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 /**

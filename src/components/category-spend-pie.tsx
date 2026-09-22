@@ -33,23 +33,45 @@ function renderTooltip({ active, payload }: TooltipProps<number, string>) {
   );
 }
 
-export function CategorySpendPieChart({ data }: { data: CategorySpendSlice[] }) {
-  const chartData = data
-    .filter((d) => d.cents !== 0)
-    .map((d) => ({
-      name: d.name,
-      cents: d.cents,
-      /** Pie sector size; credits use absolute value so the chart stays readable. */
-      value: Math.abs(d.cents),
-    }));
+/**
+ * Keep the biggest categories and roll the tail into one wedge. A pie with twenty slivers
+ * says less than one with eight and a remainder, and the card can be as narrow as a phone.
+ */
+function collapseToMaxSlices(
+  slices: CategorySpendSlice[],
+  maxSlices: number | undefined,
+): CategorySpendSlice[] {
+  if (!maxSlices || slices.length <= maxSlices) return slices;
+  const ranked = [...slices].sort((a, b) => Math.abs(b.cents) - Math.abs(a.cents));
+  const kept = ranked.slice(0, maxSlices - 1);
+  const restCents = ranked.slice(maxSlices - 1).reduce((sum, slice) => sum + slice.cents, 0);
+  return restCents === 0 ? kept : [...kept, { name: "Other categories", cents: restCents }];
+}
+
+export function CategorySpendPieChart({
+  data,
+  height = 280,
+  maxSlices,
+}: {
+  data: CategorySpendSlice[];
+  height?: number;
+  /** Beyond this many slices the remainder is rolled into one "Other categories" wedge. */
+  maxSlices?: number;
+}) {
+  const chartData = collapseToMaxSlices(data.filter((d) => d.cents !== 0), maxSlices).map((d) => ({
+    name: d.name,
+    cents: d.cents,
+    /** Pie sector size; credits use absolute value so the chart stays readable. */
+    value: Math.abs(d.cents),
+  }));
 
   if (chartData.length === 0) {
     return <p className="text-sm text-slate-400">No category amounts in this period.</p>;
   }
 
   return (
-    <div className="mt-2 w-full" style={{ minHeight: 280 }}>
-      <ResponsiveContainer width="100%" height={280}>
+    <div className="mt-2 w-full" style={{ minHeight: height }}>
+      <ResponsiveContainer width="100%" height={height}>
         <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
           <Pie
             data={chartData}

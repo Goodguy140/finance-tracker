@@ -59,4 +59,8 @@ export {
   unlinkSsoProviderAction,
 } from "./actions/mfa";
 export { setBudgetAlertEmailAction } from "./actions/preferences";
+export {
+  saveDashboardLayoutAction,
+  resetDashboardLayoutAction,
+} from "./actions/dashboard-layout";
 export { mapPlaidAccountAction } from "./actions/plaid";
