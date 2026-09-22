@@ -43,7 +43,10 @@ export function DashboardShell({
   return (
     <>
       {!editing ? (
-        <div className="mb-2 hidden justify-end lg:flex">
+        <div className="mb-2 hidden items-center justify-end gap-2 lg:flex">
+          <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+            Beta
+          </span>
           <button
             type="button"
             onClick={() => setEditing(true)}
