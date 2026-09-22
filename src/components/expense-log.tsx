@@ -1,7 +1,9 @@
 "use client";
 
 import { isActionFailure } from "@/lib/action-result";
-import { useActionState, useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
+import { useActionState, useEffect, useId, useMemo, useState } from "react";
+import { LIST_MAX_HEIGHT_CLASS } from "@/lib/dashboard-layout/display";
+import type { ListHeight } from "@/lib/dashboard-layout/schema";
 import { useRouter } from "next/navigation";
 import { deleteExpenseTransactionAction, updateExpenseAction } from "@/app/actions";
 import { syncAllPlaidItemsAction } from "@/app/actions/plaid";
@@ -62,43 +64,6 @@ type DeleteState = { ok: true } | { ok: false; error: string | null };
 
 type ExpenseLogDensity = "expanded" | "compact";
 
-const EXPENSE_LOG_DENSITY_KEY = "finance-tracker-expense-log-density";
-
-const expenseLogDensityListeners = new Set<() => void>();
-
-function subscribeExpenseLogDensity(listener: () => void) {
-  expenseLogDensityListeners.add(listener);
-  const onStorage = (e: StorageEvent) => {
-    if (e.key === EXPENSE_LOG_DENSITY_KEY || e.key === null) listener();
-  };
-  window.addEventListener("storage", onStorage);
-  return () => {
-    expenseLogDensityListeners.delete(listener);
-    window.removeEventListener("storage", onStorage);
-  };
-}
-
-function emitExpenseLogDensity() {
-  expenseLogDensityListeners.forEach((l) => l());
-}
-
-function getExpenseLogDensitySnapshot(): ExpenseLogDensity {
-  if (typeof window === "undefined") return "expanded";
-  return window.localStorage.getItem(EXPENSE_LOG_DENSITY_KEY) === "compact" ? "compact" : "expanded";
-}
-
-function getExpenseLogDensityServerSnapshot(): ExpenseLogDensity {
-  return "expanded";
-}
-
-function persistExpenseLogDensity(next: ExpenseLogDensity) {
-  try {
-    window.localStorage.setItem(EXPENSE_LOG_DENSITY_KEY, next);
-  } catch {
-    /* private mode */
-  }
-  emitExpenseLogDensity();
-}
 
 function showReceiptBreakdown(txn: ExpenseLogEntry) {
   if (txn.preCreditCents == null || txn.preCreditCents <= 0) return false;
@@ -309,36 +274,6 @@ function RefreshLinkedAccountsButton() {
   );
 }
 
-function ExpenseLogDensityToggle({
-  density,
-  onChange,
-}: {
-  density: ExpenseLogDensity;
-  onChange: (next: ExpenseLogDensity) => void;
-}) {
-  const expanded = density === "expanded";
-  return (
-    <div className="flex items-center gap-2 sm:gap-2.5">
-      <span className={`text-xs ${expanded ? "text-slate-500" : "font-medium text-slate-200"}`}>Compact</span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={expanded}
-        aria-label="Expense log layout: compact or expanded with chips"
-        title={expanded ? "Expanded: detail chips" : "Compact: dense summary"}
-        onClick={() => onChange(expanded ? "compact" : "expanded")}
-        className="relative h-7 w-11 shrink-0 rounded-full border border-slate-600 bg-slate-800 transition-colors hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 touch-manipulation"
-      >
-        <span
-          className={`absolute top-1 left-1 block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ease-out ${
-            expanded ? "translate-x-4" : "translate-x-0"
-          }`}
-        />
-      </button>
-      <span className={`text-xs ${expanded ? "font-medium text-slate-200" : "text-slate-500"}`}>Expanded</span>
-    </div>
-  );
-}
 
 function EditExpenseModal({
   entry,
@@ -963,6 +898,8 @@ export function ExpenseLogPanel({
   categories,
   titleSuggestions,
   hasLinkedAccounts = false,
+  density = "expanded",
+  maxHeight = "default",
 }: {
   entries: ExpenseLogEntry[];
   accounts: Option[];
@@ -970,14 +907,16 @@ export function ExpenseLogPanel({
   titleSuggestions: ExpenseTitleSuggestion[];
   /** False when no bank is connected, which is when the refresh control would do nothing. */
   hasLinkedAccounts?: boolean;
+  /**
+   * Density and list height are card settings on the dashboard layout, not per-device
+   * localStorage as they once were: every other card setting lives with the account, and
+   * splitting one of them across two stores is how the two copies drifted before.
+   */
+  density?: ExpenseLogDensity;
+  maxHeight?: ListHeight;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const density = useSyncExternalStore(
-    subscribeExpenseLogDensity,
-    getExpenseLogDensitySnapshot,
-    getExpenseLogDensityServerSnapshot,
-  );
   const filteredEntries = useMemo(
     () => entries.filter((e) => expenseLogMatchesQuery(e, searchQuery, formatCurrency)),
     [entries, searchQuery],
@@ -992,7 +931,7 @@ export function ExpenseLogPanel({
 
   return (
     <>
-      <div className="max-h-[min(70vh,36rem)] overflow-y-auto overflow-x-hidden pr-1 [-webkit-overflow-scrolling:touch]">
+      <div className={`${LIST_MAX_HEIGHT_CLASS[maxHeight]} overflow-y-auto overflow-x-hidden pr-1 [-webkit-overflow-scrolling:touch]`}>
         {entries.length > 0 ? (
           <div className="sticky top-0 z-[3] mb-2 space-y-2 border-b border-slate-800/70 bg-slate-900/95 py-2 backdrop-blur-md sm:static sm:z-auto sm:mb-3 sm:border-0 sm:bg-transparent sm:py-0 sm:backdrop-blur-none">
             <label className="block">
@@ -1014,9 +953,6 @@ export function ExpenseLogPanel({
                     : `${entries.length} transaction${entries.length === 1 ? "" : "s"}`}
                 </p>
                 {hasLinkedAccounts ? <RefreshLinkedAccountsButton /> : null}
-              </div>
-              <div className="hidden sm:block">
-                <ExpenseLogDensityToggle density={density} onChange={persistExpenseLogDensity} />
               </div>
             </div>
           </div>

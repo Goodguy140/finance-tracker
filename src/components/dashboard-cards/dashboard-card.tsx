@@ -94,17 +94,22 @@ export function DragHandle({
   label,
   attributes,
   listeners,
-  ref,
+  handleRef,
 }: {
   label: string;
   attributes?: Record<string, unknown>;
   listeners?: Record<string, unknown>;
-  ref?: (node: HTMLElement | null) => void;
+  /**
+   * dnd-kit's activator ref. Named `handleRef` rather than `ref` on purpose: `ref` is a
+   * reserved prop, and forwarding one through a component is read as a ref access during
+   * render.
+   */
+  handleRef?: (node: HTMLElement | null) => void;
 }) {
   return (
     <button
       type="button"
-      ref={ref}
+      ref={handleRef}
       aria-label={label}
       title={label}
       className="touch-none cursor-grab rounded-lg border border-slate-700/80 bg-slate-900/90 p-1.5 text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 hover:text-slate-100 active:cursor-grabbing"

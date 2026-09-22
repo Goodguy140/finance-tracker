@@ -9,11 +9,16 @@ import {
 import { DashboardMobileActions } from "@/components/dashboard-mobile-actions";
 import { DashboardMonthFilter } from "@/components/dashboard-month-filter";
 import { BudgetAlertsPanel } from "@/components/budget-alerts-panel";
-import { DashboardBudgetsSpendSection } from "@/components/dashboard-budgets-spend-section";
-import { CumulativeSpendCard } from "@/components/cumulative-spend-card";
+import { CumulativeSpendCardBody } from "@/components/cumulative-spend-card";
+import { DashboardShell } from "@/components/dashboard-shell";
+import type { DashboardCardContentMap } from "@/components/dashboard-grid";
+import { BudgetsCardActions, BudgetsCardBody } from "@/components/dashboard-cards/budgets-card";
+import { SpendingByCategoryCardBody } from "@/components/dashboard-cards/spending-by-category-card";
+import { IncomeCardBody } from "@/components/dashboard-cards/income-card";
+import { RecurringCardBody } from "@/components/dashboard-cards/recurring-card";
 import { ExpenseLogPanel } from "@/components/expense-log";
-import { IncomeLogPanel } from "@/components/income-log";
-import { RecurringTransactionsPanel } from "@/components/recurring-transactions-panel";
+import { readDashboardLayout } from "@/lib/dashboard-layout/read";
+import type { DashboardCardId } from "@/lib/dashboard-layout/schema";
 import {
   budgetPeriodMonthInYtd,
   describeDashboardPeriod,
@@ -41,7 +46,6 @@ import { formatAccountTypeLabel } from "@/lib/account-type-labels";
 import type { VerificationInfo } from "@/components/verified-badge";
 import { PlaidReviewQueue } from "@/components/plaid-review-queue";
 import { buildExpenseTitleSuggestions } from "@/lib/expense-title-suggestions";
-import { formatCurrency } from "@/lib/money";
 import {
   bucketIncomeCentsByYm,
   computeRecurringCashFlowSummary,
@@ -611,6 +615,133 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const incomeSumCents = incomeTotal._sum.amountCents ?? 0;
   const showDashboardIncomeCard = periodIncomes.length > 0 || incomeSumCents > 0;
 
+  // Which cards this render can produce. The server decides what exists; reconciliation
+  // decides where it goes.
+  const availableCardIds: DashboardCardId[] = [
+    "cumulative-spend",
+    "budgets",
+    "spending-by-category",
+    "add-expense",
+    "expense-log",
+    "recurring",
+    ...(showDashboardIncomeCard ? (["income"] as const) : []),
+  ];
+  // Reconciliation is deterministic and runs on every render, so a layout blob that predates
+  // a card is harmless — there is no need to write the repaired version back from here, and
+  // a render is the wrong place for a write in any case. It is persisted the next time the
+  // user changes anything.
+  const { stored: storedLayout } = await readDashboardLayout(user.id, availableCardIds);
+  const cardSettings = storedLayout.settings;
+
+  // The slot map: card bodies rendered here, on the server, and handed to the client grid as
+  // props. The grid arranges them without importing a single card, so none of this page's
+  // query-heavy component tree is pulled into the drag-and-drop bundle.
+  const cardContent: DashboardCardContentMap = {
+    "cumulative-spend": {
+      body: (
+        <CumulativeSpendCardBody
+          periodDescription={periodDescription}
+          points={cumulativeSpendPoints}
+          granularity={cumulativeSpendGranularity}
+          expectedBasis={monthlyExpected?.basis ?? null}
+          chartHeight={cardSettings["cumulative-spend"]?.chartHeight}
+          showExpectedLine={cardSettings["cumulative-spend"]?.showExpectedLine}
+        />
+      ),
+    },
+    budgets: {
+      headerActions: <BudgetsCardActions />,
+      body: (
+        <BudgetsCardBody
+          periodRange={period.range}
+          spendVsBudgetLabel={spendVsBudgetLabel}
+          currentSpendCents={currentSpendCents}
+          totalBudgetCents={totalBudgetCents}
+          budgetProgressItems={budgetProgressItems}
+          perRow={cardSettings.budgets?.perRow}
+          hideZeroSpend={cardSettings.budgets?.hideZeroSpend}
+          showPeriodNote={cardSettings.budgets?.showPeriodNote}
+        />
+      ),
+    },
+    "spending-by-category": {
+      body: (
+        <SpendingByCategoryCardBody
+          periodDescription={periodDescription}
+          categoryPieSlices={categoryPieSlices}
+          chartHeight={cardSettings["spending-by-category"]?.chartHeight}
+          maxSlices={cardSettings["spending-by-category"]?.maxSlices}
+        />
+      ),
+    },
+    "add-expense": {
+      body: (
+        <ExpenseForm
+          accounts={accountOptions}
+          expenseCategories={expenseCategoryAddOptions}
+          defaultExpenseAccountId={user.defaultExpenseAccountId}
+          titleSuggestions={expenseTitleSuggestions}
+          fieldDefaults={cardSettings["add-expense"]}
+        />
+      ),
+    },
+    "expense-log": {
+      subtitle: `${periodDescription} · ${periodExpenses.length} transaction${periodExpenses.length === 1 ? "" : "s"}`,
+      body: (
+        <>
+          {cardSettings["expense-log"]?.showReviewQueue === false ? null : (
+            <PlaidReviewQueue rows={reviewRows} revisions={revisionRows} />
+          )}
+          <ExpenseLogPanel
+            entries={expenseLogEntries}
+            accounts={accountOptions}
+            categories={expenseCategoryOptions}
+            titleSuggestions={expenseTitleSuggestions}
+            hasLinkedAccounts={plaidItemCount > 0}
+            density={cardSettings["expense-log"]?.density}
+            maxHeight={cardSettings["expense-log"]?.maxHeight}
+          />
+        </>
+      ),
+    },
+    recurring: {
+      subtitle: `${recurringTransactions.length} rule${recurringTransactions.length === 1 ? "" : "s"} · due and upcoming first`,
+      body: (
+        <RecurringCardBody
+          items={recurringListItems}
+          accounts={accountOptions}
+          expenseCategories={expenseCategoryOptions}
+          incomeCategories={incomeCategoryOptions}
+          recentExpenses={recentUnlinkedExpenseOptions}
+          recentIncomes={recentUnlinkedIncomeOptions}
+          cashFlow={recurringCashFlow}
+          forecastLabel={recurringForecastPeriod.label}
+          showCashFlowSummary={cardSettings.recurring?.showCashFlowSummary}
+          rowLimit={cardSettings.recurring?.rowLimit}
+        />
+      ),
+    },
+  };
+
+  // The Income card is omitted entirely in a period with no income. That makes it
+  // unrenderable, not removed: reconciliation keeps it in the stored layout so viewing an
+  // empty month does not delete it from the user's arrangement.
+  if (showDashboardIncomeCard) {
+    cardContent.income = {
+      body: (
+        <IncomeCardBody
+          entries={incomeLogEntries}
+          accounts={accountOptions}
+          categories={incomeCategoryOptions}
+          incomeSumCents={incomeSumCents}
+          depositCount={periodIncomes.length}
+          density={cardSettings.income?.density}
+          maxHeight={cardSettings.income?.maxHeight}
+        />
+      ),
+    };
+  }
+
   return (
     <main className="min-h-screen bg-slate-950 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-0 text-slate-100 lg:p-4 lg:pb-4">
       <div className="mx-auto max-w-7xl space-y-3 lg:space-y-4">
@@ -681,122 +812,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           titleSuggestions={expenseTitleSuggestions}
         />
 
-        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
-          <div className="contents lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:flex lg:flex-col lg:gap-4">
-            <div className="order-1">
-              <DashboardBudgetsSpendSection
-                periodDescription={periodDescription}
-                periodRange={period.range}
-                spendVsBudgetLabel={spendVsBudgetLabel}
-                currentSpendCents={currentSpendCents}
-                totalBudgetCents={totalBudgetCents}
-                budgetProgressItems={budgetProgressItems}
-                categoryPieSlices={categoryPieSlices}
-                cumulativeSpend={{
-                  periodDescription,
-                  points: cumulativeSpendPoints,
-                  granularity: cumulativeSpendGranularity,
-                  expectedBasis: monthlyExpected?.basis ?? null,
-                }}
-              />
-            </div>
-
-            {showDashboardIncomeCard ? (
-              <div className="order-3">
-                <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
-                  <div className="flex flex-col gap-3 border-b border-slate-800/80 pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-                    <div className="min-w-0">
-                      <h2 className="text-lg font-semibold text-slate-100">Income</h2>
-                      <p className="text-xs text-slate-400">{periodDescription}</p>
-                      <p className="mt-2 text-xs tabular-nums text-slate-500">
-                        {periodIncomes.length} deposit{periodIncomes.length === 1 ? "" : "s"}
-                      </p>
-                    </div>
-                    <p className="shrink-0 text-2xl font-bold tabular-nums text-emerald-200 sm:text-right">
-                      {formatCurrency(incomeSumCents)}
-                    </p>
-                  </div>
-                  <div className="pt-4">
-                    <IncomeLogPanel entries={incomeLogEntries} accounts={accountOptions} categories={incomeCategoryOptions} />
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            <div className="order-4">
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg sm:p-4">
-                <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
-                  <h2 className="text-lg font-semibold">Recurring transactions</h2>
-                  <p className="text-xs text-slate-400">
-                    {recurringTransactions.length} rule{recurringTransactions.length === 1 ? "" : "s"} · due and upcoming first
-                  </p>
-                </div>
-                <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
-                    <p className="text-[10px] uppercase tracking-wide text-slate-400">Expected income</p>
-                    <p className="text-sm font-semibold text-emerald-200">{formatCurrency(recurringCashFlow.incomeCents)}</p>
-                    <p className="mt-0.5 text-[10px] text-slate-500">3-month average</p>
-                  </div>
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
-                    <p className="text-[10px] uppercase tracking-wide text-slate-400">Expected expenses</p>
-                    <p className="text-sm font-semibold text-blue-100">{formatCurrency(recurringCashFlow.expenseCents)}</p>
-                  </div>
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
-                    <p className="text-[10px] uppercase tracking-wide text-slate-400">Net cash flow</p>
-                    <p className={`text-sm font-semibold ${recurringCashFlow.netCents >= 0 ? "text-emerald-200" : "text-red-200"}`}>
-                      {formatCurrency(recurringCashFlow.netCents)}
-                    </p>
-                  </div>
-                </div>
-                <p className="mb-3 text-xs text-slate-500">Forecast: {recurringForecastPeriod.label}</p>
-                <RecurringTransactionsPanel
-                  items={recurringListItems}
-                  accounts={accountOptions}
-                  expenseCategories={expenseCategoryOptions}
-                  incomeCategories={incomeCategoryOptions}
-                  recentExpenses={recentUnlinkedExpenseOptions}
-                  recentIncomes={recentUnlinkedIncomeOptions}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="order-2 flex flex-col gap-4 lg:col-span-7 lg:row-start-1">
-            <div className="hidden lg:block">
-              <CumulativeSpendCard
-                periodDescription={periodDescription}
-                points={cumulativeSpendPoints}
-                granularity={cumulativeSpendGranularity}
-                expectedBasis={monthlyExpected?.basis ?? null}
-              />
-            </div>
-            <section className="hidden rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg sm:p-4 lg:block">
-              <h2 className="mb-3 text-lg font-semibold">Add Expense</h2>
-              <ExpenseForm
-                accounts={accountOptions}
-                expenseCategories={expenseCategoryAddOptions}
-                defaultExpenseAccountId={user.defaultExpenseAccountId}
-                titleSuggestions={expenseTitleSuggestions}
-              />
-            </section>
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
-              <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
-                <h2 className="text-lg font-semibold">Expense Log</h2>
-                <p className="text-xs text-slate-400">
-                  {periodDescription} · {periodExpenses.length} transaction{periodExpenses.length === 1 ? "" : "s"}
-                </p>
-              </div>
-              <PlaidReviewQueue rows={reviewRows} revisions={revisionRows} />
-              <ExpenseLogPanel
-                entries={expenseLogEntries}
-                accounts={accountOptions}
-                categories={expenseCategoryOptions}
-                titleSuggestions={expenseTitleSuggestions}
-                hasLinkedAccounts={plaidItemCount > 0}
-              />
-            </section>
-          </div>
-        </div>
+        <DashboardShell storedLayout={storedLayout} cards={cardContent} />
       </div>
     </main>
   );
