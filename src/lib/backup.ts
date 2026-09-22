@@ -154,6 +154,12 @@ export type UserBackupPayload = {
     verifiedAt: IsoString;
     removedByPlaidAt: IsoString | null;
   }>;
+  /**
+   * Not a field. Recording an omission so it does not read as an oversight: the desktop
+   * dashboard layout (`DashboardLayout`) is deliberately outside this payload. It is a UI
+   * preference rather than financial data, and import/clear are wipe-and-replace — carrying
+   * it here would silently reset someone's dashboard every time they restored a backup.
+   */
 };
 
 /** Remove secrets before writing backup JSON to disk or HTTP responses. */

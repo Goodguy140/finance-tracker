@@ -1,0 +1,150 @@
+import {
+  type DashboardCardId,
+  type DashboardLayout,
+  type DashboardSlot,
+  DASHBOARD_LAYOUT_VERSION,
+} from "./schema";
+
+export type DashboardCardMeta = {
+  id: DashboardCardId;
+  /** Heading text, the card region's accessible name, and the source of a stack tab label. */
+  title: string;
+  /** Shorter label for a stack's tab strip, where horizontal space is tight. */
+  tabLabel: string;
+  /**
+   * Where a card that is new to this release lands in a layout saved before it existed.
+   * Clamped against the saved layout's actual column count at reconcile time.
+   */
+  defaultColumnIndex: number;
+  defaultSlotIndex: number;
+  /**
+   * True when the page only renders this card for some periods — the Income card is absent
+   * from a month with no income. Such a card being unrenderable must never be read as the
+   * user having removed it; see the `stored` / `rendered` split in ./normalize.ts.
+   */
+  conditional: boolean;
+  /** False for cards with nothing worth configuring; suppresses the header gear. */
+  hasSettings: boolean;
+};
+
+export const DASHBOARD_CARDS: Record<DashboardCardId, DashboardCardMeta> = {
+  budgets: {
+    id: "budgets",
+    title: "Budgets",
+    tabLabel: "Budgets",
+    defaultColumnIndex: 1,
+    defaultSlotIndex: 0,
+    conditional: false,
+    hasSettings: true,
+  },
+  "spending-by-category": {
+    id: "spending-by-category",
+    title: "Spending by category",
+    tabLabel: "Categories",
+    defaultColumnIndex: 1,
+    defaultSlotIndex: 1,
+    conditional: false,
+    hasSettings: true,
+  },
+  "cumulative-spend": {
+    id: "cumulative-spend",
+    title: "Cumulative spending",
+    tabLabel: "Trend",
+    defaultColumnIndex: 0,
+    defaultSlotIndex: 0,
+    conditional: false,
+    hasSettings: true,
+  },
+  "add-expense": {
+    id: "add-expense",
+    title: "Add Expense",
+    tabLabel: "Add",
+    defaultColumnIndex: 0,
+    defaultSlotIndex: 1,
+    conditional: false,
+    hasSettings: true,
+  },
+  "expense-log": {
+    id: "expense-log",
+    title: "Expense Log",
+    tabLabel: "Expenses",
+    defaultColumnIndex: 0,
+    defaultSlotIndex: 2,
+    conditional: false,
+    hasSettings: true,
+  },
+  income: {
+    id: "income",
+    title: "Income",
+    tabLabel: "Income",
+    defaultColumnIndex: 1,
+    defaultSlotIndex: 2,
+    conditional: true,
+    hasSettings: true,
+  },
+  recurring: {
+    id: "recurring",
+    title: "Recurring transactions",
+    tabLabel: "Recurring",
+    defaultColumnIndex: 1,
+    defaultSlotIndex: 3,
+    conditional: false,
+    hasSettings: true,
+  },
+};
+
+/**
+ * The out-of-the-box arrangement, reproducing the fixed layout this replaced: a 14/10
+ * split of the 24-unit grid is exactly the old `lg:col-span-7` / `lg:col-span-5`.
+ */
+export const DEFAULT_LAYOUT: DashboardLayout = {
+  version: DASHBOARD_LAYOUT_VERSION,
+  columns: [
+    {
+      id: "col-main",
+      weight: 14,
+      slots: [
+        { id: "slot-trend", cards: ["cumulative-spend"], activeIndex: 0 },
+        { id: "slot-add", cards: ["add-expense"], activeIndex: 0 },
+        { id: "slot-log", cards: ["expense-log"], activeIndex: 0 },
+      ],
+    },
+    {
+      id: "col-side",
+      weight: 10,
+      slots: [
+        { id: "slot-budgets", cards: ["budgets"], activeIndex: 0 },
+        { id: "slot-categories", cards: ["spending-by-category"], activeIndex: 0 },
+        { id: "slot-income", cards: ["income"], activeIndex: 0 },
+        { id: "slot-recurring", cards: ["recurring"], activeIndex: 0 },
+      ],
+    },
+  ],
+  settings: {},
+};
+
+/**
+ * Mobile is frozen and never derived from the user's desktop layout: one column, in the
+ * order the previous hand-placed `order-1..4` classes produced — the three-panel swipe
+ * carousel, then the expense log, income, and recurring. Add Expense is absent because it
+ * was `hidden lg:block`; below `lg` it lives in the quick-add sheet instead.
+ */
+export const MOBILE_SLOTS: readonly DashboardSlot[] = [
+  {
+    id: "mobile-carousel",
+    cards: ["spending-by-category", "budgets", "cumulative-spend"],
+    activeIndex: 0,
+  },
+  { id: "mobile-log", cards: ["expense-log"], activeIndex: 0 },
+  { id: "mobile-income", cards: ["income"], activeIndex: 0 },
+  { id: "mobile-recurring", cards: ["recurring"], activeIndex: 0 },
+];
+
+export function cardTitle(id: DashboardCardId): string {
+  return DASHBOARD_CARDS[id].title;
+}
+
+/** A stack's accessible name is every card it holds, so the region stays identifiable. */
+export function slotAccessibleName(cards: readonly DashboardCardId[]): string {
+  return cards.map(cardTitle).join(", ");
+}
