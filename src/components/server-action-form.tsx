@@ -4,6 +4,9 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { isActionFailure } from "@/lib/action-result";
+import { canReachServer } from "@/lib/use-online-status";
+
+export const OFFLINE_WRITE_MESSAGE = "You're offline, so this wasn't saved. Reconnect and reload the page to make changes.";
 
 type ServerActionFormProps = {
   action: (formData: FormData) => Promise<unknown>;
@@ -66,6 +69,12 @@ export function ServerActionForm({ action, children, className, onSuccess, befor
         className={formClass}
         action={(formData) => {
           setError(null);
+          // Refused up front, not queued: a write replayed later behind the person's back
+          // is worse for a ledger than one that visibly did not happen.
+          if (!canReachServer()) {
+            setError(OFFLINE_WRITE_MESSAGE);
+            return;
+          }
           startTransition(async () => {
             try {
               if (beforeSubmit && !(await beforeSubmit())) return;

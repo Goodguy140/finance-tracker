@@ -8,6 +8,7 @@ import {
   writeBudgetAlertPreferences,
   type BudgetAlertPreferences,
 } from "@/lib/budget-alert-preferences";
+import { isIos, isStandalone } from "@/lib/pwa-platform";
 
 const checkboxClass =
   "h-4 w-4 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-2 focus:ring-blue-500/40";
@@ -24,6 +25,9 @@ export function BudgetAlertPreferences({
   const [browserSupported] = useState(
     () => typeof window !== "undefined" && "Notification" in window,
   );
+  // Safari on iOS/iPadOS only exposes notifications to a web app opened from the Home
+  // Screen, so the fix there is installing, not switching browser.
+  const [needsHomeScreenInstall] = useState(() => !browserSupported && isIos() && !isStandalone());
   const [email, setEmail] = useState(emailEnabled);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [emailPending, startEmailTransition] = useTransition();
@@ -85,7 +89,9 @@ export function BudgetAlertPreferences({
           <span className="mt-0.5 block text-xs text-slate-500">
             {browserSupported
               ? "Uses the Web Notifications API when you open the dashboard and a warning applies."
-              : "Not supported in this browser."}
+              : needsHomeScreenInstall
+                ? "On iPhone and iPad, add this app to your Home Screen (Share → Add to Home Screen), open it from there, then turn this on."
+                : "Not supported in this browser."}
           </span>
         </span>
       </label>

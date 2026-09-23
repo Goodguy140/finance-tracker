@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { signIn, signOut } from "next-auth/react";
+import { signIn } from "next-auth/react";
+import { signOutOfDevice } from "@/lib/sign-out";
 import { startAuthentication } from "@simplewebauthn/browser";
 import { beginPasswordlessSignInAction } from "@/app/actions/mfa";
 import { describeWebAuthnError } from "@/components/mfa/passkey-client";
@@ -205,7 +206,7 @@ export function LoginForm({ passwordLoginDisabled = false }: { passwordLoginDisa
 
 export function LogoutButton() {
   return (
-    <button onClick={() => signOut({ callbackUrl: "/login" })} className={secondaryBtnClass}>
+    <button onClick={() => void signOutOfDevice()} className={secondaryBtnClass}>
       Logout
     </button>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { signOut } from "next-auth/react";
+import { signOutOfDevice } from "@/lib/sign-out";
 import { redeemRecoveryCodeAction } from "@/app/actions/mfa";
 import { inputClass, primaryBtnClass, secondaryBtnClass } from "@/components/forms/shared";
 import { verifyWithPasskey } from "./passkey-client";
@@ -112,7 +112,7 @@ export function MfaVerify({
         <button
           type="button"
           className="text-sm text-slate-400 underline-offset-4 hover:text-slate-200 hover:underline"
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={() => void signOutOfDevice()}
         >
           Sign out
         </button>

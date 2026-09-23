@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExtern
 import { createPortal } from "react-dom";
 import { formatCurrency } from "@/lib/money";
 import { MOBILE_OVERLAY_ROOT_Z_CLASS, MOBILE_OVERLAY_SHEET_Z_CLASS } from "@/lib/mobile-z-index";
+import { showLocalNotification } from "@/lib/pwa-notifications";
 import {
   budgetWarningDismissalKey,
   getServerDismissedBudgetWarningsSnapshot,
@@ -189,10 +190,13 @@ export function BudgetAlertsPanel({
         if (Notification.permission === "granted") {
           for (const item of notifyPayload) {
             if (!shouldNotifyBrowser(item.categoryId, item.severity, next)) continue;
-            new Notification("Budget alert", {
+            const shown = await showLocalNotification("Budget alert", {
               body: item.message,
               tag: `budget-${item.categoryId}-${item.severity}`,
+              icon: "/icons/icon-192.png",
             });
+            // Not recorded as sent unless it was, so the next dashboard visit retries.
+            if (!shown) continue;
             next[item.categoryId] = item.severity;
             changed = true;
           }

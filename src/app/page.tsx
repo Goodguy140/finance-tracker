@@ -744,7 +744,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-0 text-slate-100 lg:p-4 lg:pb-4">
+    <main data-rendered-at={new Date().toISOString()} className="min-h-screen bg-slate-950 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-0 text-slate-100 lg:p-4 lg:pb-4">
       {/*
         Two columns keep the original reading width; a third or fourth only earns its place
         if the page is allowed to use the display. DashboardShell keeps this in sync when the
