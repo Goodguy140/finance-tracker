@@ -10,7 +10,7 @@ const item = (n: number) => ({ id: `row-${n}`, itemId: `item-${n}`, accessTokenE
 describe("revokePlaidItemsForUser", () => {
   it("is a no-op for a user with no linked banks", async () => {
     const revoke = vi.fn();
-    await expect(revokePlaidItemsForUser(db([]), "u1", revoke)).resolves.toEqual({ revoked: 0 });
+    await expect(revokePlaidItemsForUser(db([]), "u1", revoke)).resolves.toEqual({ revoked: 0, rowIds: [] });
     expect(revoke).not.toHaveBeenCalled();
   });
 
@@ -18,6 +18,7 @@ describe("revokePlaidItemsForUser", () => {
     const revoke = vi.fn(async () => {});
     await expect(revokePlaidItemsForUser(db([item(1), item(2)]), "u1", revoke)).resolves.toEqual({
       revoked: 2,
+      rowIds: ["row-1", "row-2"],
     });
     expect(revoke).toHaveBeenCalledTimes(2);
   });

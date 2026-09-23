@@ -1154,7 +1154,8 @@ export function SettingsForms({
               <h3 className="text-base font-semibold text-sky-200 lg:text-lg">Backup and restore</h3>
               <p className="text-sm text-sky-100/85">
                 Export all data associated with this user account to a JSON file, then import it later to restore this
-                account. Import replaces this account&apos;s existing data.
+                account. Import replaces this account&apos;s existing data, and disconnects any linked banks — backups
+                do not include bank connections, so reconnect them afterwards.
               </p>
               <a
                 href="/api/backup/export/me"
