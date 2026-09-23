@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
+import { currentYmInTimeZone } from "../../src/lib/period-month";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { configurePlaidForTests } from "./plaid-helpers";
 import { expectDashboardHome } from "./expect-dashboard-home";
@@ -45,6 +46,23 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
   });
   const diningCategory = await prisma.category.findFirstOrThrow({
     where: { userId: user.id, kind: "EXPENSE" },
+  });
+
+  // A category renamed away from what Plaid's map looks for, with a budget still carrying
+  // the old label. The suggestion has to follow the budget's label to find it, so this is
+  // what proves budget labels reach the planner at all.
+  const leisure = await prisma.category.update({
+    where: { userId_name_kind: { userId: user.id, name: "Fun", kind: "EXPENSE" } },
+    data: { name: "Leisure" },
+  });
+  await prisma.budget.create({
+    data: {
+      userId: user.id,
+      categoryId: leisure.id,
+      name: "Fun",
+      periodMonth: currentYmInTimeZone(user.timezone),
+      limitCents: 20000,
+    },
   });
 
   // A transaction the user entered by hand that the bank will also report — this is the
@@ -109,7 +127,7 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
     await prisma.plaidStagedTransaction.count({
       where: { userId: user.id, status: "NEEDS_REVIEW" },
     }),
-  ).toBe(4);
+  ).toBe(5);
 
   // Nothing reached the log: the manual row is still the only transaction.
   expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(1);
@@ -123,6 +141,10 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
   expect(byId.get("fake-txn-refund")!.type).toBe("EXPENSE");
   expect(byId.get("fake-txn-refund")!.amountCents).toBe(-4590);
 
+  // Plaid's GENERAL_MERCHANDISE reached the renamed category through its budget's label,
+  // rather than falling to the catch-all.
+  expect(byId.get("fake-txn-hardware")!.suggestedCategoryId).toBe(leisure.id);
+
   // The matcher proposed the hand-entered coffee, and nothing else claimed it.
   const coffee = byId.get("fake-txn-coffee")!;
   expect(coffee.matchTier).toBe("high");
@@ -133,6 +155,9 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
   const queue = page.locator("section").filter({ hasText: "From your bank" }).first();
   await expect(queue).toBeVisible();
   await expect(queue.getByText("Loblaws")).toBeVisible();
+  // The hardware row has no merchant_name, so its heading is the bank's own description
+  // ("SQ *MAPLE HARDWARE #0114 OTTAWA ON") cleaned up rather than shown raw.
+  await expect(queue.getByText("Maple Hardware Ottawa")).toBeVisible();
 
   // The proposed link is surfaced, not applied silently.
   await expect(queue.getByText(/Looks like/i)).toBeVisible();
@@ -195,7 +220,7 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
     await prisma.plaidStagedTransaction.count({
       where: { userId: user.id, status: "NEEDS_REVIEW" },
     }),
-  ).toBe(2);
+  ).toBe(3);
   expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(2);
 
   // --- the refresh control in the log runs that same sweep ---

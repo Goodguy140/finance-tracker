@@ -46,6 +46,7 @@ import { formatAccountTypeLabel } from "@/lib/account-type-labels";
 import type { VerificationInfo } from "@/components/verified-badge";
 import { PlaidReviewQueue } from "@/components/plaid-review-queue";
 import { buildExpenseTitleSuggestions } from "@/lib/expense-title-suggestions";
+import { resolveDisplayName } from "@/lib/plaid/ingest";
 import {
   bucketIncomeCentsByYm,
   computeRecurringCashFlowSummary,
@@ -468,7 +469,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     return {
       id: row.id,
       institutionName: row.plaidItem.institutionName ?? "Your bank",
-      heading: row.merchantName ?? row.name,
+      heading: resolveDisplayName(row.name, row.merchantName),
       amountCents: row.amountCents,
       typeLabel: row.type === TransactionType.INCOME ? "Income" : "Expense",
       dateDisplay: formatDateOnlyUtc(row.date),
@@ -513,7 +514,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     return [
       {
         id: row.id,
-        heading: row.merchantName ?? row.name,
+        heading: resolveDisplayName(row.name, row.merchantName),
         institutionName: row.plaidItem.institutionName ?? "Your bank",
         approvedAmountCents: target.amountCents,
         bankAmountCents: row.amountCents,

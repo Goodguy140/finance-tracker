@@ -1,7 +1,14 @@
 import { CategoryKind, PlaidItemStatus, PlaidStagedStatus } from "@prisma/client";
 import { LONG_TRANSACTION_OPTIONS } from "@/app/actions/_helpers";
 import { prisma } from "@/lib/prisma";
-import { UNCATEGORIZED_NAME } from "@/lib/plaid/category-map";
+import { selectActiveBudgetsByCategory } from "@/lib/budget-progress";
+import { currentYmInTimeZone } from "@/lib/period-month";
+import {
+  FALLBACK_CATEGORY_NAME,
+  OTHER_CATEGORY_ALIASES,
+  type UserBudgetName,
+  type UserCategory,
+} from "@/lib/plaid/category-map";
 import {
   assignMatches,
   MATCH_DATE_TOLERANCE_DAYS,
@@ -20,20 +27,30 @@ import type { SyncStore } from "@/lib/plaid/sync";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Finds or creates the per-user "Uncategorized" category for a kind.
+ * The catch-all category for a kind: the user's own, or a created one as a last resort.
  *
- * Required rather than optional: `Transaction.categoryId` is non-nullable with
- * `onDelete: Restrict`, so there is no "no category" to fall back to and a staged row
- * always needs something selected.
+ * A sync must never invent a category, so any catch-all the user already has is used —
+ * including the "Uncategorized" that earlier versions of this code created. Creating is
+ * reached only by a user who has none, because `Transaction.categoryId` is non-nullable
+ * with `onDelete: Restrict`: there is no "no category" for a staged row to point at.
  */
-async function ensureFallbackCategory(userId: string, kind: CategoryKind): Promise<string> {
-  const existing = await prisma.category.findFirst({
-    where: { userId, kind, name: UNCATEGORIZED_NAME },
-    select: { id: true },
-  });
+async function ensureFallbackCategory(
+  userId: string,
+  kind: CategoryKind,
+  categories: UserCategory[],
+): Promise<string> {
+  const aliases = new Set(OTHER_CATEGORY_ALIASES.map((name) => name.trim().toLowerCase()));
+  const existing = categories.find(
+    (category) => category.kind === kind && aliases.has(category.name.trim().toLowerCase()),
+  );
   if (existing) return existing.id;
-  const created = await prisma.category.create({
-    data: { userId, kind, name: UNCATEGORIZED_NAME },
+
+  // Upsert rather than create: two items of the same user can sync at once, and the lock
+  // they hold is per item.
+  const created = await prisma.category.upsert({
+    where: { userId_name_kind: { userId, name: FALLBACK_CATEGORY_NAME, kind } },
+    create: { userId, kind, name: FALLBACK_CATEGORY_NAME },
+    update: {},
     select: { id: true },
   });
   return created.id;
@@ -55,18 +72,36 @@ export function createSyncStore(): SyncStore {
 
       const item = await prisma.plaidItem.findUnique({
         where: { id: itemId },
-        include: { plaidAccounts: true },
+        include: { plaidAccounts: true, user: { select: { timezone: true } } },
       });
       if (!item) return null;
 
-      const [categories, fallbackExpense, fallbackIncome] = await Promise.all([
+      const [categories, budgets] = await Promise.all([
         prisma.category.findMany({
           where: { userId: item.userId },
           select: { id: true, name: true, kind: true },
         }),
-        ensureFallbackCategory(item.userId, CategoryKind.EXPENSE),
-        ensureFallbackCategory(item.userId, CategoryKind.INCOME),
+        prisma.budget.findMany({
+          where: { userId: item.userId },
+          select: { categoryId: true, name: true, periodMonth: true },
+        }),
       ]);
+
+      const [fallbackExpense, fallbackIncome] = await Promise.all([
+        ensureFallbackCategory(item.userId, CategoryKind.EXPENSE, categories),
+        ensureFallbackCategory(item.userId, CategoryKind.INCOME, categories),
+      ]);
+
+      // Which budget is in force is decided first, then labels are taken from it — picking
+      // the labelled ones first would resurrect a name the user has since moved on from.
+      const budgetNames: UserBudgetName[] = [];
+      const activeBudgets = selectActiveBudgetsByCategory(
+        budgets,
+        currentYmInTimeZone(item.user.timezone),
+      );
+      for (const budget of activeBudgets.values()) {
+        if (budget.name) budgetNames.push({ categoryId: budget.categoryId, name: budget.name });
+      }
 
       return {
         id: item.id,
@@ -87,6 +122,7 @@ export function createSyncStore(): SyncStore {
             ]),
           ),
           categories,
+          budgetNames,
           itemDefaultCategoryId: item.defaultCategoryId,
           fallbackCategoryId: {
             [CategoryKind.EXPENSE]: fallbackExpense,

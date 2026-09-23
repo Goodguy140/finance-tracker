@@ -23,6 +23,7 @@ function context(overrides: Partial<SyncItemContext> = {}): SyncItemContext {
       { id: "cat-dining", name: "Dining", kind: CategoryKind.EXPENSE },
       { id: "cat-salary", name: "Salary", kind: CategoryKind.INCOME },
     ],
+    budgetNames: [],
     itemDefaultCategoryId: null,
     fallbackCategoryId: {
       [CategoryKind.EXPENSE]: "cat-uncat-expense",

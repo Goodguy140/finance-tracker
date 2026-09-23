@@ -2,7 +2,7 @@ import { TransactionType } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import { ymdFromDateUtc } from "@/lib/date-only";
 import { MAX_AMOUNT_CENTS } from "@/lib/money";
-import { mapPlaidAmount, normalizePlaidTransaction } from "@/lib/plaid/ingest";
+import { mapPlaidAmount, normalizePlaidTransaction, resolveDisplayName } from "@/lib/plaid/ingest";
 import type { PlaidApiTransaction } from "@/lib/plaid/types";
 
 function txn(overrides: Partial<PlaidApiTransaction> = {}): PlaidApiTransaction {
@@ -205,5 +205,29 @@ describe("normalizePlaidTransaction", () => {
       ok: false,
       reason: "before_cutoff",
     });
+  });
+});
+
+describe("resolveDisplayName", () => {
+  it("uses Plaid's merchant name as sent when it has one", () => {
+    expect(resolveDisplayName("SQ *BLUE BOTTLE #412 TORONTO ON", "Blue Bottle Coffee")).toBe(
+      "Blue Bottle Coffee",
+    );
+  });
+
+  it("cleans up the bank description when there is no merchant name", () => {
+    expect(resolveDisplayName("SQ *BLUE BOTTLE #412 TORONTO ON", null)).toBe("Blue Bottle Toronto");
+    expect(resolveDisplayName("POS PURCHASE INTERAC LOBLAWS", null)).toBe("Loblaws");
+    expect(resolveDisplayName("TST* THE LOCAL PUB", undefined)).toBe("The Local Pub");
+  });
+
+  it("treats a blank merchant name as absent", () => {
+    expect(resolveDisplayName("POS PURCHASE INTERAC LOBLAWS", "   ")).toBe("Loblaws");
+  });
+
+  it("keeps the raw description when cleanup would leave nothing", () => {
+    // Better an odd title than a blank one; the user can rename it either way.
+    expect(resolveDisplayName("#### ****", null)).toBe("#### ****");
+    expect(resolveDisplayName("  ", null)).toBe("");
   });
 });

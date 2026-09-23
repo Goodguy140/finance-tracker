@@ -84,7 +84,7 @@ test("the sweep stages transactions for a due bank, then leaves it alone until i
     await prisma.plaidStagedTransaction.count({
       where: { userId: user.id, status: "NEEDS_REVIEW" },
     }),
-  ).toBe(4);
+  ).toBe(5);
   expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(0);
 
   const after = await prisma.plaidItem.findUniqueOrThrow({ where: { id: item.id } });

@@ -8,6 +8,7 @@ import { describeActionError } from "@/lib/action-errors";
 import { prisma } from "@/lib/prisma";
 import { PlaidApiError, type PlaidClient } from "@/lib/plaid/client";
 import { checkMappingAllowed } from "@/lib/plaid/mapping";
+import { resolveDisplayName } from "@/lib/plaid/ingest";
 import {
   makePlaidItemRevoker,
   openAccessToken,
@@ -635,7 +636,7 @@ export const resolveStagedTransactionAction = formAction(async (formData: FormDa
         amountCents: staged.amountCents,
         date: staged.date,
         postedDate: staged.postedDate,
-        title: staged.merchantName ?? staged.name,
+        title: resolveDisplayName(staged.name, staged.merchantName),
       },
       select: { id: true },
     });
@@ -692,7 +693,7 @@ export const bulkAddStagedTransactionsAction = formAction(async (formData: FormD
           amountCents: staged.amountCents,
           date: staged.date,
           postedDate: staged.postedDate,
-          title: staged.merchantName ?? staged.name,
+          title: resolveDisplayName(staged.name, staged.merchantName),
         },
         select: { id: true },
       });
