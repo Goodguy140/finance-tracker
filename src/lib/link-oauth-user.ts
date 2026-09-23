@@ -106,7 +106,7 @@ export async function linkOAuthUser(params: {
     return absoluteRedirect(`/login?error=${LINK_REQUIRED_ERROR}`);
   }
 
-  if (!publicSignupAllowed()) return false;
+  if (!(await publicSignupAllowed())) return false;
 
   // Same role rules as password signup (`INITIAL_ADMIN_EMAIL` included), and count +
   // create in one transaction so two first sign-ins cannot both become the admin.

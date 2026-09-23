@@ -1,4 +1,5 @@
 import { UserRole } from "@prisma/client";
+import { getPublicSignupAllowed, resolvePublicSignup } from "@/lib/ops-settings";
 
 /**
  * Who may create an account, and who becomes the first admin. Shared by the password
@@ -6,12 +7,17 @@ import { UserRole } from "@prisma/client";
  * used to drift (OAuth ignored `INITIAL_ADMIN_EMAIL`).
  */
 
-export function publicSignupAllowed(): boolean {
-  const value = process.env.ALLOW_PUBLIC_SIGNUP?.trim().toLowerCase();
-  if (value === undefined) {
-    return process.env.NODE_ENV !== "production";
+/**
+ * `ALLOW_PUBLIC_SIGNUP` decides outright when set, without touching the database; otherwise
+ * the switch under Server admin → Authentication does, and with neither, signup is open in
+ * development and closed in production.
+ */
+export async function publicSignupAllowed(): Promise<boolean> {
+  const envRaw = process.env.ALLOW_PUBLIC_SIGNUP;
+  if (envRaw !== undefined) {
+    return resolvePublicSignup({ envRaw, storedRaw: null, nodeEnv: process.env.NODE_ENV }).value;
   }
-  return value === "true" || value === "1";
+  return getPublicSignupAllowed();
 }
 
 /**

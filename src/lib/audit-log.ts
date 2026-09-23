@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { headers } from "next/headers";
+import { getAuditRetentionDays, resolveAuditRetention } from "@/lib/ops-settings";
 
 export const AUDIT_ACTIONS = {
   admin_oauth_settings_updated: "admin_oauth_settings_updated",
@@ -17,6 +18,7 @@ export const AUDIT_ACTIONS = {
   admin_user_deleted: "admin_user_deleted",
   admin_audit_exported: "admin_audit_exported",
   admin_auth_settings_updated: "admin_auth_settings_updated",
+  admin_ops_settings_updated: "admin_ops_settings_updated",
   user_backup_imported: "user_backup_imported",
   financial_account_created: "financial_account_created",
   financial_account_archived: "financial_account_archived",
@@ -118,7 +120,6 @@ export type RecordAuditLogInput = {
   headers?: Headers;
 };
 
-const DEFAULT_AUDIT_RETENTION_DAYS = 365;
 /** Prune expired rows roughly once in this many successful writes. */
 const RETENTION_SWEEP_ODDS = 200;
 
@@ -128,14 +129,26 @@ const RETENTION_SWEEP_ODDS = 200;
  * keeps the default. `0` is not accepted: an audit log that deletes itself is no log.
  */
 export function resolveAuditRetentionDays(raw = process.env.AUDIT_LOG_RETENTION_DAYS): number {
-  const n = Number.parseInt(raw?.trim() ?? "", 10);
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_AUDIT_RETENTION_DAYS;
+  return resolveAuditRetention({ envRaw: raw, storedRaw: null }).value;
+}
+
+/**
+ * The retention in effect: the env var, else the value saved under Server admin →
+ * Operations, else the default. A failed settings read falls back to the env-only answer,
+ * because housekeeping must not be what breaks.
+ */
+export async function effectiveAuditRetentionDays(prisma?: PrismaClient): Promise<number> {
+  try {
+    return await getAuditRetentionDays(prisma);
+  } catch {
+    return resolveAuditRetentionDays();
+  }
 }
 
 async function maybePruneExpiredAuditRows(prisma: PrismaClient, random = Math.random) {
   if (Math.floor(random() * RETENTION_SWEEP_ODDS) !== 0) return;
-  const cutoff = new Date(Date.now() - resolveAuditRetentionDays() * 24 * 60 * 60 * 1000);
   try {
+    const cutoff = new Date(Date.now() - (await effectiveAuditRetentionDays(prisma)) * 24 * 60 * 60 * 1000);
     await prisma.auditLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
   } catch {
     // Housekeeping must never fail the request it piggybacked on.

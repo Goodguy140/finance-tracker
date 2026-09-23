@@ -6,6 +6,8 @@ import {
   clientMetaFromHeaders,
   AUDIT_ACTIONS,
 } from "./audit-log";
+import { invalidateOpsSettingsCache } from "./ops-settings";
+import { encryptSecret } from "./security";
 
 describe("scrubAuditMetadata", () => {
   it("removes secret-like keys and truncates long strings", () => {
@@ -83,5 +85,32 @@ describe("audit retention sweep", () => {
     const prisma = { auditLog: { create: vi.fn().mockResolvedValue({}), deleteMany } } as never;
     await recordAuditLog(prisma, { userId: "u1", action: AUDIT_ACTIONS.user_password_changed });
     expect(deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("uses the retention saved under Operations when the env var is unset", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const saved = process.env.AUDIT_LOG_RETENTION_DAYS;
+    delete process.env.AUDIT_LOG_RETENTION_DAYS;
+    invalidateOpsSettingsCache();
+    try {
+      const deleteMany = vi.fn().mockResolvedValue({ count: 0 });
+      const prisma = {
+        auditLog: { create: vi.fn().mockResolvedValue({}), deleteMany },
+        serverSetting: {
+          aggregate: vi.fn().mockResolvedValue({ _count: { _all: 1 }, _max: { updatedAt: new Date(1) } }),
+          findMany: vi
+            .fn()
+            .mockResolvedValue([{ key: "ops.auditRetentionDays", encryptedValue: encryptSecret("45") }]),
+        },
+      } as never;
+      await recordAuditLog(prisma, { userId: "u1", action: AUDIT_ACTIONS.user_password_changed });
+      const cutoff = deleteMany.mock.calls[0][0].where.createdAt.lt as Date;
+      const days = (Date.now() - cutoff.getTime()) / (24 * 60 * 60 * 1000);
+      expect(Math.round(days)).toBe(45);
+    } finally {
+      if (saved === undefined) delete process.env.AUDIT_LOG_RETENTION_DAYS;
+      else process.env.AUDIT_LOG_RETENTION_DAYS = saved;
+      invalidateOpsSettingsCache();
+    }
   });
 });

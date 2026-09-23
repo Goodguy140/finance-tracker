@@ -6,6 +6,13 @@ import { plaidSweepSwitchEnabled } from "@/lib/plaid/settings";
 import { requirePlaidClient } from "@/lib/plaid/service";
 import { PlaidSyncBusyError, syncPlaidItem } from "@/lib/plaid/sync";
 import { createSyncStore } from "@/lib/plaid/sync-store";
+import {
+  DEFAULT_PLAID_SYNC_INTERVAL_MINUTES,
+  MIN_PLAID_SYNC_INTERVAL_MINUTES,
+  getPlaidSyncIntervalMinutes,
+  resolvePlaidSyncInterval,
+} from "@/lib/ops-settings";
+import { markSchedulerStarted, recordSchedulerRun } from "@/lib/scheduler-status";
 
 /**
  * In-process sweep that pulls new transactions for connected banks.
@@ -19,13 +26,8 @@ import { createSyncStore } from "@/lib/plaid/sync-store";
  * it does is make the queue already be there when they next open the dashboard.
  */
 
-export const DEFAULT_PLAID_SYNC_INTERVAL_MINUTES = 60;
-
-/**
- * Below this, a sweep stops being a background refresh and starts being a way to burn
- * through Plaid's rate limits on an account that sees a handful of transactions a day.
- */
-export const MIN_PLAID_SYNC_INTERVAL_MINUTES = 15;
+// The interval's bounds live with the setting, which the admin form validates against too.
+export { DEFAULT_PLAID_SYNC_INTERVAL_MINUTES, MIN_PLAID_SYNC_INTERVAL_MINUTES };
 
 const INITIAL_DELAY_MS = 45 * 1000;
 
@@ -35,7 +37,7 @@ const globalState = globalThis as unknown as { __plaidSyncScheduler?: boolean };
  * `PLAID_SYNC_SCHEDULER=false` (or `0`) turns the sweep off; anything else leaves it on.
  *
  * This is the environment half only, and it is checked once at boot because an env var
- * cannot change under a running process. The other half — **Settings → Server admin →
+ * cannot change under a running process. The other half — **Server admin → Integrations →
  * Plaid → Sync connected banks in the background** — is stored in the database and so is
  * re-read on every tick, which is what lets an admin stop the sweep without a restart.
  */
@@ -46,22 +48,17 @@ export function plaidSyncSchedulerEnabled(
 }
 
 /**
- * How often the sweep runs, in minutes.
+ * How often the sweep runs according to the environment alone, in minutes.
  *
  * Anything unparseable, zero, negative, or below the floor falls back to the default
  * rather than being clamped up to the floor: a value that was meant to say something and
- * could not be honoured is better treated as unset than silently reinterpreted.
+ * could not be honoured is better treated as unset than silently reinterpreted. The value
+ * actually in effect also considers the admin setting — see `getPlaidSyncIntervalMinutes`.
  */
 export function resolvePlaidSyncIntervalMinutes(
   env: Record<string, string | undefined> = process.env,
 ): number {
-  const raw = env.PLAID_SYNC_INTERVAL_MINUTES?.trim();
-  if (!raw) return DEFAULT_PLAID_SYNC_INTERVAL_MINUTES;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < MIN_PLAID_SYNC_INTERVAL_MINUTES) {
-    return DEFAULT_PLAID_SYNC_INTERVAL_MINUTES;
-  }
-  return parsed;
+  return resolvePlaidSyncInterval({ envRaw: env.PLAID_SYNC_INTERVAL_MINUTES, storedRaw: null }).value;
 }
 
 /**
@@ -138,7 +135,7 @@ export async function sweepDuePlaidItems(
   // self-hosted deployments and should cost one cached config read, not a table scan.
   if ((await getPlaidConfig()) === null) return summary;
 
-  const intervalMinutes = resolvePlaidSyncIntervalMinutes();
+  const intervalMinutes = await getPlaidSyncIntervalMinutes();
   const dueBefore = plaidSyncDueBefore(now, intervalMinutes);
 
   // Every clause here exists to avoid paying for a call that cannot produce anything.
@@ -222,19 +219,26 @@ async function recordBackoff(itemId: string, now: Date): Promise<void> {
   });
 }
 
+/** Delay before the next tick. Falls back to the default if the settings read fails. */
+async function nextTickDelayMs(): Promise<number> {
+  try {
+    return (await getPlaidSyncIntervalMinutes()) * 60_000;
+  } catch {
+    return DEFAULT_PLAID_SYNC_INTERVAL_MINUTES * 60_000;
+  }
+}
+
 export function startPlaidSyncScheduler(): boolean {
   if (globalState.__plaidSyncScheduler) return false;
   if (!plaidSyncSchedulerEnabled()) return false;
   globalState.__plaidSyncScheduler = true;
 
-  const intervalMs = resolvePlaidSyncIntervalMinutes() * 60_000;
-
-  const sweep = async () => {
+  const sweep = async (): Promise<{ ok: boolean; message: string }> => {
     try {
       // Re-read per tick rather than per boot: the admin switch lives in the database
       // precisely so turning the sweep off does not mean restarting the container. Costs
       // one cached-config check, which is the same query the sweep would make anyway.
-      if (!(await getPlaidSweepEnabled())) return;
+      if (!(await getPlaidSweepEnabled())) return { ok: true, message: "Skipped: sweep switched off or Plaid not configured" };
       const summary = await sweepDuePlaidItems();
       if (summary.synced > 0 || summary.failed > 0) {
         console.log(
@@ -243,13 +247,29 @@ export function startPlaidSyncScheduler(): boolean {
             (summary.failed > 0 ? `, ${summary.failed} failed` : ""),
         );
       }
+      return {
+        ok: summary.failed === 0,
+        message:
+          `Synced ${summary.synced} of ${summary.considered} due bank(s), staged ${summary.staged}` +
+          (summary.failed > 0 ? `, ${summary.failed} failed` : ""),
+      };
     } catch (err) {
       console.error("[plaid] sync sweep failed", err);
+      return { ok: false, message: err instanceof Error ? err.message : "Sweep failed" };
     }
   };
 
+  // A chain of timeouts rather than one setInterval, so the delay is re-read after every
+  // tick and an interval changed in the admin UI takes effect without a restart.
   // `unref` so a pending timer never keeps a shutting-down process alive.
-  setTimeout(() => void sweep(), INITIAL_DELAY_MS).unref();
-  setInterval(() => void sweep(), intervalMs).unref();
+  const tick = async () => {
+    const result = await sweep();
+    const delayMs = await nextTickDelayMs();
+    const nextRunAt = new Date(Date.now() + delayMs);
+    recordSchedulerRun("plaidSync", { ...result, nextRunAt });
+    setTimeout(() => void tick(), delayMs).unref();
+  };
+  markSchedulerStarted("plaidSync", new Date(Date.now() + INITIAL_DELAY_MS));
+  setTimeout(() => void tick(), INITIAL_DELAY_MS).unref();
   return true;
 }

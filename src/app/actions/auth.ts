@@ -40,7 +40,7 @@ export const signupAction = formAction(async (formData: FormData) => {
       getFormValue(formData, "timezone") ||
       getDefaultTimezone(getFormValue(formData, "countryCode") || "CA"),
   });
-  if (!publicSignupAllowed()) {
+  if (!(await publicSignupAllowed())) {
     throw new Error("Public sign up is disabled.");
   }
   // A password account created while SSO-only is on could never sign in with that password.

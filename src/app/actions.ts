@@ -47,6 +47,11 @@ export {
   updateAdminPlaidSettingsAction,
 } from "./actions/admin";
 export {
+  updatePublicSignupAction,
+  updateOperationsSettingsAction,
+  updatePlaidSyncIntervalAction,
+} from "./actions/admin-ops";
+export {
   setUserRoleAction,
   setUserDisabledAction,
   forceSignOutUserAction,
