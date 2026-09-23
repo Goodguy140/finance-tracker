@@ -14,6 +14,12 @@ export type AdminUserRow = {
   /** Personal access tokens that are neither revoked nor expired. */
   activeTokenCount: number;
   hasPassword: boolean;
+  /** Operational counts only — never amounts. */
+  transactionCount: number;
+  /** Connected banks that have not been removed. */
+  bankCount: number;
+  /** Synced rows waiting for this user to review. */
+  reviewBacklog: number;
 };
 
 export type AdminUserList = {
@@ -42,7 +48,14 @@ export async function listUsersForAdmin(prisma: PrismaClient): Promise<AdminUser
         createdAt: true,
         passwordHash: true,
         authAccounts: { select: { provider: true } },
-        _count: { select: { webAuthnCredentials: true } },
+        _count: {
+          select: {
+            webAuthnCredentials: true,
+            transactions: true,
+            plaidItems: { where: { status: { not: "REMOVED" } } },
+            plaidStagedTransactions: { where: { status: "NEEDS_REVIEW" } },
+          },
+        },
         personalAccessTokens: {
           where: { revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
           select: { id: true },
@@ -65,8 +78,29 @@ export async function listUsersForAdmin(prisma: PrismaClient): Promise<AdminUser
       passkeyCount: row._count.webAuthnCredentials,
       activeTokenCount: row.personalAccessTokens.length,
       hasPassword: row.passwordHash !== null,
+      transactionCount: row._count.transactions ?? 0,
+      bankCount: row._count.plaidItems ?? 0,
+      reviewBacklog: row._count.plaidStagedTransactions ?? 0,
     })),
   };
+}
+
+/**
+ * Most recent successful sign-in per user, from the audit log. Kept apart from
+ * `listUsersForAdmin` because it is only as good as the audit retention: a user who last
+ * signed in before the oldest kept row shows as unknown, not as never.
+ */
+export async function listLastSignIns(prisma: PrismaClient): Promise<Map<string, string>> {
+  const rows = await prisma.auditLog.groupBy({
+    by: ["userId"],
+    where: { action: "user_login_succeeded", userId: { not: null } },
+    _max: { createdAt: true },
+  });
+  const out = new Map<string, string>();
+  for (const row of rows) {
+    if (row.userId && row._max.createdAt) out.set(row.userId, row._max.createdAt.toISOString());
+  }
+  return out;
 }
 
 /**

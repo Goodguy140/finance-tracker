@@ -4,7 +4,7 @@ import { formatUptime } from "@/lib/admin-runtime-metrics";
 export function AdminRuntimeMetricsPanel({ metrics }: { metrics: AdminRuntimeMetrics }) {
   return (
     <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-      <h2 className="font-semibold text-slate-100">Runtime</h2>
+      <h3 className="font-semibold text-slate-100">Runtime</h3>
       <p className="text-xs text-slate-500">Process metrics for this Node server instance (resets on restart).</p>
       <ul className="grid gap-2 text-sm sm:grid-cols-2">
         <li>

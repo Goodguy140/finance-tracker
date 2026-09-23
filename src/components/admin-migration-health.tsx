@@ -52,7 +52,7 @@ export function AdminMigrationHealthPanel({ schema, oauth, repair }: MigrationHe
 
   return (
     <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-      <h2 className="font-semibold text-slate-100">Migration &amp; ops health</h2>
+      <h3 className="font-semibold text-slate-100">Migration &amp; ops health</h3>
       <p className="text-xs text-slate-500">
         Verifies encrypted OAuth settings and SQLite schema repair state after deploy.
       </p>

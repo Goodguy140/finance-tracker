@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { AdminAuditFilters } from "@/components/admin-audit-filters";
 import { AdminAuditTable } from "@/components/admin-audit-table";
+import { AdminPageHeader, AdminSection } from "@/components/admin/ui";
 import {
   listAuditActionsInUse,
   parseAuditLogSearchParams,
   queryAuditLog,
 } from "@/lib/admin-audit-query";
-import { resolveAuditRetentionDays } from "@/lib/audit-log";
+import { effectiveAuditRetentionDays } from "@/lib/audit-log";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/session";
 
@@ -29,9 +30,10 @@ export default async function AdminAuditPage({ searchParams }: { searchParams: S
   const sp = await searchParams;
   const filters = parseAuditLogSearchParams(sp);
 
-  const [page, actions] = await Promise.all([
+  const [page, actions, retentionDays] = await Promise.all([
     queryAuditLog(prisma, filters),
     listAuditActionsInUse(prisma),
+    effectiveAuditRetentionDays(prisma),
   ]);
 
   const base = filterQuery(sp);
@@ -44,20 +46,25 @@ export default async function AdminAuditPage({ searchParams }: { searchParams: S
   };
 
   return (
-    <main className="mx-auto my-8 max-w-5xl space-y-4 p-4 text-slate-100">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Audit log</h1>
-        <Link href="/settings/admin" className="text-blue-300 hover:text-blue-200 underline">
-          Back to admin
-        </Link>
-      </div>
+    <>
+      <AdminPageHeader
+        title="Audit log"
+        description={
+          <>
+            Every sign-in, admin change and API read. Entries are kept for {retentionDays} days, then
+            pruned automatically (change this under{" "}
+            <Link href="/settings/admin/operations" className="text-blue-300 underline hover:text-blue-200">
+              Operations
+            </Link>
+            ).
+          </>
+        }
+      />
 
-      <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-        <h2 className="font-semibold text-slate-100">Search</h2>
-        <p className="text-xs text-slate-500">
-          Entries are kept for {resolveAuditRetentionDays()} days, then pruned automatically. The
-          table shows metadata keys; the CSV export carries the full values.
-        </p>
+      <AdminSection
+        title="Search"
+        description="The table shows metadata keys; the CSV export carries the full values."
+      >
         <AdminAuditFilters
           filters={filters}
           actions={actions}
@@ -88,7 +95,7 @@ export default async function AdminAuditPage({ searchParams }: { searchParams: S
             )}
           </div>
         ) : null}
-      </section>
-    </main>
+      </AdminSection>
+    </>
   );
 }

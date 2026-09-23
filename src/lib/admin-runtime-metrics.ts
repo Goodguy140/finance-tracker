@@ -14,6 +14,7 @@ export type AdminRuntimeMetrics = {
     pathLabel: string | null;
     sizeMb: number | null;
     diskFreeGb: number | null;
+    diskTotalGb: number | null;
   };
 };
 
@@ -41,6 +42,7 @@ export function getAdminRuntimeMetrics(): AdminRuntimeMetrics {
 
   let sizeMb: number | null = null;
   let diskFreeGb: number | null = null;
+  let diskTotalGb: number | null = null;
   let pathLabel: string | null = null;
 
   if (filePath) {
@@ -56,8 +58,10 @@ export function getAdminRuntimeMetrics(): AdminRuntimeMetrics {
       const statfs = fs.statfsSync(parent);
       const freeBytes = Number(statfs.bfree) * Number(statfs.bsize);
       diskFreeGb = bytesToGb(freeBytes);
+      diskTotalGb = bytesToGb(Number(statfs.blocks) * Number(statfs.bsize));
     } catch {
       diskFreeGb = null;
+      diskTotalGb = null;
     }
   }
 
@@ -73,6 +77,7 @@ export function getAdminRuntimeMetrics(): AdminRuntimeMetrics {
       pathLabel,
       sizeMb,
       diskFreeGb,
+      diskTotalGb,
     },
   };
 }

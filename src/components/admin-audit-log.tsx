@@ -18,7 +18,7 @@ export async function AdminAuditLog() {
 
   return (
     <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-      <h2 className="font-semibold text-slate-100">Audit log</h2>
+      <h3 className="font-semibold text-slate-100">Audit log</h3>
       <p className="text-xs text-slate-500">
         {page.total.toLocaleString()} event{page.total === 1 ? "" : "s"} recorded; newest{" "}
         {Math.min(PREVIEW_ROWS, page.rows.length)} shown (metadata is scrubbed server-side).
