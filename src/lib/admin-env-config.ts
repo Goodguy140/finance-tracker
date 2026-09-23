@@ -7,8 +7,11 @@ export type AdminEnvDisplay =
   | { kind: "presence"; presence: EnvPresence }
   | { kind: "database"; label: string };
 
+export type AdminEnvGroup = "Core" | "Sign-in" | "Plaid" | "Operations" | "Email" | "Build";
+
 export type AdminEnvEntry = {
   name: string;
+  group: AdminEnvGroup;
   display: AdminEnvDisplay;
   note?: string;
 };
@@ -35,6 +38,16 @@ const PUBLIC_VALUE_NAMES = new Set([
   "APP_GIT_SHA",
   "VERCEL_GIT_COMMIT_SHA",
   "GITHUB_SHA",
+  "INITIAL_ADMIN_EMAIL",
+  "LOGIN_MAX_PER_IP",
+  "AUDIT_LOG_RETENTION_DAYS",
+  "PLAID_SYNC_SCHEDULER",
+  "PLAID_SYNC_INTERVAL_MINUTES",
+  "PLAID_FAKE_CLIENT",
+  "RECURRING_AUTO_POST_SCHEDULER",
+  "SMTP_PORT",
+  "PORT",
+  "HOSTNAME",
 ]);
 
 function envTrim(name: string): string {
@@ -73,7 +86,27 @@ function displayForPublicName(name: string, raw: string): AdminEnvDisplay {
   return { kind: "value", value: raw || "(unset)" };
 }
 
-function entryForName(name: string): AdminEnvEntry {
+/** Settings the admin UI can also change; the note says so, and that env wins. */
+const OVERRIDABLE_IN_UI: Record<string, string> = {
+  ALLOW_PUBLIC_SIGNUP: "Authentication",
+  DISABLE_PASSWORD_LOGIN: "Authentication",
+  AUDIT_LOG_RETENTION_DAYS: "Operations",
+  RECURRING_AUTO_POST_SCHEDULER: "Operations",
+  PLAID_SYNC_INTERVAL_MINUTES: "Integrations",
+  PLAID_SYNC_SCHEDULER: "Integrations",
+};
+
+function entryForName(name: string, group: AdminEnvGroup): AdminEnvEntry {
+  const entry = baseEntryForName(name);
+  const page = OVERRIDABLE_IN_UI[name];
+  const note =
+    page && !entry.note
+      ? `Also settable under ${page}; when set here, this wins.`
+      : entry.note;
+  return { ...entry, group, ...(note ? { note } : {}) };
+}
+
+function baseEntryForName(name: string): Omit<AdminEnvEntry, "group"> {
   const raw = envTrim(name);
   if (name === "DATABASE_URL") {
     const summary = summarizeDatabaseUrlDisplay(raw);
@@ -90,33 +123,34 @@ function entryForName(name: string): AdminEnvEntry {
   return { name, display: displayForPublicName(name, raw) };
 }
 
+const ENV_GROUPS: [AdminEnvGroup, string[]][] = [
+  ["Core", ["NODE_ENV", "DATABASE_URL", "NEXTAUTH_URL", "NEXTAUTH_SECRET", "SERVER_SETTINGS_ENCRYPTION_KEY", "TZ", "PORT", "HOSTNAME"]],
+  [
+    "Sign-in",
+    [
+      "AUTH_TRUST_HOST",
+      "ALLOW_PUBLIC_SIGNUP",
+      "INITIAL_ADMIN_EMAIL",
+      "DISABLE_PASSWORD_LOGIN",
+      "LOGIN_MAX_PER_IP",
+      "AUTHENTIK_ENABLED",
+      "AUTHENTIK_ISSUER",
+      "AUTHENTIK_CLIENT_ID",
+      "AUTHENTIK_CLIENT_SECRET",
+    ],
+  ],
+  [
+    "Plaid",
+    ["PLAID_CLIENT_ID", "PLAID_SECRET", "PLAID_ENV", "PLAID_SYNC_SCHEDULER", "PLAID_SYNC_INTERVAL_MINUTES", "PLAID_FAKE_CLIENT"],
+  ],
+  ["Operations", ["AUDIT_LOG_RETENTION_DAYS", "RECURRING_AUTO_POST_SCHEDULER"]],
+  ["Email", ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM"]],
+  ["Build", ["VERCEL", "APP_GIT_SHA", "VERCEL_GIT_COMMIT_SHA", "GITHUB_SHA"]],
+];
+
 /** Curated, safe env snapshot for server admins (secrets never expose values). */
 export function buildAdminEnvConfig(): AdminEnvEntry[] {
-  const names = [
-    "NODE_ENV",
-    "DATABASE_URL",
-    "NEXTAUTH_URL",
-    "NEXTAUTH_SECRET",
-    "SERVER_SETTINGS_ENCRYPTION_KEY",
-    "AUTH_TRUST_HOST",
-    "ALLOW_PUBLIC_SIGNUP",
-  "DISABLE_PASSWORD_LOGIN",
-    "AUTHENTIK_ENABLED",
-    "AUTHENTIK_ISSUER",
-    "AUTHENTIK_CLIENT_ID",
-    "AUTHENTIK_CLIENT_SECRET",
-    "PLAID_CLIENT_ID",
-    "PLAID_SECRET",
-    "PLAID_ENV",
-    "SMTP_HOST",
-    "SMTP_USER",
-    "SMTP_PASS",
-    "SMTP_FROM",
-    "TZ",
-    "VERCEL",
-    "APP_GIT_SHA",
-  ];
-  return names.map(entryForName);
+  return ENV_GROUPS.flatMap(([group, names]) => names.map((name) => entryForName(name, group)));
 }
 
 export function formatEnvDisplay(display: AdminEnvDisplay): string {

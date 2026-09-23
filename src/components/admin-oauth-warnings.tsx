@@ -42,7 +42,7 @@ function ProviderBlock({ title, status }: { title: string; status: AdminOauthSta
 export function AdminOauthWarnings({ status }: { status: AdminOauthStatus }) {
   return (
     <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-      <h2 className="font-semibold text-slate-100">OAuth configuration warnings</h2>
+      <h3 className="font-semibold text-slate-100">OAuth configuration warnings</h3>
       <p className="text-xs text-slate-500">
         Compares admin database toggles with what NextAuth actually registers at runtime (Authentik may use
         environment variables).

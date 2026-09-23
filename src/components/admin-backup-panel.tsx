@@ -1,7 +1,7 @@
 export function AdminBackupPanel() {
   return (
     <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-      <h2 className="font-semibold text-slate-100">Backup &amp; restore</h2>
+      <h3 className="font-semibold text-slate-100">Backup &amp; restore</h3>
       <p className="text-xs text-slate-500">
         Download a JSON snapshot of <strong>your own</strong> user record and related finance data. Only{" "}
         any signed-in account can download from this link (same sanitized export as Settings → Advanced).

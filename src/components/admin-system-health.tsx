@@ -28,7 +28,7 @@ export function AdminSystemHealthPanel({ health }: { health: AdminSystemHealth }
 
   return (
     <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-      <h2 className="font-semibold text-slate-100">System health</h2>
+      <h3 className="font-semibold text-slate-100">System health</h3>
       <p className="text-xs text-slate-500">Non-secret snapshot for operators (same checks as the admin page only).</p>
 
       <ul className="space-y-3 text-sm">
@@ -71,7 +71,7 @@ export function AdminSystemHealthPanel({ health }: { health: AdminSystemHealth }
         </li>
       </ul>
       <p className="text-xs text-slate-500">
-        Migration and encrypted OAuth readability are summarized in <strong>Migration &amp; ops health</strong> below.
+        Migration and encrypted OAuth readability are covered in <strong>Migration &amp; ops health</strong>.
       </p>
     </section>
   );

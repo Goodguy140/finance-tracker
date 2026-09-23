@@ -1,117 +1,124 @@
 import Link from "next/link";
+import { AlertTriangle, CheckCircle2, ChevronRight, XCircle } from "lucide-react";
 import { AdminAnalyticsPanel } from "@/components/admin-analytics-panel";
 import { AdminAuditLog } from "@/components/admin-audit-log";
-import { AdminBackupPanel } from "@/components/admin-backup-panel";
-import { AdminEnvConfigPanel } from "@/components/admin-env-config";
-import { AdminMigrationHealthPanel } from "@/components/admin-migration-health";
-import { AdminOauthWarnings } from "@/components/admin-oauth-warnings";
-import { AdminRuntimeMetricsPanel } from "@/components/admin-runtime-metrics";
-import { AdminSystemHealthPanel } from "@/components/admin-system-health";
-import { AdminOauthForm, AdminPasswordLoginForm, AdminPlaidForm } from "@/components/forms";
+import { AdminPageHeader, AdminSection, StatusDot } from "@/components/admin/ui";
 import { getAdminAnalytics } from "@/lib/admin-analytics";
-import { getAdminOauthStatus } from "@/lib/admin-oauth-status";
+import { getAdminAnalyticsSeries } from "@/lib/admin-analytics-series";
+import { getAdminAttention } from "@/lib/admin-attention-facts";
+import { formatUptime, getAdminRuntimeMetrics } from "@/lib/admin-runtime-metrics";
+import { getLoginDebugVersionLine } from "@/lib/app-version";
+import { getOpsSettingsStatus } from "@/lib/ops-settings";
 import { getPlaidAdminStatus } from "@/lib/plaid/config";
-import { getAdminRuntimeMetrics } from "@/lib/admin-runtime-metrics";
-import { getAdminSystemHealth } from "@/lib/admin-system-health";
-import { getMigrationHealth, tryDecryptServerSetting } from "@/lib/migration-health";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/session";
-import { isPasswordLoginDisabled } from "@/lib/oauth-provider-config";
-import { resolvePasswordLoginDisabledEnv } from "@/lib/auth-settings";
 
 export const dynamic = "force-dynamic";
 
-function readSetting(
-  row: { encryptedValue: string } | null,
-  fallback = "",
-): string {
-  if (!row) return fallback;
-  return tryDecryptServerSetting(row.encryptedValue) ?? fallback;
-}
-
-function readBooleanSetting(row: { encryptedValue: string } | null): boolean {
-  return readSetting(row) === "true";
-}
-
-export default async function AdminSettingsPage() {
-  await requireAdmin();
-  const runtimeMetrics = getAdminRuntimeMetrics();
-  const passwordLoginDisabled = await isPasswordLoginDisabled();
-  const passwordLoginViaEnv = resolvePasswordLoginDisabledEnv() !== null;
-  const [health, systemHealth, analytics, oauthStatus, plaidStatus, googleEnabledRow, googleIdRow, authentikEnabledRow, authentikIssuerRow, authentikIdRow] =
-    await Promise.all([
-      getMigrationHealth(prisma),
-      getAdminSystemHealth(prisma),
-      getAdminAnalytics(prisma),
-      getAdminOauthStatus(prisma),
-      getPlaidAdminStatus(),
-      prisma.serverSetting.findUnique({ where: { key: "oauth.google.enabled" } }),
-      prisma.serverSetting.findUnique({ where: { key: "oauth.google.clientId" } }),
-      prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.enabled" } }),
-      prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.issuer" } }),
-      prisma.serverSetting.findUnique({ where: { key: "oauth.authentik.clientId" } }),
-    ]);
-
-  const googleEnabled = readBooleanSetting(googleEnabledRow);
-  const googleClientId = readSetting(googleIdRow);
-  const authentikEnabled = readBooleanSetting(authentikEnabledRow);
-  const authentikIssuer = readSetting(authentikIssuerRow);
-  const authentikClientId = readSetting(authentikIdRow);
-  const authentikConfiguredViaEnv = Boolean(
-    process.env.AUTHENTIK_ISSUER?.trim() &&
-      process.env.AUTHENTIK_CLIENT_ID?.trim() &&
-      process.env.AUTHENTIK_CLIENT_SECRET?.trim(),
+function Fact({ label, value, ok }: { label: string; value: string; ok?: boolean }) {
+  return (
+    <li className="flex items-start gap-2">
+      {ok === undefined ? null : <StatusDot status={ok ? "ok" : "warn"} />}
+      <div className="min-w-0">
+        <p className="text-xs text-slate-500">{label}</p>
+        <p className="truncate text-sm text-slate-100">{value}</p>
+      </div>
+    </li>
   );
+}
+
+export default async function AdminOverviewPage() {
+  await requireAdmin();
+  const [attention, analytics, series, ops, plaid] = await Promise.all([
+    getAdminAttention(),
+    getAdminAnalytics(prisma),
+    getAdminAnalyticsSeries(prisma, 30),
+    getOpsSettingsStatus(),
+    getPlaidAdminStatus(),
+  ]);
+  const runtime = getAdminRuntimeMetrics();
+  const { items, facts } = attention;
 
   return (
-    <main className="mx-auto my-8 max-w-2xl space-y-4 p-4 text-slate-100">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Admin Settings</h1>
-        <Link href="/settings" className="text-blue-300 hover:text-blue-200 underline">
-          Back to settings
-        </Link>
-      </div>
-      <AdminSystemHealthPanel health={systemHealth} />
-      <AdminRuntimeMetricsPanel metrics={runtimeMetrics} />
-      <AdminAnalyticsPanel analytics={analytics} />
-      <AdminEnvConfigPanel />
-      <AdminMigrationHealthPanel schema={health.schema} oauth={health.oauth} repair={health.repair} />
-      <AdminOauthWarnings status={oauthStatus} />
-      <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-        <h2 className="font-semibold text-slate-100">Users</h2>
-        <p className="text-xs text-slate-500">
-          Review who has access, change roles, suspend or remove accounts, and end sessions.
-        </p>
-        <Link
-          href="/settings/admin/users"
-          className="inline-flex rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-700"
-        >
-          Manage users
-        </Link>
-      </section>
-      <AdminPasswordLoginForm
-        passwordLoginDisabled={passwordLoginDisabled}
-        configuredViaEnv={passwordLoginViaEnv}
-      />
-      <AdminOauthForm
-        googleEnabled={googleEnabled}
-        googleClientId={googleClientId}
-        authentikEnabled={authentikEnabled}
-        authentikIssuer={authentikIssuer}
-        authentikClientId={authentikClientId}
-        authentikConfiguredViaEnv={authentikConfiguredViaEnv}
-      />
-      <AdminPlaidForm
-        enabled={plaidStatus.enabledRequested}
-        syncSchedulerEnabled={plaidStatus.syncSchedulerRequested}
-        syncSchedulerForcedOffByEnv={plaidStatus.syncSchedulerForcedOffByEnv}
-        clientId={plaidStatus.storedClientId}
-        environment={plaidStatus.environment}
-        configuredViaEnv={plaidStatus.source === "environment" || plaidStatus.source === "mixed"}
-        warnings={plaidStatus.warnings}
-      />
-      <AdminBackupPanel />
+    <>
+      <AdminPageHeader title="Overview" description="What needs attention, and how the server is doing." />
+
+      <AdminSection
+        title={items.length === 0 ? "All clear" : `${items.length} item${items.length === 1 ? "" : "s"} need attention`}
+      >
+        {items.length === 0 ? (
+          <p className="flex items-center gap-2 text-sm text-emerald-200">
+            <CheckCircle2 className="h-4 w-4" aria-hidden />
+            No health, security or integration problems detected.
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-800 overflow-hidden rounded-lg border border-slate-800">
+            {items.map((item) => {
+              const Icon = item.severity === "bad" ? XCircle : AlertTriangle;
+              return (
+                <li key={item.id}>
+                  <Link
+                    href={item.href}
+                    className="flex items-start gap-3 bg-slate-950/40 px-3 py-2.5 hover:bg-slate-900"
+                  >
+                    <Icon
+                      className={`mt-0.5 h-4 w-4 shrink-0 ${item.severity === "bad" ? "text-red-400" : "text-amber-400"}`}
+                      aria-label={item.severity === "bad" ? "Problem" : "Warning"}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-slate-100">{item.title}</span>
+                      <span className="block text-xs text-slate-400">{item.detail}</span>
+                    </span>
+                    <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" aria-hidden />
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </AdminSection>
+
+      <AdminAnalyticsPanel analytics={analytics} trend={series.points} />
+
+      <AdminSection
+        title="At a glance"
+        actions={
+          <Link href="/settings/admin/system" className="text-sm text-blue-300 underline hover:text-blue-200">
+            System
+          </Link>
+        }
+      >
+        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Fact label="Version" value={getLoginDebugVersionLine()} />
+          <Fact label="Uptime" value={formatUptime(runtime.uptimeSeconds)} />
+          <Fact
+            label="Database"
+            value={
+              runtime.databaseFile.sizeMb != null
+                ? `${runtime.databaseFile.sizeMb} MB · ${runtime.databaseFile.diskFreeGb ?? "?"} GB free`
+                : "size unavailable"
+            }
+            ok={facts.schemaMissingColumns.length === 0}
+          />
+          <Fact label="Memory (RSS)" value={`${runtime.memory.rssMb} MB`} />
+          <Fact
+            label="Public sign-up"
+            value={`${ops.publicSignup.value ? "open" : "closed"} (${ops.publicSignup.source})`}
+          />
+          <Fact
+            label="Plaid"
+            value={
+              plaid.enabledRequested
+                ? `${plaid.environment} · sync every ${ops.plaidSyncIntervalMinutes.value} min`
+                : "disabled"
+            }
+            ok={plaid.warnings.length === 0}
+          />
+          <Fact label="Audit retention" value={`${ops.auditRetentionDays.value} days`} />
+          <Fact label="Active admins" value={String(facts.activeServerAdmins)} ok={facts.activeServerAdmins > 1} />
+        </ul>
+      </AdminSection>
       <AdminAuditLog />
-    </main>
+    </>
   );
 }

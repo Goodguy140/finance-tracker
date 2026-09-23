@@ -44,7 +44,7 @@ test("an admin can store Plaid credentials, and the secret is encrypted and neve
   const user = await createAdmin(email);
   await signIn(page, email);
 
-  await page.goto("/settings/admin");
+  await page.goto("/settings/admin/integrations");
   const section = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Plaid (bank transaction sync)" }),
   });

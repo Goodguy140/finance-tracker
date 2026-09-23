@@ -58,4 +58,27 @@ describe("buildAdminEnvConfig", () => {
     const entry = buildAdminEnvConfig().find((e) => e.name === "DATABASE_URL");
     expect(entry?.display).toEqual({ kind: "database", label: "dev.db" });
   });
+
+  it("lists every runtime setting once, grouped, and notes the ones the admin UI can also set", () => {
+    const entries = buildAdminEnvConfig();
+    const names = entries.map((e) => e.name);
+    expect(new Set(names).size).toBe(names.length);
+    for (const name of [
+      "AUDIT_LOG_RETENTION_DAYS",
+      "LOGIN_MAX_PER_IP",
+      "INITIAL_ADMIN_EMAIL",
+      "PLAID_SYNC_SCHEDULER",
+      "PLAID_SYNC_INTERVAL_MINUTES",
+      "RECURRING_AUTO_POST_SCHEDULER",
+      "PLAID_FAKE_CLIENT",
+      "SMTP_PORT",
+    ]) {
+      expect(names).toContain(name);
+    }
+    expect(entries.find((e) => e.name === "AUDIT_LOG_RETENTION_DAYS")).toMatchObject({
+      group: "Operations",
+      note: expect.stringMatching(/Operations/),
+    });
+    expect(entries.find((e) => e.name === "SMTP_PASS")?.group).toBe("Email");
+  });
 });

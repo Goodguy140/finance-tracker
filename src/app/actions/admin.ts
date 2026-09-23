@@ -82,7 +82,7 @@ export const updateAdminOauthSettingsAction = formAction(async (formData: FormDa
     },
     headers: h,
   });
-  revalidatePath("/settings/admin");
+  revalidatePath("/settings/admin", "layout");
 });
 
 /**
@@ -144,7 +144,7 @@ export const updateAdminPlaidSettingsAction = formAction(async (formData: FormDa
     },
     headers: await headers(),
   });
-  revalidatePath("/settings/admin");
+  revalidatePath("/settings/admin", "layout");
 });
 
 /**
@@ -182,6 +182,6 @@ export const updatePasswordLoginSettingAction = formAction(async (formData: Form
     metadata: { passwordLoginDisabled: turningOff },
     headers: await headers(),
   });
-  revalidatePath("/settings/admin");
+  revalidatePath("/settings/admin", "layout");
   revalidatePath("/login");
 });
