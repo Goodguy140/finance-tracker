@@ -28,7 +28,9 @@ export type PlaidItemRevoker = (item: {
 type ItemReader = Pick<PrismaClient, "plaidItem"> | Prisma.TransactionClient;
 
 /**
- * Revokes every bank connection a user has, at Plaid, and returns how many were revoked.
+ * Revokes every bank connection a user has, at Plaid, and returns the local row ids it
+ * revoked. A caller that deletes afterwards in a separate transaction can check nothing
+ * outside that list is about to go with them — a bank linked in between was never revoked.
  *
  * Call this *before* anything that cascades their rows away — account deletion, admin
  * deletion, or a financial-data reset. A user with no linked banks is the overwhelmingly
@@ -42,12 +44,12 @@ export async function revokePlaidItemsForUser(
   db: ItemReader,
   userId: string,
   revoke?: PlaidItemRevoker | null,
-): Promise<{ revoked: number }> {
+): Promise<{ revoked: number; rowIds: string[] }> {
   const items = await db.plaidItem.findMany({
     where: { userId },
     select: { id: true, itemId: true, accessTokenEnc: true },
   });
-  if (items.length === 0) return { revoked: 0 };
+  if (items.length === 0) return { revoked: 0, rowIds: [] };
 
   if (!revoke) {
     throw new PlaidRevocationError(
@@ -70,5 +72,5 @@ export async function revokePlaidItemsForUser(
       failed,
     );
   }
-  return { revoked: items.length };
+  return { revoked: items.length, rowIds: items.map((item) => item.id) };
 }

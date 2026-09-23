@@ -14,7 +14,7 @@ const mockPrisma = vi.hoisted(() => ({
   transaction: { deleteMany: vi.fn(), create: vi.fn() },
   account: { deleteMany: vi.fn(), create: vi.fn() },
   category: { deleteMany: vi.fn(), create: vi.fn() },
-  plaidItem: { deleteMany: vi.fn() },
+  plaidItem: { deleteMany: vi.fn(), findMany: vi.fn(), count: vi.fn() },
   plaidAccount: { deleteMany: vi.fn() },
   plaidStagedTransaction: { deleteMany: vi.fn() },
   transactionVerification: { deleteMany: vi.fn(), create: vi.fn() },
@@ -40,6 +40,11 @@ vi.mock("@/lib/session", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: mockPrisma,
+}));
+
+const plaidRevoker = vi.hoisted(() => ({ current: null as null | ((item: { itemId: string }) => Promise<void>) }));
+vi.mock("@/lib/plaid/service", () => ({
+  tryMakePlaidItemRevoker: vi.fn(async () => plaidRevoker.current),
 }));
 
 vi.mock("@/lib/audit-log", () => ({
@@ -97,6 +102,9 @@ describe("importUserBackupAction", () => {
       await fn(mockPrisma);
     });
     mockPrisma.user.update.mockResolvedValue({});
+    mockPrisma.plaidItem.findMany.mockResolvedValue([]);
+    mockPrisma.plaidItem.count.mockResolvedValue(0);
+    plaidRevoker.current = null;
   });
 
   it("does not restore role or passwordHash from backup", async () => {
@@ -256,5 +264,92 @@ describe("importUserBackupAction", () => {
 
     expect(mockPrisma.authAccount.create).not.toHaveBeenCalled();
     expect(mockPrisma.authAccount.deleteMany).not.toHaveBeenCalled();
+  });
+  describe("linked banks", () => {
+    const linked = [
+      { id: "row-1", itemId: "item-1", accessTokenEnc: "enc-1" },
+      { id: "row-2", itemId: "item-2", accessTokenEnc: "enc-2" },
+    ];
+    function backupForm(backup: object = minimalBackup("user@example.com")) {
+      const formData = new FormData();
+      formData.set("backupJson", new File([JSON.stringify(backup)], "backup.json", { type: "application/json" }));
+      return formData;
+    }
+
+    it("revokes every linked bank at Plaid before wiping its rows", async () => {
+      // Backups carry no bank connections, so the wipe is the end of them. Deleting the
+      // rows without /item/remove would leave the Items live and billing at Plaid.
+      mockPrisma.plaidItem.findMany.mockResolvedValue(linked);
+      const revoke = vi.fn(async (_item: { itemId: string }) => {});
+      plaidRevoker.current = revoke;
+
+      expect(await importUserBackupAction(backupForm())).toBeUndefined();
+
+      expect(revoke.mock.calls.map(([item]) => item.itemId)).toEqual(["item-1", "item-2"]);
+      expect(mockPrisma.plaidItem.deleteMany).toHaveBeenCalledWith({ where: { userId: "user-1" } });
+      const lastRevoke = Math.max(...revoke.mock.invocationCallOrder);
+      expect(lastRevoke).toBeLessThan(mockPrisma.plaidItem.deleteMany.mock.invocationCallOrder[0]);
+    });
+
+    it("imports nothing when a bank cannot be revoked", async () => {
+      mockPrisma.plaidItem.findMany.mockResolvedValue(linked);
+      plaidRevoker.current = vi.fn(async (item: { itemId: string }) => {
+        if (item.itemId === "item-2") throw new Error("plaid down");
+      });
+
+      const result = await importUserBackupAction(backupForm());
+
+      expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Could not revoke 1 of 2") });
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      expect(mockPrisma.plaidItem.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it("imports nothing when banks are linked but Plaid is not configured to revoke them", async () => {
+      mockPrisma.plaidItem.findMany.mockResolvedValue(linked);
+
+      const result = await importUserBackupAction(backupForm());
+
+      expect(result).toMatchObject({ ok: false, error: expect.stringContaining("cannot be revoked right now") });
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("refuses a malformed file before disconnecting anything", async () => {
+      // The reference checks inside the transaction would roll the data back, but not the
+      // revocations — so a bad file has to be caught while the banks are still connected.
+      mockPrisma.plaidItem.findMany.mockResolvedValue(linked);
+      const revoke = vi.fn(async () => {});
+      plaidRevoker.current = revoke;
+      const iso = "2026-01-01T00:00:00.000Z";
+      const backup = {
+        ...minimalBackup("user@example.com"),
+        budgets: [{ categoryId: "cat-missing", name: null, periodMonth: "2026-01", limitCents: 1, createdAt: iso, updatedAt: iso }],
+      };
+
+      expect(await importUserBackupAction(backupForm(backup))).toEqual({
+        ok: false,
+        error: "Backup references unknown budget category.",
+      });
+      expect(revoke).not.toHaveBeenCalled();
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("refuses to delete a bank linked after the revocations ran", async () => {
+      mockPrisma.plaidItem.findMany.mockResolvedValue(linked);
+      plaidRevoker.current = vi.fn(async () => {});
+      mockPrisma.plaidItem.count.mockResolvedValue(1);
+
+      const result = await importUserBackupAction(backupForm());
+
+      expect(result).toMatchObject({ ok: false, error: expect.stringContaining("bank was connected") });
+      expect(mockPrisma.plaidItem.count).toHaveBeenCalledWith({
+        where: { userId: "user-1", id: { notIn: ["row-1", "row-2"] } },
+      });
+      expect(mockPrisma.plaidItem.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it("needs no Plaid client when nothing is linked", async () => {
+      expect(await importUserBackupAction(backupForm())).toBeUndefined();
+      expect(mockPrisma.plaidItem.deleteMany).toHaveBeenCalled();
+    });
   });
 });

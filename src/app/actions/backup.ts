@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { userBackupSchema } from "@/lib/backup-schema";
-import { resolveBackupUserProfileFields } from "@/lib/backup-restore";
+import { assertBackupReferencesResolve, resolveBackupUserProfileFields } from "@/lib/backup-restore";
 import { revokePlaidItemsForUser } from "@/lib/plaid/unlink";
 import { tryMakePlaidItemRevoker } from "@/lib/plaid/service";
 import {
@@ -72,8 +72,28 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
   if (parsed.user.email.toLowerCase() !== user.email.toLowerCase()) {
     throw new Error("Backup email does not match the current account.");
   }
+  // Everything that can reject the file runs before the banks are revoked below: revoking
+  // cannot be undone, so a bad file must be refused while the connections are still live.
+  assertBackupReferencesResolve(parsed);
+
+  // Import is wipe-and-replace, and the wipe drops the Plaid rows. Backups never carry bank
+  // connections, so nothing brings them back — revoke them at Plaid first, or they keep
+  // billing with no local record left to revoke them by. Refuses the import if any fails.
+  const { rowIds: revokedItemIds } = await revokePlaidItemsForUser(
+    prisma,
+    user.id,
+    await tryMakePlaidItemRevoker(),
+  );
 
   await prisma.$transaction(async (tx) => {
+    // A bank linked while the revocations above were in flight was never revoked, and the
+    // deletes below would orphan it. Refuse rather than delete it.
+    const linkedSinceRevoke = await tx.plaidItem.count({
+      where: { userId: user.id, id: { notIn: revokedItemIds } },
+    });
+    if (linkedSinceRevoke > 0) {
+      throw new Error("A bank was connected while the backup was importing. Nothing was imported; try again.");
+    }
     await tx.user.update({
       where: { id: user.id },
       data: { defaultExpenseAccountId: null },
