@@ -4,6 +4,7 @@ import { countryConfigMap } from "@/lib/country-config";
 import {
   PFC_TO_CATEGORY_NAMES,
   resolveSuggestedCategoryId,
+  type UserBudgetName,
   type UserCategory,
 } from "@/lib/plaid/category-map";
 
@@ -23,11 +24,13 @@ function resolve(
   pfcPrimary: string | null,
   kind: CategoryKind = CategoryKind.EXPENSE,
   itemDefault: string | null = null,
+  budgetNames: UserBudgetName[] = [],
 ) {
   return resolveSuggestedCategoryId({
     pfcPrimary,
     kind,
     userCategories: ALL,
+    userBudgetNames: budgetNames,
     itemDefaultCategoryId: itemDefault,
     fallbackCategoryId: "fallback",
   });
@@ -35,7 +38,7 @@ function resolve(
 
 describe("PFC_TO_CATEGORY_NAMES", () => {
   it("only ever names categories this app actually seeds", () => {
-    // A typo here would silently degrade to "Uncategorized" for a whole Plaid category,
+    // A typo here would silently degrade to the catch-all for a whole Plaid category,
     // which is exactly the kind of thing nobody notices.
     const seeded = new Set<string>([
       ...countryConfigMap.CA.defaultExpenseCategories,
@@ -75,36 +78,73 @@ describe("resolveSuggestedCategoryId", () => {
         pfcPrimary: "FOOD_AND_DRINK",
         kind: CategoryKind.EXPENSE,
         userCategories: withoutDining,
+        userBudgetNames: [],
         itemDefaultCategoryId: null,
         fallbackCategoryId: "fallback",
       }),
     ).toBe(idOf("Groceries"));
   });
 
-  it("uses the fallback for categories deliberately left unmapped", () => {
-    // LOAN_PAYMENTS and TRANSFER_OUT have no honest home among the seeded categories.
-    expect(resolve("LOAN_PAYMENTS")).toBe("fallback");
-    expect(resolve("TRANSFER_OUT")).toBe("fallback");
-    expect(resolve("GOVERNMENT_AND_NON_PROFIT")).toBe("fallback");
+  it("sends categories with no specific home to the user's catch-all", () => {
+    expect(resolve("LOAN_PAYMENTS")).toBe(idOf("Other"));
+    expect(resolve("TRANSFER_OUT")).toBe(idOf("Other"));
+    expect(resolve("GOVERNMENT_AND_NON_PROFIT")).toBe(idOf("Other"));
   });
 
-  it("uses the fallback for an unknown or absent Plaid category", () => {
-    expect(resolve("SOMETHING_NEW_PLAID_ADDED")).toBe("fallback");
-    expect(resolve(null)).toBe("fallback");
-    expect(resolve("")).toBe("fallback");
+  it("sends an unknown or absent Plaid category to the catch-all", () => {
+    expect(resolve("SOMETHING_NEW_PLAID_ADDED")).toBe(idOf("Other"));
+    expect(resolve(null)).toBe(idOf("Other"));
+    expect(resolve("")).toBe(idOf("Other"));
   });
 
-  it("prefers the item default over the fallback when nothing maps", () => {
+  it("recognises a catch-all the user named differently", () => {
+    // Including "Uncategorized", which earlier versions of the sync created.
+    for (const alias of ["Miscellaneous", "Misc", "uncategorized"]) {
+      const categories: UserCategory[] = [{ id: "catch-all", name: alias, kind: CategoryKind.EXPENSE }];
+      expect(
+        resolveSuggestedCategoryId({
+          pfcPrimary: "LOAN_PAYMENTS",
+          kind: CategoryKind.EXPENSE,
+          userCategories: categories,
+          userBudgetNames: [],
+          itemDefaultCategoryId: null,
+          fallbackCategoryId: "fallback",
+        }),
+      ).toBe("catch-all");
+    }
+  });
+
+  it("uses the fallback only when the user has no catch-all at all", () => {
+    const withoutOther = ALL.filter((c) => c.name !== "Other");
+    expect(
+      resolveSuggestedCategoryId({
+        pfcPrimary: "LOAN_PAYMENTS",
+        kind: CategoryKind.EXPENSE,
+        userCategories: withoutOther,
+        userBudgetNames: [],
+        itemDefaultCategoryId: null,
+        fallbackCategoryId: "fallback",
+      }),
+    ).toBe("fallback");
+  });
+
+  it("prefers the item default over the catch-all when nothing maps", () => {
+    // The default is a deliberate choice about one connection; the catch-all is a shrug.
     expect(resolve("LOAN_PAYMENTS", CategoryKind.EXPENSE, idOf("Fun"))).toBe(idOf("Fun"));
   });
 
+  it("prefers a mapped category over the item default", () => {
+    expect(resolve("FOOD_AND_DRINK", CategoryKind.EXPENSE, idOf("Fun"))).toBe(idOf("Dining"));
+  });
+
   it("ignores an item default belonging to the wrong kind", () => {
-    // An expense default must never be pre-selected for an income row.
-    expect(resolve("TRANSFER_OUT", CategoryKind.INCOME, idOf("Fun"))).toBe("fallback");
+    // An expense default must never be pre-selected for an income row; the income
+    // catch-all takes it instead.
+    expect(resolve("TRANSFER_OUT", CategoryKind.INCOME, idOf("Fun"))).toBe(idOf("Other Income"));
   });
 
   it("ignores an item default that no longer exists", () => {
-    expect(resolve("LOAN_PAYMENTS", CategoryKind.EXPENSE, "deleted-category")).toBe("fallback");
+    expect(resolve("LOAN_PAYMENTS", CategoryKind.EXPENSE, "deleted-category")).toBe(idOf("Other"));
   });
 
   it("never returns an expense category for an income row", () => {
@@ -115,22 +155,77 @@ describe("resolveSuggestedCategoryId", () => {
     }
   });
 
-  it("lands on the fallback for a user seeded with non-English categories", () => {
-    // The map keys on English names, so a JP-seeded user matches nothing. Acceptable for
-    // a suggestion the user confirms, and better than mislabelling their spend.
+  it("matches a budget's own label when its category is named something else", () => {
+    const categories: UserCategory[] = [
+      { id: "cat-food", name: "Food Stuff", kind: CategoryKind.EXPENSE },
+      { id: "cat-other", name: "Other", kind: CategoryKind.EXPENSE },
+    ];
+    expect(
+      resolveSuggestedCategoryId({
+        pfcPrimary: "FOOD_AND_DRINK",
+        kind: CategoryKind.EXPENSE,
+        userCategories: categories,
+        userBudgetNames: [{ categoryId: "cat-food", name: "Dining" }],
+        itemDefaultCategoryId: null,
+        fallbackCategoryId: "fallback",
+      }),
+    ).toBe("cat-food");
+  });
+
+  it("lets a category keep its own name against a budget label that claims it", () => {
+    expect(resolve("FOOD_AND_DRINK", CategoryKind.EXPENSE, null, [
+      { categoryId: idOf("Fun"), name: "Dining" },
+    ])).toBe(idOf("Dining"));
+  });
+
+  it("lands an unmapped income row on the seeded income catch-all rather than creating one", () => {
+    expect(resolve("SOMETHING_NEW_PLAID_ADDED", CategoryKind.INCOME)).toBe(idOf("Other Income"));
+  });
+
+  it("ignores a budget label on a category of the wrong kind", () => {
+    // Without the kind filter this would pre-select an expense category for an income row.
+    const categories: UserCategory[] = [
+      { id: "inc-wages", name: "Wages", kind: CategoryKind.INCOME },
+      { id: "exp-fun", name: "Fun", kind: CategoryKind.EXPENSE },
+    ];
+    expect(
+      resolveSuggestedCategoryId({
+        pfcPrimary: "INCOME",
+        kind: CategoryKind.INCOME,
+        userCategories: categories,
+        userBudgetNames: [{ categoryId: "exp-fun", name: "Salary" }],
+        itemDefaultCategoryId: null,
+        fallbackCategoryId: "fallback",
+      }),
+    ).toBe("fallback");
+  });
+
+  it("ignores a budget label whose category the user has deleted", () => {
+    expect(
+      resolve("LOAN_PAYMENTS", CategoryKind.EXPENSE, null, [
+        { categoryId: "deleted-category", name: "Loans" },
+      ]),
+    ).toBe(idOf("Other"));
+  });
+
+  it("lands on the catch-all for a user seeded with non-English categories", () => {
+    // The map keys on English names, so a JP-seeded user matches nothing specific — but
+    // their own "その他" is a catch-all, so the suggestion stays inside their categories.
     const jp: UserCategory[] = countryConfigMap.JP.defaultExpenseCategories.map((name, i) => ({
       id: `jp-${i}`,
       name,
       kind: CategoryKind.EXPENSE,
     }));
+    const other = jp.find((c) => c.name === "その他")!;
     expect(
       resolveSuggestedCategoryId({
         pfcPrimary: "FOOD_AND_DRINK",
         kind: CategoryKind.EXPENSE,
         userCategories: jp,
+        userBudgetNames: [],
         itemDefaultCategoryId: null,
         fallbackCategoryId: "fallback",
       }),
-    ).toBe("fallback");
+    ).toBe(other.id);
   });
 });

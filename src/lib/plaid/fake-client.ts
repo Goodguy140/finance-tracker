@@ -48,13 +48,15 @@ function daysAgo(days: number): string {
  *  - LOBLAWS is an ordinary new expense with nothing to match against;
  *  - BLUE BOTTLE is priced and dated to match a hand-entered transaction the test creates;
  *  - PAYROLL is income, so the income branch of the category map is exercised;
- *  - REFUND is a negative non-income amount, which must book as a negative expense.
+ *  - REFUND is a negative non-income amount, which must book as a negative expense;
+ *  - HARDWARE has no merchant_name, so the raw bank description is what reaches the queue.
  */
 export const FAKE_SYNC_AMOUNTS = {
   groceries: 84.21,
   coffee: 12.0,
   payroll: -2500.0,
   refund: -45.9,
+  hardware: 31.5,
 } as const;
 
 export function fakeSyncTransactions(): PlaidApiTransaction[] {
@@ -102,6 +104,16 @@ export function fakeSyncTransactions(): PlaidApiTransaction[] {
       merchant_name: "Amazon",
       pending: false,
       personal_finance_category: { primary: "GENERAL_MERCHANDISE", detailed: "RETURN" },
+    },
+    {
+      transaction_id: "fake-txn-hardware",
+      account_id: "fake-acct-chequing",
+      amount: FAKE_SYNC_AMOUNTS.hardware,
+      iso_currency_code: "CAD",
+      date: daysAgo(4),
+      name: "SQ *MAPLE HARDWARE #0114 OTTAWA ON",
+      pending: false,
+      personal_finance_category: { primary: "GENERAL_MERCHANDISE", detailed: "HARDWARE" },
     },
   ];
 }

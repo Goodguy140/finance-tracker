@@ -1,5 +1,9 @@
 import { CategoryKind, PlaidStagedStatus, TransactionType } from "@prisma/client";
-import { resolveSuggestedCategoryId, type UserCategory } from "@/lib/plaid/category-map";
+import {
+  resolveSuggestedCategoryId,
+  type UserBudgetName,
+  type UserCategory,
+} from "@/lib/plaid/category-map";
 import { normalizePlaidTransaction } from "@/lib/plaid/ingest";
 import type { PlaidApiTransaction, PlaidSyncPage } from "@/lib/plaid/types";
 
@@ -27,6 +31,8 @@ export type SyncItemContext = {
   /** Keyed by Plaid's account_id. */
   accounts: Map<string, SyncAccountState>;
   categories: UserCategory[];
+  /** Custom labels on the budgets active this period, matched as category aliases. */
+  budgetNames: UserBudgetName[];
   itemDefaultCategoryId: string | null;
   fallbackCategoryId: Record<CategoryKind, string>;
 };
@@ -164,6 +170,7 @@ function buildUpsert(
         pfcPrimary: value.pfcPrimary,
         kind,
         userCategories: context.categories,
+        userBudgetNames: context.budgetNames,
         itemDefaultCategoryId: context.itemDefaultCategoryId,
         fallbackCategoryId: context.fallbackCategoryId[kind],
       }),

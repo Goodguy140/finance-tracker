@@ -5,11 +5,11 @@ import {
   assignMatches,
   bestDateDelta,
   merchantSimilarity,
-  normalizeMerchant,
   scoreMatch,
   type MatchCandidate,
   type StagedForMatch,
 } from "@/lib/plaid/matcher";
+import { normalizeMerchant } from "@/lib/plaid/merchant-text";
 
 const d = (ymd: string) => new Date(`${ymd}T00:00:00Z`);
 

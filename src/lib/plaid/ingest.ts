@@ -1,6 +1,7 @@
 import { TransactionType } from "@prisma/client";
 import { dateFromYmd } from "@/lib/date-only";
 import { isCentsInRange, toCents } from "@/lib/money";
+import { titleCaseMerchant } from "@/lib/plaid/merchant-text";
 import type { PlaidApiTransaction } from "@/lib/plaid/types";
 
 /**
@@ -57,6 +58,28 @@ export function mapPlaidAmount(input: {
 
   // Money in, but not income: a refund, chargeback or reward. Negative expense.
   return { kind: "expense", type: TransactionType.EXPENSE, amountCents: -cents };
+}
+
+/**
+ * The name to show for a staged row, and to write as the title when it is committed.
+ *
+ * Plaid's `merchant_name` is already a clean trade name when it resolves one, so it is used
+ * as sent. Its absence is what needs work: `name` is the raw bank description ("SQ *BLUE
+ * BOTTLE #412 TORONTO ON"), which used to reach the review queue and `Transaction.title`
+ * verbatim. The raw values stay on the staged row either way — this only decides what a
+ * person reads.
+ */
+export function resolveDisplayName(
+  name: string | null | undefined,
+  merchantName: string | null | undefined,
+): string {
+  const merchant = merchantName?.trim();
+  if (merchant) return merchant;
+
+  const raw = name?.trim() ?? "";
+  // Cleanup can legitimately consume everything ("#### ****"); showing nothing would be
+  // worse than showing the description the bank actually sent.
+  return titleCaseMerchant(raw) || raw;
 }
 
 export type NormalizedPlaidTransaction = {

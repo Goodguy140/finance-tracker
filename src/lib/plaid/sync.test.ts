@@ -33,6 +33,7 @@ function itemRecord(overrides: Partial<SyncItemRecord> = {}): SyncItemRecord {
       historyCutoff: new Date(Date.UTC(2026, 0, 1)),
       accounts: new Map([["plaid-acct-1", { rowId: "row-1", accountId: "app-1", syncEnabled: true }]]),
       categories: [],
+      budgetNames: [],
       itemDefaultCategoryId: null,
       fallbackCategoryId: {
         [CategoryKind.EXPENSE]: "cat-exp",
