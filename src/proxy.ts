@@ -165,5 +165,10 @@ export async function proxy(req: NextRequest) {
 export const config = {
   // `api/v1/*` is token-authenticated (Authorization: Bearer), not cookie-based,
   // so it must bypass the session gate that redirects everything else to /login.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/health|api/v1).*)"],
+  // The PWA files must be public too: Android fetches the manifest without cookies, the
+  // home-screen icon is fetched before anyone signs in, and the service worker precaches
+  // the offline page. None of them carries user data.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|api/health|api/v1|manifest\\.webmanifest$|sw\\.js$|icons/|icon\\.svg$|apple-icon\\.png$|offline$).*)",
+  ],
 };

@@ -1,11 +1,12 @@
 "use client";
 
-import { signOut } from "next-auth/react";
+import { signOutOfDevice } from "@/lib/sign-out";
 import { useId, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AccountTypePill } from "@/components/account-type-pill";
 import { ServerActionForm } from "@/components/server-action-form";
 import { BudgetAlertPreferences } from "@/components/budget-alert-preferences";
+import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_ORDER } from "@/lib/account-type-labels";
 import { formatCurrency } from "@/lib/money";
 import {
@@ -584,6 +585,7 @@ export function SettingsForms({
               </ServerActionForm>
             </section>
 
+            <InstallPrompt />
           </div>
         ) : null}
 
@@ -625,7 +627,7 @@ export function SettingsForms({
                   className="space-y-4"
                   // The change revokes every session, this one included; a clean sign-out
                   // beats letting the next navigation discover the dead cookie.
-                  onSuccess={() => signOut({ callbackUrl: "/login" })}
+                  onSuccess={() => void signOutOfDevice()}
                 >
                   <LabeledField label="Current password" hint="The password you use on the login page with this email.">
                     <input

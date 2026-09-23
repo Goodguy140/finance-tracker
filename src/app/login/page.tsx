@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { LoginForm } from "@/components/forms";
+import { PurgePrivateCache } from "@/components/pwa/purge-private-cache";
 import { getLoginDebugVersionLine } from "@/lib/app-version";
 import { isPasswordLoginDisabled } from "@/lib/oauth-provider-config";
 
@@ -39,6 +40,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
 
   return (
     <main className="mx-auto mt-20 max-w-md rounded-2xl border border-slate-800 bg-slate-900/80 p-6 text-slate-100 shadow-xl backdrop-blur">
+      <PurgePrivateCache />
       <h1 className="mb-4 text-2xl font-semibold text-slate-100">Login</h1>
       {errorMessage ? (
         <p className="mb-4 rounded-lg border border-amber-800/80 bg-amber-950/40 px-3 py-2 text-sm text-amber-100">

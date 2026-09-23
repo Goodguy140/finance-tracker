@@ -90,6 +90,15 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers: [...securityHeaders, ...productionOnlyHeaders],
       },
+      {
+        // Always revalidated, so a new worker reaches devices on their next visit instead
+        // of whenever an intermediate cache lets go of the old one.
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+        ],
+      },
     ];
   },
 };

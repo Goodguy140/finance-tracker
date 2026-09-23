@@ -12,7 +12,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   const { badges } = await getAdminAttention();
 
   return (
-    <main className="mx-auto my-6 max-w-6xl p-4 text-slate-100">
+    <main className="mx-auto mb-6 mt-[max(1.5rem,env(safe-area-inset-top))] max-w-6xl p-4 text-slate-100">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <ShieldCheck className="h-6 w-6 text-sky-300" aria-hidden />

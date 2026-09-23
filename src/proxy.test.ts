@@ -27,6 +27,26 @@ describe("proxy matcher", () => {
   it("keeps existing public exclusions", () => {
     expect(matcher.test("/api/health")).toBe(false);
   });
+
+  it("leaves the PWA files public so a signed-out device can install the app", () => {
+    for (const path of [
+      "/manifest.webmanifest",
+      "/sw.js",
+      "/icons/icon-192.png",
+      "/icons/maskable-512.png",
+      "/icon.svg",
+      "/apple-icon.png",
+      "/offline",
+    ]) {
+      expect(matcher.test(path), path).toBe(false);
+    }
+  });
+
+  it("anchors the PWA exclusions so look-alike paths stay guarded", () => {
+    expect(matcher.test("/offline-data")).toBe(true);
+    expect(matcher.test("/sw.jsx")).toBe(true);
+    expect(matcher.test("/manifest.webmanifest.bak")).toBe(true);
+  });
 });
 
 describe("public path classification", () => {

@@ -4,6 +4,7 @@ import { useId, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ExpenseForm, IncomeForm } from "@/components/forms";
 import type { ExpenseTitleSuggestion } from "@/lib/expense-title-suggestions";
+import { useOnlineStatus } from "@/lib/use-online-status";
 import {
   MOBILE_FAB_Z_CLASS,
   MOBILE_OVERLAY_ROOT_Z_CLASS,
@@ -77,6 +78,8 @@ export function DashboardMobileActions({
 }) {
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [incomeOpen, setIncomeOpen] = useState(false);
+  // Offline, the dashboard may be a cached copy: nothing can be saved, so don't offer to.
+  const online = useOnlineStatus();
 
   return (
     <>
@@ -86,22 +89,24 @@ export function DashboardMobileActions({
         <button
           type="button"
           aria-label="Quick add expense"
+          disabled={!online}
           onClick={() => {
             setIncomeOpen(false);
             setExpenseOpen(true);
           }}
-          className="pointer-events-auto touch-manipulation inline-flex min-h-12 items-center justify-center rounded-full bg-blue-500 px-5 text-sm font-semibold text-white shadow-lg shadow-blue-950/40 ring-2 ring-blue-400/25 transition hover:bg-blue-400 active:bg-blue-600"
+          className="pointer-events-auto touch-manipulation inline-flex min-h-12 items-center justify-center rounded-full bg-blue-500 px-5 text-sm font-semibold text-white shadow-lg shadow-blue-950/40 ring-2 ring-blue-400/25 transition hover:bg-blue-400 active:bg-blue-600 disabled:opacity-50 disabled:shadow-none"
         >
           + Expense
         </button>
         <button
           type="button"
           aria-label="Quick add income"
+          disabled={!online}
           onClick={() => {
             setExpenseOpen(false);
             setIncomeOpen(true);
           }}
-          className="pointer-events-auto touch-manipulation inline-flex min-h-12 items-center justify-center rounded-full border border-slate-600 bg-slate-800 px-4 text-sm font-semibold text-slate-100 shadow-lg shadow-black/30 transition hover:bg-slate-700 active:bg-slate-900"
+          className="pointer-events-auto touch-manipulation inline-flex min-h-12 items-center justify-center rounded-full border border-slate-600 bg-slate-800 px-4 text-sm font-semibold text-slate-100 shadow-lg shadow-black/30 transition hover:bg-slate-700 active:bg-slate-900 disabled:opacity-50 disabled:shadow-none"
         >
           + Income
         </button>
