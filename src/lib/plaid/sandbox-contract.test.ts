@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPlaidClient } from "@/lib/plaid/client";
+import { createPlaidClient, PlaidApiError } from "@/lib/plaid/client";
 import { PFC_TO_CATEGORY_NAMES } from "@/lib/plaid/category-map";
 import { mapPlaidAmount, normalizePlaidTransaction } from "@/lib/plaid/ingest";
 import type { PlaidApiTransaction } from "@/lib/plaid/types";
@@ -169,6 +169,32 @@ describe.skipIf(!enabled)("Plaid sandbox contract", () => {
       const repeat = await client.transactionsSync({ accessToken: exchanged.access_token, cursor });
       expect(repeat.added).toEqual([]);
       expect(repeat.has_more).toBe(false);
+
+      // --- webhooks and update mode ---
+      //
+      // Delivery itself cannot be exercised here (it needs a public URL), but everything
+      // the app sends to set it up can.
+      await client.updateItemWebhook(exchanged.access_token, "https://example.com/api/plaid/webhook");
+
+      const updateToken = await client.createLinkToken({
+        clientUserId: "sandbox-contract",
+        clientName: "Finance Tracker",
+        countryCodes: ["US"],
+        accessToken: exchanged.access_token,
+        accountSelection: true,
+        webhook: "https://example.com/api/plaid/webhook",
+      });
+      expect(updateToken.link_token, "account-selection update mode was rejected").toBeTruthy();
+
+      // No real key id is available without a delivered webhook, so this checks the
+      // endpoint exists and answers with a structured Plaid error rather than a 404.
+      const keyError = await client.getWebhookVerificationKey("not-a-real-key-id").then(
+        () => null,
+        (err: unknown) => err,
+      );
+      expect(keyError).toBeInstanceOf(PlaidApiError);
+      expect((keyError as PlaidApiError).errorType).not.toBe("UNKNOWN");
+      notes.push(`unknown webhook key id → ${(keyError as PlaidApiError).errorCode}`);
 
       console.log(`\n[plaid sandbox contract]\n  ${notes.join("\n  ")}\n`);
     } finally {

@@ -6,10 +6,11 @@ import type {
   PlaidApiAccount,
   PlaidApiItem,
   PlaidSyncPage,
+  PlaidWebhookVerificationKey,
 } from "./types";
 
 /**
- * A small typed `fetch` wrapper over the six Plaid endpoints this app uses.
+ * A small typed `fetch` wrapper over the Plaid endpoints this app uses.
  *
  * Deliberately not the `plaid` npm package: that is a generated OpenAPI client plus axios,
  * and with `output: "standalone"` its weight lands in the image twice (once via Next's
@@ -83,6 +84,10 @@ export type PlaidClient = {
     count?: number;
   }): Promise<PlaidSyncPage>;
   removeItem(accessToken: string): Promise<void>;
+  /** The public key a webhook's `Plaid-Verification` JWT names in its `kid` header. */
+  getWebhookVerificationKey(keyId: string): Promise<{ key: PlaidWebhookVerificationKey }>;
+  /** Points an existing item's webhooks at `webhook`. */
+  updateItemWebhook(accessToken: string, webhook: string): Promise<void>;
   /**
    * Mints a public token without the Link UI. Sandbox only — Plaid rejects it anywhere
    * else — which is what makes the contract check against a real Plaid runnable headlessly.
@@ -184,7 +189,10 @@ export function createPlaidClient(config: PlaidConfig): PlaidClient {
         // In update mode Plaid requires `products` to be omitted and `access_token` given;
         // sending both is rejected.
         ...(updateMode
-          ? { access_token: input.accessToken }
+          ? {
+              access_token: input.accessToken,
+              ...(input.accountSelection ? { update: { account_selection_enabled: true } } : {}),
+            }
           : {
               products: ["transactions"],
               ...(input.daysRequested
@@ -235,6 +243,14 @@ export function createPlaidClient(config: PlaidConfig): PlaidClient {
 
     async removeItem(accessToken) {
       await call("/item/remove", { access_token: accessToken });
+    },
+
+    async getWebhookVerificationKey(keyId) {
+      return call("/webhook_verification_key/get", { key_id: keyId });
+    },
+
+    async updateItemWebhook(accessToken, webhook) {
+      await call("/item/webhook/update", { access_token: accessToken, webhook });
     },
 
     async sandboxCreatePublicToken(input) {

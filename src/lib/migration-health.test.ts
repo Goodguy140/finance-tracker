@@ -56,7 +56,12 @@ async function createMinimalSchema(prisma: PrismaClient) {
     CREATE TABLE "PlaidItem" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "consecutiveSyncFailures" INTEGER NOT NULL DEFAULT 0,
-      "nextSyncAttemptAt" DATETIME
+      "nextSyncAttemptAt" DATETIME,
+      "pendingExpirationAt" DATETIME,
+      "pendingDisconnectAt" DATETIME,
+      "pendingDisconnectReason" TEXT,
+      "newAccountsAvailableAt" DATETIME,
+      "webhookUrl" TEXT
     )
   `);
 }

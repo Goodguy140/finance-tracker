@@ -10,6 +10,7 @@ import { getAuthentikProvider, getGoogleProvider } from "@/lib/oauth-provider-co
 import { prisma } from "@/lib/prisma";
 import { requireLoadedUser } from "@/lib/session";
 import { getPlaidConfig } from "@/lib/plaid/config";
+import { describePlaidItemAttention } from "@/lib/plaid/attention";
 import { describePlaidCostWarning } from "@/lib/plaid/cost";
 import { plaidFakeClientEnabled } from "@/lib/plaid/service";
 import {
@@ -211,6 +212,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
         consentExpiresAt: item.consentExpiresAt,
         hasMappedAccount: item.plaidAccounts.some((a) => a.accountId !== null && a.syncEnabled),
       }),
+      // Raised by Plaid's ITEM webhooks (or a failed sync) and cleared by update mode.
+      attention: describePlaidItemAttention(item),
       lastSyncedLabel: item.lastSyncedAt ? formatDateOnlyUtc(item.lastSyncedAt) : null,
       consentExpiresLabel: item.consentExpiresAt ? formatDateOnlyUtc(item.consentExpiresAt) : null,
       accounts: item.plaidAccounts.map((account) => ({

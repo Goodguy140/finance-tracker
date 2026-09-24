@@ -12,13 +12,17 @@ import { inputClass, primaryBtnClass, secondaryBtnClass } from "@/components/for
 import { mapPlaidAccountAction } from "@/app/actions";
 import { syncAllPlaidItemsAction, syncPlaidItemAction } from "@/app/actions/plaid";
 import {
+  completePlaidUpdateAction,
   createPlaidLinkTokenAction,
   exchangePlaidPublicTokenAction,
   unlinkPlaidItemAction,
   type PlaidExchangeState,
   type PlaidLinkTokenState,
   type PlaidUnlinkState,
+  type PlaidUpdateKind,
+  type PlaidUpdateState,
 } from "@/app/actions/plaid";
+import type { PlaidItemAttention } from "@/lib/plaid/attention";
 
 export type PlaidAccountRow = {
   id: string;
@@ -42,6 +46,8 @@ export type PlaidItemRow = {
   consentExpiresLabel: string | null;
   /** Set when this connection is billable at Plaid but cannot currently sync. */
   costWarning: string | null;
+  /** What the user needs to do about this connection, from Plaid's webhooks. */
+  attention: PlaidItemAttention | null;
   accounts: PlaidAccountRow[];
 };
 
@@ -67,6 +73,7 @@ export type PlaidConnectionsPanelProps = {
 const linkTokenInitial: PlaidLinkTokenState = { ok: null };
 const exchangeInitial: PlaidExchangeState = { ok: null };
 const unlinkInitial: PlaidUnlinkState = { ok: null };
+const updateInitial: PlaidUpdateState = { ok: null };
 
 function CheckIcon() {
   return (
@@ -93,6 +100,7 @@ export function PlaidConnectionsPanel({
     exchangeInitial,
   );
   const [unlinkState, unlink, unlinking] = useActionState(unlinkPlaidItemAction, unlinkInitial);
+  const [updateState, completeUpdate, updating] = useActionState(completePlaidUpdateAction, updateInitial);
   const stepUp = usePasskeyStepUp(mfa.freshUntil, mfa.enrolled);
   const [stepUpError, setStepUpError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -101,12 +109,21 @@ export function PlaidConnectionsPanel({
 
   const handleSuccess = useCallback(
     (publicToken: string, _institutionName: string | null) => {
+      // Update mode keeps the item's existing access token, so its public token is not
+      // exchanged; the server re-reads the item instead and clears the prompt.
+      if (tokenState.ok === true && tokenState.mode === "update") {
+        const form = new FormData();
+        form.set("plaidItemId", tokenState.plaidItemId);
+        form.set("updateKind", tokenState.updateKind);
+        startTransition(() => completeUpdate(form));
+        return;
+      }
       const form = new FormData();
       form.set("publicToken", publicToken);
       form.set("historyDays", historyDays);
       startTransition(() => exchange(form));
     },
-    [exchange, historyDays],
+    [exchange, completeUpdate, historyDays, tokenState],
   );
 
   const handleExit = useCallback((message: string | null) => {
@@ -124,6 +141,10 @@ export function PlaidConnectionsPanel({
     if (exchangeState.ok === true) router.refresh();
   }, [exchangeState, router]);
 
+  useEffect(() => {
+    if (updateState.ok === true) router.refresh();
+  }, [updateState, router]);
+
   // Test seam: stand in for what Link's onSuccess would hand back.
   const fakeExchangedFor = useRef<string | null>(null);
   useEffect(() => {
@@ -133,8 +154,11 @@ export function PlaidConnectionsPanel({
     handleSuccess(`public-sandbox-e2e`, null);
   }, [fakeLink, tokenState, handleSuccess]);
 
-  /** Mints a link token behind a passkey prompt; Link opens when the token arrives. */
-  const connect = (plaidItemId?: string) => {
+  /**
+   * Mints a link token behind a passkey prompt; Link opens when the token arrives. With an
+   * item id it opens update mode for that bank instead of a fresh link.
+   */
+  const connect = (plaidItemId?: string, updateKind: PlaidUpdateKind = "reauth") => {
     setStepUpError(null);
     setNotice(null);
     startTransition(async () => {
@@ -145,7 +169,10 @@ export function PlaidConnectionsPanel({
       }
       const form = new FormData();
       form.set("historyDays", historyDays);
-      if (plaidItemId) form.set("plaidItemId", plaidItemId);
+      if (plaidItemId) {
+        form.set("plaidItemId", plaidItemId);
+        form.set("updateKind", updateKind);
+      }
       requestLinkToken(form);
     });
   };
@@ -165,12 +192,13 @@ export function PlaidConnectionsPanel({
     });
   };
 
-  const busy = pending || exchanging || unlinking || stepUp.busy;
+  const busy = pending || exchanging || unlinking || updating || stepUp.busy;
   const errorMessage =
     stepUpError ??
     scriptError ??
     (tokenState.ok === false ? tokenState.error : null) ??
     (exchangeState.ok === false ? exchangeState.error : null) ??
+    (updateState.ok === false ? updateState.error : null) ??
     (unlinkState.ok === false ? unlinkState.error : null);
 
   return (
@@ -239,6 +267,21 @@ export function PlaidConnectionsPanel({
         </div>
       ) : null}
 
+      {updateState.ok === true ? (
+        <div className="rounded-2xl border border-emerald-500/40 bg-emerald-950/40 p-4 text-sm text-emerald-100">
+          <span className="inline-flex items-center gap-1.5 font-medium">
+            <CheckIcon /> Updated {updateState.institutionName}
+          </span>
+          {updateState.updateKind === "accounts" ? (
+            <p className="mt-1 text-emerald-100/90">
+              {updateState.newAccounts > 0
+                ? `${updateState.newAccounts} new account${updateState.newAccounts === 1 ? "" : "s"} added. Map ${updateState.newAccounts === 1 ? "it" : "each one"} below to start syncing.`
+                : "No new accounts were shared."}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {unlinkState.ok === true ? (
         <div className="rounded-2xl border border-slate-700 bg-slate-900/70 p-4 text-sm text-slate-300">
           Disconnected {unlinkState.institutionName}. Transactions already in your log were kept.
@@ -301,7 +344,7 @@ export function PlaidConnectionsPanel({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <h3 className="truncate font-semibold text-slate-100">{item.institutionName}</h3>
-                  <PlaidStatusPill status={item.status} />
+                  <PlaidStatusPill status={item.status} needsAttention={item.attention !== null} />
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <ServerActionForm action={syncPlaidItemAction}>
@@ -310,16 +353,6 @@ export function PlaidConnectionsPanel({
                       Sync now
                     </button>
                   </ServerActionForm>
-                  {item.status === "LOGIN_REQUIRED" ? (
-                    <button
-                      type="button"
-                      className={secondaryBtnClass}
-                      onClick={() => connect(item.id)}
-                      disabled={busy}
-                    >
-                      Sign in again
-                    </button>
-                  ) : null}
                   {confirmUnlinkId === item.id ? (
                     <>
                       <button
@@ -359,13 +392,32 @@ export function PlaidConnectionsPanel({
                 </p>
               ) : null}
 
+              {item.attention ? (
+                <div
+                  role="status"
+                  data-testid="plaid-attention"
+                  data-attention-kind={item.attention.kind}
+                  className="flex flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-950/30 px-3 py-2.5 text-sm text-amber-100 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <p>{item.attention.message}</p>
+                  <button
+                    type="button"
+                    className={`${secondaryBtnClass} shrink-0`}
+                    onClick={() => connect(item.id, item.attention!.action)}
+                    disabled={busy || !mfa.enrolled}
+                  >
+                    {item.attention.actionLabel}
+                  </button>
+                </div>
+              ) : null}
+
               {item.costWarning ? (
                 <p className="rounded-lg border border-amber-500/35 bg-amber-950/25 px-3 py-2 text-xs text-amber-100">
                   {item.costWarning}
                 </p>
               ) : null}
 
-              {item.errorMessage ? (
+              {item.errorMessage && item.attention?.kind !== "reauth" ? (
                 <p className="rounded-lg border border-red-500/35 bg-red-950/30 px-3 py-2 text-xs text-red-100">
                   {item.errorMessage}
                 </p>

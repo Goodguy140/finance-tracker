@@ -113,6 +113,13 @@ as income would inflate income and leave the original spend uncorrected.
 and it is why a bank revising or withdrawing a committed transaction updates the staged copy
 and raises a flag rather than editing the user's record.
 
+**Webhooks only raise and clear prompts.** `/api/plaid/webhook` sits outside the session gate,
+so the ES256 signature check (`webhook-verify.ts`) is the whole of its security — never act on a
+body before it passes, and hash the raw text, not a re-serialised object. The ITEM codes set
+columns that `describePlaidItemAttention` reads; update mode (`completePlaidUpdateAction`) and
+`LOGIN_REPAIRED` clear them. An update-mode public token is not exchanged — the access token is
+unchanged. E2E specs sign deliveries with the fixture key in `fake-webhook.ts`.
+
 `npm run verify:plaid` checks the hand-written client against the real Plaid sandbox (free,
 fabricated data). The rest of the suite runs against a fake written from the published API,
 so it proves the code agrees with that fake — not that the API behaves that way. Run it after
