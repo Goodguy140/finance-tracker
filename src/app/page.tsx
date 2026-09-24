@@ -694,22 +694,6 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       subtitle: `${periodDescription} · ${periodExpenses.length} transaction${periodExpenses.length === 1 ? "" : "s"}`,
       body: (
         <>
-          {plaidAttentionCount > 0 ? (
-            <div
-              role="status"
-              data-testid="plaid-attention-banner"
-              className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-100"
-            >
-              <span>
-                {plaidAttentionCount === 1
-                  ? "A bank connection needs your attention."
-                  : `${plaidAttentionCount} bank connections need your attention.`}
-              </span>
-              <Link href="/settings#banks" className="font-medium underline underline-offset-4">
-                Review in Settings
-              </Link>
-            </div>
-          ) : null}
           {cardSettings["expense-log"]?.showReviewQueue === false ? null : (
             <PlaidReviewQueue rows={reviewRows} revisions={revisionRows} />
           )}
@@ -843,6 +827,24 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           titleSuggestions={expenseTitleSuggestions}
         />
 
+        {/* Page-level rather than inside a card: a card body can render twice (grid and tab
+            stack) or sit on an inactive tab, and this must be seen exactly once. */}
+        {plaidAttentionCount > 0 ? (
+          <div
+            role="status"
+            data-testid="plaid-attention-banner"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-100"
+          >
+            <span>
+              {plaidAttentionCount === 1
+                ? "A bank connection needs your attention."
+                : `${plaidAttentionCount} bank connections need your attention.`}
+            </span>
+            <Link href="/settings#banks" className="font-medium underline underline-offset-4">
+              Review in Settings
+            </Link>
+          </div>
+        ) : null}
         <DashboardShell storedLayout={storedLayout} cards={cardContent} />
       </div>
     </main>
