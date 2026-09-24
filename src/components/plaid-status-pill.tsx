@@ -18,13 +18,18 @@ const statusLabel: Record<string, string> = {
 
 const defaultTone = "border-slate-600 bg-slate-800/70 text-slate-200";
 
-export function PlaidStatusPill({ status }: { status: string }) {
-  const tone = statusTone[status] ?? defaultTone;
+/**
+ * `needsAttention` covers what a working connection can still ask for — renewing consent
+ * before it lapses, sharing new accounts — so "Connected" never sits beside a warning.
+ */
+export function PlaidStatusPill({ status, needsAttention = false }: { status: string; needsAttention?: boolean }) {
+  const label = status === "ACTIVE" && needsAttention ? "Action needed" : (statusLabel[status] ?? status);
+  const tone = status === "ACTIVE" && needsAttention ? statusTone.LOGIN_REQUIRED : (statusTone[status] ?? defaultTone);
   return (
     <span
       className={`inline-flex max-w-full items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold leading-tight tracking-wide sm:text-xs ${tone}`}
     >
-      {statusLabel[status] ?? status}
+      {label}
     </span>
   );
 }

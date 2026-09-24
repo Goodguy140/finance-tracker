@@ -24,6 +24,7 @@ npm run dev
 | `PLAID_ENV` | Optional. `sandbox` (default) or `production`. Only consulted when the two vars above are set |
 | `PLAID_SYNC_SCHEDULER` | Optional. Set `false` to disable the background sweep that pulls new bank transactions, overriding the admin checkbox |
 | `PLAID_SYNC_INTERVAL_MINUTES` | Optional. How often that sweep runs (default `60`, minimum `15`) |
+| `PLAID_WEBHOOK_URL` | Optional. Where Plaid delivers webhooks. Defaults to `<NEXTAUTH_URL>/api/plaid/webhook`; must be public `https` or webhooks stay off |
 
 `DATABASE_URL` defaults to `file:/data/app.db` (production) or `file:./dev.db` (development).
 
@@ -119,6 +120,16 @@ connected banks in the background** turns the sweep off without a restart, leavi
 and **Sync all** as the only triggers; `PLAID_SYNC_SCHEDULER=false` does the same from the
 environment and overrules the checkbox while it is set. Banks waiting on re-authentication are skipped until you sign in
 again, rather than being retried every hour.
+
+Plaid also tells the app directly when a bank needs attention, through signed webhooks to
+`/api/plaid/webhook` (every delivery's `Plaid-Verification` signature is checked; nothing unsigned is
+acted on). A bank that wants you to sign in again, whose access is about to expire or be
+disconnected, or that has new accounts to share gets a prompt on its card in Settings and a
+banner on the dashboard. The button opens Plaid's update mode — with account selection turned on for
+new accounts — and the prompt clears when it completes, or on its own if Plaid reports
+`LOGIN_REPAIRED`. Webhooks need a public `https` URL: it is derived from `NEXTAUTH_URL` (or set
+`PLAID_WEBHOOK_URL`), and banks linked earlier are re-pointed at it on their next sync. Without one,
+the hourly sweep is still how a broken connection is noticed.
 
 Configure under **Settings → Server admin → Plaid** (encrypted in the database with
 `SERVER_SETTINGS_ENCRYPTION_KEY`). `PLAID_CLIENT_ID` and `PLAID_SECRET` in the environment take

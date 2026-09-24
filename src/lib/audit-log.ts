@@ -52,6 +52,8 @@ export const AUDIT_ACTIONS = {
   plaid_item_sync_failed: "plaid_item_sync_failed",
   plaid_item_reauth_required: "plaid_item_reauth_required",
   plaid_transactions_committed: "plaid_transactions_committed",
+  plaid_webhook_received: "plaid_webhook_received",
+  plaid_item_update_completed: "plaid_item_update_completed",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

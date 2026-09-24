@@ -168,7 +168,9 @@ export const config = {
   // The PWA files must be public too: Android fetches the manifest without cookies, the
   // home-screen icon is fetched before anyone signs in, and the service worker precaches
   // the offline page. None of them carries user data.
+  // `api/plaid/webhook` is called by Plaid, which has no session; it verifies Plaid's
+  // signature on every delivery instead. Anchored so nothing beside it slips through.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/health|api/v1|manifest\\.webmanifest$|sw\\.js$|icons/|icon\\.svg$|apple-icon\\.png$|offline$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/health|api/v1|api/plaid/webhook$|manifest\\.webmanifest$|sw\\.js$|icons/|icon\\.svg$|apple-icon\\.png$|offline$).*)",
   ],
 };

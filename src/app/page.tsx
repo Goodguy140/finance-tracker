@@ -47,6 +47,7 @@ import type { VerificationInfo } from "@/components/verified-badge";
 import { PlaidReviewQueue } from "@/components/plaid-review-queue";
 import { buildExpenseTitleSuggestions } from "@/lib/expense-title-suggestions";
 import { resolveDisplayName } from "@/lib/plaid/ingest";
+import { PLAID_ITEM_NEEDS_ATTENTION_WHERE } from "@/lib/plaid/attention";
 import {
   bucketIncomeCentsByYm,
   computeRecurringCashFlowSummary,
@@ -109,7 +110,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const categoryUsageCutoff = new Date(now);
   categoryUsageCutoff.setMonth(categoryUsageCutoff.getMonth() - 3);
 
-  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount] =
+  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount, plaidAttentionCount] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -239,6 +240,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     }),
     // Only decides whether the log's refresh control is worth showing.
     prisma.plaidItem.count({ where: { userId: user.id } }),
+    // Banks Plaid has told us need the user (sign in, renew, new accounts). The detail and
+    // the fix live on Settings; this only makes sure they find out without going there.
+    prisma.plaidItem.count({ where: { userId: user.id, ...PLAID_ITEM_NEEDS_ATTENTION_WHERE } }),
   ]);
 
   const expenseCategories = categories.filter((c) => c.kind === CategoryKind.EXPENSE);
@@ -690,6 +694,22 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       subtitle: `${periodDescription} · ${periodExpenses.length} transaction${periodExpenses.length === 1 ? "" : "s"}`,
       body: (
         <>
+          {plaidAttentionCount > 0 ? (
+            <div
+              role="status"
+              data-testid="plaid-attention-banner"
+              className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-100"
+            >
+              <span>
+                {plaidAttentionCount === 1
+                  ? "A bank connection needs your attention."
+                  : `${plaidAttentionCount} bank connections need your attention.`}
+              </span>
+              <Link href="/settings#banks" className="font-medium underline underline-offset-4">
+                Review in Settings
+              </Link>
+            </div>
+          ) : null}
           {cardSettings["expense-log"]?.showReviewQueue === false ? null : (
             <PlaidReviewQueue rows={reviewRows} revisions={revisionRows} />
           )}

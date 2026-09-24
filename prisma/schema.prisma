@@ -605,6 +605,19 @@ model PlaidItem {
   /// Set while a sync is in flight. A value older than the stale threshold is ignored, so a
   /// crashed sync cannot wedge the item forever.
   syncingSince            DateTime?
+  /// Set by a PENDING_EXPIRATION webhook: the user's consent ends soon (date in
+  /// consentExpiresAt). Cleared when update mode completes or LOGIN_REPAIRED arrives.
+  pendingExpirationAt     DateTime?
+  /// Set by a PENDING_DISCONNECT webhook: the bank will stop sharing data soon unless the
+  /// user goes through update mode. Cleared the same way as pendingExpirationAt.
+  pendingDisconnectAt     DateTime?
+  /// Plaid's `reason` for the pending disconnect, e.g. INSTITUTION_TOKEN_EXPIRATION.
+  pendingDisconnectReason String?
+  /// Set by NEW_ACCOUNTS_AVAILABLE. Cleared when account-selection update mode completes.
+  newAccountsAvailableAt  DateTime?
+  /// The webhook URL Plaid holds for this item. Compared on sync so items linked before
+  /// webhooks existed, or before the public URL changed, are re-pointed once.
+  webhookUrl              String?
   /// Per-item fallback when the personal_finance_category map does not hit.
   defaultCategoryId       String?
   createdAt               DateTime        @default(now())

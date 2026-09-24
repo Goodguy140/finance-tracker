@@ -1,0 +1,206 @@
+import { PlaidItemStatus, type Prisma, type PrismaClient } from "@prisma/client";
+import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
+import type { PlaidClient } from "@/lib/plaid/client";
+import { openAccessToken } from "@/lib/plaid/service";
+import type { PlaidApiErrorPayload } from "@/lib/plaid/types";
+import { resolvePlaidWebhookUrl } from "@/lib/plaid/webhook-url";
+
+/**
+ * What an ITEM webhook means for the bank connection it names.
+ *
+ * Split like sync-plan / sync-store: `planPlaidWebhook` is pure and says which columns
+ * change, `applyPlaidWebhook` finds the item and writes them. None of it touches the
+ * transaction log or the review queue — a webhook only ever changes what the user is
+ * *prompted* to do, so an unattended delivery is as safe as the unattended sweep.
+ *
+ * Every plan is a set of absolute values rather than a delta, so a redelivery (Plaid
+ * retries anything that did not get a 200) lands on the same state.
+ */
+
+export type PlaidWebhookBody = {
+  webhook_type?: unknown;
+  webhook_code?: unknown;
+  item_id?: unknown;
+  error?: PlaidApiErrorPayload | null;
+  consent_expiration_time?: unknown;
+  reason?: unknown;
+};
+
+export type PlaidWebhookPlan = {
+  code: string;
+  data: Prisma.PlaidItemUpdateInput;
+  /** Re-read the item from Plaid afterwards so consentExpiresAt reflects the repair. */
+  refreshConsent: boolean;
+  auditAction: string;
+};
+
+const LOGIN_REQUIRED_FALLBACK =
+  "Your bank needs you to sign in again before it will share new transactions.";
+
+/** Everything that means "a person has dealt with this", cleared together. */
+export const CLEARED_ATTENTION = {
+  status: PlaidItemStatus.ACTIVE,
+  errorCode: null,
+  errorMessage: null,
+  lastSyncError: null,
+  consecutiveSyncFailures: 0,
+  nextSyncAttemptAt: null,
+  pendingExpirationAt: null,
+  pendingDisconnectAt: null,
+  pendingDisconnectReason: null,
+} satisfies Prisma.PlaidItemUpdateInput;
+
+function parseDate(value: unknown): Date | null {
+  if (typeof value !== "string" || !value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+export function planPlaidWebhook(body: PlaidWebhookBody, now: Date): PlaidWebhookPlan | null {
+  if (body.webhook_type !== "ITEM") return null;
+  const code = typeof body.webhook_code === "string" ? body.webhook_code : "";
+
+  const loginRequired =
+    (code === "ERROR" && body.error?.error_code === "ITEM_LOGIN_REQUIRED") ||
+    code === "ITEM_LOGIN_REQUIRED";
+  if (loginRequired) {
+    return {
+      code: "ITEM_LOGIN_REQUIRED",
+      data: {
+        status: PlaidItemStatus.LOGIN_REQUIRED,
+        errorCode: "ITEM_LOGIN_REQUIRED",
+        errorMessage: body.error?.display_message || LOGIN_REQUIRED_FALLBACK,
+        // The sweep already skips anything not ACTIVE; a pending backoff would only delay
+        // the first sync after the user fixes it.
+        nextSyncAttemptAt: null,
+      },
+      refreshConsent: false,
+      auditAction: AUDIT_ACTIONS.plaid_item_reauth_required,
+    };
+  }
+
+  switch (code) {
+    case "ERROR":
+      // Anything else is recorded where the panel already shows sync errors. It does not
+      // flip the status: only a sign-in problem has a fix the user can act on here.
+      return {
+        code,
+        data: {
+          lastSyncError:
+            body.error?.display_message ||
+            body.error?.error_message ||
+            `Plaid reported ${body.error?.error_code ?? "an error"} for this bank.`,
+        },
+        refreshConsent: false,
+        auditAction: AUDIT_ACTIONS.plaid_webhook_received,
+      };
+    case "PENDING_EXPIRATION": {
+      const expires = parseDate(body.consent_expiration_time);
+      return {
+        code,
+        data: { pendingExpirationAt: now, ...(expires ? { consentExpiresAt: expires } : {}) },
+        refreshConsent: false,
+        auditAction: AUDIT_ACTIONS.plaid_webhook_received,
+      };
+    }
+    case "PENDING_DISCONNECT":
+      return {
+        code,
+        data: {
+          pendingDisconnectAt: now,
+          pendingDisconnectReason: typeof body.reason === "string" ? body.reason : null,
+        },
+        refreshConsent: false,
+        auditAction: AUDIT_ACTIONS.plaid_webhook_received,
+      };
+    case "LOGIN_REPAIRED":
+      // The user signed in again somewhere else (another app on the same connection), so
+      // every prompt that asked them to is now wrong.
+      return {
+        code,
+        data: { ...CLEARED_ATTENTION },
+        refreshConsent: true,
+        auditAction: AUDIT_ACTIONS.plaid_webhook_received,
+      };
+    case "NEW_ACCOUNTS_AVAILABLE":
+      return {
+        code,
+        data: { newAccountsAvailableAt: now },
+        refreshConsent: false,
+        auditAction: AUDIT_ACTIONS.plaid_webhook_received,
+      };
+    default:
+      return null;
+  }
+}
+
+export type WebhookOutcome = "applied" | "ignored" | "unknown-item";
+
+/**
+ * Applies one verified delivery. The caller has already checked the signature; this only
+ * decides what it means.
+ *
+ * The audit row is the last write, so a test (or an operator) waiting on it knows the item
+ * update and any consent refresh have both landed.
+ */
+export async function applyPlaidWebhook(
+  deps: { prisma: PrismaClient; client: PlaidClient; now?: Date },
+  body: PlaidWebhookBody,
+): Promise<WebhookOutcome> {
+  const now = deps.now ?? new Date();
+  const plan = planPlaidWebhook(body, now);
+  if (!plan) return "ignored";
+  if (typeof body.item_id !== "string" || !body.item_id) return "ignored";
+
+  const item = await deps.prisma.plaidItem.findUnique({ where: { itemId: body.item_id } });
+  if (!item || item.status === PlaidItemStatus.REMOVED) return "unknown-item";
+
+  await deps.prisma.plaidItem.update({ where: { id: item.id }, data: plan.data });
+
+  if (plan.refreshConsent) {
+    try {
+      const { item: fresh } = await deps.client.getAccounts(openAccessToken(item));
+      await deps.prisma.plaidItem.update({
+        where: { id: item.id },
+        data: { consentExpiresAt: parseDate(fresh?.consent_expiration_time) },
+      });
+    } catch (err) {
+      // Cosmetic: the prompt is already cleared, and the next sync reports any real fault.
+      console.error("[plaid] could not refresh consent after LOGIN_REPAIRED", err);
+    }
+  }
+
+  await recordAuditLog(deps.prisma, {
+    userId: item.userId,
+    action: plan.auditAction,
+    targetType: "PlaidItem",
+    targetId: item.id,
+    metadata: { code: plan.code, institution: item.institutionName, source: "webhook" },
+    headers: new Headers(),
+  });
+  return "applied";
+}
+
+/**
+ * Points an item's webhooks at this deployment's URL when Plaid holds a different one (or
+ * none, for banks linked before webhooks existed). One Plaid call per item per URL change;
+ * a failure is logged and never blocks the sync it runs ahead of.
+ */
+export async function ensurePlaidItemWebhook(
+  deps: { prisma: PrismaClient; client: PlaidClient; env?: Record<string, string | undefined> },
+  itemId: string,
+): Promise<void> {
+  const url = resolvePlaidWebhookUrl(deps.env);
+  if (!url) return;
+  const item = await deps.prisma.plaidItem.findUnique({
+    where: { id: itemId },
+    select: { id: true, webhookUrl: true, accessTokenEnc: true },
+  });
+  if (!item || item.webhookUrl === url) return;
+  try {
+    await deps.client.updateItemWebhook(openAccessToken(item), url);
+    await deps.prisma.plaidItem.update({ where: { id: item.id }, data: { webhookUrl: url } });
+  } catch (err) {
+    console.error("[plaid] could not register the webhook URL for an item", err);
+  }
+}

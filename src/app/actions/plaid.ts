@@ -24,6 +24,8 @@ import {
 import { formatDateOnlyUtc } from "@/lib/date-only";
 import { MfaStepUpRequiredError, requireFreshMfa, requireUser, type MfaStepUpCode } from "@/lib/session";
 import { syncPlaidItem } from "@/lib/plaid/sync";
+import { resolvePlaidWebhookUrl } from "@/lib/plaid/webhook-url";
+import { CLEARED_ATTENTION, ensurePlaidItemWebhook } from "@/lib/plaid/webhooks";
 import { sweepDuePlaidItems } from "@/lib/plaid-sync-scheduler";
 import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
 import {
@@ -89,9 +91,28 @@ async function discardRedundantItem(client: PlaidClient, accessToken: string): P
   }
 }
 
+/**
+ * Which update-mode flow to open. `reauth` covers sign-in required, pending expiration and
+ * pending disconnect alike — Plaid's fix for all three is the same re-authentication.
+ * `accounts` turns on account selection, for NEW_ACCOUNTS_AVAILABLE.
+ */
+export type PlaidUpdateKind = "reauth" | "accounts";
+
+function parseUpdateKind(raw: string): PlaidUpdateKind {
+  return raw === "accounts" ? "accounts" : "reauth";
+}
+
 export type PlaidLinkTokenState =
   | { ok: null }
-  | { ok: true; linkToken: string; mode: "create" | "update"; cutoffNote: string | null }
+  | { ok: true; linkToken: string; mode: "create"; cutoffNote: string | null }
+  | {
+      ok: true;
+      linkToken: string;
+      mode: "update";
+      cutoffNote: null;
+      plaidItemId: string;
+      updateKind: PlaidUpdateKind;
+    }
   | { ok: false; error: string; code?: MfaStepUpCode };
 
 /**
@@ -99,6 +120,7 @@ export type PlaidLinkTokenState =
  *
  * Two modes: a fresh link carries `days_requested` (set once, for the life of the item),
  * and update mode re-authenticates an existing item and must omit products entirely.
+ * Both carry this deployment's webhook URL when it has a public one.
  */
 export async function createPlaidLinkTokenAction(
   _prev: PlaidLinkTokenState,
@@ -108,6 +130,8 @@ export async function createPlaidLinkTokenAction(
   if ("error" in gate) return { ok: false, error: gate.error, code: gate.code };
   const user = gate.user;
   const reauthItemId = getFormValue(formData, "plaidItemId");
+  const updateKind = parseUpdateKind(getFormValue(formData, "updateKind"));
+  const webhook = resolvePlaidWebhookUrl() ?? undefined;
 
   try {
     const client = await requirePlaidClient();
@@ -122,16 +146,25 @@ export async function createPlaidLinkTokenAction(
         clientName: "Finance Tracker",
         countryCodes: [user.countryCode || "CA"],
         accessToken: openAccessToken(item),
+        accountSelection: updateKind === "accounts",
+        webhook,
       });
       await recordAuditLog(prisma, {
         userId: user.id,
         action: AUDIT_ACTIONS.plaid_link_started,
         targetType: "PlaidItem",
         targetId: item.id,
-        metadata: { mode: "update", institution: item.institutionName },
+        metadata: { mode: "update", updateKind, institution: item.institutionName },
         headers: await headers(),
       });
-      return { ok: true, linkToken: token.link_token, mode: "update", cutoffNote: null };
+      return {
+        ok: true,
+        linkToken: token.link_token,
+        mode: "update",
+        cutoffNote: null,
+        plaidItemId: item.id,
+        updateKind,
+      };
     }
 
     const days = parseHistoryWindowDays(getFormValue(formData, "historyDays"));
@@ -141,6 +174,7 @@ export async function createPlaidLinkTokenAction(
       clientName: "Finance Tracker",
       countryCodes: [user.countryCode || "CA"],
       daysRequested: days,
+      webhook,
     });
     await recordAuditLog(prisma, {
       userId: user.id,
@@ -271,6 +305,7 @@ export async function exchangePlaidPublicTokenAction(
         institutionName,
         requestedDays: days,
         historyCutoff: cutoff,
+        webhookUrl: resolvePlaidWebhookUrl(),
         consentExpiresAt: item?.consent_expiration_time
           ? new Date(item.consent_expiration_time)
           : null,
@@ -300,6 +335,73 @@ export async function exchangePlaidPublicTokenAction(
       institutionName: institutionName ?? "Your bank",
       accountCount: accounts.length,
       cutoffDisplay: formatDateOnlyUtc(cutoff),
+    };
+  } catch (err) {
+    return { ok: false, error: describePlaidFailure(err) };
+  }
+}
+
+export type PlaidUpdateState =
+  | { ok: null }
+  | { ok: true; institutionName: string; updateKind: PlaidUpdateKind; newAccounts: number }
+  | { ok: false; error: string; code?: MfaStepUpCode };
+
+/**
+ * Finishes update mode for an item we already hold.
+ *
+ * Link hands back a public token here too, but Plaid's guidance is not to exchange it: the
+ * access token is unchanged, and exchanging would only mint a credential to throw away.
+ * Instead the item is re-read with the token we have, which both proves the repair took
+ * and picks up any accounts the user just shared.
+ *
+ * Clears every prompt the update answers. That is the point of the flow — the callout the
+ * user clicked must not still be there when they come back.
+ */
+export async function completePlaidUpdateAction(
+  _prev: PlaidUpdateState,
+  formData: FormData,
+): Promise<PlaidUpdateState> {
+  const gate = await requireStepUp();
+  if ("error" in gate) return { ok: false, error: gate.error, code: gate.code };
+  const user = gate.user;
+  const plaidItemId = getFormValue(formData, "plaidItemId");
+  const updateKind = parseUpdateKind(getFormValue(formData, "updateKind"));
+
+  const item = await prisma.plaidItem.findFirst({ where: { id: plaidItemId, userId: user.id } });
+  if (!item) return { ok: false, error: "That bank connection was not found." };
+
+  try {
+    const client = await requirePlaidClient();
+    const { accounts, item: fresh } = await client.getAccounts(openAccessToken(item));
+    const known = await prisma.plaidAccount.count({
+      where: { plaidItemId: item.id, plaidAccountId: { in: accounts.map((a) => a.account_id) } },
+    });
+    await upsertPlaidAccounts(item.id, user.id, accounts);
+    await prisma.plaidItem.update({
+      where: { id: item.id },
+      data: {
+        ...CLEARED_ATTENTION,
+        // Account selection is also a full update-mode pass, so it clears a sign-in prompt
+        // as well; a plain re-auth leaves a new-accounts prompt for its own flow.
+        ...(updateKind === "accounts" ? { newAccountsAvailableAt: null } : {}),
+        consentExpiresAt: fresh?.consent_expiration_time ? new Date(fresh.consent_expiration_time) : null,
+      },
+    });
+    await recordAuditLog(prisma, {
+      userId: user.id,
+      action: AUDIT_ACTIONS.plaid_item_update_completed,
+      targetType: "PlaidItem",
+      targetId: item.id,
+      metadata: { updateKind, institution: item.institutionName, accounts: accounts.length },
+      headers: await headers(),
+    });
+    revalidatePath(SETTINGS_PATH);
+    revalidatePath("/");
+    return {
+      ok: true,
+      institutionName: item.institutionName ?? "Your bank",
+      updateKind,
+      newAccounts: Math.max(0, accounts.length - known),
     };
   } catch (err) {
     return { ok: false, error: describePlaidFailure(err) };
@@ -477,6 +579,7 @@ export const syncPlaidItemAction = formAction(async (formData: FormData) => {
 
   const client = await requirePlaidClient();
   const { createSyncStore } = await import("@/lib/plaid/sync-store");
+  await ensurePlaidItemWebhook({ prisma, client }, item.id);
 
   try {
     const summary = await syncPlaidItem({ client, store: createSyncStore() }, item.id);

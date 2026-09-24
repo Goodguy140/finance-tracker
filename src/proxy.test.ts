@@ -28,6 +28,13 @@ describe("proxy matcher", () => {
     expect(matcher.test("/api/health")).toBe(false);
   });
 
+  it("lets Plaid reach the signature-checked webhook, and nothing next to it", () => {
+    expect(matcher.test("/api/plaid/webhook")).toBe(false);
+    expect(matcher.test("/api/plaid/webhooks")).toBe(true);
+    expect(matcher.test("/api/plaid/webhook/extra")).toBe(true);
+    expect(matcher.test("/api/plaid")).toBe(true);
+  });
+
   it("leaves the PWA files public so a signed-out device can install the app", () => {
     for (const path of [
       "/manifest.webmanifest",

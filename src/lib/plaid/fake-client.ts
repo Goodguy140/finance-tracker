@@ -3,6 +3,7 @@
 // rewrites its aliases ahead of time -- the loader resolves them as written. Under
 // Playwright that fails with "Cannot find module '@/lib/plaid/client'".
 import { PlaidApiError, type PlaidClient } from "./client";
+import { FAKE_WEBHOOK_KEY_ID, FAKE_WEBHOOK_PUBLIC_KEY } from "./fake-webhook";
 import type { PlaidApiTransaction } from "./types";
 
 /**
@@ -23,6 +24,10 @@ type FakeItem = {
   accessToken: string;
   institutionId: string;
   removed: boolean;
+  /** Set once account-selection update mode has been opened, as a user picking up the
+   *  account NEW_ACCOUNTS_AVAILABLE announced would. */
+  sharesNewAccount?: boolean;
+  webhook?: string;
 };
 
 type FakeState = { items: Map<string, FakeItem>; counter: number };
@@ -153,12 +158,34 @@ export const FAKE_ACCOUNTS = [
   },
 ] as const;
 
+/** The account a fake item starts sharing after account-selection update mode. */
+export const FAKE_NEW_ACCOUNT = {
+  account_id: "fake-acct-new-tfsa",
+  name: "Tax-Free Savings",
+  official_name: null,
+  mask: "7788",
+  type: "depository",
+  subtype: "savings",
+  balances: { iso_currency_code: "CAD" },
+} as const;
+
+function unknownItem(): PlaidApiError {
+  return new PlaidApiError({
+    message: "Item not found.",
+    errorCode: "ITEM_NOT_FOUND",
+    errorType: "ITEM_ERROR",
+    requestId: null,
+    httpStatus: 400,
+  });
+}
+
 export function createFakePlaidClient(): PlaidClient {
   return {
     async createLinkToken(input) {
       // Update mode must carry an access token; a fresh link must not.
       if (input.accessToken) {
-        const known = [...state().items.values()].some((i) => i.accessToken === input.accessToken);
+        const known = [...state().items.values()].find((i) => i.accessToken === input.accessToken);
+        if (known && input.accountSelection) known.sharesNewAccount = true;
         if (!known) {
           throw new PlaidApiError({
             message: "Unknown access token.",
@@ -217,7 +244,9 @@ export function createFakePlaidClient(): PlaidClient {
         });
       }
       return {
-        accounts: FAKE_ACCOUNTS.map((a) => ({ ...a })),
+        accounts: [...FAKE_ACCOUNTS, ...(item.sharesNewAccount ? [FAKE_NEW_ACCOUNT] : [])].map((a) => ({
+          ...a,
+        })),
         item: {
           item_id: item.itemId,
           institution_id: item.institutionId,
@@ -269,6 +298,25 @@ export function createFakePlaidClient(): PlaidClient {
       }
       item.removed = true;
       state().items.delete(item.itemId);
+    },
+
+    async getWebhookVerificationKey(keyId) {
+      if (keyId !== FAKE_WEBHOOK_KEY_ID) {
+        throw new PlaidApiError({
+          message: "Unknown key id.",
+          errorCode: "INVALID_WEBHOOK_VERIFICATION_KEY_ID",
+          errorType: "INVALID_INPUT",
+          requestId: null,
+          httpStatus: 400,
+        });
+      }
+      return { key: { ...FAKE_WEBHOOK_PUBLIC_KEY } };
+    },
+
+    async updateItemWebhook(accessToken, webhook) {
+      const item = [...state().items.values()].find((i) => i.accessToken === accessToken);
+      if (!item) throw unknownItem();
+      item.webhook = webhook;
     },
   };
 }

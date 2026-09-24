@@ -6,6 +6,7 @@ import { plaidSweepSwitchEnabled } from "@/lib/plaid/settings";
 import { requirePlaidClient } from "@/lib/plaid/service";
 import { PlaidSyncBusyError, syncPlaidItem } from "@/lib/plaid/sync";
 import { createSyncStore } from "@/lib/plaid/sync-store";
+import { ensurePlaidItemWebhook } from "@/lib/plaid/webhooks";
 import {
   DEFAULT_PLAID_SYNC_INTERVAL_MINUTES,
   MIN_PLAID_SYNC_INTERVAL_MINUTES,
@@ -167,6 +168,9 @@ export async function sweepDuePlaidItems(
   const store = createSyncStore();
 
   for (const item of due) {
+    // Re-points banks linked before webhooks existed. Best-effort and at most one call per
+    // item per URL change; it never fails the sync behind it.
+    await ensurePlaidItemWebhook({ prisma, client }, item.id);
     try {
       const result = await syncPlaidItem({ client, store }, item.id);
       summary.synced += 1;

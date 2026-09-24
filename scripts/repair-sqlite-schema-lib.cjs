@@ -1,5 +1,5 @@
 /** Keep in sync with SCHEMA_REPAIR_VERSION in src/lib/migration-health.ts */
-const SCHEMA_REPAIR_VERSION = "4";
+const SCHEMA_REPAIR_VERSION = "5";
 const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
 
@@ -49,6 +49,31 @@ const COLUMN_REPAIRS = [
     table: "PlaidItem",
     column: "nextSyncAttemptAt",
     ddl: 'ALTER TABLE "PlaidItem" ADD COLUMN "nextSyncAttemptAt" DATETIME',
+  },
+  {
+    table: "PlaidItem",
+    column: "pendingExpirationAt",
+    ddl: 'ALTER TABLE "PlaidItem" ADD COLUMN "pendingExpirationAt" DATETIME',
+  },
+  {
+    table: "PlaidItem",
+    column: "pendingDisconnectAt",
+    ddl: 'ALTER TABLE "PlaidItem" ADD COLUMN "pendingDisconnectAt" DATETIME',
+  },
+  {
+    table: "PlaidItem",
+    column: "pendingDisconnectReason",
+    ddl: 'ALTER TABLE "PlaidItem" ADD COLUMN "pendingDisconnectReason" TEXT',
+  },
+  {
+    table: "PlaidItem",
+    column: "newAccountsAvailableAt",
+    ddl: 'ALTER TABLE "PlaidItem" ADD COLUMN "newAccountsAvailableAt" DATETIME',
+  },
+  {
+    table: "PlaidItem",
+    column: "webhookUrl",
+    ddl: 'ALTER TABLE "PlaidItem" ADD COLUMN "webhookUrl" TEXT',
   },
 ];
 

@@ -105,6 +105,28 @@ export type CreateLinkTokenInput = {
   daysRequested?: number;
   /** Present only in update mode (re-authentication), where `products` must be omitted. */
   accessToken?: string;
+  /**
+   * Update mode only: let the user add (or drop) accounts on an existing item, which is
+   * how NEW_ACCOUNTS_AVAILABLE is acted on. Ignored for a fresh link.
+   */
+  accountSelection?: boolean;
   webhook?: string;
   redirectUri?: string;
+};
+
+/**
+ * A JWK from /webhook_verification_key/get. Plaid signs webhooks with ES256, so this is
+ * always an EC P-256 public key.
+ */
+export type PlaidWebhookVerificationKey = {
+  alg: string;
+  crv: string;
+  kid: string;
+  kty: string;
+  use?: string;
+  x: string;
+  y: string;
+  created_at?: number;
+  /** Null while the key is current. A retired key may still verify older deliveries. */
+  expired_at?: number | null;
 };
