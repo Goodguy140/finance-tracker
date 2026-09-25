@@ -51,7 +51,8 @@ function daysAgo(days: number): string {
  * has to handle, and deterministic so a test can set up the matching side by hand:
  *
  *  - LOBLAWS is an ordinary new expense with nothing to match against;
- *  - BLUE BOTTLE is priced and dated to match a hand-entered transaction the test creates;
+ *  - BLUE BOTTLE is priced and dated to match a hand-entered transaction the test creates
+ *    to the cent, so the sync links it itself;
  *  - PAYROLL is income, so the income branch of the category map is exercised;
  *  - REFUND is a negative non-income amount, which must book as a negative expense;
  *  - HARDWARE has no merchant_name, so the raw bank description is what reaches the queue.

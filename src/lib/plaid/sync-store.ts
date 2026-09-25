@@ -12,6 +12,7 @@ import {
 import {
   assignMatches,
   MATCH_DATE_TOLERANCE_DAYS,
+  selectAutoLinks,
   type MatchCandidate,
   type StagedForMatch,
 } from "@/lib/plaid/matcher";
@@ -293,6 +294,9 @@ export function createSyncStore(): SyncStore {
         where: { userId: item.userId, plaidItemId: item.id, status: PlaidStagedStatus.NEEDS_REVIEW },
         select: {
           id: true,
+          plaidTransactionId: true,
+          plaidAccountRowId: true,
+          isPending: true,
           suggestedAccountId: true,
           type: true,
           amountCents: true,
@@ -300,6 +304,7 @@ export function createSyncStore(): SyncStore {
           postedDate: true,
           name: true,
           merchantName: true,
+          plaidItem: { select: { institutionName: true } },
         },
       });
       if (staged.length === 0) return 0;
@@ -351,8 +356,9 @@ export function createSyncStore(): SyncStore {
         isSplitParent: row.splitParts.length > 0,
       }));
 
-      const forMatch: StagedForMatch[] = staged.map((row) => ({
+      const forMatch: (StagedForMatch & { isPending: boolean })[] = staged.map((row) => ({
         id: row.id,
+        isPending: row.isPending,
         accountId: row.suggestedAccountId,
         type: row.type,
         amountCents: row.amountCents,
@@ -363,6 +369,9 @@ export function createSyncStore(): SyncStore {
       }));
 
       const assigned = assignMatches(forMatch, candidates);
+      const autoLinks = selectAutoLinks(forMatch, candidates, assigned);
+      const stagedById = new Map(staged.map((row) => [row.id, row]));
+      const candidateById = new Map(candidateRows.map((row) => [row.id, row]));
 
       // Most rows have no match, and they all get identical (null) values — so they go in
       // one statement rather than one per row. An initial backfill can stage thousands,
@@ -392,6 +401,45 @@ export function createSyncStore(): SyncStore {
               matchReasonsJson: JSON.stringify(match.reasons),
             },
           });
+        }
+
+        // The bank and the user agree exactly — link it as the review queue's "Link" would.
+        // Both are re-checked here: the user may have resolved the row, or linked the
+        // transaction elsewhere, since the rows above were read.
+        for (const stagedId of autoLinks) {
+          const row = stagedById.get(stagedId)!;
+          const target = candidateById.get(assigned.get(stagedId)!.transactionId)!;
+          const alreadyVerified = await tx.transactionVerification.findUnique({
+            where: { transactionId: target.id },
+            select: { id: true },
+          });
+          if (alreadyVerified) continue;
+          const claimed = await tx.plaidStagedTransaction.updateMany({
+            where: { id: row.id, status: PlaidStagedStatus.NEEDS_REVIEW },
+            data: {
+              status: PlaidStagedStatus.LINKED,
+              resolvedTransactionId: target.id,
+              resolvedAt: new Date(),
+            },
+          });
+          if (claimed.count !== 1) continue;
+          await tx.transactionVerification.create({
+            data: {
+              userId: item.userId,
+              transactionId: target.id,
+              source: "MATCHED",
+              plaidTransactionId: row.plaidTransactionId,
+              plaidItemId: item.id,
+              plaidAccountRowId: row.plaidAccountRowId,
+              institutionName: row.plaidItem.institutionName,
+            },
+          });
+          if (!target.postedDate) {
+            await tx.transaction.update({
+              where: { id: target.id },
+              data: { postedDate: row.postedDate ?? row.date },
+            });
+          }
         }
       }, LONG_TRANSACTION_OPTIONS);
 

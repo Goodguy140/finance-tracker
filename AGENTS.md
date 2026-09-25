@@ -114,7 +114,10 @@ and is booked as a **negative expense** in the original category, not as income 
 as income would inflate income and leave the original spend uncorrected.
 
 **Nothing synced is ever written to the log automatically.** Rows land in
-`PlaidStagedTransaction` and wait for a person. That is what makes an unattended sweep safe,
+`PlaidStagedTransaction` and wait for a person. The one exception adds nothing: a posted bank
+row whose amount exactly equals an unverified entry the matcher paired it with, where no
+other pairing is exact, is linked during the sync (`selectAutoLinks`) — the entry gains a
+verified badge and, if it had none, a posted date; nothing else about it changes. That is what makes an unattended sweep safe,
 and it is why a bank revising or withdrawing a committed transaction updates the staged copy
 and raises a flag rather than editing the user's record.
 

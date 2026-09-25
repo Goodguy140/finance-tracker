@@ -4,8 +4,9 @@ import { normalizeMerchant } from "@/lib/plaid/merchant-text";
 /**
  * Proposing which hand-entered transaction a bank record corresponds to.
  *
- * This decides what the review queue pre-selects, never what gets written: every row is
- * confirmed by a human. That is what licenses a heuristic here — but it still has to be
+ * This decides what the review queue pre-selects, not what gets written: every row is
+ * confirmed by a human, except an exact, unambiguous match (`selectAutoLinks`), which only
+ * verifies a row the user entered. That is what licenses a heuristic here — but it has to be
  * *deterministic*, because a suggestion that reshuffles between page loads is worse than
  * no suggestion, and because determinism is what makes the tests meaningful.
  *
@@ -314,4 +315,48 @@ export function assignMatches(
     claimedCandidates.add(pairing.candidateId);
   }
   return assigned;
+}
+
+/**
+ * Which of the matcher's assignments are certain enough to link without asking.
+ *
+ * When the bank reports exactly the amount the user entered, there is nothing for a
+ * person to weigh, so the pairing is linked and verified during the sync. That is the
+ * only thing written without review: the user's own row is left as they entered it, and
+ * a new transaction is never created this way.
+ *
+ * Everything else still waits for a person, and so does an exact match that is not the
+ * only one it could be — two $12.00 coffees on consecutive days pair exactly with either
+ * recorded coffee, and picking one silently is the wrong-link case with no undo. A
+ * pending row waits for its posted successor, since a pending amount can still move (the
+ * tip, again).
+ */
+export function selectAutoLinks(
+  staged: (StagedForMatch & { isPending: boolean })[],
+  candidates: MatchCandidate[],
+  assigned: Map<string, MatchResult>,
+  opts: { dateToleranceDays?: number } = {},
+): Set<string> {
+  const isExactPairing = (row: StagedForMatch, candidate: MatchCandidate) =>
+    row.amountCents === candidate.amountCents && scoreMatch(row, candidate, opts) !== null;
+
+  const stagedById = new Map(staged.map((row) => [row.id, row]));
+  const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+  const auto = new Set<string>();
+
+  for (const [stagedId, match] of assigned) {
+    const row = stagedById.get(stagedId);
+    const candidate = candidateById.get(match.transactionId);
+    if (!row || !candidate || row.isPending) continue;
+    if (!isExactPairing(row, candidate)) continue;
+
+    const rivalCandidate = candidates.some(
+      (other) => other.id !== candidate.id && isExactPairing(row, other),
+    );
+    const rivalStaged = staged.some((other) => other.id !== row.id && isExactPairing(other, candidate));
+    if (rivalCandidate || rivalStaged) continue;
+
+    auto.add(stagedId);
+  }
+  return auto;
 }

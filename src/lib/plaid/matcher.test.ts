@@ -6,6 +6,7 @@ import {
   bestDateDelta,
   merchantSimilarity,
   scoreMatch,
+  selectAutoLinks,
   type MatchCandidate,
   type StagedForMatch,
 } from "@/lib/plaid/matcher";
@@ -311,5 +312,60 @@ describe("assignMatches", () => {
     expect(assignMatches([], []).size).toBe(0);
     expect(assignMatches([staged()], []).size).toBe(0);
     expect(assignMatches([], [candidate()]).size).toBe(0);
+  });
+});
+
+describe("selectAutoLinks", () => {
+  const auto = (
+    rows: (StagedForMatch & { isPending: boolean })[],
+    candidates: MatchCandidate[],
+  ) => selectAutoLinks(rows, candidates, assignMatches(rows, candidates));
+  const posted = (overrides: Partial<StagedForMatch> = {}) => ({
+    ...staged(overrides),
+    isPending: false,
+  });
+
+  it("links a bank row whose amount equals the one entry it matched", () => {
+    expect([...auto([posted()], [candidate()])]).toEqual(["staged-1"]);
+  });
+
+  it("links on an exact amount even when nothing else about the match is strong", () => {
+    // Three days apart, no merchant overlap, no account on record: `low` tier, but the
+    // amount is the user's criterion.
+    const row = posted({ date: d("2026-09-11"), merchantName: null, name: "POS 00412" });
+    const entry = candidate({ accountId: null, title: "Lunch" });
+    expect(assignMatches([row], [entry]).get("staged-1")?.tier).toBe("low");
+    expect([...auto([row], [entry])]).toEqual(["staged-1"]);
+  });
+
+  it("leaves an approximate amount for a person", () => {
+    expect(auto([posted({ amountCents: 8450 })], [candidate()]).size).toBe(0);
+    // Tip-sized difference: the bank charged more than was recorded.
+    expect(auto([posted({ amountCents: 9900 })], [candidate()]).size).toBe(0);
+  });
+
+  it("leaves a pending row until it posts", () => {
+    expect(auto([{ ...posted(), isPending: true }], [candidate()]).size).toBe(0);
+  });
+
+  it("does not guess between two entries the bank row matches exactly", () => {
+    const entries = [candidate(), candidate({ id: "txn-2", date: d("2026-09-15") })];
+    expect(auto([posted()], entries).size).toBe(0);
+  });
+
+  it("does not guess between two bank rows that match one entry exactly", () => {
+    const rows = [posted(), posted({ id: "staged-2", date: d("2026-09-15") })];
+    expect(auto(rows, [candidate()]).size).toBe(0);
+  });
+
+  it("still links an exact pair when a rival pairing is only approximate", () => {
+    const entries = [candidate(), candidate({ id: "txn-2", amountCents: 8400 })];
+    expect([...auto([posted()], entries)]).toEqual(["staged-1"]);
+  });
+
+  it("never links across the matcher's own gates", () => {
+    expect(auto([posted()], [candidate({ type: TransactionType.INCOME })]).size).toBe(0);
+    expect(auto([posted()], [candidate({ accountId: "acct-2" })]).size).toBe(0);
+    expect(auto([posted()], [candidate({ date: d("2026-09-01") })]).size).toBe(0);
   });
 });
