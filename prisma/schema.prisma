@@ -122,6 +122,13 @@ model User {
    * category over, not only from a browser that happens to be open.
    */
   budgetAlertEmailEnabled Boolean   @default(false)
+  /**
+   * How much text the dashboard must keep readable before it merges a column away, as whole
+   * percentages. The first applies to each card's text as a whole; the second to each budget
+   * name on its own, which is the point of its row and so gets a floor of its own.
+   */
+  dashboardTextVisiblePct       Int @default(95)
+  dashboardBudgetNameVisiblePct Int @default(90)
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 

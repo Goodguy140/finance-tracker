@@ -845,7 +845,14 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
             </Link>
           </div>
         ) : null}
-        <DashboardShell storedLayout={storedLayout} cards={cardContent} />
+        <DashboardShell
+          storedLayout={storedLayout}
+          cards={cardContent}
+          readability={{
+            textVisiblePct: user.dashboardTextVisiblePct,
+            budgetNameVisiblePct: user.dashboardBudgetNameVisiblePct,
+          }}
+        />
       </div>
     </main>
   );

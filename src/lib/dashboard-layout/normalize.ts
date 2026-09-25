@@ -1,5 +1,5 @@
 import { DASHBOARD_CARDS, DEFAULT_LAYOUT } from "./cards";
-import { collapseColumns, enforceMinimums } from "./columns";
+import { enforceMinimums } from "./columns";
 import {
   CARD_IDS,
   type DashboardCardId,
@@ -204,9 +204,4 @@ export function filterToAvailable(
   }
 
   return { version: layout.version, columns: enforceMinimums(columns), settings: layout.settings };
-}
-
-/** Render-time collapse for a narrow viewport; see `collapseColumns`. */
-export function layoutForRenderedColumns(layout: DashboardLayout, count: number): DashboardLayout {
-  return { ...layout, columns: collapseColumns(layout.columns, count) };
 }

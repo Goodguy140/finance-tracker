@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { hash } from "bcryptjs";
-import { CategoryKind } from "@prisma/client";
+import { CategoryKind, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
@@ -266,6 +266,111 @@ test("narrowing the window never produces horizontal scrolling, and no card disa
     expect(await clippedCards(page), `cards cut off at ${width}px`).toEqual([]);
     expect((await columnCards(page)).flat().sort(), `cards at ${width}px`).toEqual(expected);
   }
+});
+
+test("a column that clears the pixel minimum but cuts off its text is merged away", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+
+  await page.setViewportSize({ width: 1100, height: 1000 });
+  const user = await signInFreshUser(page, "cramped");
+
+  // The expense log's date labels are what a 340px column cuts off; without rows there is
+  // nothing to cut off and every width would pass on the pixel rule alone.
+  const category = await prisma.category.findFirstOrThrow({ where: { userId: user.id, kind: CategoryKind.EXPENSE } });
+  const now = new Date();
+  await prisma.transaction.createMany({
+    data: Array.from({ length: 8 }, (_, i) => ({
+      userId: user.id,
+      type: TransactionType.EXPENSE,
+      amountCents: 1234 * (i + 1),
+      date: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 2 + i)),
+      title: `Purchase ${i + 1}`,
+      categoryId: category.id,
+    })),
+  });
+  await prisma.dashboardLayout.upsert({
+    where: { userId: user.id },
+    create: { userId: user.id, version: 1, layoutJson: JSON.stringify(FOUR_COLUMN_LAYOUT) },
+    update: { version: 1, layoutJson: JSON.stringify(FOUR_COLUMN_LAYOUT) },
+  });
+  await page.reload();
+  await expectDashboardHome(page);
+
+  // Edit mode applies only the pixel minimum, so it shows what that rule alone allows.
+  await page.getByRole("button", { name: "Edit layout" }).click();
+  await expect(page.locator("[data-column-index]")).toHaveCount(3);
+  await page.getByRole("button", { name: "Done" }).click();
+  await expect(page.locator("[data-column-index]")).toHaveCount(2);
+
+  // Narrower, the pixel rule already gets to two; the cap from 1100px must not take one more.
+  await page.setViewportSize({ width: 1024, height: 1000 });
+  await expect(page.locator("[data-column-index]")).toHaveCount(2);
+
+  // And the columns come back once there is room for them.
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  await expect(page.locator("[data-column-index]")).toHaveCount(4);
+  expect((await columnCards(page)).flat()).toHaveLength(5);
+});
+
+test("a column is dropped rather than show less than 90% of a budget name", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const user = await signInFreshUser(page, "budget-names");
+
+  // One long name among short ones. Several would also trip the card-wide 95% rule, and the
+  // test would then pass whether or not the per-name floor exists.
+  const budget = await prisma.budget.findFirstOrThrow({ where: { userId: user.id }, include: { category: true } });
+  const longName = "Household repairs and seasonal upkeep";
+  await prisma.category.update({ where: { id: budget.categoryId }, data: { name: longName } });
+  await prisma.dashboardLayout.upsert({
+    where: { userId: user.id },
+    create: { userId: user.id, version: 1, layoutJson: JSON.stringify(FOUR_COLUMN_LAYOUT) },
+    update: { version: 1, layoutJson: JSON.stringify(FOUR_COLUMN_LAYOUT) },
+  });
+  await page.reload();
+  await expectDashboardHome(page);
+
+  // The share of each budget name on screen; an ellipsis counts against it.
+  const nameShares = () =>
+    page.locator("[data-min-visible]").evaluateAll((spans) =>
+      spans
+        .filter((span) => span.getClientRects().length > 0)
+        .map((span) => {
+          const el = span as HTMLElement;
+          if (el.scrollWidth <= el.clientWidth) return 1;
+          return (el.clientWidth - parseFloat(getComputedStyle(el).fontSize)) / el.scrollWidth;
+        }),
+    );
+
+  // Four columns clear the pixel minimum here — edit mode, which applies only that, shows
+  // them — and in them the long name is cut well short.
+  await page.getByRole("button", { name: "Edit layout" }).click();
+  await expect(page.locator("[data-column-index]")).toHaveCount(4);
+  expect(Math.min(...(await nameShares()))).toBeLessThan(0.9);
+  await page.getByRole("button", { name: "Done" }).click();
+
+  await expect(page.locator("[data-column-index]")).toHaveCount(3);
+  const shares = await nameShares();
+  expect(shares.length).toBeGreaterThan(0);
+  expect(Math.min(...shares)).toBeGreaterThanOrEqual(0.9);
+
+  // The floor is the user's to set. Lowered far enough in Settings, the cut-off name is
+  // acceptable and all four columns stay.
+  await page.goto("/settings");
+  // 10% is the lowest the setting allows; the input's own `min` would block the submit otherwise.
+  await page.locator('input[name="budgetNameVisiblePct"]').fill("10");
+  await page.getByRole("button", { name: "Save dashboard settings" }).click();
+  await expect
+    .poll(async () => (await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).dashboardBudgetNameVisiblePct)
+    .toBe(10);
+
+  await page.goto("/");
+  await expectDashboardHome(page);
+  await expect(page.locator("[data-column-index]")).toHaveCount(4);
+  expect(Math.min(...(await nameShares()))).toBeLessThan(0.9);
 });
 
 test("columns can be added and removed, and removing one keeps its cards", async ({

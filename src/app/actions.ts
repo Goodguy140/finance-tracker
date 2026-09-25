@@ -63,7 +63,7 @@ export {
   removePasskeyAction,
   unlinkSsoProviderAction,
 } from "./actions/mfa";
-export { setBudgetAlertEmailAction } from "./actions/preferences";
+export { setBudgetAlertEmailAction, updateDashboardReadabilityAction } from "./actions/preferences";
 export {
   saveDashboardLayoutAction,
   resetDashboardLayoutAction,

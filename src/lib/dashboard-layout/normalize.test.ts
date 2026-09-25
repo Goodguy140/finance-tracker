@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CARD_IDS, type DashboardCardId, type DashboardLayout, TOTAL_COLUMN_UNITS } from "./schema";
 import { DEFAULT_LAYOUT } from "./cards";
-import { filterToAvailable, layoutForRenderedColumns, reconcileDashboardLayout } from "./normalize";
+import { filterToAvailable, reconcileDashboardLayout } from "./normalize";
 
 const ALL: readonly DashboardCardId[] = CARD_IDS;
 
@@ -176,29 +176,5 @@ describe("filterToAvailable", () => {
 
     expect(filtered.columns[0].slots[0].cards).toEqual(["cumulative-spend"]);
     expect(filtered.columns[0].slots[0].activeIndex).toBe(0);
-  });
-});
-
-describe("layoutForRenderedColumns", () => {
-  it("folds every card into one column when only one fits", () => {
-    const collapsed = layoutForRenderedColumns(defaultBlob(), 1);
-    expect(collapsed.columns).toHaveLength(1);
-    expect(placement(collapsed)[0]).toEqual([
-      "cumulative-spend",
-      "add-expense",
-      "expense-log",
-      "budgets",
-      "spending-by-category",
-      "income",
-      "recurring",
-    ]);
-  });
-
-  it("loses no card at any rendered column count", () => {
-    const layout = defaultBlob();
-    const everyCard = placement(layout).flat().sort();
-    for (const count of [1, 2, 3, 4]) {
-      expect(placement(layoutForRenderedColumns(layout, count)).flat().sort()).toEqual(everyCard);
-    }
   });
 });

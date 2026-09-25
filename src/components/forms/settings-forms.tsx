@@ -1,6 +1,13 @@
 "use client";
 
 import { signOutOfDevice } from "@/lib/sign-out";
+import {
+  DEFAULT_DASHBOARD_READABILITY,
+  MAX_VISIBLE_PCT,
+  MIN_BUDGET_NAME_VISIBLE_PCT,
+  MIN_TEXT_VISIBLE_PCT,
+  type DashboardReadability,
+} from "@/lib/dashboard-readability";
 import { useId, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AccountTypePill } from "@/components/account-type-pill";
@@ -34,7 +41,7 @@ import {
   changePasswordAction, clearUserFinancialDataAction, createFinancialAccountAction, createInvestmentFlowAction,
   createPortfolioSnapshotAction, createRecurringTransactionAction, deleteBudgetAction, deleteFinancialAccountAction,
   updateDefaultExpenseAccountAction, updateFinancialAccountAction, setFinancialAccountArchivedAction, deleteAccountAction,
-  importUserBackupAction, updateBudgetAction, updateProfileAction, upsertBudgetAction,
+  importUserBackupAction, updateBudgetAction, updateDashboardReadabilityAction, updateProfileAction, upsertBudgetAction,
 } from "@/app/actions";
 import { ExpenseCsvImportForm } from "./expense-forms";
 import { SubscriptionsPanel, type SubscriptionView } from "@/components/subscriptions-panel";
@@ -386,6 +393,7 @@ export function SettingsForms({
   defaultExpenseAccountId,
   budgetAlertEmailConfigured,
   budgetAlertEmailEnabled,
+  dashboardReadability,
   apiTokens,
   security,
   plaid,
@@ -402,6 +410,7 @@ export function SettingsForms({
   defaultExpenseAccountId: string | null;
   budgetAlertEmailConfigured: boolean;
   budgetAlertEmailEnabled: boolean;
+  dashboardReadability: DashboardReadability;
   apiTokens: ApiTokenRow[];
   security: SecurityPanelProps;
   plaid: PlaidConnectionsPanelProps;
@@ -580,6 +589,57 @@ export function SettingsForms({
                 <div className={`${spanFullSm} flex flex-wrap gap-2 pt-1`}>
                   <button type="submit" className={primaryBtnClass}>
                     Save changes
+                  </button>
+                </div>
+              </ServerActionForm>
+            </section>
+
+            <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-4 shadow-lg sm:p-5">
+              <div className="space-y-1 border-b border-slate-800/90 pb-4">
+                <h3 className="text-base font-semibold text-slate-100">Dashboard</h3>
+                <p className="max-w-prose text-sm text-slate-400">
+                  When the window is too narrow for your cards to show their text, the dashboard merges a column
+                  away to give the rest more room. Lower these to keep more columns at the cost of more cut-off
+                  text; raise them to merge sooner.
+                </p>
+              </div>
+
+              <ServerActionForm action={updateDashboardReadabilityAction} className={`${formGridResponsive} gap-4 sm:gap-4`}>
+                <LabeledField
+                  label="Card text visible (%)"
+                  hint={`How much of each card's text must show in full. ${MIN_TEXT_VISIBLE_PCT}–${MAX_VISIBLE_PCT}; default ${DEFAULT_DASHBOARD_READABILITY.textVisiblePct}.`}
+                  hintInline
+                >
+                  <input
+                    name="textVisiblePct"
+                    type="number"
+                    min={MIN_TEXT_VISIBLE_PCT}
+                    max={MAX_VISIBLE_PCT}
+                    step={1}
+                    required
+                    defaultValue={dashboardReadability.textVisiblePct}
+                    className={inputClass}
+                  />
+                </LabeledField>
+                <LabeledField
+                  label="Budget names visible (%)"
+                  hint={`How much of each budget's name must show, name by name. ${MIN_BUDGET_NAME_VISIBLE_PCT}–${MAX_VISIBLE_PCT}; default ${DEFAULT_DASHBOARD_READABILITY.budgetNameVisiblePct}.`}
+                  hintInline
+                >
+                  <input
+                    name="budgetNameVisiblePct"
+                    type="number"
+                    min={MIN_BUDGET_NAME_VISIBLE_PCT}
+                    max={MAX_VISIBLE_PCT}
+                    step={1}
+                    required
+                    defaultValue={dashboardReadability.budgetNameVisiblePct}
+                    className={inputClass}
+                  />
+                </LabeledField>
+                <div className={`${spanFullSm} flex flex-wrap gap-2 pt-1`}>
+                  <button type="submit" className={primaryBtnClass}>
+                    Save dashboard settings
                   </button>
                 </div>
               </ServerActionForm>

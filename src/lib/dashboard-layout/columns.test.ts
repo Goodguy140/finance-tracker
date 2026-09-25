@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  collapseColumns,
   enforceMinimums,
+  fitColumnsToWidth,
   largestRemainder,
   minUnitsForWidth,
   redistributeOnAdd,
   redistributeOnRemove,
   resizeAdjacent,
 } from "./columns";
-import { type DashboardColumn, MIN_COLUMN_UNITS, TOTAL_COLUMN_UNITS } from "./schema";
+import { type DashboardColumn, MIN_COLUMN_PX, MIN_COLUMN_UNITS, TOTAL_COLUMN_UNITS } from "./schema";
 
 function column(id: string, weight: number, slotIds: string[]): DashboardColumn {
   return {
@@ -132,33 +132,83 @@ describe("enforceMinimums", () => {
   });
 });
 
-describe("collapseColumns", () => {
+describe("fitColumnsToWidth", () => {
   const four = [
     column("a", 6, ["s1", "s2"]),
     column("b", 6, ["s3"]),
-    column("c", 6, ["s4"]),
-    column("d", 6, ["s5"]),
+    column("c", 6, ["s4", "s5"]),
+    column("d", 6, ["s6", "s7", "s8"]),
   ];
+  const allSlots = (columns: DashboardColumn[]) => slotIds(columns).flat().sort();
 
-  it("is the identity when nothing needs collapsing", () => {
-    expect(slotIds(collapseColumns(four, 4))).toEqual([["s1", "s2"], ["s3"], ["s4"], ["s5"]]);
-    expect(weights(collapseColumns(four, 4))).toEqual([6, 6, 6, 6]);
+  it("is the identity when every column is wide enough", () => {
+    const next = fitColumnsToWidth(four, 4 * MIN_COLUMN_PX);
+    expect(slotIds(next)).toEqual(slotIds(four));
+    expect(weights(next)).toEqual([6, 6, 6, 6]);
   });
 
-  it("folds four columns into two, pairing neighbours and summing their widths", () => {
-    const next = collapseColumns(four, 2);
-    expect(slotIds(next)).toEqual([["s1", "s2", "s3"], ["s4", "s5"]]);
-    expect(weights(next)).toEqual([12, 12]);
-  });
-
-  it("puts every slot in one column in column-major order", () => {
-    const next = collapseColumns(four, 1);
-    expect(slotIds(next)).toEqual([["s1", "s2", "s3", "s4", "s5"]]);
+  it("drops the column with the fewest slots first, into its lighter neighbour", () => {
+    // b has the fewest slots; its neighbours a and c tie at two, and a tie goes left.
+    const next = fitColumnsToWidth(four, 4 * MIN_COLUMN_PX - 1);
+    expect(slotIds(next)).toEqual([["s1", "s2", "s3"], ["s4", "s5"], ["s6", "s7", "s8"]]);
     expect(total(next)).toBe(TOTAL_COLUMN_UNITS);
   });
 
-  it("never returns more columns than it was given", () => {
-    expect(collapseColumns(four, 99)).toHaveLength(4);
-    expect(collapseColumns(four, 0)).toHaveLength(1);
+  it("prefers a lighter neighbour on the right, keeping reading order", () => {
+    const cols = [column("a", 8, ["s1", "s2", "s3"]), column("b", 8, ["s4"]), column("c", 8, ["s5"])];
+    // b and c tie on slots and width; the rightmost goes, into b.
+    expect(slotIds(fitColumnsToWidth(cols, 3 * MIN_COLUMN_PX - 1))).toEqual([["s1", "s2", "s3"], ["s4", "s5"]]);
+    const leftmost = [column("a", 8, ["s1"]), column("b", 8, ["s2", "s3"]), column("c", 8, ["s4", "s5", "s6"])];
+    expect(slotIds(fitColumnsToWidth(leftmost, 3 * MIN_COLUMN_PX - 1))).toEqual([["s1", "s2", "s3"], ["s4", "s5", "s6"]]);
+  });
+
+  it("breaks a slot-count tie by the narrower column", () => {
+    const cols = [column("a", 14, ["s1"]), column("b", 10, ["s2"])];
+    // At 900px b is 375px — fine. At 700px b is ~292px and goes; a keeps its id.
+    expect(fitColumnsToWidth(cols, 900)).toHaveLength(2);
+    const next = fitColumnsToWidth(cols, 700);
+    expect(next.map((c) => c.id)).toEqual(["a"]);
+    expect(slotIds(next)).toEqual([["s1", "s2"]]);
+  });
+
+  it("collapses when one dragged-narrow column is too thin, even though the count would fit", () => {
+    const cols = [column("a", 18, ["s1", "s2"]), column("b", 6, ["s3", "s4"])];
+    // 1000px holds two 320px columns, but b is only 250px of it.
+    expect(fitColumnsToWidth(cols, 1000)).toHaveLength(1);
+  });
+
+  it("accounts for the gaps between columns", () => {
+    const cols = [column("a", 12, ["s1"]), column("b", 12, ["s2"])];
+    expect(fitColumnsToWidth(cols, 2 * MIN_COLUMN_PX)).toHaveLength(2);
+    expect(fitColumnsToWidth(cols, 2 * MIN_COLUMN_PX, MIN_COLUMN_PX, 16)).toHaveLength(1);
+  });
+
+  it("drops only more columns as the width shrinks, and never loses a slot", () => {
+    let previous = four.length;
+    for (let width = 1600; width >= 200; width -= 10) {
+      const next = fitColumnsToWidth(four, width, MIN_COLUMN_PX, 16);
+      expect(next.length).toBeLessThanOrEqual(previous);
+      expect(allSlots(next)).toEqual(allSlots(four));
+      expect(total(next)).toBe(TOTAL_COLUMN_UNITS);
+      previous = next.length;
+    }
+    expect(previous).toBe(1);
+  });
+
+  it("caps the count in the same order when told the columns are too cramped", () => {
+    const wide = 4 * MIN_COLUMN_PX;
+    expect(slotIds(fitColumnsToWidth(four, wide, MIN_COLUMN_PX, 0, 3))).toEqual(
+      slotIds(fitColumnsToWidth(four, wide - 1)),
+    );
+    expect(fitColumnsToWidth(four, wide, MIN_COLUMN_PX, 0, 0)).toHaveLength(1);
+  });
+
+  it("does not stack a cap on top of what the width already removed", () => {
+    // Too narrow for three; a cap of three must not take it down to two.
+    expect(fitColumnsToWidth(four, 3 * MIN_COLUMN_PX - 1, MIN_COLUMN_PX, 0, 3)).toHaveLength(2);
+  });
+
+  it("leaves the columns alone until a width is known", () => {
+    expect(fitColumnsToWidth(four, 0)).toHaveLength(4);
   });
 });

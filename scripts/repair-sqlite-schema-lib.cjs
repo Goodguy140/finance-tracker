@@ -1,5 +1,5 @@
 /** Keep in sync with SCHEMA_REPAIR_VERSION in src/lib/migration-health.ts */
-const SCHEMA_REPAIR_VERSION = "5";
+const SCHEMA_REPAIR_VERSION = "6";
 const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
 
@@ -74,6 +74,16 @@ const COLUMN_REPAIRS = [
     table: "PlaidItem",
     column: "webhookUrl",
     ddl: 'ALTER TABLE "PlaidItem" ADD COLUMN "webhookUrl" TEXT',
+  },
+  {
+    table: "User",
+    column: "dashboardTextVisiblePct",
+    ddl: 'ALTER TABLE "User" ADD COLUMN "dashboardTextVisiblePct" INTEGER NOT NULL DEFAULT 95',
+  },
+  {
+    table: "User",
+    column: "dashboardBudgetNameVisiblePct",
+    ddl: 'ALTER TABLE "User" ADD COLUMN "dashboardBudgetNameVisiblePct" INTEGER NOT NULL DEFAULT 90',
   },
 ];
 

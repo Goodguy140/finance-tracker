@@ -269,6 +269,10 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
         defaultExpenseAccountId={user.defaultExpenseAccountId}
         budgetAlertEmailConfigured={isBudgetAlertEmailConfigured()}
         budgetAlertEmailEnabled={user.budgetAlertEmailEnabled}
+        dashboardReadability={{
+          textVisiblePct: user.dashboardTextVisiblePct,
+          budgetNameVisiblePct: user.dashboardBudgetNameVisiblePct,
+        }}
         apiTokens={apiTokens}
         security={security}
         plaid={plaid}

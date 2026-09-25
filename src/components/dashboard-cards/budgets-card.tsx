@@ -94,7 +94,11 @@ export function BudgetsCardBody({
           {items.map((item) => (
             <div key={item.id} className="min-w-0 rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
               <div className="mb-1 flex items-center justify-between gap-2 text-sm">
-                <span className="truncate font-medium text-slate-200">{item.categoryName}</span>
+                {/* The name is what the row is about: the dashboard drops a column rather than
+                    show less of it than the user's budget-name setting allows. */}
+                <span data-min-visible="budget-name" className="truncate font-medium text-slate-200">
+                  {item.categoryName}
+                </span>
                 <span className="shrink-0 tabular-nums text-slate-300">
                   {formatCurrency(item.spentCents)} / {formatCurrency(item.limitCents)}
                 </span>
