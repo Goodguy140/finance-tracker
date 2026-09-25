@@ -145,3 +145,91 @@ test("Plaid item webhooks raise prompts, and update mode or LOGIN_REPAIRED clear
   await expectDashboardHome(page);
   await expect(page.getByTestId("plaid-attention-banner")).toHaveCount(0);
 });
+
+test("Consent revoked at Plaid deletes what was synced under it, and keeps the user's transactions", async ({ page }) => {
+  await addVirtualAuthenticator(page);
+  const stamp = uniqueStamp();
+  const email = `plaid-revoked-${stamp}@example.com`;
+  await configurePlaidForTests();
+  const user = await createUser(email);
+
+  await signIn(page, email);
+  await expectDashboardHome(page);
+  await enrolFirstPasskey(page, PASSWORD);
+
+  await openSettingsTab(page, "accounts");
+  const panel = page.getByRole("region", { name: "Connected banks" });
+  await panel.getByRole("button", { name: "Connect a bank" }).click();
+  await expect(panel.getByText(/Connected to Test Credit Union/i)).toBeVisible({ timeout: 15_000 });
+  const item = await prisma.plaidItem.findFirstOrThrow({ where: { userId: user.id } });
+  const plaidAccounts = await prisma.plaidAccount.findMany({ where: { plaidItemId: item.id }, orderBy: { name: "asc" } });
+  expect(plaidAccounts.length).toBeGreaterThan(1);
+  const [revokedAccount, keptAccount] = plaidAccounts;
+
+  // One committed, verified transaction and one queued row per account — what a sync leaves.
+  const category = await prisma.category.findFirstOrThrow({ where: { userId: user.id, kind: "EXPENSE" } });
+  const verified = [];
+  for (const [i, account] of [revokedAccount, keptAccount].entries()) {
+    const transaction = await prisma.transaction.create({
+      data: { userId: user.id, categoryId: category.id, type: "EXPENSE", amountCents: 1000 + i, date: new Date() },
+    });
+    await prisma.transactionVerification.create({
+      data: {
+        userId: user.id,
+        transactionId: transaction.id,
+        source: "IMPORTED",
+        plaidTransactionId: `txn-${stamp}-${i}`,
+        plaidItemId: item.id,
+        plaidAccountRowId: account.id,
+        institutionName: item.institutionName,
+      },
+    });
+    await prisma.plaidStagedTransaction.create({
+      data: {
+        userId: user.id,
+        plaidItemId: item.id,
+        plaidAccountRowId: account.id,
+        plaidTransactionId: `queued-${stamp}-${i}`,
+        name: "Corner Store",
+        amountCents: 500,
+        type: "EXPENSE",
+        date: new Date(),
+      },
+    });
+    verified.push(transaction.id);
+  }
+
+  // --- one account withdrawn: that account's data goes, the connection stays ---
+  await deliver(page, {
+    webhook_type: "ITEM",
+    webhook_code: "USER_ACCOUNT_REVOKED",
+    item_id: item.itemId,
+    account_id: revokedAccount.plaidAccountId,
+  });
+  await waitForAudit(item.id, "plaid_account_consent_revoked", 1);
+  expect(await prisma.plaidAccount.count({ where: { id: revokedAccount.id } })).toBe(0);
+  expect(await prisma.plaidStagedTransaction.count({ where: { plaidAccountRowId: revokedAccount.id } })).toBe(0);
+  expect(await prisma.plaidStagedTransaction.count({ where: { plaidAccountRowId: keptAccount.id } })).toBe(1);
+  const accountScrubbed = await prisma.transactionVerification.findUniqueOrThrow({ where: { transactionId: verified[0] } });
+  expect(accountScrubbed).toMatchObject({ plaidTransactionId: null, plaidItemId: null, plaidAccountRowId: null });
+  expect(await prisma.plaidItem.count({ where: { id: item.id } })).toBe(1);
+
+  // --- the whole connection withdrawn: everything synced goes, the transactions stay ---
+  await deliver(page, { webhook_type: "ITEM", webhook_code: "USER_PERMISSION_REVOKED", item_id: item.itemId });
+  await waitForAudit(item.id, "plaid_item_consent_revoked", 1);
+  expect(await prisma.plaidItem.count({ where: { id: item.id } })).toBe(0);
+  expect(await prisma.plaidAccount.count({ where: { plaidItemId: item.id } })).toBe(0);
+  expect(await prisma.plaidStagedTransaction.count({ where: { userId: user.id } })).toBe(0);
+  expect(await prisma.transaction.count({ where: { id: { in: verified } } })).toBe(2);
+  const itemScrubbed = await prisma.transactionVerification.findUniqueOrThrow({ where: { transactionId: verified[1] } });
+  expect(itemScrubbed).toMatchObject({
+    plaidTransactionId: null,
+    plaidItemId: null,
+    plaidAccountRowId: null,
+    institutionName: item.institutionName,
+  });
+  expect(itemScrubbed.itemRemovedAt).not.toBeNull();
+
+  await page.reload();
+  await expect(panel.getByText("Test Credit Union")).toHaveCount(0);
+});

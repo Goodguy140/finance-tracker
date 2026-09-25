@@ -8,6 +8,7 @@ import { describeActionError } from "@/lib/action-errors";
 import { prisma } from "@/lib/prisma";
 import { PlaidApiError, type PlaidClient } from "@/lib/plaid/client";
 import { checkMappingAllowed } from "@/lib/plaid/mapping";
+import { purgePlaidItemData } from "@/lib/plaid/purge";
 import { resolveDisplayName } from "@/lib/plaid/ingest";
 import {
   makePlaidItemRevoker,
@@ -510,7 +511,8 @@ export type PlaidUnlinkState =
  * left pointing at it. If Plaid refuses, nothing is deleted and the user is told.
  *
  * Verifications on already-imported transactions survive, stamped with `itemRemovedAt` so
- * the badge says the link is gone rather than implying it is still live.
+ * the badge says the link is gone rather than implying it is still live, and stripped of
+ * their Plaid ids. Everything else synced from this bank is deleted (`purgePlaidItemData`).
  */
 export async function unlinkPlaidItemAction(
   _prev: PlaidUnlinkState,
@@ -543,15 +545,7 @@ export async function unlinkPlaidItemAction(
     };
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.transactionVerification.updateMany({
-      where: { userId: user.id, plaidItemId: item.id, itemRemovedAt: null },
-      data: { itemRemovedAt: new Date() },
-    });
-    await tx.plaidStagedTransaction.deleteMany({ where: { userId: user.id, plaidItemId: item.id } });
-    await tx.plaidAccount.deleteMany({ where: { userId: user.id, plaidItemId: item.id } });
-    await tx.plaidItem.delete({ where: { id: item.id } });
-  });
+  await prisma.$transaction((tx) => purgePlaidItemData(tx, item));
 
   await recordAuditLog(prisma, {
     userId: user.id,

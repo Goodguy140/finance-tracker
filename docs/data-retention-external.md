@@ -35,6 +35,7 @@ advertising or automated decision-making.
 | **Cost-sharing details** | Names of people you split bills with, their share, and whether they have paid | Shared-expense tracking you have chosen to use |
 | **Account and profile** | Email address, display name, time zone, country, and preferences | Identifying you, signing you in, and formatting dates and currency |
 | **Authentication data** | Password (stored only as a one-way hash), registered passkeys, recovery codes (hashed), single sign-on links, and API tokens (stored only as a hash) | Securing access to your account |
+| **Bank connection data** (only if you link a bank) | The bank and accounts linked, an encrypted credential that lets us fetch their transactions, and transactions fetched but not yet reviewed by you | Fetching transactions for you to review — nothing reaches your records until you approve it |
 | **Security and activity records** | Sign-ins and failures, sign-outs, password and passkey changes, permission changes, exports, and account deletions — each with the time, the IP address, and the browser or client used | Detecting and investigating unauthorized access, and keeping privileged actions accountable |
 
 **All of this is sensitive.** Transaction-level financial history can reveal health,
@@ -50,6 +51,7 @@ information in its entirety rather than graded by field.
 | Account and profile | For the life of your account |
 | Password, passkeys, recovery codes, sign-on links | For the life of your account, or until you remove the individual credential |
 | API tokens | Until you revoke the token or delete your account |
+| Bank connection data | Until you disconnect the bank, or withdraw its access through the bank or our bank-data provider — the connection is ended at the provider, then everything fetched through it is deleted. Transactions you already approved are your records and stay. Fetched transactions the bank later withdrew or replaced are deleted automatically after 30 days |
 | Security and activity records | **[365] days**, then deleted automatically |
 | Password reset links | Unusable 30 minutes after they are issued |
 | Sign-in security counters | Cleared automatically once the relevant time window closes |
@@ -177,6 +179,7 @@ receives.
 |----------|------------------|------|
 | **Email provider** | Your email address, and — if you enable budget alerts — the budget category and the amounts involved | Budget alert email is **off by default**; leaving it off means no financial detail leaves the service by email |
 | **Single sign-on provider** | Your identity details, if you choose to sign in with an external provider | Only where you have linked an account |
+| **Bank-data provider** | Your bank sign-in (entered directly with the provider, never seen by us), and the accounts and transactions it fetches from your bank | Only if you link a bank. The provider keeps its own copy under its own retention policy; disconnecting here ends its access, and deleting its copy is a request to the provider |
 | **Hosting and storage** | Encrypted data at rest, including backups | |
 
 Where a provider is located outside your jurisdiction, your information may be processed in

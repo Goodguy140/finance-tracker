@@ -5,9 +5,18 @@ vi.mock("@/lib/audit-log", async () => {
   const actual = await vi.importActual<typeof import("@/lib/audit-log")>("@/lib/audit-log");
   return { ...actual, recordAuditLog: vi.fn(async () => {}) };
 });
-vi.mock("@/lib/plaid/service", () => ({ openAccessToken: vi.fn(() => "access-token") }));
+const revoke = vi.fn(async () => {});
+vi.mock("@/lib/plaid/service", () => ({
+  openAccessToken: vi.fn(() => "access-token"),
+  makePlaidItemRevoker: vi.fn(() => revoke),
+}));
+vi.mock("@/lib/plaid/purge", () => ({
+  purgePlaidItemData: vi.fn(async () => {}),
+  purgePlaidAccountData: vi.fn(async () => true),
+}));
 
 const { recordAuditLog, AUDIT_ACTIONS } = await import("@/lib/audit-log");
+const { purgePlaidAccountData, purgePlaidItemData } = await import("@/lib/plaid/purge");
 const { applyPlaidWebhook, ensurePlaidItemWebhook, planPlaidWebhook } = await import("@/lib/plaid/webhooks");
 
 const now = new Date("2026-09-24T12:00:00Z");
@@ -89,12 +98,14 @@ describe("planPlaidWebhook", () => {
 });
 
 function fakeDb(item: Record<string, unknown> | null) {
-  return {
+  const db = {
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
     plaidItem: {
       findUnique: vi.fn(async () => item),
       update: vi.fn(async () => ({})),
     },
   };
+  return db;
 }
 
 const storedItem = {
@@ -191,5 +202,70 @@ describe("ensurePlaidItemWebhook", () => {
     ).resolves.toBeUndefined();
     expect(db.plaidItem.update).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+describe("applyPlaidWebhook — consent revoked at Plaid", () => {
+  beforeEach(() => {
+    vi.mocked(recordAuditLog).mockClear();
+    vi.mocked(purgePlaidItemData).mockClear();
+    vi.mocked(purgePlaidAccountData).mockClear();
+    revoke.mockReset();
+  });
+
+  it("removes the item at Plaid, then purges it, then audits", async () => {
+    const db = fakeDb(storedItem);
+    const outcome = await applyPlaidWebhook(
+      { prisma: db as never, client: {} as never, now },
+      { webhook_type: "ITEM", webhook_code: "USER_PERMISSION_REVOKED", item_id: "item-1" },
+    );
+    expect(outcome).toBe("applied");
+    expect(revoke).toHaveBeenCalledWith(storedItem);
+    expect(purgePlaidItemData).toHaveBeenCalledWith(db, storedItem, now);
+    expect(revoke.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(purgePlaidItemData).mock.invocationCallOrder[0]);
+    expect(recordAuditLog).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ action: AUDIT_ACTIONS.plaid_item_consent_revoked, targetId: "row-1" }),
+    );
+  });
+
+  it("deletes nothing when Plaid will not remove the item, so the delivery is retried", async () => {
+    revoke.mockRejectedValueOnce(new Error("down"));
+    const db = fakeDb(storedItem);
+    await expect(
+      applyPlaidWebhook(
+        { prisma: db as never, client: {} as never, now },
+        { webhook_type: "ITEM", webhook_code: "USER_PERMISSION_REVOKED", item_id: "item-1" },
+      ),
+    ).rejects.toThrow("down");
+    expect(purgePlaidItemData).not.toHaveBeenCalled();
+    expect(recordAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("purges one account without touching the connection", async () => {
+    const db = fakeDb(storedItem);
+    const outcome = await applyPlaidWebhook(
+      { prisma: db as never, client: {} as never, now },
+      { webhook_type: "ITEM", webhook_code: "USER_ACCOUNT_REVOKED", item_id: "item-1", account_id: "acct-9" },
+    );
+    expect(outcome).toBe("applied");
+    expect(revoke).not.toHaveBeenCalled();
+    expect(purgePlaidItemData).not.toHaveBeenCalled();
+    expect(purgePlaidAccountData).toHaveBeenCalledWith(db, storedItem, "acct-9", now);
+    expect(recordAuditLog).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({ action: AUDIT_ACTIONS.plaid_account_consent_revoked }),
+    );
+  });
+
+  it("ignores a revocation for an item this server does not hold", async () => {
+    const db = fakeDb(null);
+    const outcome = await applyPlaidWebhook(
+      { prisma: db as never, client: {} as never, now },
+      { webhook_type: "ITEM", webhook_code: "USER_PERMISSION_REVOKED", item_id: "someone-else" },
+    );
+    expect(outcome).toBe("unknown-item");
+    expect(revoke).not.toHaveBeenCalled();
+    expect(purgePlaidItemData).not.toHaveBeenCalled();
   });
 });

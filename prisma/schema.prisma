@@ -668,9 +668,12 @@ model PlaidAccount {
 ///
 /// Nothing here is visible in the expense or income log: the user decides per row whether to
 /// link it to something they already entered, add it as new, or ignore it. Rows are kept
-/// forever, including IGNORED ones — the (userId, plaidTransactionId) pair is the
-/// idempotency key for the whole feature, so pruning would let a re-sync re-propose
-/// transactions the user has already declined.
+/// while the connection lives, including IGNORED ones — the (userId, plaidTransactionId)
+/// pair is the idempotency key for the whole feature, so pruning would let a re-sync
+/// re-propose transactions the user has already declined. The exceptions are
+/// REMOVED_BY_PLAID and SUPERSEDED, whose ids Plaid never re-issues: they are deleted after
+/// a grace period (`pruneSpentStagedRows`). Unlinking, or the user revoking consent at
+/// Plaid, deletes all of a connection's rows (`purgePlaidItemData`).
 model PlaidStagedTransaction {
   id                        String  @id @default(cuid())
   userId                    String
@@ -721,8 +724,9 @@ model PlaidStagedTransaction {
   /// Pending → posted lookup.
   @@index([pendingPlaidTransactionId])
   /// The dashboard asks for revised-but-already-committed rows on every load. Staged rows
-  /// are kept forever (they are the idempotency key), so without this the query scans a
-  /// range that only grows, to find a column that is almost always null.
+  /// are kept for the life of the connection (they are the idempotency key), so without
+  /// this the query scans a range that only grows, to find a column that is almost always
+  /// null.
   @@index([userId, revisedAfterResolveAt])
 }
 
@@ -737,7 +741,8 @@ model TransactionVerification {
   transactionId      String                        @unique
   source             TransactionVerificationSource
   /// NULL on a restored backup: exports carry the fact of verification but no Plaid ids,
-  /// which are meaningless outside the deployment that created them.
+  /// which are meaningless outside the deployment that created them. Also NULL once the
+  /// connection is unlinked — the ids are cleared with it (`purgePlaidItemData`).
   plaidTransactionId String?
   plaidItemId        String?
   plaidAccountRowId  String?

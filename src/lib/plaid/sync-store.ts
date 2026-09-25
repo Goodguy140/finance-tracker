@@ -16,6 +16,7 @@ import {
   type StagedForMatch,
 } from "@/lib/plaid/matcher";
 import { openAccessToken } from "@/lib/plaid/service";
+import { pruneSpentStagedRows } from "@/lib/plaid/purge";
 import type { ExistingStagedRow } from "@/lib/plaid/sync-plan";
 import type { SyncStore } from "@/lib/plaid/sync";
 
@@ -283,6 +284,8 @@ export function createSyncStore(): SyncStore {
             : {}),
         },
       });
+      // Withdrawn and superseded rows past their grace period — see pruneSpentStagedRows.
+      if (!input.error) await pruneSpentStagedRows(prisma, input.itemId, input.now);
     },
 
     async matchPendingRows(item) {
