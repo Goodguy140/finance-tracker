@@ -3,6 +3,7 @@
 import { useLayoutEffect, useState } from "react";
 import { DashboardGrid, type DashboardCardContentMap } from "@/components/dashboard-grid";
 import type { DashboardLayout } from "@/lib/dashboard-layout/schema";
+import type { DashboardReadability } from "@/lib/dashboard-readability";
 
 /**
  * Owns the edit-mode flag and the "Edit layout" control, so the two live in one client
@@ -22,9 +23,11 @@ const NARROW_CLASS = "max-w-7xl";
 export function DashboardShell({
   storedLayout,
   cards,
+  readability,
 }: {
   storedLayout: DashboardLayout;
   cards: DashboardCardContentMap;
+  readability: DashboardReadability;
 }) {
   const [editing, setEditing] = useState(false);
   const [columnCount, setColumnCount] = useState(storedLayout.columns.length);
@@ -62,6 +65,7 @@ export function DashboardShell({
       <DashboardGrid
         storedLayout={storedLayout}
         cards={cards}
+        readability={readability}
         editing={editing}
         onEditingChange={setEditing}
         onColumnCountChange={setColumnCount}

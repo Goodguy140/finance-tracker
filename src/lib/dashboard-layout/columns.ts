@@ -163,31 +163,68 @@ export function enforceMinimums(
 }
 
 /**
- * Merge `columns` down to `count` rendered columns, for when the viewport is too narrow to
- * show them all. Column `i` folds into bucket `floor(i * count / columns.length)`, so at
- * `count === 1` every slot ends up in one column in column-major order — the reading order
- * someone would expect from their own left-to-right arrangement.
+ * The columns to render at `containerWidthPx`, dropping one at a time while any is narrower
+ * than `minColumnPx`. Widths are the columns' real shares, not an even split, so a column
+ * someone dragged narrow triggers this even when the count alone would fit.
  *
- * This is how the dashboard reaches one column without ever needing a horizontal scrollbar.
+ * The column dropped is the one with the least in it — fewest slots, then fewest cards,
+ * then the narrowest — because it frees the most width for the least disruption. Its slots
+ * move to whichever neighbour holds fewer, keeping their place in reading order, and its
+ * width is shared among the rest in proportion to theirs. Nothing is ever dropped outright.
+ *
+ * `maxColumns` keeps dropping, in the same order, down to that many — for a caller that has
+ * found the columns too cramped to read even though each clears `minColumnPx`.
+ *
+ * Which column goes next never depends on the width, only on the columns, so narrowing the
+ * window only ever drops more and widening restores them in reverse — no column flickers
+ * back and forth as the width crosses a threshold.
  */
-export function collapseColumns(
+export function fitColumnsToWidth(
   columns: readonly DashboardColumn[],
-  count: number,
+  containerWidthPx: number,
+  minColumnPx: number = MIN_COLUMN_PX,
+  gapPx = 0,
+  maxColumns = Infinity,
 ): DashboardColumn[] {
-  const target = clamp(Math.floor(count), 1, columns.length);
-  if (target === columns.length) return columns.map((column) => ({ ...column, slots: [...column.slots] }));
+  let next = columns.map((column) => ({ ...column, slots: [...column.slots] }));
+  if (containerWidthPx <= 0) return next;
 
-  const buckets: DashboardColumn[] = [];
-  columns.forEach((column, i) => {
-    const bucketIndex = Math.min(target - 1, Math.floor((i * target) / columns.length));
-    const bucket = buckets[bucketIndex];
-    if (!bucket) {
-      buckets[bucketIndex] = { id: column.id, weight: column.weight, slots: [...column.slots] };
-      return;
-    }
-    bucket.weight += column.weight;
-    bucket.slots.push(...column.slots);
-  });
+  const narrowestPx = (cols: readonly DashboardColumn[]) => {
+    const weightSum = cols.reduce((sum, c) => sum + c.weight, 0);
+    const usable = containerWidthPx - gapPx * (cols.length - 1);
+    return Math.min(...cols.map((c) => (weightSum > 0 ? (c.weight / weightSum) * usable : usable / cols.length)));
+  };
 
-  return buckets.filter(Boolean);
+  while (next.length > 1 && narrowestPx(next) < minColumnPx) next = dropLeastContent(next);
+  while (next.length > Math.max(1, maxColumns)) next = dropLeastContent(next);
+  return next;
+}
+
+function dropLeastContent(columns: readonly DashboardColumn[]): DashboardColumn[] {
+  const victim = leastContentIndex(columns);
+  const left = columns[victim - 1];
+  const right = columns[victim + 1];
+  // Fewer slots wins so the merged column does not grow into the one long column; a tie
+  // goes left, matching `redistributeOnRemove`.
+  const host = !right || (left && left.slots.length <= right.slots.length) ? victim - 1 : victim + 1;
+  const slots =
+    host < victim
+      ? [...columns[host].slots, ...columns[victim].slots]
+      : [...columns[victim].slots, ...columns[host].slots];
+  const kept = columns.map((column, i) => (i === host ? { ...column, slots } : column)).filter((_, i) => i !== victim);
+  const shares = largestRemainder(kept.map((c) => c.weight), TOTAL_COLUMN_UNITS);
+  return kept.map((column, i) => ({ ...column, weight: shares[i] }));
+}
+
+/** Fewest slots, then fewest cards, then narrowest; the rightmost on a full tie. */
+function leastContentIndex(columns: readonly DashboardColumn[]): number {
+  const rank = (c: DashboardColumn) => [c.slots.length, c.slots.reduce((sum, s) => sum + s.cards.length, 0), c.weight];
+  let best = 0;
+  for (let i = 1; i < columns.length; i++) {
+    const a = rank(columns[i]);
+    const b = rank(columns[best]);
+    const cmp = a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+    if (cmp <= 0) best = i;
+  }
+  return best;
 }

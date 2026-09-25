@@ -41,14 +41,16 @@ import { DashboardColumnResizer } from "@/components/dashboard-column-resizer";
 import { DashboardEditToolbar, type LayoutSaveStatus } from "@/components/dashboard-edit-toolbar";
 import { DASHBOARD_CARDS, DEFAULT_LAYOUT, MOBILE_SLOTS, slotAccessibleName } from "@/lib/dashboard-layout/cards";
 import {
-  collapseColumns,
   enforceMinimums,
+  fitColumnsToWidth,
   minUnitsForWidth,
   redistributeOnAdd,
   redistributeOnRemove,
   resizeAdjacent,
 } from "@/lib/dashboard-layout/columns";
 import { filterToAvailable } from "@/lib/dashboard-layout/normalize";
+import { measureTextVisibility, visibleShare } from "@/lib/dashboard-layout/text-visibility";
+import type { DashboardReadability } from "@/lib/dashboard-readability";
 import {
   MAX_COLUMNS,
   MIN_COLUMN_PX,
@@ -73,6 +75,11 @@ const collisionDetection: CollisionDetection = (args) => {
 };
 
 const GAP_PX = 16;
+/**
+ * How far past the width that forced a column out the window must grow before it is tried
+ * again. Without a margin every resize tick past that width would re-add it and drop it again.
+ */
+const RESTORE_MARGIN_PX = 32;
 const SAVE_DEBOUNCE_MS = 600;
 
 export type DashboardCardContent = {
@@ -91,6 +98,12 @@ type DashboardGridProps = {
    */
   storedLayout: DashboardLayout;
   cards: DashboardCardContentMap;
+  /**
+   * The user's thresholds: a column is too cramped once any card in it shows less than
+   * `textVisiblePct` of its text in full, or any budget name less than `budgetNameVisiblePct`
+   * of itself.
+   */
+  readability: DashboardReadability;
   editing: boolean;
   onEditingChange: (editing: boolean) => void;
   /** Reported upward so the page container can widen past two columns. */
@@ -141,6 +154,7 @@ function useIsDesktop(): boolean | null {
 export function DashboardGrid({
   storedLayout,
   cards,
+  readability,
   editing,
   onEditingChange,
   onColumnCountChange,
@@ -267,19 +281,92 @@ export function DashboardGrid({
     [stored, available, editing],
   );
 
-  // The column count that actually fits. This, not a media query, is what guarantees the
-  // dashboard reaches one column without a horizontal scrollbar: the user chooses how many
-  // columns exist, so there is no fixed set of breakpoints to write.
-  const renderedColumnCount = useMemo(() => {
-    if (containerWidth <= 0) return rendered.columns.length;
-    const fits = Math.floor((containerWidth + GAP_PX) / (MIN_COLUMN_PX + GAP_PX));
-    return Math.max(1, Math.min(fits, rendered.columns.length));
-  }, [containerWidth, rendered.columns.length]);
-
-  const displayColumns = useMemo(
-    () => collapseColumns(rendered.columns, renderedColumnCount),
-    [rendered.columns, renderedColumnCount],
+  // Column caps found by measuring text: at `width` or narrower, show at most `columns`. A
+  // cap, not a count of extra drops, so it does not stack with the pixel minimum — narrowing
+  // further to where that already removes the column must not remove another on top. Each
+  // stands until the window grows past it, and all are tied to the arrangement they were
+  // measured against: a different one starts clean.
+  // The thresholds are part of it: caps found under stricter ones must not outlive a change
+  // to looser ones.
+  const arrangementKey = useMemo(
+    () =>
+      [
+        readability.textVisiblePct,
+        readability.budgetNameVisiblePct,
+        ...rendered.columns.map((c) => `${c.id}:${c.weight}:${c.slots.map((s) => s.id).join(",")}`),
+      ].join("|"),
+    [rendered.columns, readability.textVisiblePct, readability.budgetNameVisiblePct],
   );
+  const [cramped, setCramped] = useState<{ key: string; caps: { width: number; columns: number }[] }>({
+    key: "",
+    caps: [],
+  });
+  // Not while editing: columns merging under the cursor as someone drags a divider would make
+  // the layout impossible to arrange. The pixel minimum still applies.
+  const maxReadableColumns = useMemo(
+    () =>
+      !editing && cramped.key === arrangementKey
+        ? Math.min(
+            Infinity,
+            ...cramped.caps.filter((cap) => containerWidth <= cap.width + RESTORE_MARGIN_PX).map((cap) => cap.columns),
+          )
+        : Infinity,
+    [editing, cramped, arrangementKey, containerWidth],
+  );
+
+  // The columns that actually fit. This, not a media query, is what guarantees the dashboard
+  // reaches one column without a horizontal scrollbar: the user chooses how many columns
+  // exist and how wide each is, so there is no fixed set of breakpoints to write.
+  const displayColumns = useMemo(
+    () => fitColumnsToWidth(rendered.columns, containerWidth, MIN_COLUMN_PX, GAP_PX, maxReadableColumns),
+    [rendered.columns, containerWidth, maxReadableColumns],
+  );
+
+  // Clearing the pixel minimum does not mean a column is readable: cards differ in how much
+  // they need. Before paint, check how much text each column cuts off and drop one more while
+  // any is cramped. A layout effect so the reader never sees the cramped frame; each drop
+  // re-renders and re-runs this, which settles once every column reads or only one is left.
+  const [fontsReady, setFontsReady] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void document.fonts?.ready.then(() => live && setFontsReady(true));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (editing || containerWidth <= 0 || !gridRef.current) return;
+    if (displayColumns.length <= 1) return;
+    const columns = [...gridRef.current.querySelectorAll<HTMLElement>("[data-column-index]")];
+    const textShare = readability.textVisiblePct / 100;
+    const floors = { "budget-name": readability.budgetNameVisiblePct / 100 };
+    // Dropping one of n columns widens each of the rest by roughly its width over n - 1; text cut
+    // off by more than that would stay cut off, so it is no reason to drop one.
+    const cramps = (column: HTMLElement) => {
+      const width = column.getBoundingClientRect().width;
+      const fixable = width / (displayColumns.length - 1);
+      return [...column.querySelectorAll<HTMLElement>("[data-card-id]")].some((card) => {
+        const measured = measureTextVisibility(card, column, fixable, containerWidth - width, floors);
+        return measured.belowFloor > 0 || visibleShare(measured) < textShare;
+      });
+    };
+    if (columns.some(cramps)) {
+      const cap = { width: containerWidth, columns: displayColumns.length - 1 };
+      setCramped((current) => ({
+        key: arrangementKey,
+        // Drop caps the new one covers — no wider and no stricter — so resizing back and forth
+        // all session cannot grow the list.
+        caps: [
+          ...(current.key === arrangementKey ? current.caps : []).filter(
+            (old) => old.width > cap.width || old.columns < cap.columns,
+          ),
+          cap,
+        ],
+      }));
+    }
+  }, [editing, containerWidth, displayColumns, arrangementKey, cards, fontsReady, readability]);
+
   const collapsed = displayColumns.length !== rendered.columns.length;
 
   const settings = stored.settings;
