@@ -39,6 +39,12 @@ enum TransactionType {
   INCOME
 }
 
+enum TransactionRuleTextOperator {
+  CONTAINS
+  EQUALS
+  STARTS_WITH
+}
+
 enum RecurringCadence {
   WEEKLY
   BIWEEKLY
@@ -89,14 +95,14 @@ enum TransactionVerificationSource {
 }
 
 model User {
-  id                      String    @id @default(cuid())
-  email                   String    @unique
-  passwordHash            String?
-  displayName             String
-  timezone                String    @default("America/Toronto")
-  countryCode             String    @default("CA")
-  emailVerifiedAt         DateTime?
-  role                    UserRole  @default(USER)
+  id                            String    @id @default(cuid())
+  email                         String    @unique
+  passwordHash                  String?
+  displayName                   String
+  timezone                      String    @default("America/Toronto")
+  countryCode                   String    @default("CA")
+  emailVerifiedAt               DateTime?
+  role                          UserRole  @default(USER)
   /**
    * Bumped whenever every existing session should stop working (password change, password
    * reset, explicit sign-out-everywhere). Sessions are stateless JWTs, so this is the only
@@ -104,33 +110,33 @@ model User {
    * it no longer matches. Tokens issued before this column existed carry no version and are
    * treated as 0, so deploying it does not sign everyone out.
    */
-  tokenVersion            Int       @default(0)
+  tokenVersion                  Int       @default(0)
   /**
    * Set when an admin suspends the account. A suspended user keeps all their financial
    * history but cannot sign in, hold a session, or use a personal access token — the
    * de-provisioning step for someone who has left, without destroying their data. Suspending
    * also bumps `tokenVersion`, so live sessions stop at the next request rather than at expiry.
    */
-  disabledAt              DateTime?
+  disabledAt                    DateTime?
   /**
    * When set, the Add Expense form preselects this account (must be one of the user's accounts).
    */
-  defaultExpenseAccountId String?
+  defaultExpenseAccountId       String?
   /**
    * Email the account address when a monthly budget crosses its warning or over-budget
    * threshold. Server-side so the alert can be sent from whichever request pushed the
    * category over, not only from a browser that happens to be open.
    */
-  budgetAlertEmailEnabled Boolean   @default(false)
+  budgetAlertEmailEnabled       Boolean   @default(false)
   /**
    * How much text the dashboard must keep readable before it merges a column away, as whole
    * percentages. The first applies to each card's text as a whole; the second to each budget
    * name on its own, which is the point of its row and so gets a floor of its own.
    */
-  dashboardTextVisiblePct       Int @default(95)
-  dashboardBudgetNameVisiblePct Int @default(90)
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+  dashboardTextVisiblePct       Int       @default(95)
+  dashboardBudgetNameVisiblePct Int       @default(90)
+  createdAt                     DateTime  @default(now())
+  updatedAt                     DateTime  @updatedAt
 
   defaultExpenseAccount Account? @relation("UserDefaultExpenseAccount", fields: [defaultExpenseAccountId], references: [id], onDelete: SetNull)
 
@@ -159,32 +165,32 @@ model User {
   plaidStagedTransactions   PlaidStagedTransaction[]
   transactionVerifications  TransactionVerification[]
   dashboardLayout           DashboardLayout?
+  transactionRules          TransactionRule[]
+  hiddenTitleSuggestions    HiddenTitleSuggestion[]
 }
 
 /**
  * The desktop dashboard layout for one user: column widths, which card sits where, which
  * cards are stacked together, and each card's own settings — all one validated JSON blob
  * (`dashboardLayoutSchema` in src/lib/dashboard-layout/schema.ts).
- *
  * Its own table rather than a column on User: it is rewritten on every drag and read by
  * exactly one page, so it has no business widening the row that every authenticated
  * request loads. A new table also needs no REQUIRED_SCHEMA_COLUMNS / COLUMN_REPAIRS entry
  * and no SCHEMA_REPAIR_VERSION bump, which a new column on User would have.
- *
  * Deliberately excluded from the user backup — see the exclusions note in src/lib/backup.ts.
  */
 model DashboardLayout {
-  id     String @id @default(cuid())
-  userId String @unique
+  id         String   @id @default(cuid())
+  userId     String   @unique
   /// TEXT, not Json: the SQLite datasource has no native JSON type.
   layoutJson String
   /**
    * Mirrors the `version` inside layoutJson. Duplicated as a column so a future migration
    * sweep can find stale blobs without parsing every row.
    */
-  version   Int      @default(1)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -380,6 +386,8 @@ model Account {
   investmentFlows        InvestmentFlow[]
   portfolioSnapshots     PortfolioSnapshot[]
   plaidAccounts          PlaidAccount[]
+  rulesMatchingAccount   TransactionRule[]      @relation("TransactionRuleMatchAccount")
+  rulesSettingAccount    TransactionRule[]      @relation("TransactionRuleSetAccount")
 }
 
 model Category {
@@ -397,6 +405,7 @@ model Category {
   budgets               Budget[]
   recurringTransactions RecurringTransaction[]
   plaidItemDefaults     PlaidItem[]
+  transactionRules      TransactionRule[]
 
   @@unique([userId, name, kind])
 }
@@ -770,4 +779,60 @@ model TransactionVerification {
   /// the column is nullable.
   @@unique([userId, plaidTransactionId])
   @@index([userId])
+}
+
+/// A user-defined rule: when a transaction's title (and optionally amount, account and type)
+/// matches, fill in category, title, amount, account and/or note. Evaluated by the pure engine
+/// in src/lib/transaction-rules.ts — as suggestions on the manual forms and the Plaid review
+/// queue, per row on CSV import, and on demand against past transactions.
+///
+/// A new table, so it needs no REQUIRED_SCHEMA_COLUMNS / COLUMN_REPAIRS entry.
+model TransactionRule {
+  id       String  @id @default(cuid())
+  userId   String
+  /// Lower runs first. Each action field is filled by the first matching rule that sets it.
+  priority Int
+  enabled  Boolean @default(true)
+
+  titleOperator   TransactionRuleTextOperator
+  titlePattern    String
+  /// NULL matches both expenses and income.
+  transactionType TransactionType?
+  matchAccountId  String?
+  /// Compared against the absolute amount, so a refund (a negative expense) matches the same
+  /// rule as the original charge and lands in the same category.
+  minAmountCents  Int?
+  maxAmountCents  Int?
+
+  setCategoryId  String?
+  setTitle       String?
+  setAmountCents Int?
+  setAccountId   String?
+  appendNote     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Cascade: a rule scoped to an account that no longer exists would silently broaden.
+  matchAccount Account?  @relation("TransactionRuleMatchAccount", fields: [matchAccountId], references: [id], onDelete: Cascade)
+  /// SetNull: a rule must never block deleting a category or an account.
+  setCategory  Category? @relation(fields: [setCategoryId], references: [id], onDelete: SetNull)
+  setAccount   Account?  @relation("TransactionRuleSetAccount", fields: [setAccountId], references: [id], onDelete: SetNull)
+
+  @@index([userId, priority])
+}
+
+/// A learned Title → Category combo the user asked to stop auto-filling. The combos themselves
+/// are derived from transaction history on every load; only the opt-out is stored.
+model HiddenTitleSuggestion {
+  id        String   @id @default(cuid())
+  userId    String
+  /// `normalizeExpenseTitleKey(title)`.
+  titleKey  String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, titleKey])
 }

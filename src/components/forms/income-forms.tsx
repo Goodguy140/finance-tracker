@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useId, type FocusEvent } from "react";
 import { ServerActionForm } from "@/components/server-action-form";
 import {
   selectClass,
@@ -15,6 +15,7 @@ import {
   getTodayIsoDate,
 } from "./shared";
 import { createIncomeAction } from "@/app/actions";
+import { RuleAutofillHint, useRuleAutofill } from "@/components/transaction-rules-context";
 
 export function IncomeForm({
   accounts,
@@ -29,6 +30,42 @@ export function IncomeForm({
 }) {
   const today = getTodayIsoDate();
   const fieldIds = useId();
+
+  const rules = useRuleAutofill({ type: "INCOME", categoryOptions: incomeCategories });
+
+  /**
+   * Every field here is uncontrolled, so rules write to the form directly. They run when the
+   * title is left — the last thing entered in either layout — and only fill the amount and
+   * note while those are empty; account, source and title follow the rule.
+   */
+  function applyRules(e: FocusEvent<HTMLTextAreaElement>) {
+    const form = e.currentTarget.form;
+    if (!form) return;
+    const field = <T extends Element>(name: string) => form.elements.namedItem(name) as T | null;
+    const title = e.currentTarget.value;
+    const amount = field<HTMLInputElement>("amount");
+    const account = field<HTMLSelectElement>("accountId");
+    const amountNumber = Number(amount?.value);
+    const { outcome, fresh } = rules.evaluate({
+      texts: [title],
+      amountCents: amount?.value.trim() && Number.isFinite(amountNumber) ? Math.round(amountNumber * 100) : null,
+      accountId: account?.value || null,
+    });
+    if (!fresh) return;
+    const category = field<HTMLSelectElement>("categoryId");
+    if (outcome.categoryId && category && incomeCategories.some((c) => c.id === outcome.categoryId)) {
+      category.value = outcome.categoryId;
+    }
+    if (outcome.accountId && account && accounts.some((a) => a.id === outcome.accountId)) {
+      account.value = outcome.accountId;
+    }
+    if (outcome.amountCents !== undefined && amount && !amount.value.trim()) {
+      amount.value = (outcome.amountCents / 100).toFixed(2);
+    }
+    const note = field<HTMLTextAreaElement>("note");
+    if (outcome.appendNote && note && !note.value.trim()) note.value = outcome.appendNote;
+    if (outcome.title) e.currentTarget.value = outcome.title;
+  }
 
   const layout = variant === "mobileSheet" ? "flex flex-col gap-4" : formGridResponsive;
 
@@ -77,7 +114,9 @@ export function IncomeForm({
           maxLength={120}
           className={textAreaClass}
           placeholder="e.g. Paycheque, freelance invoice"
+          onBlur={applyRules}
         />
+        <RuleAutofillHint outcome={rules.outcome} />
       </LabeledField>
       <LabeledField label="Note" hint="Optional (max 250 characters)." className={`${oNote} ${spanFullSm}`}>
         <textarea name="note" rows={4} maxLength={250} className={textAreaClass} placeholder="Additional details" />

@@ -1,0 +1,203 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mockPrisma = vi.hoisted(() => ({
+  account: { findFirst: vi.fn() },
+  category: { findFirst: vi.fn(), findMany: vi.fn() },
+  transaction: { findMany: vi.fn(), update: vi.fn() },
+  transactionRule: {
+    count: vi.fn(),
+    create: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    update: vi.fn(),
+  },
+  hiddenTitleSuggestion: { upsert: vi.fn(), deleteMany: vi.fn() },
+  $transaction: vi.fn(),
+}));
+
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/headers", () => ({ headers: vi.fn(async () => new Headers()) }));
+vi.mock("@/lib/session", () => ({ requireUser: vi.fn(async () => ({ id: "user-1" })) }));
+vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
+vi.mock("@/lib/budget-alert-dispatch", () => ({ scheduleBudgetAlertEmails: vi.fn() }));
+vi.mock("@/lib/audit-log", () => ({
+  AUDIT_ACTIONS: { transaction_rule_applied: "transaction_rule_applied" },
+  recordAuditLog: vi.fn(),
+}));
+
+const {
+  applyTransactionRuleAction,
+  createTransactionRuleAction,
+  hideLearnedTitleAction,
+  moveTransactionRuleAction,
+  previewTransactionRuleAction,
+} = await import("./transaction-rules");
+const { recordAuditLog } = await import("@/lib/audit-log");
+
+function form(entries: Record<string, string>) {
+  const data = new FormData();
+  for (const [key, value] of Object.entries(entries)) data.set(key, value);
+  return data;
+}
+
+function ruleRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "rule-1",
+    userId: "user-1",
+    priority: 0,
+    enabled: true,
+    titleOperator: "CONTAINS",
+    titlePattern: "netflix",
+    transactionType: "EXPENSE",
+    matchAccountId: null,
+    minAmountCents: null,
+    maxAmountCents: null,
+    setCategoryId: "cat-subs",
+    setTitle: "Netflix",
+    setAmountCents: 1599,
+    setAccountId: null,
+    appendNote: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
+describe("transaction rule actions", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<void>) => fn(mockPrisma));
+    mockPrisma.transactionRule.count.mockResolvedValue(0);
+    mockPrisma.transactionRule.findFirst.mockResolvedValue(null);
+  });
+
+  describe("createTransactionRuleAction", () => {
+    it("pins the rule to the category's type and appends it after the last rule", async () => {
+      mockPrisma.category.findFirst.mockResolvedValue({ kind: "EXPENSE" });
+      mockPrisma.transactionRule.findFirst.mockResolvedValue({ priority: 4 });
+
+      const result = await createTransactionRuleAction(
+        form({ titleOperator: "CONTAINS", titlePattern: " Netflix ", setCategoryId: "cat-subs", setAmount: "15.99", minAmount: "" }),
+      );
+
+      expect(result).toBeUndefined();
+      expect(mockPrisma.transactionRule.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: "user-1",
+          priority: 5,
+          titlePattern: "Netflix",
+          transactionType: "EXPENSE",
+          setCategoryId: "cat-subs",
+          setAmountCents: 1599,
+          minAmountCents: null,
+          setTitle: null,
+        }),
+      });
+    });
+
+    it("refuses a category from the other side of the ledger", async () => {
+      mockPrisma.category.findFirst.mockResolvedValue({ kind: "INCOME" });
+      const result = await createTransactionRuleAction(
+        form({ titlePattern: "netflix", transactionType: "EXPENSE", setCategoryId: "cat-salary" }),
+      );
+      expect(result).toEqual({ ok: false, error: expect.stringContaining("That category is for income") });
+      expect(mockPrisma.transactionRule.create).not.toHaveBeenCalled();
+    });
+
+    it("refuses a category the user does not own", async () => {
+      mockPrisma.category.findFirst.mockResolvedValue(null);
+      const result = await createTransactionRuleAction(form({ titlePattern: "netflix", setCategoryId: "someone-elses" }));
+      expect(result).toEqual({ ok: false, error: "Selected category was not found." });
+    });
+
+    it("refuses a rule that sets nothing, or an inverted amount range", async () => {
+      expect(await createTransactionRuleAction(form({ titlePattern: "netflix" }))).toMatchObject({
+        ok: false,
+        error: expect.stringContaining("at least one thing"),
+      });
+      expect(
+        await createTransactionRuleAction(form({ titlePattern: "netflix", setTitle: "N", minAmount: "20", maxAmount: "10" })),
+      ).toMatchObject({ ok: false, error: expect.stringContaining("minimum amount") });
+      expect(mockPrisma.transactionRule.create).not.toHaveBeenCalled();
+    });
+
+    it("checks both accounts belong to the user", async () => {
+      mockPrisma.account.findFirst.mockResolvedValue(null);
+      const result = await createTransactionRuleAction(form({ titlePattern: "netflix", setAccountId: "acc-x" }));
+      expect(result).toMatchObject({ ok: false });
+      expect(mockPrisma.transactionRule.create).not.toHaveBeenCalled();
+    });
+
+    it("caps the number of rules", async () => {
+      mockPrisma.transactionRule.count.mockResolvedValue(200);
+      const result = await createTransactionRuleAction(form({ titlePattern: "netflix", setTitle: "Netflix" }));
+      expect(result).toMatchObject({ ok: false, error: expect.stringContaining("up to 200 rules") });
+    });
+  });
+
+  it("moves a rule by swapping it with its neighbour and renumbering", async () => {
+    mockPrisma.transactionRule.findMany.mockResolvedValue([
+      { id: "a", priority: 0 },
+      { id: "b", priority: 3 },
+      { id: "c", priority: 7 },
+    ]);
+    await moveTransactionRuleAction(form({ ruleId: "c", direction: "up" }));
+    const writes = mockPrisma.transactionRule.update.mock.calls.map(([arg]) => [arg.where.id, arg.data.priority]);
+    expect(writes).toEqual([
+      ["c", 1],
+      ["b", 2],
+    ]);
+  });
+
+  it("hides a learned title by its normalised key", async () => {
+    await hideLearnedTitleAction(form({ title: "  Tim Hortons " }));
+    expect(mockPrisma.hiddenTitleSuggestion.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: { userId: "user-1", titleKey: "tim hortons" } }),
+    );
+  });
+
+  describe("apply to past transactions", () => {
+    beforeEach(() => {
+      mockPrisma.transactionRule.findFirst.mockResolvedValue(ruleRow());
+      mockPrisma.category.findMany.mockResolvedValue([
+        { id: "cat-subs", kind: "EXPENSE" },
+        { id: "cat-other", kind: "EXPENSE" },
+      ]);
+      mockPrisma.transaction.findMany.mockResolvedValue([
+        { id: "t1", title: "NETFLIX.COM", type: "EXPENSE", amountCents: 1299, accountId: "a", categoryId: "cat-other", note: null },
+        { id: "t2", title: "Netflix", type: "EXPENSE", amountCents: 1599, accountId: "a", categoryId: "cat-subs", note: null },
+        { id: "t3", title: "Groceries", type: "EXPENSE", amountCents: 5000, accountId: "a", categoryId: "cat-other", note: null },
+      ]);
+    });
+
+    it("previews only the rows that would change, excluding split transactions in the query", async () => {
+      const result = await previewTransactionRuleAction("rule-1");
+      expect(result).toMatchObject({ ok: true, total: 1, sample: [{ id: "t1" }] });
+      expect(mockPrisma.transaction.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ userId: "user-1", splitParts: { none: {} }, type: "EXPENSE" }),
+        }),
+      );
+    });
+
+    it("applies title and category but never the rule's amount, and audits it", async () => {
+      const result = await applyTransactionRuleAction("rule-1");
+      expect(result).toEqual({ ok: true, updated: 1 });
+      expect(mockPrisma.transaction.update).toHaveBeenCalledTimes(1);
+      const [{ where, data }] = mockPrisma.transaction.update.mock.calls[0];
+      expect(where).toEqual({ id: "t1" });
+      expect(data).toEqual({ title: "Netflix", categoryId: "cat-subs", accountId: "a", note: null });
+      expect(data).not.toHaveProperty("amountCents");
+      expect(recordAuditLog).toHaveBeenCalledWith(
+        mockPrisma,
+        expect.objectContaining({ action: "transaction_rule_applied", metadata: { updated: 1 } }),
+      );
+    });
+
+    it("refuses a rule the user does not own", async () => {
+      mockPrisma.transactionRule.findFirst.mockResolvedValue(null);
+      expect(await applyTransactionRuleAction("rule-x")).toEqual({ ok: false, error: "Rule not found." });
+      expect(mockPrisma.transaction.update).not.toHaveBeenCalled();
+    });
+  });
+});

@@ -26,6 +26,7 @@ export function ExpenseTitleAutocomplete({
   titleSuggestions,
   expenseCategories,
   onTitleChange,
+  renameOnBlur,
   required,
 }: {
   inputId: string;
@@ -34,6 +35,8 @@ export function ExpenseTitleAutocomplete({
   titleSuggestions: ExpenseTitleSuggestion[];
   expenseCategories: Option[];
   onTitleChange: (title: string) => void;
+  /** Called when focus leaves the field; a returned title replaces what was typed. */
+  renameOnBlur?: (title: string) => string | undefined;
   required?: boolean;
 }) {
   const listboxId = useId();
@@ -192,6 +195,8 @@ export function ExpenseTitleAutocomplete({
           if (next && listRef.current?.contains(next)) return;
           setOpen(false);
           setActiveIndex(-1);
+          const renamed = renameOnBlur?.(value);
+          if (renamed && renamed !== value) setValue(renamed);
         }}
         onChange={(e) => {
           handleInputChange(e.target.value);

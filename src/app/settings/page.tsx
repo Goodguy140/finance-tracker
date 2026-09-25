@@ -19,6 +19,10 @@ import {
   HISTORY_WINDOWS,
 } from "@/lib/plaid/window";
 import type { PlaidConnectionsPanelProps } from "@/components/plaid-connections-panel";
+import type { TransactionRulesPanelProps } from "@/components/transaction-rules-panel";
+import { normalizeExpenseTitleKey } from "@/lib/expense-title-suggestions";
+import type { RuleTransactionType } from "@/lib/transaction-rules";
+import { loadRuleContext } from "@/lib/transaction-rules-server";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +56,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     plaidItems,
     plaidConfig,
     plaidFakeLink,
+    ruleContext,
+    allCategories,
   ] = await Promise.all([
     prisma.account.findMany({ where: { userId: user.id }, orderBy: { name: "asc" } }),
     prisma.category.findMany({ where: { userId: user.id, kind: CategoryKind.EXPENSE }, orderBy: { name: "asc" } }),
@@ -97,6 +103,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     }),
     getPlaidConfig(),
     plaidFakeClientEnabled(),
+    loadRuleContext(user.id),
+    prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true } }),
   ]);
 
   const availableProviders = [
@@ -231,6 +239,19 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     })),
   };
 
+  const hiddenTitleKeys = new Set(ruleContext.hiddenTitleKeys);
+  const learnedKeys = new Set(ruleContext.learned.map((l) => normalizeExpenseTitleKey(l.title)));
+  const transactionRules: TransactionRulesPanelProps = {
+    rules: ruleContext.rules,
+    learned: ruleContext.learned.map((l) => ({
+      ...l,
+      hidden: hiddenTitleKeys.has(normalizeExpenseTitleKey(l.title)),
+    })),
+    orphanHiddenTitles: ruleContext.hiddenTitleKeys.filter((key) => !learnedKeys.has(key)),
+    categories: allCategories.map((c) => ({ id: c.id, name: c.name, kind: c.kind as RuleTransactionType })),
+    accounts: accounts.map((a) => ({ id: a.id, name: a.name, archived: a.archived })),
+  };
+
   return (
     <main className="mx-auto mb-4 mt-[max(1rem,env(safe-area-inset-top))] w-full max-w-4xl space-y-4 px-4 pb-8 pt-2 text-slate-100 sm:px-5 lg:my-6 lg:space-y-5 lg:px-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
@@ -276,6 +297,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
         apiTokens={apiTokens}
         security={security}
         plaid={plaid}
+        transactionRules={transactionRules}
       />
     </main>
   );

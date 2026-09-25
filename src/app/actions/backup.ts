@@ -32,6 +32,8 @@ export const clearUserFinancialDataAction = formAction(async (formData: FormData
       where: { id: user.id },
       data: { defaultExpenseAccountId: null },
     });
+    await tx.transactionRule.deleteMany({ where: { userId: user.id } });
+    await tx.hiddenTitleSuggestion.deleteMany({ where: { userId: user.id } });
     await tx.budget.deleteMany({ where: { userId: user.id } });
     await tx.budgetAlertNotification.deleteMany({ where: { userId: user.id } });
     await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
@@ -99,6 +101,8 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
       data: { defaultExpenseAccountId: null },
     });
     await tx.passwordResetToken.deleteMany({ where: { userId: user.id } });
+    await tx.transactionRule.deleteMany({ where: { userId: user.id } });
+    await tx.hiddenTitleSuggestion.deleteMany({ where: { userId: user.id } });
     await tx.budget.deleteMany({ where: { userId: user.id } });
     await tx.budgetAlertNotification.deleteMany({ where: { userId: user.id } });
     await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
@@ -384,6 +388,38 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
           createdAt: new Date(row.createdAt),
         };
       }),
+    });
+
+    await tx.transactionRule.createMany({
+      data: (parsed.transactionRules ?? []).map((row) => {
+        const mapped = (map: Map<string, string>, id: string | null) => {
+          if (!id) return null;
+          const next = map.get(id);
+          if (!next) throw new Error("Backup references unknown rule account or category.");
+          return next;
+        };
+        return {
+          userId: user.id,
+          priority: row.priority,
+          enabled: row.enabled,
+          titleOperator: row.titleOperator,
+          titlePattern: row.titlePattern,
+          transactionType: row.transactionType,
+          matchAccountId: mapped(accountIdMap, row.matchAccountId),
+          minAmountCents: row.minAmountCents,
+          maxAmountCents: row.maxAmountCents,
+          setCategoryId: mapped(categoryIdMap, row.setCategoryId),
+          setTitle: row.setTitle,
+          setAmountCents: row.setAmountCents,
+          setAccountId: mapped(accountIdMap, row.setAccountId),
+          appendNote: row.appendNote,
+          createdAt: new Date(row.createdAt),
+        };
+      }),
+    });
+    const hiddenTitleKeys = new Set((parsed.hiddenTitleSuggestions ?? []).map((row) => row.titleKey));
+    await tx.hiddenTitleSuggestion.createMany({
+      data: [...hiddenTitleKeys].map((titleKey) => ({ userId: user.id, titleKey })),
     });
 
     // `parsed.authAccounts` is deliberately not restored, and the user's existing links are
