@@ -95,6 +95,11 @@ to undo by accident:
   the monthly charge.
 - Deleting a `PlaidItem` row does not end anything. `/item/remove` first, delete second, and
   refuse the whole operation if revocation fails (`revokePlaidItemsForUser`).
+- Plaid data is kept only while there is a use for it. Unlinking or withdrawn consent deletes
+  the item, its accounts and review queue, and strips Plaid ids from verifications (the badge
+  keeps only the fact and the bank's name). Withdrawn and superseded staged rows are pruned
+  after 30 days. The rest of the queue stays for the life of the connection: it is the
+  idempotency key that stops a re-sync re-proposing declined rows.
 - The background sweep skips banks nothing could come of: unmapped, lapsed consent, awaiting
   re-authentication, or in failure backoff.
 
@@ -113,9 +118,13 @@ as income would inflate income and leave the original spend uncorrected.
 and it is why a bank revising or withdrawing a committed transaction updates the staged copy
 and raises a flag rather than editing the user's record.
 
-**Webhooks only raise and clear prompts.** `/api/plaid/webhook` sits outside the session gate,
-so the ES256 signature check (`webhook-verify.ts`) is the whole of its security — never act on a
-body before it passes, and hash the raw text, not a re-serialised object. The ITEM codes set
+**Webhooks only raise and clear prompts — except consent withdrawn at Plaid.**
+`/api/plaid/webhook` sits outside the session gate, so the ES256 signature check
+(`webhook-verify.ts`) is the whole of its security — never act on a body before it passes, and
+hash the raw text, not a re-serialised object. `USER_PERMISSION_REVOKED` and
+`USER_ACCOUNT_REVOKED` are the exception: the user has already said no, so what was synced
+under that consent is deleted (`src/lib/plaid/purge.ts`) — for a whole item, only after
+`/item/remove` succeeds. Never the user's committed transactions. The ITEM codes set
 columns that `describePlaidItemAttention` reads; update mode (`completePlaidUpdateAction`) and
 `LOGIN_REPAIRED` clear them. An update-mode public token is not exchanged — the access token is
 unchanged. E2E specs sign deliveries with the fixture key in `fake-webhook.ts`.

@@ -86,9 +86,9 @@ directly harm the person.
 | `RateLimitEntry` | Until `resetAt` | Cleared on success; sweep ~1 check in 50 |
 | `PasswordResetToken` | Unusable after 30 min — **but the row is never deleted** | None. See [Known gaps](#known-gaps) |
 | `BudgetAlertNotification` | Indefinite | Only on account deletion, reset, or restore |
-| `PlaidItem`, `PlaidAccount` | Until the user unlinks the bank, or the account is deleted | `/item/remove` at Plaid **then** cascade — see [Bank connections](#bank-connections-plaid) |
-| `PlaidStagedTransaction` | **Indefinite, by design** | Only on unlink or account deletion. See below. |
-| `TransactionVerification` | Life of the transaction it marks | `onDelete: Cascade` from `Transaction` |
+| `PlaidItem`, `PlaidAccount` | Until the user unlinks the bank, withdraws consent at Plaid, or the account is deleted | `/item/remove` at Plaid **then** delete — see [Bank connections](#bank-connections-plaid) |
+| `PlaidStagedTransaction` | Life of the bank connection; withdrawn and superseded rows **30 days** | Unlink, withdrawn consent, or account deletion; the sync prunes the rest. See below. |
+| `TransactionVerification` | Life of the transaction it marks; Plaid ids only while the connection lives | `onDelete: Cascade` from `Transaction`; ids cleared on unlink or withdrawn consent |
 | `ServerSetting` | Life of the deployment | Overwritten on change |
 
 `PlaidStagedTransaction` rows are kept even after the user has dealt with them, including ones they
@@ -97,6 +97,19 @@ it is what stops a re-sync re-proposing a transaction that was already added, or
 user explicitly declined. Pruning them would trade a little storage for duplicate financial records,
 which is the wrong trade. The alternative — a tombstone table holding only the ids — keeps the same
 personal data under a different name, so it is not a genuine improvement.
+
+Two statuses are not an idempotency key, because Plaid never re-issues their ids: rows the bank
+withdrew before anyone decided (`REMOVED_BY_PLAID`) and pending rows their posted successor replaced
+(`SUPERSEDED`). Each successful sync deletes these once they are 30 days old
+(`pruneSpentStagedRows`, `src/lib/plaid/purge.ts`); the grace period covers the late `removed`
+and pending → posted deliveries that can still refer to them.
+
+The key is only needed while the connection lives. Unlinking deletes the item, its accounts and
+its whole queue, and clears the Plaid ids from `TransactionVerification` — the badge keeps only
+the fact of verification and the bank's name. The same purge runs when the user withdraws
+consent at Plaid rather than here: a `USER_PERMISSION_REVOKED` webhook removes the item at Plaid
+and then purges it, and `USER_ACCOUNT_REVOKED` purges the one account named. The user's
+committed transactions are never touched by either.
 
 ### Why financial records have no expiry
 
@@ -297,6 +310,10 @@ refusal names the affected item ids so they can be removed from the Plaid dashbo
 A connection that cannot be revoked because Plaid is switched off at the server level is
 also refused rather than deleted: the bank is still live at Plaid whatever this deployment
 thinks, so removing the only record of it would strand it permanently.
+
+Consent withdrawn at Plaid (`USER_PERMISSION_REVOKED`) follows the same order: `/item/remove`
+first, then the purge. If removal fails, the webhook answers 500 and Plaid redelivers it; nothing
+is deleted until the connection has ended.
 
 **Plaid bills per connected bank per month, working or not.** Connections that cannot sync —
 awaiting re-authentication, lapsed consent, or feeding no account — are therefore flagged in
