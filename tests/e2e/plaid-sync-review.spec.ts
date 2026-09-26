@@ -23,7 +23,7 @@ async function signIn(page: Page, email: string) {
   await page.getByRole("button", { name: "Login" }).click();
 }
 
-test("syncing stages transactions for review, and only a reviewed row reaches the log", async ({ page }) => {
+test("syncing stages transactions for review, links exact matches, and only a reviewed row reaches the log", async ({ page }) => {
   await addVirtualAuthenticator(page);
   const stamp = uniqueStamp();
   const email = `plaid-sync-${stamp}@example.com`;
@@ -65,8 +65,8 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
     },
   });
 
-  // A transaction the user entered by hand that the bank will also report — this is the
-  // row the matcher should propose linking rather than duplicating.
+  // A transaction the user entered by hand that the bank will also report, to the cent —
+  // the sync should link this one itself rather than queue it.
   const manual = await prisma.transaction.create({
     data: {
       userId: user.id,
@@ -76,6 +76,20 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
       amountCents: 1200,
       date: daysAgoUtc(2),
       title: "Blue Bottle Coffee",
+    },
+  });
+
+  // One the bank reports $1.50 higher than entered. Close enough to propose, not equal, so
+  // it has to wait for the user to link it.
+  const manualHardware = await prisma.transaction.create({
+    data: {
+      userId: user.id,
+      accountId: account.id,
+      categoryId: diningCategory.id,
+      type: "EXPENSE",
+      amountCents: 3000,
+      date: daysAgoUtc(4),
+      title: "Maple Hardware",
     },
   });
 
@@ -107,30 +121,31 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
   await openSettingsTab(page, "accounts");
   await page.getByRole("region", { name: "Connected banks" }).getByRole("button", { name: "Sync now" }).click();
 
-  // Polled on the match, not the row count. Matching runs after the whole walk commits, so
-  // all four rows exist with null match fields for a moment first — waiting on the count
-  // and then reading matchTransactionId reads that gap, which is exactly how this flaked.
+  // Polled on the auto-link, the last thing the sync writes. Matching runs after the whole
+  // walk commits, so all rows exist unmatched for a moment first — waiting on the count
+  // and then reading the match reads that gap, which is exactly how this flaked.
   await expect
     .poll(
       async () => {
-        const row = await prisma.plaidStagedTransaction.findFirst({
-          where: { userId: user.id, plaidTransactionId: "fake-txn-coffee" },
-          select: { matchTransactionId: true },
+        const verification = await prisma.transactionVerification.findUnique({
+          where: { transactionId: manual.id },
+          select: { plaidTransactionId: true },
         });
-        return row?.matchTransactionId ?? null;
+        return verification?.plaidTransactionId ?? null;
       },
       { timeout: 20_000 },
     )
-    .toBe(manual.id);
+    .toBe("fake-txn-coffee");
 
+  // The exact match was linked; the other four wait for the user.
   expect(
     await prisma.plaidStagedTransaction.count({
       where: { userId: user.id, status: "NEEDS_REVIEW" },
     }),
-  ).toBe(5);
+  ).toBe(4);
 
-  // Nothing reached the log: the manual row is still the only transaction.
-  expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(1);
+  // Nothing was added to the log: the two manual rows are still the only transactions.
+  expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(2);
 
   const staged = await prisma.plaidStagedTransaction.findMany({ where: { userId: user.id } });
   const byId = new Map(staged.map((row) => [row.plaidTransactionId, row]));
@@ -145,9 +160,25 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
   // rather than falling to the catch-all.
   expect(byId.get("fake-txn-hardware")!.suggestedCategoryId).toBe(leisure.id);
 
-  // The matcher proposed the hand-entered coffee, and nothing else claimed it.
+  // The coffee was linked to what the user entered, and verified against the bank.
   const coffee = byId.get("fake-txn-coffee")!;
-  expect(coffee.matchTier).toBe("high");
+  expect(coffee.status).toBe("LINKED");
+  expect(coffee.resolvedTransactionId).toBe(manual.id);
+  const autoVerification = await prisma.transactionVerification.findUniqueOrThrow({
+    where: { transactionId: manual.id },
+  });
+  expect(autoVerification.source).toBe("MATCHED");
+  expect(autoVerification.institutionName).toBe("Test Credit Union");
+  // The user's own values are kept.
+  const coffeeAfter = await prisma.transaction.findUniqueOrThrow({ where: { id: manual.id } });
+  expect(coffeeAfter.amountCents).toBe(1200);
+  expect(coffeeAfter.title).toBe("Blue Bottle Coffee");
+
+  // The hardware row was only proposed: its amount differs from what the user entered.
+  const hardware = byId.get("fake-txn-hardware")!;
+  expect(hardware.status).toBe("NEEDS_REVIEW");
+  expect(hardware.matchTransactionId).toBe(manualHardware.id);
+  expect(hardware.matchTier).toBe("low");
   expect(byId.get("fake-txn-groceries")!.matchTransactionId).toBeNull();
 
   // --- review on the dashboard ---
@@ -158,28 +189,35 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
   // The hardware row has no merchant_name, so its heading is the bank's own description
   // ("SQ *MAPLE HARDWARE #0114 OTTAWA ON") cleaned up rather than shown raw.
   await expect(queue.getByText("Maple Hardware Ottawa")).toBeVisible();
+  // The auto-linked coffee is not in the queue. Matched on the row's own controls: the
+  // log, which shows the coffee, sits inside the same outer section.
+  await expect(page.getByRole("group", { name: "What to do with Maple Hardware Ottawa" })).toHaveCount(1);
+  await expect(page.getByRole("group", { name: /^What to do with Blue Bottle/ })).toHaveCount(0);
 
   // The proposed link is surfaced, not applied silently.
   await expect(queue.getByText(/Looks like/i)).toBeVisible();
 
-  // Link the coffee to what the user already entered.
-  const coffeeCard = queue.locator("li").filter({ hasText: "Blue Bottle Coffee" }).first();
-  await coffeeCard.getByRole("button", { name: "Link it" }).click();
+  // A low-tier match pre-selects "Add as new", so the user picks Link themselves.
+  const hardwareCard = queue.locator("li").filter({ hasText: "Maple Hardware Ottawa" }).first();
+  await hardwareCard.getByRole("button", { name: "Link", exact: true }).click();
+  await hardwareCard.getByRole("button", { name: "Link it" }).click();
 
   await expect
     .poll(async () => prisma.transactionVerification.count({ where: { userId: user.id } }), {
       timeout: 15_000,
     })
-    .toBe(1);
+    .toBe(2);
 
-  const verification = await prisma.transactionVerification.findFirstOrThrow({
-    where: { userId: user.id },
+  const verification = await prisma.transactionVerification.findUniqueOrThrow({
+    where: { transactionId: manualHardware.id },
   });
-  expect(verification.transactionId).toBe(manual.id);
   expect(verification.source).toBe("MATCHED");
   expect(verification.institutionName).toBe("Test Credit Union");
-  // Linking must not create a second transaction.
-  expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(1);
+  // Linking must not create another transaction, nor change the amount the user entered.
+  expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(2);
+  expect(
+    (await prisma.transaction.findUniqueOrThrow({ where: { id: manualHardware.id } })).amountCents,
+  ).toBe(3000);
 
   // --- the badge appears in the log ---
   await page.goto("/");
@@ -202,7 +240,7 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
 
   await expect
     .poll(async () => prisma.transaction.count({ where: { userId: user.id } }), { timeout: 15_000 })
-    .toBe(2);
+    .toBe(3);
 
   const added = await prisma.transaction.findFirstOrThrow({
     where: { userId: user.id, title: "Loblaws" },
@@ -220,8 +258,8 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
     await prisma.plaidStagedTransaction.count({
       where: { userId: user.id, status: "NEEDS_REVIEW" },
     }),
-  ).toBe(3);
-  expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(2);
+  ).toBe(2);
+  expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(3);
 
   // --- the refresh control in the log runs that same sweep ---
   // The sweep only touches banks that are due, so the item is aged past the interval
@@ -253,5 +291,5 @@ test("syncing stages transactions for review, and only a reviewed row reaches th
   const refreshed = await prisma.plaidItem.findFirstOrThrow({ where: { userId: user.id } });
   expect(refreshed.lastSyncedAt!.getTime()).toBeGreaterThan(dueBefore.getTime());
   // Still nothing posted behind the user's back.
-  expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(2);
+  expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(3);
 });

@@ -75,7 +75,7 @@ export type SyncStore = {
     error: string | null;
     needsReauth: boolean;
   }): Promise<void>;
-  /** Scores unreviewed rows against the user's own transactions. */
+  /** Scores unreviewed rows against the user's own transactions, and links the exact ones. */
   matchPendingRows(item: SyncItemRecord): Promise<number>;
 };
 
