@@ -9,6 +9,8 @@ import { dateFromYmd } from "@/lib/date-only";
 import { parseImportedDate } from "@/lib/import-dates";
 import { requireUser } from "@/lib/session";
 import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
+import { appendRuleNote, resolveRuleOutcome } from "@/lib/transaction-rules";
+import { loadRuleContext } from "@/lib/transaction-rules-server";
 import {
   expenseCsvImportSchema,
   expenseBaseSchema,
@@ -189,6 +191,9 @@ export const importExpensesCsvAction = formAction(async (formData: FormData) => 
     select: { id: true, name: true },
   });
   const categoryByName = new Map(categories.map((category) => [category.name.trim().toLowerCase(), category.id]));
+  const ruleContext = await loadRuleContext(user.id);
+  const expenseCategoryKinds = new Map(categories.map((category) => [category.id, "EXPENSE" as const]));
+  const activeAccountIds = new Set(accounts.map((account) => account.id));
 
   // Rows are resolved first (creating any missing categories as we go) and written with a
   // single createMany: one round trip per row used to push large statements past the
@@ -207,16 +212,32 @@ export const importExpensesCsvAction = formAction(async (formData: FormData) => 
 
       const postedDateRaw = getOptionalMappedValue(row, payload.mapping.postedDate) ?? payload.manualValues.postedDate;
       const postedDate = parseImportedDate(postedDateRaw);
-      const title = getOptionalMappedValue(row, payload.mapping.title) ?? payload.manualValues.title;
-      const note = getOptionalMappedValue(row, payload.mapping.note) ?? payload.manualValues.note;
-
+      const statementTitle = getOptionalMappedValue(row, payload.mapping.title) ?? payload.manualValues.title;
+      const statementNote = getOptionalMappedValue(row, payload.mapping.note) ?? payload.manualValues.note;
       const accountName = getOptionalMappedValue(row, payload.mapping.accountName) ?? payload.manualValues.accountName;
-      const resolvedAccountId = accountName
-        ? accountByName.get(accountName.toLowerCase()) ?? payload.defaults.accountId
-        : payload.defaults.accountId;
-
       const categoryName = getOptionalMappedValue(row, payload.mapping.categoryName) ?? payload.manualValues.categoryName;
-      let resolvedCategoryId = payload.defaults.categoryId;
+
+      // Rules fill what the statement leaves open: a category or account the row names
+      // itself always wins, and the amount is the statement's, never a rule's.
+      const rule = resolveRuleOutcome(
+        ruleContext.rules,
+        {
+          texts: [statementTitle],
+          amountCents: toCents(amount),
+          accountId: accountName ? accountByName.get(accountName.toLowerCase()) ?? null : null,
+          type: "EXPENSE",
+        },
+        expenseCategoryKinds,
+        { learned: ruleContext.learned, hiddenTitleKeys: ruleContext.hiddenTitleKeys },
+      );
+      const title = rule.title ?? statementTitle;
+      const note = appendRuleNote(statementNote, rule.appendNote) ?? undefined;
+      const ruleAccountId = rule.accountId && activeAccountIds.has(rule.accountId) ? rule.accountId : undefined;
+      const resolvedAccountId = accountName
+        ? accountByName.get(accountName.toLowerCase()) ?? ruleAccountId ?? payload.defaults.accountId
+        : ruleAccountId ?? payload.defaults.accountId;
+
+      let resolvedCategoryId = rule.categoryId ?? payload.defaults.categoryId;
       if (categoryName) {
         const normalizedCategoryName = categoryName.toLowerCase();
         const existingCategoryId = categoryByName.get(normalizedCategoryName);

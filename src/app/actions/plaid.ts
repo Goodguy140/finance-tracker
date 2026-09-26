@@ -9,7 +9,9 @@ import { prisma } from "@/lib/prisma";
 import { PlaidApiError, type PlaidClient } from "@/lib/plaid/client";
 import { checkMappingAllowed } from "@/lib/plaid/mapping";
 import { purgePlaidItemData } from "@/lib/plaid/purge";
-import { resolveDisplayName } from "@/lib/plaid/ingest";
+import { proposeForStagedRow, type StagedRuleInput } from "@/lib/plaid/staged-rules";
+import type { RuleTransactionType } from "@/lib/transaction-rules";
+import { loadRuleContext } from "@/lib/transaction-rules-server";
 import {
   makePlaidItemRevoker,
   openAccessToken,
@@ -642,6 +644,21 @@ export const syncAllPlaidItemsAction = formAction(async (formData: FormData) => 
 });
 
 /**
+ * The queue's proposal for each staged row (title, category, note), re-derived from the
+ * user's rules at commit time so what is written matches what the queue showed — and a
+ * category that has since stopped belonging to the user is never written.
+ */
+async function stagedProposalsFor(userId: string, rows: (StagedRuleInput & { id: string })[]) {
+  const [context, categories] = await Promise.all([
+    loadRuleContext(userId),
+    prisma.category.findMany({ where: { userId }, select: { id: true, kind: true } }),
+  ]);
+  const kinds = new Map(categories.map((c) => [c.id, c.kind as RuleTransactionType]));
+  const learned = { learned: context.learned, hiddenTitleKeys: context.hiddenTitleKeys };
+  return new Map(rows.map((row) => [row.id, proposeForStagedRow(row, context.rules, kinds, learned)]));
+}
+
+/**
  * Commits one reviewed row: link it to a transaction the user already entered, add it as
  * a new one, or ignore it.
  *
@@ -673,7 +690,8 @@ export const resolveStagedTransactionAction = formAction(async (formData: FormDa
     return;
   }
 
-  const resolvedCategoryId = categoryId || staged.suggestedCategoryId;
+  const proposal = await stagedProposalsFor(user.id, [staged]).then((m) => m.get(staged.id)!);
+  const resolvedCategoryId = categoryId || proposal.categoryId;
   if (!resolvedCategoryId) throw new Error("Choose a category for this transaction.");
   await assertUserOwnsCategory(user.id, resolvedCategoryId, categoryKindForTransactionType(staged.type));
   if (staged.suggestedAccountId) await assertUserOwnsAccount(user.id, staged.suggestedAccountId);
@@ -733,7 +751,8 @@ export const resolveStagedTransactionAction = formAction(async (formData: FormDa
         amountCents: staged.amountCents,
         date: staged.date,
         postedDate: staged.postedDate,
-        title: resolveDisplayName(staged.name, staged.merchantName),
+        title: proposal.title,
+        note: proposal.note,
       },
       select: { id: true },
     });
@@ -769,10 +788,12 @@ export const bulkAddStagedTransactionsAction = formAction(async (formData: FormD
     include: { plaidItem: { select: { id: true, institutionName: true } } },
   });
 
+  const proposals = await stagedProposalsFor(user.id, rows);
+
   // A row with no suggested category cannot be written -- Transaction.categoryId is
   // non-nullable. Refusing the batch beats silently adding fewer rows than the button
   // promised, which is invisible to the person who pressed it.
-  const uncategorised = rows.filter((row) => !row.suggestedCategoryId);
+  const uncategorised = rows.filter((row) => !proposals.get(row.id)?.categoryId);
   if (uncategorised.length > 0) {
     throw new Error(
       `${uncategorised.length} of these have no category yet. Open each one and pick a category, or add them individually.`,
@@ -781,16 +802,18 @@ export const bulkAddStagedTransactionsAction = formAction(async (formData: FormD
 
   await prisma.$transaction(async (tx) => {
     for (const staged of rows) {
+      const proposal = proposals.get(staged.id)!;
       const created = await tx.transaction.create({
         data: {
           userId: user.id,
           accountId: staged.suggestedAccountId,
-          categoryId: staged.suggestedCategoryId!,
+          categoryId: proposal.categoryId!,
           type: staged.type,
           amountCents: staged.amountCents,
           date: staged.date,
           postedDate: staged.postedDate,
-          title: resolveDisplayName(staged.name, staged.merchantName),
+          title: proposal.title,
+          note: proposal.note,
         },
         select: { id: true },
       });

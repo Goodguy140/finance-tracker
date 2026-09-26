@@ -56,6 +56,7 @@ export const AUDIT_ACTIONS = {
   plaid_item_update_completed: "plaid_item_update_completed",
   plaid_item_consent_revoked: "plaid_item_consent_revoked",
   plaid_account_consent_revoked: "plaid_account_consent_revoked",
+  transaction_rule_applied: "transaction_rule_applied",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

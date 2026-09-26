@@ -18,6 +18,8 @@ const mockPrisma = vi.hoisted(() => ({
   plaidAccount: { deleteMany: vi.fn() },
   plaidStagedTransaction: { deleteMany: vi.fn() },
   transactionVerification: { deleteMany: vi.fn(), create: vi.fn() },
+  transactionRule: { deleteMany: vi.fn(), createMany: vi.fn() },
+  hiddenTitleSuggestion: { deleteMany: vi.fn(), createMany: vi.fn() },
   $transaction: vi.fn(),
 }));
 
@@ -221,6 +223,94 @@ describe("importUserBackupAction", () => {
     const ruleOrder = mockPrisma.recurringTransaction.create.mock.invocationCallOrder[0];
     const txnOrder = mockPrisma.transaction.create.mock.invocationCallOrder[0];
     expect(ruleOrder).toBeLessThan(txnOrder);
+  });
+
+  it("restores transaction rules and hidden titles with remapped ids", async () => {
+    const iso = "2026-01-01T00:00:00.000Z";
+    mockPrisma.account.create.mockResolvedValue({ id: "acc-new" });
+    mockPrisma.category.create.mockResolvedValue({ id: "cat-new" });
+    const backup = {
+      ...minimalBackup("user@example.com"),
+      accounts: [
+        { id: "acc-old", name: "Chequing", type: "CHEQUING", currency: "CAD", countryCode: "CA", provider: null, archived: false, createdAt: iso, updatedAt: iso },
+      ],
+      categories: [{ id: "cat-old", name: "Streaming", kind: "EXPENSE", isDefault: false, createdAt: iso, updatedAt: iso }],
+      transactionRules: [
+        {
+          priority: 0,
+          enabled: true,
+          titleOperator: "CONTAINS",
+          titlePattern: "netflix",
+          transactionType: "EXPENSE",
+          matchAccountId: "acc-old",
+          minAmountCents: null,
+          maxAmountCents: null,
+          setCategoryId: "cat-old",
+          setTitle: "Netflix",
+          setAmountCents: null,
+          setAccountId: null,
+          appendNote: null,
+          createdAt: iso,
+        },
+      ],
+      hiddenTitleSuggestions: [{ titleKey: "coffee" }, { titleKey: "coffee" }],
+    };
+    const file = new File([JSON.stringify(backup)], "backup.json", { type: "application/json" });
+    const formData = new FormData();
+    formData.set("backupJson", file);
+
+    expect(await importUserBackupAction(formData)).toBeUndefined();
+
+    expect(mockPrisma.transactionRule.deleteMany).toHaveBeenCalledWith({ where: { userId: "user-1" } });
+    expect(mockPrisma.transactionRule.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          userId: "user-1",
+          titlePattern: "netflix",
+          matchAccountId: "acc-new",
+          setCategoryId: "cat-new",
+          setAccountId: null,
+          setTitle: "Netflix",
+        }),
+      ],
+    });
+    expect(mockPrisma.hiddenTitleSuggestion.createMany).toHaveBeenCalledWith({
+      data: [{ userId: "user-1", titleKey: "coffee" }],
+    });
+  });
+
+  it("refuses a file whose rule points at a category it does not contain", async () => {
+    const iso = "2026-01-01T00:00:00.000Z";
+    const backup = {
+      ...minimalBackup("user@example.com"),
+      transactionRules: [
+        {
+          priority: 0,
+          enabled: true,
+          titleOperator: "CONTAINS",
+          titlePattern: "netflix",
+          transactionType: null,
+          matchAccountId: null,
+          minAmountCents: null,
+          maxAmountCents: null,
+          setCategoryId: "cat-missing",
+          setTitle: null,
+          setAmountCents: null,
+          setAccountId: null,
+          appendNote: null,
+          createdAt: iso,
+        },
+      ],
+    };
+    const file = new File([JSON.stringify(backup)], "backup.json", { type: "application/json" });
+    const formData = new FormData();
+    formData.set("backupJson", file);
+
+    expect(await importUserBackupAction(formData)).toEqual({
+      ok: false,
+      error: "Backup references unknown rule account or category.",
+    });
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("refuses a file whose transaction points at a rule it does not contain", async () => {

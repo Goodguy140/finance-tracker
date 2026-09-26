@@ -187,6 +187,49 @@ export const skipRecurringOccurrenceSchema = z.object({
   transactionId: z.string().min(1).optional(),
 });
 
+/**
+ * A transaction rule. Empty optional fields arrive as `undefined` (the action maps "" to
+ * undefined). A category action pins the rule to that category's type, which the action
+ * checks against the category itself — the schema only knows the ids.
+ */
+export const transactionRuleSchema = z
+  .object({
+    titleOperator: z.enum(["CONTAINS", "EQUALS", "STARTS_WITH"]),
+    titlePattern: z.string().trim().min(1, "Enter the text to match.").max(200),
+    transactionType: z.enum(["EXPENSE", "INCOME"]).optional(),
+    matchAccountId: z.string().min(1).optional(),
+    minAmount: nonNegativeAmount.optional(),
+    maxAmount: nonNegativeAmount.optional(),
+    setCategoryId: z.string().min(1).optional(),
+    setTitle: z.string().trim().max(120).optional(),
+    setAmount: positiveAmount.optional(),
+    setAccountId: z.string().min(1).optional(),
+    appendNote: z.string().trim().max(250).optional(),
+  })
+  .refine((r) => r.minAmount === undefined || r.maxAmount === undefined || r.minAmount <= r.maxAmount, {
+    message: "The minimum amount must not exceed the maximum.",
+    path: ["maxAmount"],
+  })
+  .refine(
+    (r) =>
+      !!(r.setCategoryId || r.setTitle || r.setAmount !== undefined || r.setAccountId || r.appendNote),
+    { message: "Choose at least one thing for the rule to set.", path: ["setCategoryId"] },
+  );
+
+export const updateTransactionRuleSchema = z.object({ ruleId: z.string().min(1) });
+
+export const moveTransactionRuleSchema = z.object({
+  ruleId: z.string().min(1),
+  direction: z.enum(["up", "down"]),
+});
+
+export const setTransactionRuleEnabledSchema = z.object({
+  ruleId: z.string().min(1),
+  enabled: z.enum(["true", "false"]),
+});
+
+export const learnedTitleSchema = z.object({ title: z.string().trim().min(1).max(200) });
+
 export const subscriptionMemberSchema = z.object({
   recurringTransactionId: z.string().min(1),
   name: z.string().trim().min(1).max(80),

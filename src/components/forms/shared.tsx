@@ -144,12 +144,14 @@ export function CurrencyAmountInput({
   className = "",
   defaultValue,
   required,
+  onBlur,
 }: {
   name?: string;
   label?: string;
   id?: string;
   value?: string;
   onChange?: (event: ChangeEvent<HTMLInputElement>) => void;
+  onBlur?: () => void;
   placeholder: string;
   className?: string;
   defaultValue?: string;
@@ -173,6 +175,7 @@ export function CurrencyAmountInput({
         className={`${inputClass} pl-16`}
         {...(isControlled ? { value, onChange } : { defaultValue })}
         {...(required ? { required: true } : {})}
+        onBlur={onBlur}
       />
     </div>
   );

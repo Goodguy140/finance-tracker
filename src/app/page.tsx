@@ -45,7 +45,10 @@ import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
 import type { VerificationInfo } from "@/components/verified-badge";
 import { PlaidReviewQueue } from "@/components/plaid-review-queue";
-import { buildExpenseTitleSuggestions } from "@/lib/expense-title-suggestions";
+import { TransactionRulesProvider } from "@/components/transaction-rules-context";
+import { visibleLearnedSuggestions, type RuleTransactionType } from "@/lib/transaction-rules";
+import { loadRuleContext } from "@/lib/transaction-rules-server";
+import { proposeForStagedRow } from "@/lib/plaid/staged-rules";
 import { resolveDisplayName } from "@/lib/plaid/ingest";
 import { PLAID_ITEM_NEEDS_ATTENTION_WHERE } from "@/lib/plaid/attention";
 import {
@@ -110,7 +113,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const categoryUsageCutoff = new Date(now);
   categoryUsageCutoff.setMonth(categoryUsageCutoff.getMonth() - 3);
 
-  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, titledExpenseHistory, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount, plaidAttentionCount] =
+  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, ruleContext, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount, plaidAttentionCount] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -166,17 +169,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       },
       _sum: { amountCents: true },
     }),
-    prisma.transaction.findMany({
-      where: {
-        userId: user.id,
-        type: TransactionType.EXPENSE,
-        title: { not: null },
-        splitParts: { none: {} },
-      },
-      select: { title: true, categoryId: true },
-      orderBy: { date: "desc" },
-      take: 400,
-    }),
+    loadRuleContext(user.id),
     prisma.transaction.findMany({
       where: {
         userId: user.id,
@@ -269,7 +262,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     recentlyUsedExpenseCategories.length > 0 ? recentlyUsedExpenseCategories : expenseCategories
   ).map((c) => ({ id: c.id, name: c.name }));
   const incomeCategoryOptions = incomeCategories.map((c) => ({ id: c.id, name: c.name }));
-  const expenseTitleSuggestions = buildExpenseTitleSuggestions(titledExpenseHistory);
+  const expenseTitleSuggestions = visibleLearnedSuggestions(ruleContext.learned, ruleContext.hiddenTitleKeys);
+  const categoryKindById = new Map(categories.map((c) => [c.id, c.kind as RuleTransactionType]));
+  // What the manual forms need to run the rules engine in the browser.
+  const formRules = {
+    rules: ruleContext.rules.filter((r) => r.enabled),
+    categoryKinds: Object.fromEntries(categoryKindById),
+  };
 
   const spendByCategory = computeSpendByCategory(periodExpenses);
 
@@ -467,13 +466,15 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     .filter((c) => c.kind === CategoryKind.INCOME)
     .map((c) => ({ id: c.id, name: c.name }));
 
+  const learnedForRules = { learned: ruleContext.learned, hiddenTitleKeys: ruleContext.hiddenTitleKeys };
   const reviewRows = stagedRows.map((row) => {
+    const proposal = proposeForStagedRow(row, ruleContext.rules, categoryKindById, learnedForRules);
     const candidate = row.matchTransactionId ? matchCandidateById.get(row.matchTransactionId) : undefined;
     const reasons = row.matchReasonsJson ? (JSON.parse(row.matchReasonsJson) as string[]) : [];
     return {
       id: row.id,
       institutionName: row.plaidItem.institutionName ?? "Your bank",
-      heading: resolveDisplayName(row.name, row.merchantName),
+      heading: proposal.title,
       amountCents: row.amountCents,
       typeLabel: row.type === TransactionType.INCOME ? "Income" : "Expense",
       dateDisplay: formatDateOnlyUtc(row.date),
@@ -483,7 +484,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         row.type === TransactionType.INCOME
           ? incomeCategoryOptionsForQueue
           : expenseCategoryOptionsForQueue,
-      suggestedCategoryId: row.suggestedCategoryId ?? "",
+      suggestedCategoryId: proposal.categoryId ?? "",
+      proposalReason: proposal.reason,
       isPending: row.isPending,
       match:
         candidate && row.matchTier
@@ -748,6 +750,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   }
 
   return (
+    <TransactionRulesProvider value={formRules}>
     <main data-rendered-at={new Date().toISOString()} className="min-h-screen bg-slate-950 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-0 text-slate-100 lg:p-4 lg:pb-4">
       {/*
         Two columns keep the original reading width; a third or fourth only earns its place
@@ -855,5 +858,6 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         />
       </div>
     </main>
+    </TransactionRulesProvider>
   );
 }

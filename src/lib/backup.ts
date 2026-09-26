@@ -155,6 +155,29 @@ export type UserBackupPayload = {
     removedByPlaidAt: IsoString | null;
   }>;
   /**
+   * The user's transaction rules, in priority order. Category and account ids reference the
+   * exported `categories[].id` / `accounts[].id` and are remapped on import. Optional: older
+   * backups predate rules.
+   */
+  transactionRules?: Array<{
+    priority: number;
+    enabled: boolean;
+    titleOperator: "CONTAINS" | "EQUALS" | "STARTS_WITH";
+    titlePattern: string;
+    transactionType: "EXPENSE" | "INCOME" | null;
+    matchAccountId: string | null;
+    minAmountCents: number | null;
+    maxAmountCents: number | null;
+    setCategoryId: string | null;
+    setTitle: string | null;
+    setAmountCents: number | null;
+    setAccountId: string | null;
+    appendNote: string | null;
+    createdAt: IsoString;
+  }>;
+  /** Learned Title → Category combos the user hid (normalised title keys). Optional. */
+  hiddenTitleSuggestions?: Array<{ titleKey: string }>;
+  /**
    * Not a field. Recording an omission so it does not read as an oversight: the desktop
    * dashboard layout (`DashboardLayout`) is deliberately outside this payload. It is a UI
    * preference rather than financial data, and import/clear are wipe-and-replace — carrying
@@ -200,6 +223,8 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       investmentFlows: true,
       portfolioSnapshots: true,
       transactionVerifications: true,
+      transactionRules: { orderBy: [{ priority: "asc" }, { id: "asc" }] },
+      hiddenTitleSuggestions: true,
     },
   });
 
@@ -338,5 +363,22 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       verifiedAt: row.verifiedAt.toISOString(),
       removedByPlaidAt: toIso(row.removedByPlaidAt),
     })),
+    transactionRules: user.transactionRules.map((row) => ({
+      priority: row.priority,
+      enabled: row.enabled,
+      titleOperator: row.titleOperator,
+      titlePattern: row.titlePattern,
+      transactionType: row.transactionType,
+      matchAccountId: row.matchAccountId,
+      minAmountCents: row.minAmountCents,
+      maxAmountCents: row.maxAmountCents,
+      setCategoryId: row.setCategoryId,
+      setTitle: row.setTitle,
+      setAmountCents: row.setAmountCents,
+      setAccountId: row.setAccountId,
+      appendNote: row.appendNote,
+      createdAt: row.createdAt.toISOString(),
+    })),
+    hiddenTitleSuggestions: user.hiddenTitleSuggestions.map((row) => ({ titleKey: row.titleKey })),
   });
 }

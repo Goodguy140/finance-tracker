@@ -32,6 +32,18 @@ export {
   setSubscriptionShareStatusAction,
   skipRecurringOccurrenceAction,
 } from "./actions/subscriptions";
+export {
+  createTransactionRuleAction,
+  updateTransactionRuleAction,
+  deleteTransactionRuleAction,
+  setTransactionRuleEnabledAction,
+  moveTransactionRuleAction,
+  hideLearnedTitleAction,
+  unhideLearnedTitleAction,
+  previewTransactionRuleAction,
+  applyTransactionRuleAction,
+} from "./actions/transaction-rules";
+export type { RulePreviewResult, RuleApplyResult } from "./actions/transaction-rules";
 export { createInvestmentFlowAction, createPortfolioSnapshotAction } from "./actions/investments";
 export {
   createFinancialAccountAction,

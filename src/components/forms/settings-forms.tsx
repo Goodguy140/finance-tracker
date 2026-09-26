@@ -48,6 +48,7 @@ import { SubscriptionsPanel, type SubscriptionView } from "@/components/subscrip
 import { ApiTokensPanel, type ApiTokenRow, type ApiTokensMfaState } from "@/components/api-tokens-panel";
 import { PlaidConnectionsPanel, type PlaidConnectionsPanelProps } from "@/components/plaid-connections-panel";
 import { SecurityPanel, type SecurityPanelProps } from "@/components/security-panel";
+import { TransactionRulesPanel, type TransactionRulesPanelProps } from "@/components/transaction-rules-panel";
 
 export function BudgetForm({ expenseCategories }: { expenseCategories: Option[] }) {
   const [isPastOverride, setIsPastOverride] = useState(false);
@@ -292,7 +293,7 @@ export function InvestmentForms({ accounts }: { accounts: Option[] }) {
   );
 }
 
-type SettingsTabId = "profile" | "security" | "accounts" | "budgets" | "subscriptions" | "advanced";
+type SettingsTabId = "profile" | "security" | "accounts" | "budgets" | "rules" | "subscriptions" | "advanced";
 
 /** A nested card's own explanation, folded behind the same "?" the fields use. */
 function CardHeading({ title, hint }: { title: string; hint: string }) {
@@ -366,6 +367,12 @@ const SETTINGS_TAB_META: { id: SettingsTabId; label: string; labelCompact: strin
     hint: "Monthly limits by expense category",
   },
   {
+    id: "rules",
+    label: "Rules",
+    labelCompact: "Rules",
+    hint: "Automatic categories, titles and amounts for new transactions",
+  },
+  {
     id: "subscriptions",
     label: "Subscriptions",
     labelCompact: "Subs",
@@ -397,6 +404,7 @@ export function SettingsForms({
   apiTokens,
   security,
   plaid,
+  transactionRules,
 }: {
   defaults: { displayName: string; countryCode: string; timezone: string };
   profileEmail: string;
@@ -414,6 +422,7 @@ export function SettingsForms({
   apiTokens: ApiTokenRow[];
   security: SecurityPanelProps;
   plaid: PlaidConnectionsPanelProps;
+  transactionRules: TransactionRulesPanelProps;
 }) {
   const [tab, setTab] = useState<SettingsTabId>("profile");
   const [editingAccount, setEditingAccount] = useState<{
@@ -442,6 +451,7 @@ export function SettingsForms({
       else if (h === "#banks" || h === "#plaid") setTab("accounts");
       else if (h === "#integrations" || h === "#api" || h === "#tokens") setTab("advanced");
       else if (h === "#advanced") setTab("advanced");
+      else if (h === "#rules" || h === "#automation") setTab("rules");
       else if (h === "#security") setTab("security");
       else if (h === "#profile") setTab("profile");
     };
@@ -990,6 +1000,21 @@ export function SettingsForms({
                   document.body,
                 )
               : null}
+          </div>
+        ) : null}
+
+        {tab === "rules" ? (
+          <div id="rules" className="scroll-mt-24 space-y-4" role="tabpanel" aria-label="Rules">
+            <header className="space-y-1.5 border-b border-slate-800/80 pb-3">
+              <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Rules</h2>
+              <p className="max-w-prose text-sm leading-relaxed text-slate-400">
+                Fill in categories, titles, amounts, accounts and notes automatically when a transaction&rsquo;s title
+                matches. Rules apply as you type in the add and edit forms, to CSV imports, and to bank transactions
+                waiting for review — nothing from your bank is added without you approving it. Categories learned from
+                your past entries are listed below your rules.
+              </p>
+            </header>
+            <TransactionRulesPanel {...transactionRules} />
           </div>
         ) : null}
 

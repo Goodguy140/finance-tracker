@@ -202,6 +202,32 @@ export const userBackupSchema = z.object({
     )
     .optional()
     .default([]),
+  transactionRules: z
+    .array(
+      z.object({
+        priority: z.number().int(),
+        enabled: z.boolean(),
+        titleOperator: z.enum(["CONTAINS", "EQUALS", "STARTS_WITH"]),
+        titlePattern: z.string().min(1).max(200),
+        transactionType: z.enum(["EXPENSE", "INCOME"]).nullable(),
+        matchAccountId: z.string().min(1).nullable(),
+        minAmountCents: nonNegativeCents.nullable(),
+        maxAmountCents: nonNegativeCents.nullable(),
+        setCategoryId: z.string().min(1).nullable(),
+        setTitle: z.string().max(120).nullable(),
+        setAmountCents: nonNegativeCents.nullable(),
+        setAccountId: z.string().min(1).nullable(),
+        appendNote: z.string().max(250).nullable(),
+        createdAt: isoDate,
+      }),
+    )
+    .max(200)
+    .optional()
+    .default([]),
+  hiddenTitleSuggestions: z
+    .array(z.object({ titleKey: z.string().min(1).max(200) }))
+    .optional()
+    .default([]),
 });
 
 export type ParsedUserBackup = z.infer<typeof userBackupSchema>;

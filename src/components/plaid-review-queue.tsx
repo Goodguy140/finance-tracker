@@ -29,6 +29,9 @@ export type ReviewRow = {
   accountLabel: string;
   categoryOptions: { id: string; name: string }[];
   suggestedCategoryId: string;
+  /** Why the title/category differ from the bank's own: one of the user's rules, or a
+   * category learned from a past entry with the same title. */
+  proposalReason: "rule" | "learned" | null;
   isPending: boolean;
   /** Proposed link, when the matcher found a plausible one. */
   match: { candidate: ReviewCandidate; tier: "high" | "low"; reasons: string[] } | null;
@@ -74,6 +77,11 @@ function ReviewRowCard({ row }: { row: ReviewRow }) {
           <p className="text-xs text-slate-500">
             {row.dateDisplay} · {row.accountLabel}
             {row.isPending ? " · pending" : ""}
+            {row.proposalReason === "rule"
+              ? " · filled in by your rules"
+              : row.proposalReason === "learned"
+                ? " · category from a past entry"
+                : ""}
           </p>
         </div>
         <p className="text-sm font-semibold">

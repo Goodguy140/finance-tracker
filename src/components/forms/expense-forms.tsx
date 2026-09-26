@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useImperativeHandle, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { ServerActionForm } from "@/components/server-action-form";
 import { ExpenseTitleAutocomplete } from "@/components/expense-title-autocomplete";
@@ -28,7 +28,9 @@ import {
   importTargetsForHeader,
   floatingFieldLabelClass,
 } from "./shared";
-import { categoryIdForExpenseTitle, type ExpenseTitleSuggestion } from "@/lib/expense-title-suggestions";
+import type { ExpenseTitleSuggestion } from "@/lib/expense-title-suggestions";
+import type { RuleOutcome } from "@/lib/transaction-rules";
+import { RuleAutofillHint, useRuleAutofill } from "@/components/transaction-rules-context";
 import { createExpenseAction, importExpensesCsvAction, createSplitExpenseAction } from "@/app/actions";
 import type { AddMenuFormKey } from "./auth-forms";
 import { IncomeForm } from "./income-forms";
@@ -43,6 +45,9 @@ export function ExpenseTitleAndCategoryFields({
   accounts,
   accountSelectDefault,
   accountRemovedFallback,
+  amountCents = null,
+  onRuleFill,
+  reevaluateRef,
 }: {
   expenseCategories: Option[];
   titleSuggestions: ExpenseTitleSuggestion[];
@@ -54,6 +59,12 @@ export function ExpenseTitleAndCategoryFields({
   accountSelectDefault?: string;
   /** Edit flow: previous account was removed — allow empty selection until user picks one. */
   accountRemovedFallback?: boolean;
+  /** The amount entered so far, for rules with an amount condition. */
+  amountCents?: number | null;
+  /** Fields this component does not own (amount, note), for the parent to fill. */
+  onRuleFill?: (outcome: RuleOutcome) => void;
+  /** Lets the parent re-run the rules when a field it owns (the amount) changes. */
+  reevaluateRef?: RefObject<(() => void) | null>;
 }) {
   const initialCategoryId =
     defaultCategoryId && expenseCategories.some((c) => c.id === defaultCategoryId)
@@ -76,11 +87,29 @@ export function ExpenseTitleAndCategoryFields({
     return () => form.removeEventListener("reset", onReset);
   }, []);
 
-  function syncCategoryFromTitle(title: string) {
-    const match = categoryIdForExpenseTitle(titleSuggestions, title);
-    if (match && expenseCategories.some((c) => c.id === match)) {
-      setCategoryId(match);
+  const [accountId, setAccountId] = useState(accountSelectDefault ?? "");
+  const titleRef = useRef(defaultTitle);
+  const rules = useRuleAutofill({ type: "EXPENSE", categoryOptions: expenseCategories, learned: titleSuggestions });
+
+  function applyRules(title: string, nextAccountId = accountId) {
+    titleRef.current = title;
+    const { outcome, fresh } = rules.evaluate({ texts: [title], amountCents, accountId: nextAccountId || null });
+    if (!fresh) return;
+    if (outcome.categoryId && expenseCategories.some((c) => c.id === outcome.categoryId)) {
+      setCategoryId(outcome.categoryId);
     }
+    if (outcome.accountId && accounts?.some((a) => a.id === outcome.accountId)) {
+      setAccountId(outcome.accountId);
+    }
+    onRuleFill?.(outcome);
+  }
+
+  // No deps on purpose: the handle must close over this render's amount and account.
+  useImperativeHandle(reevaluateRef, () => () => applyRules(titleRef.current));
+
+  /** A rename is offered once the person leaves the field, so it never fights their typing. */
+  function renameFromRules(title: string) {
+    return rules.peek({ texts: [title], amountCents, accountId: accountId || null }).title;
   }
 
   const categoryField = (
@@ -108,10 +137,15 @@ export function ExpenseTitleAndCategoryFields({
     accounts && accounts.length > 0 ? (
       <LabeledField label="Account" hint="Financial account this expense is charged to.">
         <select
+          key={resetNonce}
           id={`${fieldIds}-account`}
           name="accountId"
           className={selectClass}
-          defaultValue={accountSelectDefault ?? ""}
+          value={accountId}
+          onChange={(e) => {
+            setAccountId(e.target.value);
+            applyRules(titleRef.current, e.target.value);
+          }}
           required
         >
           {accountRemovedFallback ? (
@@ -141,9 +175,11 @@ export function ExpenseTitleAndCategoryFields({
           defaultValue={defaultTitle}
           titleSuggestions={titleSuggestions}
           expenseCategories={expenseCategories}
-          onTitleChange={syncCategoryFromTitle}
+          onTitleChange={applyRules}
+          renameOnBlur={renameFromRules}
           required
         />
+        <RuleAutofillHint outcome={rules.outcome} />
       </LabeledField>
       {accountField ? (
         <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3">
@@ -680,6 +716,11 @@ export function ExpenseForm({
   // today on React's automatic form reset — handy for batch-entering past transactions.
   const [dateValue, setDateValue] = useState(today);
   const [amountValue, setAmountValue] = useState("");
+  // The note stays uncontrolled (React's post-submit form reset clears it); a rule's note is
+  // written straight into the field, or seeds it when the field is not open yet.
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+  const [noteSeed, setNoteSeed] = useState("");
+  const reevaluateRules = useRef<(() => void) | null>(null);
   const [preCreditValue, setPreCreditValue] = useState("");
   const [creditRows, setCreditRows] = useState<string[]>([""]);
   const creditSum = sumCredits(creditRows);
@@ -697,6 +738,27 @@ export function ExpenseForm({
   const postedOrder = variant === "mobileSheet" ? "order-5" : "max-sm:order-5 sm:order-6";
   const noteOrder = variant === "mobileSheet" ? "order-6" : "max-sm:order-6 sm:order-7";
   const submitOrder = variant === "mobileSheet" ? "order-7" : "max-sm:order-7 sm:order-8";
+
+  const amountNumber = Number(amountValue);
+  const amountCents =
+    !receiptBreakdown && amountValue.trim() !== "" && Number.isFinite(amountNumber)
+      ? Math.round(amountNumber * 100)
+      : null;
+
+  /** A rule only fills the amount and note while they are still empty. */
+  function fillFromRules(outcome: RuleOutcome) {
+    if (outcome.amountCents !== undefined && !receiptBreakdown && amountValue.trim() === "") {
+      setAmountValue((outcome.amountCents / 100).toFixed(2));
+    }
+    if (outcome.appendNote) {
+      if (noteRef.current) {
+        if (!noteRef.current.value.trim()) noteRef.current.value = outcome.appendNote;
+      } else {
+        setNoteSeed(outcome.appendNote);
+        setShowNote(true);
+      }
+    }
+  }
 
   function sumCredits(rows: string[]) {
     return rows.reduce((sum, row) => {
@@ -736,6 +798,9 @@ export function ExpenseForm({
           titleSuggestions={titleSuggestions}
           accounts={accounts}
           accountSelectDefault={accountSelectDefault}
+          amountCents={amountCents}
+          onRuleFill={fillFromRules}
+          reevaluateRef={reevaluateRules}
         />
       </div>
 
@@ -752,6 +817,7 @@ export function ExpenseForm({
                 placeholder="0.00 (negative for credits)"
                 value={amountValue}
                 onChange={(e) => setAmountValue(e.target.value)}
+                onBlur={() => reevaluateRules.current?.()}
                 required
               />
             </LabeledField>
@@ -902,7 +968,15 @@ export function ExpenseForm({
           hint="Optional details (max 250 characters)."
           className={`${noteOrder} ${spanFullSm}`}
         >
-          <textarea name="note" rows={4} maxLength={250} className={textAreaClass} placeholder="Extra context, memo, or split notes" />
+          <textarea
+            ref={noteRef}
+            name="note"
+            rows={4}
+            maxLength={250}
+            defaultValue={noteSeed}
+            className={textAreaClass}
+            placeholder="Extra context, memo, or split notes"
+          />
         </LabeledField>
       ) : (
         <input type="hidden" name="note" value="" />
