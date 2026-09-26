@@ -177,7 +177,10 @@ test("a card dragged to another column stays there across a reload", async ({ pa
       },
       { timeout: 10_000 },
     )
-    .toEqual([["cumulative-spend", "expense-log"], ["add-expense", "budgets", "spending-by-category", "income", "recurring"]]);
+    .toEqual([
+      ["cumulative-spend", "insights", "expense-log"],
+      ["add-expense", "budgets", "spending-by-category", "income", "recurring"],
+    ]);
 
   await page.reload();
   await expectDashboardHome(page);
@@ -252,6 +255,7 @@ test("narrowing the window never produces horizontal scrolling, and no card disa
     "budgets+spending-by-category",
     "cumulative-spend",
     "expense-log",
+    "insights",
     "recurring",
   ]);
 
@@ -311,7 +315,7 @@ test("a column that clears the pixel minimum but cuts off its text is merged awa
   // And the columns come back once there is room for them.
   await page.setViewportSize({ width: 1920, height: 1000 });
   await expect(page.locator("[data-column-index]")).toHaveCount(4);
-  expect((await columnCards(page)).flat()).toHaveLength(5);
+  expect((await columnCards(page)).flat()).toHaveLength(6);
 });
 
 test("a column is dropped rather than show less than 90% of a budget name", async ({ page }, testInfo) => {

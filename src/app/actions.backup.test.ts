@@ -20,6 +20,8 @@ const mockPrisma = vi.hoisted(() => ({
   transactionVerification: { deleteMany: vi.fn(), create: vi.fn() },
   transactionRule: { deleteMany: vi.fn(), createMany: vi.fn() },
   hiddenTitleSuggestion: { deleteMany: vi.fn(), createMany: vi.fn() },
+  insightDismissal: { deleteMany: vi.fn(), createMany: vi.fn() },
+  insightPreference: { deleteMany: vi.fn(), create: vi.fn() },
   $transaction: vi.fn(),
 }));
 
@@ -254,6 +256,11 @@ describe("importUserBackupAction", () => {
         },
       ],
       hiddenTitleSuggestions: [{ titleKey: "coffee" }, { titleKey: "coffee" }],
+      insightDismissals: [
+        { insightKey: "habit:ALCOHOL", snoozedUntil: null },
+        { insightKey: "recurring:EXPENSE:netflix", snoozedUntil: iso },
+      ],
+      insightPreference: { habitDetectionEnabled: false },
     };
     const file = new File([JSON.stringify(backup)], "backup.json", { type: "application/json" });
     const formData = new FormData();
@@ -276,6 +283,16 @@ describe("importUserBackupAction", () => {
     });
     expect(mockPrisma.hiddenTitleSuggestion.createMany).toHaveBeenCalledWith({
       data: [{ userId: "user-1", titleKey: "coffee" }],
+    });
+    expect(mockPrisma.insightDismissal.deleteMany).toHaveBeenCalledWith({ where: { userId: "user-1" } });
+    expect(mockPrisma.insightDismissal.createMany).toHaveBeenCalledWith({
+      data: [
+        { userId: "user-1", insightKey: "habit:ALCOHOL", snoozedUntil: null },
+        { userId: "user-1", insightKey: "recurring:EXPENSE:netflix", snoozedUntil: new Date(iso) },
+      ],
+    });
+    expect(mockPrisma.insightPreference.create).toHaveBeenCalledWith({
+      data: { userId: "user-1", habitDetectionEnabled: false },
     });
   });
 

@@ -234,6 +234,22 @@ function CardSettingsFields({
       );
     }
 
+    case "insights": {
+      const current = settings.insights ?? {};
+      return (
+        <SettingChoiceRow
+          label="Insights shown"
+          value={current.maxItems ?? 3}
+          options={[
+            { value: 3, label: "3" },
+            { value: 5, label: "5" },
+            { value: 8, label: "8" },
+          ]}
+          onChange={(maxItems) => onChange("insights", { maxItems })}
+        />
+      );
+    }
+
     default:
       return null;
   }

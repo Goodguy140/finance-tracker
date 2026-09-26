@@ -178,6 +178,14 @@ export type UserBackupPayload = {
   /** Learned Title → Category combos the user hid (normalised title keys). Optional. */
   hiddenTitleSuggestions?: Array<{ titleKey: string }>;
   /**
+   * Insights the user dismissed or snoozed. Optional. Some keys embed a category or rule id,
+   * which restore re-issues; those dismissals simply stop matching and the insight may
+   * reappear once, which is the harmless direction to fail in.
+   */
+  insightDismissals?: Array<{ insightKey: string; snoozedUntil: IsoString | null }>;
+  /** Insight settings. Optional; absent means the defaults. */
+  insightPreference?: { habitDetectionEnabled: boolean } | null;
+  /**
    * Not a field. Recording an omission so it does not read as an oversight: the desktop
    * dashboard layout (`DashboardLayout`) is deliberately outside this payload. It is a UI
    * preference rather than financial data, and import/clear are wipe-and-replace — carrying
@@ -225,6 +233,8 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       transactionVerifications: true,
       transactionRules: { orderBy: [{ priority: "asc" }, { id: "asc" }] },
       hiddenTitleSuggestions: true,
+      insightDismissals: true,
+      insightPreference: true,
     },
   });
 
@@ -380,5 +390,12 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       createdAt: row.createdAt.toISOString(),
     })),
     hiddenTitleSuggestions: user.hiddenTitleSuggestions.map((row) => ({ titleKey: row.titleKey })),
+    insightDismissals: user.insightDismissals.map((row) => ({
+      insightKey: row.insightKey,
+      snoozedUntil: row.snoozedUntil?.toISOString() ?? null,
+    })),
+    insightPreference: user.insightPreference
+      ? { habitDetectionEnabled: user.insightPreference.habitDetectionEnabled }
+      : null,
   });
 }

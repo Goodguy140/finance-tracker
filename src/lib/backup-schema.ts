@@ -228,6 +228,12 @@ export const userBackupSchema = z.object({
     .array(z.object({ titleKey: z.string().min(1).max(200) }))
     .optional()
     .default([]),
+  insightDismissals: z
+    .array(z.object({ insightKey: z.string().min(1).max(300), snoozedUntil: isoDate.nullable() }))
+    .max(5000)
+    .optional()
+    .default([]),
+  insightPreference: z.object({ habitDetectionEnabled: z.boolean() }).nullable().optional(),
 });
 
 export type ParsedUserBackup = z.infer<typeof userBackupSchema>;
