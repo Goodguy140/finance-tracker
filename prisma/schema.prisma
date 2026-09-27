@@ -167,6 +167,8 @@ model User {
   dashboardLayout           DashboardLayout?
   transactionRules          TransactionRule[]
   hiddenTitleSuggestions    HiddenTitleSuggestion[]
+  insightDismissals         InsightDismissal[]
+  insightPreference         InsightPreference?
 }
 
 /**
@@ -835,4 +837,37 @@ model HiddenTitleSuggestion {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, titleKey])
+}
+
+/// An insight the user dismissed (`snoozedUntil` NULL) or snoozed. Insights themselves are
+/// derived from transaction history on every load (src/lib/insights); only the opt-out is
+/// stored, keyed by the insight's stable key — e.g. `recurring:EXPENSE:netflix`,
+/// `habit:CANNABIS`.
+///
+/// A new table, so it needs no REQUIRED_SCHEMA_COLUMNS / COLUMN_REPAIRS entry.
+model InsightDismissal {
+  id           String    @id @default(cuid())
+  userId       String
+  insightKey   String
+  /// NULL means dismissed for good; otherwise shown again once this passes.
+  snoozedUntil DateTime?
+  createdAt    DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, insightKey])
+}
+
+/// Per-user insight settings. Its own table rather than a column on User for the same reason
+/// as DashboardLayout: read by the insights loader alone, and a new table needs no column
+/// repair entry. No row means the defaults.
+model InsightPreference {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  /// Tobacco, cannabis, alcohol, gambling and in-game purchase analysis. When off it is not
+  /// computed at all, not merely hidden.
+  habitDetectionEnabled Boolean  @default(true)
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

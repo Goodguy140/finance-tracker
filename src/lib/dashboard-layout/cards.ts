@@ -91,6 +91,18 @@ export const DASHBOARD_CARDS: Record<DashboardCardId, DashboardCardMeta> = {
     conditional: false,
     hasSettings: true,
   },
+  insights: {
+    id: "insights",
+    title: "Insights",
+    tabLabel: "Insights",
+    // The main column, not the side: when a narrow window merges two columns the one with fewer
+    // slots is folded into the other, and a fourth side slot would make the main column the
+    // one that moves — remounting the expense log and dropping any open edit mid-flight.
+    defaultColumnIndex: 0,
+    defaultSlotIndex: 1,
+    conditional: false,
+    hasSettings: true,
+  },
 };
 
 /**
@@ -105,6 +117,7 @@ export const DEFAULT_LAYOUT: DashboardLayout = {
       weight: 14,
       slots: [
         { id: "slot-trend", cards: ["cumulative-spend"], activeIndex: 0 },
+        { id: "slot-insights", cards: ["insights"], activeIndex: 0 },
         { id: "slot-add", cards: ["add-expense"], activeIndex: 0 },
         { id: "slot-log", cards: ["expense-log"], activeIndex: 0 },
       ],
@@ -126,7 +139,7 @@ export const DEFAULT_LAYOUT: DashboardLayout = {
 /**
  * Mobile is frozen and never derived from the user's desktop layout: one column, in the
  * order the previous hand-placed `order-1..4` classes produced — the three-panel swipe
- * carousel, then the expense log, income, and recurring. Add Expense is absent because it
+ * carousel, then the expense log, income, recurring, and insights. Add Expense is absent because it
  * was `hidden lg:block`; below `lg` it lives in the quick-add sheet instead.
  */
 export const MOBILE_SLOTS: readonly DashboardSlot[] = [
@@ -138,6 +151,7 @@ export const MOBILE_SLOTS: readonly DashboardSlot[] = [
   { id: "mobile-log", cards: ["expense-log"], activeIndex: 0 },
   { id: "mobile-income", cards: ["income"], activeIndex: 0 },
   { id: "mobile-recurring", cards: ["recurring"], activeIndex: 0 },
+  { id: "mobile-insights", cards: ["insights"], activeIndex: 0 },
 ];
 
 export function cardTitle(id: DashboardCardId): string {

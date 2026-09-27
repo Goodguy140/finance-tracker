@@ -34,6 +34,8 @@ export const clearUserFinancialDataAction = formAction(async (formData: FormData
     });
     await tx.transactionRule.deleteMany({ where: { userId: user.id } });
     await tx.hiddenTitleSuggestion.deleteMany({ where: { userId: user.id } });
+    await tx.insightDismissal.deleteMany({ where: { userId: user.id } });
+    await tx.insightPreference.deleteMany({ where: { userId: user.id } });
     await tx.budget.deleteMany({ where: { userId: user.id } });
     await tx.budgetAlertNotification.deleteMany({ where: { userId: user.id } });
     await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
@@ -103,6 +105,8 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
     await tx.passwordResetToken.deleteMany({ where: { userId: user.id } });
     await tx.transactionRule.deleteMany({ where: { userId: user.id } });
     await tx.hiddenTitleSuggestion.deleteMany({ where: { userId: user.id } });
+    await tx.insightDismissal.deleteMany({ where: { userId: user.id } });
+    await tx.insightPreference.deleteMany({ where: { userId: user.id } });
     await tx.budget.deleteMany({ where: { userId: user.id } });
     await tx.budgetAlertNotification.deleteMany({ where: { userId: user.id } });
     await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
@@ -421,6 +425,19 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
     await tx.hiddenTitleSuggestion.createMany({
       data: [...hiddenTitleKeys].map((titleKey) => ({ userId: user.id, titleKey })),
     });
+    const dismissalsByKey = new Map((parsed.insightDismissals ?? []).map((row) => [row.insightKey, row]));
+    await tx.insightDismissal.createMany({
+      data: [...dismissalsByKey.values()].map((row) => ({
+        userId: user.id,
+        insightKey: row.insightKey,
+        snoozedUntil: row.snoozedUntil ? new Date(row.snoozedUntil) : null,
+      })),
+    });
+    if (parsed.insightPreference) {
+      await tx.insightPreference.create({
+        data: { userId: user.id, habitDetectionEnabled: parsed.insightPreference.habitDetectionEnabled },
+      });
+    }
 
     // `parsed.authAccounts` is deliberately not restored, and the user's existing links are
     // left untouched. Attaching an SSO identity to an account requires a fresh passkey

@@ -81,3 +81,9 @@ export {
   resetDashboardLayoutAction,
 } from "./actions/dashboard-layout";
 export { mapPlaidAccountAction } from "./actions/plaid";
+export {
+  dismissInsightAction,
+  restoreInsightAction,
+  setHabitDetectionAction,
+  trackHabitSeparatelyAction,
+} from "./actions/insights";

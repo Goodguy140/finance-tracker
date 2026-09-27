@@ -15,6 +15,7 @@ import type { DashboardCardContentMap } from "@/components/dashboard-grid";
 import { BudgetsCardActions, BudgetsCardBody } from "@/components/dashboard-cards/budgets-card";
 import { SpendingByCategoryCardBody } from "@/components/dashboard-cards/spending-by-category-card";
 import { IncomeCardBody } from "@/components/dashboard-cards/income-card";
+import { InsightsCardBody } from "@/components/dashboard-cards/insights-card";
 import { RecurringCardBody } from "@/components/dashboard-cards/recurring-card";
 import { ExpenseLogPanel } from "@/components/expense-log";
 import { readDashboardLayout } from "@/lib/dashboard-layout/read";
@@ -59,6 +60,7 @@ import {
   getRecurringDateStatus,
 } from "@/lib/recurring-transactions";
 import { currentYmdInTimeZone, currentYmInTimeZone } from "@/lib/period-month";
+import { loadInsights } from "@/lib/insights/load";
 import { prisma } from "@/lib/prisma";
 import { autoPostDueRecurringTransactions } from "@/lib/recurring-post";
 import { requireUser } from "@/lib/session";
@@ -101,6 +103,12 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   } catch (err) {
     console.error("[recurring] auto-post on dashboard load failed", err);
   }
+  // Started now, awaited with the layout: it reads its own year of history, independent of
+  // the period on screen. A failure costs the card, never the dashboard.
+  const insightsPromise = loadInsights(user.id, user.countryCode).catch((err) => {
+    console.error("[insights] loading failed", err);
+    return null;
+  });
   const anchorYm = currentYmInTimeZone(user.timezone, now);
   const period = parseDashboardSearchParams(sp, now, user.timezone);
   const periodDescription = describeDashboardPeriod(period);
@@ -631,6 +639,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     "add-expense",
     "expense-log",
     "recurring",
+    "insights",
     ...(showDashboardIncomeCard ? (["income"] as const) : []),
   ];
   // Reconciliation is deterministic and runs on every render, so a layout blob that predates
@@ -639,6 +648,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   // user changes anything.
   const { stored: storedLayout } = await readDashboardLayout(user.id, availableCardIds);
   const cardSettings = storedLayout.settings;
+  const insights = await insightsPromise;
 
   // The slot map: card bodies rendered here, on the server, and handed to the client grid as
   // props. The grid arranges them without importing a single card, so none of this page's
@@ -728,6 +738,14 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         />
       ),
     },
+    insights: {
+      subtitle: "From your last year of transactions",
+      body: insights ? (
+        <InsightsCardBody insights={insights.visible} maxItems={cardSettings.insights?.maxItems} />
+      ) : (
+        <p className="text-sm text-slate-400">Insights could not be loaded right now.</p>
+      ),
+    },
   };
 
   // The Income card is omitted entirely in a period with no income. That makes it
@@ -774,6 +792,12 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
               </div>
               <div className="flex shrink-0 items-center gap-2 lg:hidden">
                 <Link
+                  href="/insights"
+                  className="touch-manipulation inline-flex min-h-9 items-center justify-center rounded-lg border border-slate-700/80 bg-slate-900/90 px-2.5 py-1.5 text-xs font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+                >
+                  Insights
+                </Link>
+                <Link
                   href="/settings"
                   className="touch-manipulation inline-flex min-h-9 items-center justify-center rounded-lg border border-slate-700/80 bg-slate-900/90 px-2.5 py-1.5 text-xs font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
                 >
@@ -809,6 +833,12 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                   defaultExpenseAccountId={user.defaultExpenseAccountId}
                 />
                 <div className="hidden items-center gap-2 lg:flex">
+                  <Link
+                    href="/insights"
+                    className="touch-manipulation inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-200 transition hover:bg-slate-800"
+                  >
+                    Insights
+                  </Link>
                   <Link
                     href="/settings"
                     className="touch-manipulation inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-200 transition hover:bg-slate-800"

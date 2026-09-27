@@ -16,6 +16,7 @@ export const CARD_IDS = [
   "expense-log",
   "income",
   "recurring",
+  "insights",
 ] as const;
 
 export type DashboardCardId = (typeof CARD_IDS)[number];
@@ -98,6 +99,12 @@ const cardSettingsSchema = z
       .object({
         showCashFlowSummary: z.boolean().catch(true),
         rowLimit: z.number().int().min(3).max(50).catch(12),
+      })
+      .partial()
+      .catch({}),
+    insights: z
+      .object({
+        maxItems: z.union([z.literal(3), z.literal(5), z.literal(8)]).catch(3),
       })
       .partial()
       .catch({}),

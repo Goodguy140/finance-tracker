@@ -399,3 +399,15 @@ export const adminDeleteUserSchema = z.object({
 export const adminSetPasswordLoginDisabledSchema = z.object({
   disabled: z.enum(["true", "false"]),
 });
+
+export const insightKeySchema = z.object({ insightKey: z.string().trim().min(1).max(300) });
+
+export const dismissInsightSchema = insightKeySchema.extend({
+  mode: z.enum(["snooze", "forever"]).default("forever"),
+});
+
+export const habitDetectionSchema = z.object({ enabled: z.enum(["true", "false"]).transform((v) => v === "true") });
+
+export const trackHabitSchema = z.object({
+  habit: z.enum(["TOBACCO_VAPE", "CANNABIS", "ALCOHOL", "GAMBLING", "GAMING_PURCHASES"]),
+});
