@@ -257,7 +257,10 @@ export function createSyncStore(): SyncStore {
 
         if (plan.flagRevised.length > 0) {
           await tx.plaidStagedTransaction.updateMany({
-            where: { userId: item.userId, plaidTransactionId: { in: plan.flagRevised } },
+            where: {
+              userId: item.userId,
+              plaidTransactionId: { in: plan.flagRevised.map((r) => r.plaidTransactionId) },
+            },
             data: { revisedAfterResolveAt: new Date() },
           });
         }
