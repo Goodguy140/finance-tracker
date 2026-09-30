@@ -119,7 +119,9 @@ row whose amount exactly equals an unverified entry the matcher paired it with, 
 other pairing is exact, is linked during the sync (`selectAutoLinks`) — the entry gains a
 verified badge and, if it had none, a posted date; nothing else about it changes. That is what makes an unattended sweep safe,
 and it is why a bank revising or withdrawing a committed transaction updates the staged copy
-and raises a flag rather than editing the user's record.
+and raises a flag rather than editing the user's record. A revision whose amount still equals
+the user's (a rename, a re-categorisation) only updates the staged copy — there is nothing to
+ask (`keepChangedRevisions`).
 
 **Webhooks only raise and clear prompts — except consent withdrawn at Plaid.**
 `/api/plaid/webhook` sits outside the session gate, so the ES256 signature check

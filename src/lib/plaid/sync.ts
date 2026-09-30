@@ -1,5 +1,6 @@
 import { PlaidApiError, PLAID_SYNC_PAGE_SIZE, type PlaidClient } from "@/lib/plaid/client";
 import {
+  keepChangedRevisions,
   markChangedTransfers,
   planPage,
   referencedPlaidTransactionIds,
@@ -158,12 +159,12 @@ export async function syncPlaidItem(deps: SyncDeps, itemId: string): Promise<Syn
 
         let plan = planPage(page, item.context, existing);
 
-        if (plan.transfers.length > 0) {
-          const approved = await deps.store.loadApprovedAmounts(
-            item.userId,
-            plan.transfers.map((t) => t.transactionId),
-          );
-          plan = markChangedTransfers(plan, approved);
+        if (plan.transfers.length > 0 || plan.flagRevised.length > 0) {
+          const approved = await deps.store.loadApprovedAmounts(item.userId, [
+            ...plan.transfers.map((t) => t.transactionId),
+            ...plan.flagRevised.flatMap((r) => (r.transactionId ? [r.transactionId] : [])),
+          ]);
+          plan = keepChangedRevisions(markChangedTransfers(plan, approved), approved);
         }
 
         await deps.store.commitPage({ ...item, cursor }, plan);

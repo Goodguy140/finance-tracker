@@ -277,3 +277,41 @@ describe("syncPlaidItem: replay safety", () => {
     );
   });
 });
+
+describe("syncPlaidItem: bank revisions", () => {
+  const committed: ExistingStagedRow = {
+    plaidTransactionId: "a",
+    status: PlaidStagedStatus.LINKED,
+    resolvedTransactionId: "txn-a",
+  };
+  const modifiedPage = (amount: number): PlaidSyncPage => ({
+    added: [],
+    modified: [txn("a", { amount, name: "TEST RENAMED" })],
+    removed: [],
+    next_cursor: "cursor-1",
+    has_more: false,
+  });
+
+  it("does not ask about a revision whose amount matches the log", async () => {
+    const { client } = clientWithPages([modifiedPage(10)]);
+    const { store, commits } = makeStore(itemRecord(), [committed]);
+    vi.mocked(store.loadApprovedAmounts).mockResolvedValue(new Map([["txn-a", 1000]]));
+
+    const summary = await syncPlaidItem({ client, store }, "item-1");
+
+    expect(store.loadApprovedAmounts).toHaveBeenCalledWith("user-1", ["txn-a"]);
+    expect(commits[0].plan.flagRevised).toEqual([]);
+    expect(summary.revised).toBe(0);
+  });
+
+  it("still asks when the bank's amount differs", async () => {
+    const { client } = clientWithPages([modifiedPage(12)]);
+    const { store, commits } = makeStore(itemRecord(), [committed]);
+    vi.mocked(store.loadApprovedAmounts).mockResolvedValue(new Map([["txn-a", 1000]]));
+
+    const summary = await syncPlaidItem({ client, store }, "item-1");
+
+    expect(commits[0].plan.flagRevised).toEqual([{ plaidTransactionId: "a", transactionId: "txn-a" }]);
+    expect(summary.revised).toBe(1);
+  });
+});

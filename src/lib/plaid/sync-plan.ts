@@ -80,6 +80,13 @@ export type VerificationTransfer = {
   amountChanged: boolean;
 };
 
+/** A committed row the bank sent a modification for. */
+export type RevisedRow = {
+  plaidTransactionId: string;
+  /** The user's transaction it was committed as; null when it points at nothing. */
+  transactionId: string | null;
+};
+
 export type SkipCounts = {
   beforeCutoff: number;
   unmapped: number;
@@ -99,7 +106,7 @@ export type PagePlan = {
   /** Committed rows Plaid withdrew — the transaction is never deleted. */
   flagRemovedOnVerification: string[];
   /** Committed rows the bank revised; values update, the transaction does not. */
-  flagRevised: string[];
+  flagRevised: RevisedRow[];
   nextCursor: string;
   skipped: SkipCounts;
   /** Oldest date seen in this page, including rows dropped for other reasons. */
@@ -234,7 +241,10 @@ export function planPage(
         // the queue can show before/after, but never rewrite the transaction itself —
         // silently editing a committed financial record is exactly what the per-row
         // review model exists to prevent.
-        plan.flagRevised.push(upsert.plaidTransactionId);
+        plan.flagRevised.push({
+          plaidTransactionId: upsert.plaidTransactionId,
+          transactionId: prior.resolvedTransactionId,
+        });
         plan.upserts.push(upsert);
         return;
       }
@@ -338,6 +348,30 @@ export function markChangedTransfers(
       const amountChanged =
         approved !== undefined && posted !== undefined && approved !== posted;
       return { ...transfer, amountChanged };
+    }),
+  };
+}
+
+/**
+ * Drops revisions whose amount still equals the user's transaction.
+ *
+ * Plaid sends `modified` for far more than the amount — a cleaned-up name, a category, a
+ * date shift — and asking "use the bank's value or keep mine?" when both are the same
+ * number is a question with nothing to decide. The staged copy still takes the new values.
+ */
+export function keepChangedRevisions(
+  plan: PagePlan,
+  approvedAmountByTransactionId: Map<string, number>,
+): PagePlan {
+  const byId = new Map(plan.upserts.map((u) => [u.plaidTransactionId, u]));
+  return {
+    ...plan,
+    flagRevised: plan.flagRevised.filter((revised) => {
+      const approved = revised.transactionId
+        ? approvedAmountByTransactionId.get(revised.transactionId)
+        : undefined;
+      const reported = byId.get(revised.plaidTransactionId)?.amountCents;
+      return approved === undefined || reported === undefined || approved !== reported;
     }),
   };
 }

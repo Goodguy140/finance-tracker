@@ -1,6 +1,7 @@
 import { CategoryKind, PlaidStagedStatus, TransactionType } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import {
+  keepChangedRevisions,
   markChangedTransfers,
   planPage,
   referencedPlaidTransactionIds,
@@ -298,7 +299,7 @@ describe("planPage: modifications", () => {
         },
       ]),
     );
-    expect(plan.flagRevised).toEqual(["ptx-1"]);
+    expect(plan.flagRevised).toEqual([{ plaidTransactionId: "ptx-1", transactionId: "txn-abc" }]);
     expect(plan.upserts[0].amountCents).toBe(2000);
   });
 
@@ -423,5 +424,38 @@ describe("markChangedTransfers", () => {
     );
     const marked = markChangedTransfers(plan, new Map([["txn-abc", 4700]]));
     expect(marked.transfers[0].amountChanged).toBe(false);
+  });
+});
+
+describe("keepChangedRevisions", () => {
+  const revisedPlan = (amount: number) =>
+    planPage(
+      page({ modified: [txn({ amount })] }),
+      context(),
+      existingMap([
+        {
+          plaidTransactionId: "ptx-1",
+          status: PlaidStagedStatus.LINKED,
+          resolvedTransactionId: "txn-abc",
+        },
+      ]),
+    );
+
+  it("drops a revision whose amount still equals the user's transaction", () => {
+    // A renamed or re-categorised row: nothing to choose between.
+    const kept = keepChangedRevisions(revisedPlan(12.5), new Map([["txn-abc", 1250]]));
+    expect(kept.flagRevised).toEqual([]);
+    // The staged copy still takes the bank's new values.
+    expect(kept.upserts).toHaveLength(1);
+  });
+
+  it("keeps a revision whose amount differs", () => {
+    const kept = keepChangedRevisions(revisedPlan(20), new Map([["txn-abc", 1250]]));
+    expect(kept.flagRevised).toEqual([{ plaidTransactionId: "ptx-1", transactionId: "txn-abc" }]);
+  });
+
+  it("keeps a revision when the user's amount is unknown", () => {
+    const kept = keepChangedRevisions(revisedPlan(12.5), new Map());
+    expect(kept.flagRevised).toHaveLength(1);
   });
 });
