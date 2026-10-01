@@ -6,9 +6,8 @@ import { LIST_MAX_HEIGHT_CLASS } from "@/lib/dashboard-layout/display";
 import type { ListHeight } from "@/lib/dashboard-layout/schema";
 import { useRouter } from "next/navigation";
 import { deleteExpenseTransactionAction, updateExpenseAction } from "@/app/actions";
-import { syncAllPlaidItemsAction } from "@/app/actions/plaid";
 import { MetaChip } from "@/components/meta-chip";
-import { ServerActionForm } from "@/components/server-action-form";
+import { RefreshLinkedAccountsButton } from "@/components/refresh-linked-accounts";
 import { VerifiedBadge, verificationTooltip, type VerificationInfo } from "@/components/verified-badge";
 import {
   type ExpenseGroupSummary,
@@ -231,49 +230,6 @@ function ExpenseLogMobileCard({
     </div>
   );
 }
-
-function RefreshIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5" fill="none">
-      <path
-        d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-      <path
-        d="M13.5 2.5V5H11"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/**
- * Pulls new transactions from the connected banks without leaving the log.
- *
- * Same action as "Sync all due banks" in settings, and deliberately so: it respects the
- * sync interval instead of forcing a fetch, so leaning on this icon cannot burn through
- * the Plaid rate limit. Nothing it finds is posted — rows land in the review queue above.
- */
-function RefreshLinkedAccountsButton() {
-  return (
-    <ServerActionForm action={syncAllPlaidItemsAction} className="flex">
-      <button
-        type="submit"
-        title="Refresh linked accounts — new transactions arrive in the review queue"
-        aria-label="Refresh linked accounts"
-        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-700 text-slate-400 transition hover:border-blue-500/40 hover:text-blue-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 touch-manipulation"
-      >
-        <RefreshIcon />
-      </button>
-    </ServerActionForm>
-  );
-}
-
 
 function EditExpenseModal({
   entry,
@@ -955,6 +911,12 @@ export function ExpenseLogPanel({
                 {hasLinkedAccounts ? <RefreshLinkedAccountsButton /> : null}
               </div>
             </div>
+          </div>
+        ) : null}
+        {entries.length === 0 && hasLinkedAccounts ? (
+          // An empty period is exactly when someone reaches for refresh, so it stays here.
+          <div className="mb-2">
+            <RefreshLinkedAccountsButton />
           </div>
         ) : null}
         <div className="space-y-2">

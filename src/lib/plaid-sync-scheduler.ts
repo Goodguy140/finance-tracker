@@ -97,6 +97,13 @@ export type SweepOptions = {
    * will happily pick up another spec's bank, take its sync lock and advance its cursor.
    */
   userId?: string;
+  /**
+   * How long since its last sync a bank must be before it is due, in place of the configured
+   * interval. Only ever shortens it: a person pressing refresh in the log should see the
+   * banks checked, not be told the hourly sweep got there first, while a value longer than
+   * the configured interval would just make the refresh do less than the sweep does.
+   */
+  intervalMinutes?: number;
 };
 
 export async function sweepDuePlaidItems(
@@ -116,7 +123,8 @@ export async function sweepDuePlaidItems(
   // self-hosted deployments and should cost one cached config read, not a table scan.
   if ((await getPlaidConfig()) === null) return summary;
 
-  const intervalMinutes = await getPlaidSyncIntervalMinutes();
+  const configuredMinutes = await getPlaidSyncIntervalMinutes();
+  const intervalMinutes = Math.min(configuredMinutes, options.intervalMinutes ?? configuredMinutes);
   const dueBefore = plaidSyncDueBefore(now, intervalMinutes);
 
   // Every clause here exists to avoid paying for a call that cannot produce anything.

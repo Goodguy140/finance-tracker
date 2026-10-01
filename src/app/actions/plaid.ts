@@ -38,7 +38,9 @@ import { MfaStepUpRequiredError, requireFreshMfa, requireUser, type MfaStepUpCod
 import { createSyncBankDeps, syncBank } from "@/lib/plaid/sync-bank";
 import { resolvePlaidWebhookUrl } from "@/lib/plaid/webhook-url";
 import { CLEARED_ATTENTION } from "@/lib/plaid/webhooks";
-import { sweepDuePlaidItems } from "@/lib/plaid-sync-scheduler";
+import { sweepDuePlaidItems, type SweepSummary } from "@/lib/plaid-sync-scheduler";
+import { describeLogRefresh, LOG_REFRESH_INTERVAL_MINUTES, type LogRefreshResult } from "@/lib/plaid/log-refresh";
+import type { ActionFailure } from "@/lib/action-result";
 import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
 import {
   assertUserOwnsAccount,
@@ -648,6 +650,40 @@ export const syncAllPlaidItemsAction = formAction(async (formData: FormData) => 
   revalidatePath("/");
   revalidatePath(SETTINGS_PATH);
 });
+
+/**
+ * The refresh control on the transaction log. Checks every one of this user's banks not
+ * checked in the last few minutes and says what came of it (`describeLogRefresh`).
+ *
+ * Returns its result rather than going through `formAction`, because the point of the
+ * control is the sentence it shows next to the icon, and a void action has nothing to say.
+ */
+export async function refreshLinkedAccountsAction(): Promise<LogRefreshResult | ActionFailure> {
+  const user = await requireUser();
+  let summary: SweepSummary;
+  try {
+    summary = await sweepDuePlaidItems(new Date(), {
+      userId: user.id,
+      intervalMinutes: LOG_REFRESH_INTERVAL_MINUTES,
+    });
+  } catch (err) {
+    console.error("[plaid] refresh from the log failed", err);
+    return { ok: false, error: describePlaidFailure(err) };
+  }
+
+  if (summary.synced > 0) {
+    await recordAuditLog(prisma, {
+      userId: user.id,
+      action: AUDIT_ACTIONS.plaid_item_sync_succeeded,
+      metadata: { mode: "log-refresh", banks: summary.synced, staged: summary.staged },
+      headers: await headers(),
+    });
+    revalidatePath("/");
+    revalidatePath(SETTINGS_PATH);
+  }
+
+  return describeLogRefresh(summary);
+}
 
 /** The message a person sees when a review decision is refused. */
 const REVIEW_REFUSALS: Record<ReviewRefusal, string> = {
