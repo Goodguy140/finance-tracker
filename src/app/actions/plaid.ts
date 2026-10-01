@@ -9,9 +9,18 @@ import { prisma } from "@/lib/prisma";
 import { PlaidApiError, type PlaidClient } from "@/lib/plaid/client";
 import { checkMappingAllowed } from "@/lib/plaid/mapping";
 import { purgePlaidItemData } from "@/lib/plaid/purge";
-import { proposeForStagedRow, type StagedRuleInput } from "@/lib/plaid/staged-rules";
-import type { RuleTransactionType } from "@/lib/transaction-rules";
-import { loadRuleContext } from "@/lib/transaction-rules-server";
+import {
+  addStagedRow,
+  applyBankRevision,
+  COMMITTABLE_STAGED_SELECT,
+  dismissBankRevision,
+  ignoreStagedRow,
+  linkStagedRow,
+  loadStagedProposer,
+  toCommittable,
+  type ReviewOutcome,
+  type ReviewRefusal,
+} from "@/lib/plaid/review";
 import {
   makePlaidItemRevoker,
   openAccessToken,
@@ -640,19 +649,17 @@ export const syncAllPlaidItemsAction = formAction(async (formData: FormData) => 
   revalidatePath(SETTINGS_PATH);
 });
 
-/**
- * The queue's proposal for each staged row (title, category, note), re-derived from the
- * user's rules at commit time so what is written matches what the queue showed — and a
- * category that has since stopped belonging to the user is never written.
- */
-async function stagedProposalsFor(userId: string, rows: (StagedRuleInput & { id: string })[]) {
-  const [context, categories] = await Promise.all([
-    loadRuleContext(userId),
-    prisma.category.findMany({ where: { userId }, select: { id: true, kind: true } }),
-  ]);
-  const kinds = new Map(categories.map((c) => [c.id, c.kind as RuleTransactionType]));
-  const learned = { learned: context.learned, hiddenTitleKeys: context.hiddenTitleKeys };
-  return new Map(rows.map((row) => [row.id, proposeForStagedRow(row, context.rules, kinds, learned)]));
+/** The message a person sees when a review decision is refused. */
+const REVIEW_REFUSALS: Record<ReviewRefusal, string> = {
+  "already-reviewed": "That synced transaction has already been reviewed.",
+  "target-not-found": "The transaction to link to was not found.",
+  "target-verified": "That transaction is already confirmed against another bank record.",
+  "type-mismatch": "An expense cannot be linked to an income entry.",
+};
+
+/** Throws inside a database transaction, so a refused decision rolls back everything with it. */
+function orRefuse(outcome: ReviewOutcome): void {
+  if (!outcome.ok) throw new Error(REVIEW_REFUSALS[outcome.reason]);
 }
 
 /**
@@ -669,102 +676,39 @@ export const resolveStagedTransactionAction = formAction(async (formData: FormDa
   const categoryId = getFormValue(formData, "categoryId");
   const linkTransactionId = getFormValue(formData, "linkTransactionId");
 
-  const staged = await prisma.plaidStagedTransaction.findFirst({
+  const row = await prisma.plaidStagedTransaction.findFirst({
     where: { id: stagedId, userId: user.id },
-    include: { plaidItem: { select: { id: true, institutionName: true } } },
+    select: { ...COMMITTABLE_STAGED_SELECT, status: true, name: true, merchantName: true, suggestedCategoryId: true },
   });
-  if (!staged) throw new Error("That synced transaction was not found.");
-  if (staged.status !== PlaidStagedStatus.NEEDS_REVIEW) {
-    throw new Error("That synced transaction has already been reviewed.");
-  }
+  if (!row) throw new Error("That synced transaction was not found.");
+  // Answered early for a clearer message; the claim inside each decision is what enforces it.
+  if (row.status !== PlaidStagedStatus.NEEDS_REVIEW) throw new Error(REVIEW_REFUSALS["already-reviewed"]);
+  const staged = toCommittable(row);
 
   if (decision === "ignore") {
-    await prisma.plaidStagedTransaction.update({
-      where: { id: staged.id },
-      data: { status: PlaidStagedStatus.IGNORED, resolvedAt: new Date() },
-    });
+    if (!(await ignoreStagedRow(prisma, { userId: user.id, stagedId: staged.id }))) {
+      throw new Error(REVIEW_REFUSALS["already-reviewed"]);
+    }
     revalidatePath("/");
     return;
   }
 
-  const proposal = await stagedProposalsFor(user.id, [staged]).then((m) => m.get(staged.id)!);
-  const resolvedCategoryId = categoryId || proposal.categoryId;
-  if (!resolvedCategoryId) throw new Error("Choose a category for this transaction.");
-  await assertUserOwnsCategory(user.id, resolvedCategoryId, categoryKindForTransactionType(staged.type));
-  if (staged.suggestedAccountId) await assertUserOwnsAccount(user.id, staged.suggestedAccountId);
-
-  const verificationBase = {
-    userId: user.id,
-    plaidTransactionId: staged.plaidTransactionId,
-    plaidItemId: staged.plaidItem.id,
-    plaidAccountRowId: staged.plaidAccountRowId,
-    institutionName: staged.plaidItem.institutionName,
-  };
-
-  await prisma.$transaction(async (tx) => {
-    if (decision === "link") {
-      const target = await tx.transaction.findFirst({
-        where: { id: linkTransactionId, userId: user.id },
-        include: { verification: true },
-      });
-      if (!target) throw new Error("The transaction to link to was not found.");
-      if (target.verification) {
-        throw new Error("That transaction is already confirmed against another bank record.");
-      }
-      if (target.type !== staged.type) {
-        throw new Error("An expense cannot be linked to an income entry.");
-      }
-
-      await tx.transactionVerification.create({
-        data: { ...verificationBase, transactionId: target.id, source: "MATCHED" },
-      });
-      // The bank's posted date is better information than none, but the amount, category
-      // and title the user chose are left exactly as they are.
-      if (!target.postedDate && (staged.postedDate || staged.date)) {
-        await tx.transaction.update({
-          where: { id: target.id },
-          data: { postedDate: staged.postedDate ?? staged.date },
-        });
-      }
-      await tx.plaidStagedTransaction.update({
-        where: { id: staged.id },
-        data: {
-          status: PlaidStagedStatus.LINKED,
-          resolvedTransactionId: target.id,
-          resolvedAt: new Date(),
-        },
-      });
-      return;
-    }
-
-    if (decision !== "add") throw new Error("Choose whether to link, add, or ignore this row.");
-
-    const created = await tx.transaction.create({
-      data: {
-        userId: user.id,
-        accountId: staged.suggestedAccountId,
-        categoryId: resolvedCategoryId,
-        type: staged.type,
-        amountCents: staged.amountCents,
-        date: staged.date,
-        postedDate: staged.postedDate,
-        title: proposal.title,
-        note: proposal.note,
-      },
-      select: { id: true },
-    });
-    await tx.transactionVerification.create({
-      data: { ...verificationBase, transactionId: created.id, source: "IMPORTED" },
-    });
-    await tx.plaidStagedTransaction.update({
-      where: { id: staged.id },
-      data: {
-        status: PlaidStagedStatus.ADDED,
-        resolvedTransactionId: created.id,
-        resolvedAt: new Date(),
-      },
-    });
-  });
+  if (decision === "link") {
+    await prisma.$transaction(async (tx) =>
+      orRefuse(await linkStagedRow(tx, { userId: user.id, staged, transactionId: linkTransactionId })),
+    );
+  } else if (decision === "add") {
+    const proposal = (await loadStagedProposer(user.id))(row);
+    const resolvedCategoryId = categoryId || proposal.categoryId;
+    if (!resolvedCategoryId) throw new Error("Choose a category for this transaction.");
+    await assertUserOwnsCategory(user.id, resolvedCategoryId, categoryKindForTransactionType(staged.type));
+    if (staged.suggestedAccountId) await assertUserOwnsAccount(user.id, staged.suggestedAccountId);
+    await prisma.$transaction(async (tx) =>
+      orRefuse(await addStagedRow(tx, { userId: user.id, staged, categoryId: resolvedCategoryId, proposal })),
+    );
+  } else {
+    throw new Error("Choose whether to link, add, or ignore this row.");
+  }
 
   scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
@@ -782,10 +726,11 @@ export const bulkAddStagedTransactionsAction = formAction(async (formData: FormD
 
   const rows = await prisma.plaidStagedTransaction.findMany({
     where: { id: { in: stagedIds }, userId: user.id, status: PlaidStagedStatus.NEEDS_REVIEW },
-    include: { plaidItem: { select: { id: true, institutionName: true } } },
+    select: { ...COMMITTABLE_STAGED_SELECT, name: true, merchantName: true, suggestedCategoryId: true },
   });
 
-  const proposals = await stagedProposalsFor(user.id, rows);
+  const propose = await loadStagedProposer(user.id);
+  const proposals = new Map(rows.map((row) => [row.id, propose(row)]));
 
   // A row with no suggested category cannot be written -- Transaction.categoryId is
   // non-nullable. Refusing the batch beats silently adding fewer rows than the button
@@ -797,42 +742,14 @@ export const bulkAddStagedTransactionsAction = formAction(async (formData: FormD
     );
   }
 
+  // For the same reason, a row someone else reviewed in the meantime refuses the whole batch
+  // rather than quietly shrinking it.
   await prisma.$transaction(async (tx) => {
-    for (const staged of rows) {
-      const proposal = proposals.get(staged.id)!;
-      const created = await tx.transaction.create({
-        data: {
-          userId: user.id,
-          accountId: staged.suggestedAccountId,
-          categoryId: proposal.categoryId!,
-          type: staged.type,
-          amountCents: staged.amountCents,
-          date: staged.date,
-          postedDate: staged.postedDate,
-          title: proposal.title,
-          note: proposal.note,
-        },
-        select: { id: true },
-      });
-      await tx.transactionVerification.create({
-        data: {
-          userId: user.id,
-          transactionId: created.id,
-          source: "IMPORTED",
-          plaidTransactionId: staged.plaidTransactionId,
-          plaidItemId: staged.plaidItem.id,
-          plaidAccountRowId: staged.plaidAccountRowId,
-          institutionName: staged.plaidItem.institutionName,
-        },
-      });
-      await tx.plaidStagedTransaction.update({
-        where: { id: staged.id },
-        data: {
-          status: PlaidStagedStatus.ADDED,
-          resolvedTransactionId: created.id,
-          resolvedAt: new Date(),
-        },
-      });
+    for (const row of rows) {
+      const proposal = proposals.get(row.id)!;
+      orRefuse(
+        await addStagedRow(tx, { userId: user.id, staged: toCommittable(row), categoryId: proposal.categoryId!, proposal }),
+      );
     }
   }, LONG_TRANSACTION_OPTIONS);
 
@@ -851,25 +768,8 @@ export const bulkAddStagedTransactionsAction = formAction(async (formData: FormD
 export const applyBankRevisionAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const stagedId = getFormValue(formData, "stagedId");
-  const staged = await prisma.plaidStagedTransaction.findFirst({
-    where: { id: stagedId, userId: user.id },
-  });
-  if (!staged?.resolvedTransactionId) throw new Error("That revision was not found.");
-
-  await prisma.$transaction(async (tx) => {
-    await tx.transaction.updateMany({
-      where: { id: staged.resolvedTransactionId!, userId: user.id },
-      data: {
-        amountCents: staged.amountCents,
-        date: staged.date,
-        postedDate: staged.postedDate,
-      },
-    });
-    await tx.plaidStagedTransaction.update({
-      where: { id: staged.id },
-      data: { revisedAfterResolveAt: null },
-    });
-  });
+  const applied = await prisma.$transaction((tx) => applyBankRevision(tx, { userId: user.id, stagedId }));
+  if (!applied) throw new Error("That revision was not found.");
 
   scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
@@ -879,10 +779,8 @@ export const applyBankRevisionAction = formAction(async (formData: FormData) => 
 export const dismissBankRevisionAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const stagedId = getFormValue(formData, "stagedId");
-  const updated = await prisma.plaidStagedTransaction.updateMany({
-    where: { id: stagedId, userId: user.id },
-    data: { revisedAfterResolveAt: null },
-  });
-  if (updated.count === 0) throw new Error("That revision was not found.");
+  if (!(await dismissBankRevision(prisma, { userId: user.id, stagedId }))) {
+    throw new Error("That revision was not found.");
+  }
   revalidatePath("/");
 });

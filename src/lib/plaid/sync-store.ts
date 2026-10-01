@@ -18,6 +18,7 @@ import {
 } from "@/lib/plaid/matcher";
 import { openAccessToken } from "@/lib/plaid/service";
 import { pruneSpentStagedRows } from "@/lib/plaid/purge";
+import { linkStagedRow } from "@/lib/plaid/review";
 import type { ExistingStagedRow } from "@/lib/plaid/sync-plan";
 import type { SyncStore } from "@/lib/plaid/sync";
 
@@ -374,7 +375,6 @@ export function createSyncStore(): SyncStore {
       const assigned = assignMatches(forMatch, candidates);
       const autoLinks = selectAutoLinks(forMatch, candidates, assigned);
       const stagedById = new Map(staged.map((row) => [row.id, row]));
-      const candidateById = new Map(candidateRows.map((row) => [row.id, row]));
 
       // Most rows have no match, and they all get identical (null) values — so they go in
       // one statement rather than one per row. An initial backfill can stage thousands,
@@ -406,43 +406,27 @@ export function createSyncStore(): SyncStore {
           });
         }
 
-        // The bank and the user agree exactly — link it as the review queue's "Link" would.
-        // Both are re-checked here: the user may have resolved the row, or linked the
-        // transaction elsewhere, since the rows above were read.
+        // The bank and the user agree exactly — link it exactly as the review queue's Link
+        // does. The user may have resolved the row, or linked the transaction elsewhere,
+        // since the rows above were read; `linkStagedRow` refuses both and this skips them.
         for (const stagedId of autoLinks) {
           const row = stagedById.get(stagedId)!;
-          const target = candidateById.get(assigned.get(stagedId)!.transactionId)!;
-          const alreadyVerified = await tx.transactionVerification.findUnique({
-            where: { transactionId: target.id },
-            select: { id: true },
-          });
-          if (alreadyVerified) continue;
-          const claimed = await tx.plaidStagedTransaction.updateMany({
-            where: { id: row.id, status: PlaidStagedStatus.NEEDS_REVIEW },
-            data: {
-              status: PlaidStagedStatus.LINKED,
-              resolvedTransactionId: target.id,
-              resolvedAt: new Date(),
-            },
-          });
-          if (claimed.count !== 1) continue;
-          await tx.transactionVerification.create({
-            data: {
-              userId: item.userId,
-              transactionId: target.id,
-              source: "MATCHED",
+          await linkStagedRow(tx, {
+            userId: item.userId,
+            staged: {
+              id: row.id,
               plaidTransactionId: row.plaidTransactionId,
               plaidItemId: item.id,
               plaidAccountRowId: row.plaidAccountRowId,
               institutionName: row.plaidItem.institutionName,
+              type: row.type,
+              amountCents: row.amountCents,
+              date: row.date,
+              postedDate: row.postedDate,
+              suggestedAccountId: row.suggestedAccountId,
             },
+            transactionId: assigned.get(stagedId)!.transactionId,
           });
-          if (!target.postedDate) {
-            await tx.transaction.update({
-              where: { id: target.id },
-              data: { postedDate: row.postedDate ?? row.date },
-            });
-          }
         }
       }, LONG_TRANSACTION_OPTIONS);
 

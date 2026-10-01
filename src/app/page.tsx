@@ -49,7 +49,7 @@ import { PlaidReviewQueue } from "@/components/plaid-review-queue";
 import { TransactionRulesProvider } from "@/components/transaction-rules-context";
 import { visibleLearnedSuggestions, type RuleTransactionType } from "@/lib/transaction-rules";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
-import { proposeForStagedRow } from "@/lib/plaid/staged-rules";
+import { makeStagedProposer } from "@/lib/plaid/staged-rules";
 import { resolveDisplayName } from "@/lib/plaid/ingest";
 import { PLAID_ITEM_NEEDS_ATTENTION_WHERE } from "@/lib/plaid/attention";
 import {
@@ -474,9 +474,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     .filter((c) => c.kind === CategoryKind.INCOME)
     .map((c) => ({ id: c.id, name: c.name }));
 
-  const learnedForRules = { learned: ruleContext.learned, hiddenTitleKeys: ruleContext.hiddenTitleKeys };
+  const propose = makeStagedProposer(ruleContext, categoryKindById);
   const reviewRows = stagedRows.map((row) => {
-    const proposal = proposeForStagedRow(row, ruleContext.rules, categoryKindById, learnedForRules);
+    const proposal = propose(row);
     const candidate = row.matchTransactionId ? matchCandidateById.get(row.matchTransactionId) : undefined;
     const reasons = row.matchReasonsJson ? (JSON.parse(row.matchReasonsJson) as string[]) : [];
     return {
