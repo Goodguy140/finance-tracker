@@ -220,7 +220,9 @@ test("syncing stages transactions for review, links exact matches, and only a re
   ).toBe(3000);
 
   // --- the badge appears in the log ---
-  await page.goto("/");
+  // Lifetime, not the default current month: the fixtures are dated a few days back, so in
+  // the first days of a month they fall in the previous one and the log would not show them.
+  await page.goto("/?range=lifetime");
   // Both layouts are always in the DOM with one hidden by CSS, so the badge matches twice
   // and a bare .first() picks whichever comes first in source order — hidden on whichever
   // viewport is not in play. Match the visible one, as `expectExpenseInLog` does.
@@ -273,7 +275,8 @@ test("syncing stages transactions for review, links exact matches, and only a re
     where: { userId: user.id, action: "plaid_item_sync_succeeded" },
   });
 
-  await page.goto("/");
+  // Lifetime for the same reason: the log, which holds this control, is empty otherwise.
+  await page.goto("/?range=lifetime");
   await page.getByRole("button", { name: "Refresh linked accounts" }).click();
 
   // The audit row is the last thing the action writes — the sweep commits first — so
