@@ -251,7 +251,7 @@ async function applyConsentRevocation(
  * a failure is logged and never blocks the sync it runs ahead of.
  */
 export async function ensurePlaidItemWebhook(
-  deps: { prisma: PrismaClient; client: PlaidClient; env?: Record<string, string | undefined> },
+  deps: { prisma: Pick<PrismaClient, "plaidItem">; client: PlaidClient; env?: Record<string, string | undefined> },
   itemId: string,
 ): Promise<void> {
   const url = resolvePlaidWebhookUrl(deps.env);

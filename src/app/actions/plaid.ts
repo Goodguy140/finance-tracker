@@ -26,9 +26,9 @@ import {
 } from "@/lib/plaid/window";
 import { formatDateOnlyUtc } from "@/lib/date-only";
 import { MfaStepUpRequiredError, requireFreshMfa, requireUser, type MfaStepUpCode } from "@/lib/session";
-import { syncPlaidItem } from "@/lib/plaid/sync";
+import { createSyncBankDeps, syncBank } from "@/lib/plaid/sync-bank";
 import { resolvePlaidWebhookUrl } from "@/lib/plaid/webhook-url";
-import { CLEARED_ATTENTION, ensurePlaidItemWebhook } from "@/lib/plaid/webhooks";
+import { CLEARED_ATTENTION } from "@/lib/plaid/webhooks";
 import { sweepDuePlaidItems } from "@/lib/plaid-sync-scheduler";
 import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
 import {
@@ -573,12 +573,9 @@ export const syncPlaidItemAction = formAction(async (formData: FormData) => {
   });
   if (!item) throw new Error("That bank connection was not found.");
 
-  const client = await requirePlaidClient();
-  const { createSyncStore } = await import("@/lib/plaid/sync-store");
-  await ensurePlaidItemWebhook({ prisma, client }, item.id);
+  const outcome = await syncBank(await createSyncBankDeps(), item.id);
 
-  try {
-    const summary = await syncPlaidItem({ client, store: createSyncStore() }, item.id);
+  if (outcome.kind === "synced") {
     await recordAuditLog(prisma, {
       userId: user.id,
       action: AUDIT_ACTIONS.plaid_item_sync_succeeded,
@@ -586,15 +583,15 @@ export const syncPlaidItemAction = formAction(async (formData: FormData) => {
       targetId: item.id,
       metadata: {
         institution: item.institutionName,
-        staged: summary.staged,
-        pages: summary.pages,
-        skippedUnmapped: summary.skipped.unmapped,
-        skippedBeforeCutoff: summary.skipped.beforeCutoff,
+        staged: outcome.summary.staged,
+        pages: outcome.summary.pages,
+        skippedUnmapped: outcome.summary.skipped.unmapped,
+        skippedBeforeCutoff: outcome.summary.skipped.beforeCutoff,
       },
       headers: await headers(),
     });
-  } catch (err) {
-    const needsReauth = err instanceof PlaidApiError && err.needsReauth;
+  } else {
+    const needsReauth = outcome.kind === "needs-reauth";
     await recordAuditLog(prisma, {
       userId: user.id,
       action: needsReauth
@@ -602,7 +599,7 @@ export const syncPlaidItemAction = formAction(async (formData: FormData) => {
         : AUDIT_ACTIONS.plaid_item_sync_failed,
       targetType: "PlaidItem",
       targetId: item.id,
-      metadata: { institution: item.institutionName, error: describePlaidFailure(err) },
+      metadata: { institution: item.institutionName, error: describePlaidFailure(outcome.error) },
       headers: await headers(),
     });
     if (needsReauth) {
@@ -610,7 +607,7 @@ export const syncPlaidItemAction = formAction(async (formData: FormData) => {
         `${item.institutionName ?? "Your bank"} needs you to sign in again before it will share new transactions. Use “Sign in again” on the bank below.`,
       );
     }
-    throw new Error(describePlaidFailure(err));
+    throw new Error(describePlaidFailure(outcome.error));
   }
 
   revalidatePath("/");

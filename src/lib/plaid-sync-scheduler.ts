@@ -1,12 +1,8 @@
 import { PlaidItemStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { PlaidApiError } from "@/lib/plaid/client";
 import { getPlaidConfig, getPlaidSweepEnabled } from "@/lib/plaid/config";
 import { plaidSweepSwitchEnabled } from "@/lib/plaid/settings";
-import { requirePlaidClient } from "@/lib/plaid/service";
-import { PlaidSyncBusyError, syncPlaidItem } from "@/lib/plaid/sync";
-import { createSyncStore } from "@/lib/plaid/sync-store";
-import { ensurePlaidItemWebhook } from "@/lib/plaid/webhooks";
+import { createSyncBankDeps, syncBank } from "@/lib/plaid/sync-bank";
 import {
   DEFAULT_PLAID_SYNC_INTERVAL_MINUTES,
   MIN_PLAID_SYNC_INTERVAL_MINUTES,
@@ -71,22 +67,6 @@ export function resolvePlaidSyncIntervalMinutes(
  */
 export function plaidSyncDueBefore(now: Date, intervalMinutes: number): Date {
   return new Date(now.getTime() - intervalMinutes * 60_000);
-}
-
-/** Caps the backoff so a connection fixed days later is still picked up promptly. */
-export const MAX_SYNC_BACKOFF_MINUTES = 24 * 60;
-
-/**
- * How long to wait before trying a failing bank again.
- *
- * Doubles per consecutive failure from one hour, capped at a day. A connection that is
- * broken until a person fixes it therefore costs one call a day instead of twenty-four,
- * while a one-off network blip is retried within the hour.
- */
-export function plaidSyncBackoffMinutes(consecutiveFailures: number): number {
-  const exponent = Math.max(0, consecutiveFailures - 1);
-  const minutes = DEFAULT_PLAID_SYNC_INTERVAL_MINUTES * 2 ** Math.min(exponent, 10);
-  return Math.min(minutes, MAX_SYNC_BACKOFF_MINUTES);
 }
 
 export type SweepSummary = {
@@ -164,63 +144,33 @@ export async function sweepDuePlaidItems(
   summary.considered = due.length;
   if (due.length === 0) return summary;
 
-  const client = await requirePlaidClient();
-  const store = createSyncStore();
+  const deps = await createSyncBankDeps();
 
   for (const item of due) {
-    // Re-points banks linked before webhooks existed. Best-effort and at most one call per
-    // item per URL change; it never fails the sync behind it.
-    await ensurePlaidItemWebhook({ prisma, client }, item.id);
-    try {
-      const result = await syncPlaidItem({ client, store }, item.id);
-      summary.synced += 1;
-      summary.staged += result.staged;
-      await clearBackoff(item.id);
-    } catch (err) {
-      if (err instanceof PlaidSyncBusyError) {
+    const outcome = await syncBank(deps, item.id, now);
+    switch (outcome.kind) {
+      case "synced":
+        summary.synced += 1;
+        summary.staged += outcome.summary.staged;
+        break;
+      case "busy":
         // Someone pressed "Sync now" for this bank, or a previous sweep is still going.
-        // Not a failure; it will be picked up next time and must not count towards backoff.
+        // It will be picked up next time.
         summary.busy += 1;
-        continue;
-      }
-      if (err instanceof PlaidApiError && err.needsReauth) {
-        // `syncPlaidItem` has already flipped the item to LOGIN_REQUIRED, so it drops out
-        // of the next sweep until the user signs in again — no backoff needed.
+        break;
+      case "needs-reauth":
+        // Now LOGIN_REQUIRED, so it drops out of the sweep until the user signs in again.
         summary.needsReauth += 1;
-        continue;
-      }
-      // One bank's problem must not stop the others.
-      summary.failed += 1;
-      await recordBackoff(item.id, now);
-      console.error(`[plaid] sync failed for ${item.institutionName ?? item.id}`, err);
+        break;
+      case "failed":
+        // One bank's problem must not stop the others; `syncBank` has already backed it off.
+        summary.failed += 1;
+        console.error(`[plaid] sync failed for ${item.institutionName ?? item.id}`, outcome.error);
+        break;
     }
   }
 
   return summary;
-}
-
-/** A successful sync clears any backoff, so the next failure starts from one hour again. */
-async function clearBackoff(itemId: string): Promise<void> {
-  await prisma.plaidItem.updateMany({
-    where: { id: itemId, OR: [{ consecutiveSyncFailures: { gt: 0 } }, { nextSyncAttemptAt: { not: null } }] },
-    data: { consecutiveSyncFailures: 0, nextSyncAttemptAt: null },
-  });
-}
-
-/** Pushes the next attempt out, further each time this bank fails in a row. */
-async function recordBackoff(itemId: string, now: Date): Promise<void> {
-  const current = await prisma.plaidItem.findUnique({
-    where: { id: itemId },
-    select: { consecutiveSyncFailures: true },
-  });
-  const failures = (current?.consecutiveSyncFailures ?? 0) + 1;
-  await prisma.plaidItem.update({
-    where: { id: itemId },
-    data: {
-      consecutiveSyncFailures: failures,
-      nextSyncAttemptAt: new Date(now.getTime() + plaidSyncBackoffMinutes(failures) * 60_000),
-    },
-  });
 }
 
 /** Delay before the next tick. Falls back to the default if the settings read fails. */
