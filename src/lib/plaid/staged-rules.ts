@@ -58,3 +58,15 @@ export function proposeForStagedRow(
     reason: outcome.categoryFrom ?? (changed ? "rule" : null),
   };
 }
+
+/**
+ * `proposeForStagedRow` bound to one user's rules, learned combos and category kinds — the
+ * single way the dashboard and the commit both build it, so the two cannot drift apart.
+ */
+export function makeStagedProposer(
+  context: { rules: readonly TransactionRuleInput[] } & LearnedRuleContext,
+  categoryKindById: ReadonlyMap<string, RuleTransactionType>,
+): (staged: StagedRuleInput) => StagedRuleProposal {
+  const learned = { learned: context.learned, hiddenTitleKeys: context.hiddenTitleKeys };
+  return (staged) => proposeForStagedRow(staged, context.rules, categoryKindById, learned);
+}

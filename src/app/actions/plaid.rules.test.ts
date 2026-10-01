@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuleContext } from "@/lib/transaction-rules-server";
 
 const mockPrisma = vi.hoisted(() => ({
-  plaidStagedTransaction: { findMany: vi.fn(), update: vi.fn() },
+  plaidStagedTransaction: { findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   category: { findMany: vi.fn() },
   transaction: { create: vi.fn() },
   transactionVerification: { create: vi.fn() },
@@ -49,6 +49,7 @@ describe("bulkAddStagedTransactionsAction with rules", () => {
     vi.clearAllMocks();
     mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<void>) => fn(mockPrisma));
     mockPrisma.transaction.create.mockResolvedValue({ id: "txn-1" });
+    mockPrisma.plaidStagedTransaction.updateMany.mockResolvedValue({ count: 1 });
     mockPrisma.category.findMany.mockResolvedValue([
       { id: "cat-pfc", kind: "EXPENSE" },
       { id: "cat-subs", kind: "EXPENSE" },
