@@ -25,7 +25,7 @@ function RefreshIcon({ spinning }: { spinning: boolean }) {
     <svg
       viewBox="0 0 16 16"
       aria-hidden="true"
-      className={`h-3.5 w-3.5 ${spinning ? "animate-spin motion-reduce:animate-none" : ""}`}
+      className={`h-4 w-4 ${spinning ? "animate-spin motion-reduce:animate-none" : ""}`}
       fill="none"
     >
       <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -43,7 +43,7 @@ function RefreshIcon({ spinning }: { spinning: boolean }) {
 /**
  * Pulls new transactions from the connected banks without leaving the log.
  *
- * Spins while the banks are checked, then says what came of it next to the icon. Nothing it
+ * Spins while the banks are checked, then says what came of it just under the icon. Nothing it
  * finds is posted — rows land in the review queue above the log. See `describeLogRefresh`
  * for which banks it checks.
  */
@@ -79,8 +79,12 @@ export function RefreshLinkedAccountsButton() {
     });
   }
 
+  const message = pending ? "Checking your banks…" : (status?.message ?? "");
+
   return (
-    <div className="flex min-w-0 items-center gap-2">
+    // Sits in the card header beside the settings button, where there is no room for a
+    // sentence, so the result floats just under the icon instead of pushing the title over.
+    <div className="relative">
       <button
         type="button"
         onClick={refresh}
@@ -88,12 +92,21 @@ export function RefreshLinkedAccountsButton() {
         aria-busy={pending}
         title="Refresh linked accounts — new transactions arrive in the review queue"
         aria-label="Refresh linked accounts"
-        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-700 text-slate-400 transition hover:border-blue-500/40 hover:text-blue-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-wait disabled:text-blue-200 touch-manipulation"
+        className="rounded-lg border border-slate-700/80 bg-slate-900/90 p-1.5 text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 hover:text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-wait disabled:text-blue-200 touch-manipulation"
       >
         <RefreshIcon spinning={pending} />
       </button>
-      <p role="status" aria-live="polite" className={`min-w-0 text-xs ${status ? TONE_CLASS[status.tone] : "text-slate-500"}`}>
-        {pending ? "Checking your banks…" : (status?.message ?? "")}
+      {/* Always mounted, so screen readers have the live region before anything is said in it. */}
+      <p
+        role="status"
+        aria-live="polite"
+        className={
+          message
+            ? `absolute right-0 top-full z-10 mt-1 w-max max-w-[min(16rem,70vw)] rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-right text-xs shadow-lg ${status ? TONE_CLASS[status.tone] : "text-slate-400"}`
+            : "sr-only"
+        }
+      >
+        {message}
       </p>
     </div>
   );
