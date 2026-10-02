@@ -263,10 +263,11 @@ test("syncing stages transactions for review, links exact matches, and only a re
   ).toBe(2);
   expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(3);
 
-  // --- the refresh control in the log runs that same sweep ---
-  // The sweep only touches banks that are due, so the item is aged past the interval
-  // first; without this the click is a legitimate no-op and would assert nothing.
-  const dueBefore = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  // --- the refresh control in the log runs that same sweep, on a shorter interval ---
+  // Aged 20 minutes: past the log refresh's 15-minute floor but inside the hourly sweep
+  // interval, so this click only syncs because the refresh shortens it. A refresh that
+  // waited for the sweep interval would be a no-op here and fail the poll below.
+  const dueBefore = new Date(Date.now() - 20 * 60 * 1000);
   await prisma.plaidItem.updateMany({
     where: { userId: user.id },
     data: { lastSyncedAt: dueBefore },
@@ -290,6 +291,9 @@ test("syncing stages transactions for review, links exact matches, and only a re
       { timeout: 20_000 },
     )
     .toBe(syncAuditsBefore + 1);
+
+  // The control says what came of it; the sync above already took everything there was.
+  await expect(page.getByRole("status").filter({ hasText: "No new transactions." })).toBeVisible();
 
   const refreshed = await prisma.plaidItem.findFirstOrThrow({ where: { userId: user.id } });
   expect(refreshed.lastSyncedAt!.getTime()).toBeGreaterThan(dueBefore.getTime());
