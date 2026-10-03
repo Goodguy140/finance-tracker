@@ -544,8 +544,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
   const revisionRows = revisedRows.flatMap((row) => {
     const target = row.resolvedTransactionId ? revisionTargetById.get(row.resolvedTransactionId) : undefined;
-    // Same amount on both sides: nothing to choose between. Sync no longer raises these,
-    // but rows flagged before it stopped still carry the flag.
+    // Same amount on both sides: nothing to choose between. Sync no longer raises these, but
+    // a row can still get here if the user edited their entry to the bank's amount after the
+    // flag was raised, and rows flagged before sync stopped raising them still carry it.
     if (!target || target.amountCents === row.amountCents) return [];
     return [
       {

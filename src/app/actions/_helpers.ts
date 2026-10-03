@@ -54,7 +54,8 @@ export function parseJsonField<T>(raw: string, fallback: T, message: string): T 
  * default 5s interactive-transaction budget, and blowing the budget rolls everything back.
  * Generous on purpose: these run rarely and a partial import is worse than a slow one.
  */
-export const LONG_TRANSACTION_OPTIONS = { maxWait: 15_000, timeout: 180_000 } as const;
+// Lives with the client so library code can use it without importing the actions layer.
+export { LONG_TRANSACTION_OPTIONS } from "@/lib/prisma";
 
 export function getOptionalMappedValue(row: Record<string, string>, key?: string) {
   if (!key) return undefined;

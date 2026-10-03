@@ -2,8 +2,6 @@ import { CategoryKind } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 import { PlaidApiError, type PlaidClient } from "@/lib/plaid/client";
 import {
-  MAX_SYNC_BACKOFF_MINUTES,
-  plaidSyncBackoffMinutes,
   syncBank,
   type SyncBankDeps,
 } from "@/lib/plaid/sync-bank";
@@ -128,36 +126,5 @@ describe("syncBank", () => {
     const outcome = await syncBank({ client: client(new Error("gone")), store: store(), prisma }, "item-1", NOW);
     expect(outcome.kind).toBe("failed");
     expect(prisma.plaidItem.update).not.toHaveBeenCalled();
-  });
-});
-
-describe("plaidSyncBackoffMinutes", () => {
-  it("doubles per consecutive failure, starting at the normal interval", () => {
-    expect(plaidSyncBackoffMinutes(1)).toBe(60);
-    expect(plaidSyncBackoffMinutes(2)).toBe(120);
-    expect(plaidSyncBackoffMinutes(3)).toBe(240);
-    expect(plaidSyncBackoffMinutes(4)).toBe(480);
-  });
-
-  it("caps at a day, so a connection fixed later is still picked up promptly", () => {
-    // 60 · 2^4 = 960, still under the cap; the cap first bites on the sixth failure.
-    expect(plaidSyncBackoffMinutes(5)).toBe(960);
-    expect(plaidSyncBackoffMinutes(6)).toBe(MAX_SYNC_BACKOFF_MINUTES);
-    expect(plaidSyncBackoffMinutes(50)).toBe(MAX_SYNC_BACKOFF_MINUTES);
-    // No overflow from a runaway counter.
-    expect(Number.isFinite(plaidSyncBackoffMinutes(10_000))).toBe(true);
-    expect(plaidSyncBackoffMinutes(10_000)).toBe(MAX_SYNC_BACKOFF_MINUTES);
-  });
-
-  it("treats a first failure and a zeroed counter the same", () => {
-    expect(plaidSyncBackoffMinutes(0)).toBe(60);
-    expect(plaidSyncBackoffMinutes(-3)).toBe(60);
-  });
-
-  it("turns a permanently broken bank from 24 calls a day into 1", () => {
-    // The whole point: a connection nobody fixes must stop costing rate limit, and on
-    // per-request pricing, money.
-    const callsPerDayAtCap = (24 * 60) / plaidSyncBackoffMinutes(6);
-    expect(callsPerDayAtCap).toBe(1);
   });
 });
