@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { isRegisteredAccountType } from "@/lib/contribution-room";
 
 export const BACKUP_VERSION = 1;
 
@@ -185,6 +186,8 @@ export type UserBackupPayload = {
   insightDismissals?: Array<{ insightKey: string; snoozedUntil: IsoString | null }>;
   /** Insight settings. Optional; absent means the defaults. */
   insightPreference?: { habitDetectionEnabled: boolean } | null;
+  /** Yearly TFSA/RRSP/FHSA room figures copied from CRA. Optional: older backups predate them. */
+  contributionRooms?: Array<{ accountType: "TFSA" | "RRSP" | "FHSA"; year: number; roomCents: number }>;
   /**
    * Not a field. Recording an omission so it does not read as an oversight: the desktop
    * dashboard layout (`DashboardLayout`) is deliberately outside this payload. It is a UI
@@ -235,6 +238,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       hiddenTitleSuggestions: true,
       insightDismissals: true,
       insightPreference: true,
+      contributionRooms: { orderBy: [{ accountType: "asc" }, { year: "asc" }] },
     },
   });
 
@@ -397,5 +401,10 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
     insightPreference: user.insightPreference
       ? { habitDetectionEnabled: user.insightPreference.habitDetectionEnabled }
       : null,
+    contributionRooms: user.contributionRooms.flatMap((row) =>
+      isRegisteredAccountType(row.accountType)
+        ? [{ accountType: row.accountType, year: row.year, roomCents: row.roomCents }]
+        : [],
+    ),
   });
 }

@@ -18,6 +18,7 @@ import { IncomeCardBody } from "@/components/dashboard-cards/income-card";
 import { InsightsCardBody } from "@/components/dashboard-cards/insights-card";
 import { RecurringCardBody } from "@/components/dashboard-cards/recurring-card";
 import { ExpenseLogPanel } from "@/components/expense-log";
+import { loadContributionRoomData } from "@/lib/contribution-room-data";
 import { RefreshLinkedAccountsButton } from "@/components/refresh-linked-accounts";
 import { readDashboardLayout } from "@/lib/dashboard-layout/read";
 import type { DashboardCardId } from "@/lib/dashboard-layout/schema";
@@ -126,7 +127,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const categoryUsageCutoff = new Date(now);
   categoryUsageCutoff.setMonth(categoryUsageCutoff.getMonth() - 3);
 
-  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, ruleContext, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount, plaidAttentionCount, periodTransfers] =
+  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, ruleContext, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount, plaidAttentionCount, contributionRoom, periodTransfers] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -250,6 +251,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     // Banks Plaid has told us need the user (sign in, renew, new accounts). The detail and
     // the fix live on Settings; this only makes sure they find out without going there.
     prisma.plaidItem.count({ where: { userId: user.id, ...PLAID_ITEM_NEEDS_ATTENTION_WHERE } }),
+    loadContributionRoomData(user.id),
     // Listed under the expense log, outside every total.
     prisma.transaction.findMany({
       where: { userId: user.id, type: TransactionType.TRANSFER, ...transactionDateFilter },
@@ -889,6 +891,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                   expenseCategories={expenseCategoryAddOptions}
                   incomeCategories={incomeCategoryOptions}
                   defaultExpenseAccountId={user.defaultExpenseAccountId}
+                  contributionRoom={contributionRoom}
                 />
                 <div className="hidden items-center gap-2 lg:flex">
                   <Link

@@ -234,6 +234,17 @@ export const userBackupSchema = z.object({
     .optional()
     .default([]),
   insightPreference: z.object({ habitDetectionEnabled: z.boolean() }).nullable().optional(),
+  contributionRooms: z
+    .array(
+      z.object({
+        accountType: z.enum(["TFSA", "RRSP", "FHSA"]),
+        year: z.number().int().min(2009).max(2200),
+        roomCents: signedCents,
+      }),
+    )
+    .max(1000)
+    .optional()
+    .default([]),
 });
 
 export type ParsedUserBackup = z.infer<typeof userBackupSchema>;

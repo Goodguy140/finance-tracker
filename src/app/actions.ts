@@ -46,7 +46,12 @@ export {
   applyTransactionRuleAction,
 } from "./actions/transaction-rules";
 export type { RulePreviewResult, RuleApplyResult } from "./actions/transaction-rules";
-export { createInvestmentFlowAction, createPortfolioSnapshotAction } from "./actions/investments";
+export {
+  createInvestmentFlowAction,
+  createPortfolioSnapshotAction,
+  upsertContributionRoomAction,
+  deleteContributionRoomAction,
+} from "./actions/investments";
 export {
   createFinancialAccountAction,
   updateFinancialAccountAction,
