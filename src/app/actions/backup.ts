@@ -40,6 +40,7 @@ export const clearUserFinancialDataAction = formAction(async (formData: FormData
     await tx.budgetAlertNotification.deleteMany({ where: { userId: user.id } });
     await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
     await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
+    await tx.contributionRoom.deleteMany({ where: { userId: user.id } });
     await tx.portfolioSnapshot.deleteMany({ where: { userId: user.id } });
     // Plaid rows reference Transaction and Account, so they go before both. Staged rows and
     // items are dropped outright rather than kept: a bank connection is not financial
@@ -111,6 +112,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
     await tx.budgetAlertNotification.deleteMany({ where: { userId: user.id } });
     await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
     await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
+    await tx.contributionRoom.deleteMany({ where: { userId: user.id } });
     await tx.portfolioSnapshot.deleteMany({ where: { userId: user.id } });
     // Plaid rows reference Transaction and Account, so they go before both. Staged rows and
     // items are dropped outright rather than kept: a bank connection is not financial
@@ -438,6 +440,18 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
         data: { userId: user.id, habitDetectionEnabled: parsed.insightPreference.habitDetectionEnabled },
       });
     }
+    // Last write wins on a duplicate (type, year), matching what saving it twice in the app does.
+    const roomsByKey = new Map(
+      (parsed.contributionRooms ?? []).map((row) => [`${row.accountType}:${row.year}`, row]),
+    );
+    await tx.contributionRoom.createMany({
+      data: [...roomsByKey.values()].map((row) => ({
+        userId: user.id,
+        accountType: row.accountType,
+        year: row.year,
+        roomCents: row.roomCents,
+      })),
+    });
 
     // `parsed.authAccounts` is deliberately not restored, and the user's existing links are
     // left untouched. Attaching an SSO identity to an account requires a fresh passkey

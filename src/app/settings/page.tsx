@@ -23,6 +23,7 @@ import type { TransactionRulesPanelProps } from "@/components/transaction-rules-
 import { normalizeExpenseTitleKey } from "@/lib/expense-title-suggestions";
 import type { RuleTransactionType } from "@/lib/transaction-rules";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
+import { loadContributionRoomData } from "@/lib/contribution-room-data";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     plaidFakeLink,
     ruleContext,
     allCategories,
+    contributionRoom,
   ] = await Promise.all([
     prisma.account.findMany({ where: { userId: user.id }, orderBy: { name: "asc" } }),
     prisma.category.findMany({ where: { userId: user.id, kind: CategoryKind.EXPENSE }, orderBy: { name: "asc" } }),
@@ -105,6 +107,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     plaidFakeClientEnabled(),
     loadRuleContext(user.id),
     prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true } }),
+    loadContributionRoomData(user.id),
   ]);
 
   const availableProviders = [
@@ -298,6 +301,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
         security={security}
         plaid={plaid}
         transactionRules={transactionRules}
+        contributionRoom={contributionRoom}
       />
     </main>
   );

@@ -22,6 +22,7 @@ const mockPrisma = vi.hoisted(() => ({
   hiddenTitleSuggestion: { deleteMany: vi.fn(), createMany: vi.fn() },
   insightDismissal: { deleteMany: vi.fn(), createMany: vi.fn() },
   insightPreference: { deleteMany: vi.fn(), create: vi.fn() },
+  contributionRoom: { deleteMany: vi.fn(), createMany: vi.fn() },
   $transaction: vi.fn(),
 }));
 
@@ -261,6 +262,11 @@ describe("importUserBackupAction", () => {
         { insightKey: "recurring:EXPENSE:netflix", snoozedUntil: iso },
       ],
       insightPreference: { habitDetectionEnabled: false },
+      contributionRooms: [
+        { accountType: "TFSA", year: 2026, roomCents: 100_000 },
+        { accountType: "TFSA", year: 2026, roomCents: 2_500_000 },
+        { accountType: "RRSP", year: 2025, roomCents: 1_800_000 },
+      ],
     };
     const file = new File([JSON.stringify(backup)], "backup.json", { type: "application/json" });
     const formData = new FormData();
@@ -293,6 +299,13 @@ describe("importUserBackupAction", () => {
     });
     expect(mockPrisma.insightPreference.create).toHaveBeenCalledWith({
       data: { userId: "user-1", habitDetectionEnabled: false },
+    });
+    expect(mockPrisma.contributionRoom.deleteMany).toHaveBeenCalledWith({ where: { userId: "user-1" } });
+    expect(mockPrisma.contributionRoom.createMany).toHaveBeenCalledWith({
+      data: [
+        { userId: "user-1", accountType: "TFSA", year: 2026, roomCents: 2_500_000 },
+        { userId: "user-1", accountType: "RRSP", year: 2025, roomCents: 1_800_000 },
+      ],
     });
   });
 

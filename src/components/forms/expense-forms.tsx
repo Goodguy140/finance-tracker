@@ -35,6 +35,7 @@ import { createExpenseAction, importExpensesCsvAction, createSplitExpenseAction 
 import type { AddMenuFormKey } from "./auth-forms";
 import { IncomeForm } from "./income-forms";
 import { RecurringTransactionForm, InvestmentForms } from "./settings-forms";
+import type { ContributionRoomData } from "@/lib/contribution-room";
 
 export function ExpenseTitleAndCategoryFields({
   expenseCategories,
@@ -547,11 +548,13 @@ export function AddFormsDropdown({
   expenseCategories,
   incomeCategories,
   defaultExpenseAccountId,
+  contributionRoom,
 }: {
   accounts: Option[];
   expenseCategories: Option[];
   incomeCategories: Option[];
   defaultExpenseAccountId?: string | null;
+  contributionRoom?: ContributionRoomData;
 }) {
   const [open, setOpen] = useState(false);
   const [activeForm, setActiveForm] = useState<AddMenuFormKey>("income");
@@ -619,7 +622,7 @@ export function AddFormsDropdown({
           defaultExpenseAccountId={defaultExpenseAccountId}
         />
       ) : null}
-      {activeForm === "investment" ? <InvestmentForms accounts={accounts} /> : null}
+      {activeForm === "investment" ? <InvestmentForms accounts={accounts} contributionRoom={contributionRoom} /> : null}
 
       <div className="mt-4 flex justify-end sm:mt-3">
         <button
