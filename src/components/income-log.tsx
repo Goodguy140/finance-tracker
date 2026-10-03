@@ -7,6 +7,7 @@ import type { ListHeight } from "@/lib/dashboard-layout/schema";
 import { useRouter } from "next/navigation";
 import { deleteIncomeTransactionAction, updateIncomeAction } from "@/app/actions";
 import { MetaChip } from "@/components/meta-chip";
+import { MarkAsTransferSection } from "@/components/transfer-log";
 import { VerifiedBadge, verificationTooltip, type VerificationInfo } from "@/components/verified-badge";
 import { formatCurrency } from "@/lib/money";
 import { MOBILE_OVERLAY_ROOT_Z_CLASS } from "@/lib/mobile-z-index";
@@ -330,6 +331,8 @@ function EditIncomeModal({
             </button>
           </div>
         </form>
+
+        <MarkAsTransferSection transactionId={entry.id} kind="income" onDone={onClose} />
 
         <div className={`${spanFullSm} mt-4 border-t border-slate-800/90 pt-4`}>
           <p className="mb-2 text-xs leading-relaxed text-slate-500">

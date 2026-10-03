@@ -28,14 +28,47 @@ describe("mapPlaidAmount", () => {
     });
   });
 
-  it("treats negative INCOME and TRANSFER_IN as income, stored positive", () => {
-    for (const primary of ["INCOME", "TRANSFER_IN", "income", " transfer_in "]) {
+  it("treats negative INCOME as income, stored positive", () => {
+    for (const primary of ["INCOME", "income", " income "]) {
       expect(mapPlaidAmount({ amount: -2500, pfcPrimary: primary })).toEqual({
         kind: "income",
         type: TransactionType.INCOME,
         amountCents: 250000,
       });
     }
+  });
+
+  it("books money moving between accounts as a transfer, keeping Plaid's sign", () => {
+    // Paying a card from chequing used to stage an expense here and income on the card,
+    // counting the purchases it paid off a second time.
+    expect(mapPlaidAmount({ amount: 500, pfcPrimary: "TRANSFER_OUT" })).toEqual({
+      kind: "transfer",
+      type: TransactionType.TRANSFER,
+      amountCents: 50000,
+    });
+    for (const primary of ["TRANSFER_IN", " transfer_in "]) {
+      expect(mapPlaidAmount({ amount: -2500, pfcPrimary: primary })).toEqual({
+        kind: "transfer",
+        type: TransactionType.TRANSFER,
+        amountCents: -250000,
+      });
+    }
+  });
+
+  it("books a credit-card payment as a transfer on either side, but not other loan payments", () => {
+    const cardPayment = { pfcPrimary: "LOAN_PAYMENTS", pfcDetailed: "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT" };
+    expect(mapPlaidAmount({ amount: 300, ...cardPayment })).toMatchObject({
+      type: TransactionType.TRANSFER,
+      amountCents: 30000,
+    });
+    expect(mapPlaidAmount({ amount: -300, ...cardPayment })).toMatchObject({
+      type: TransactionType.TRANSFER,
+      amountCents: -30000,
+    });
+    // No loan accounts exist in this app, so a mortgage payment leaves everything it tracks.
+    expect(
+      mapPlaidAmount({ amount: 1800, pfcPrimary: "LOAN_PAYMENTS", pfcDetailed: "LOAN_PAYMENTS_MORTGAGE_PAYMENT" }),
+    ).toMatchObject({ type: TransactionType.EXPENSE, amountCents: 180000 });
   });
 
   it("books a merchant refund as a NEGATIVE expense, not as income", () => {

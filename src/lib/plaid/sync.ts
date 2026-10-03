@@ -64,7 +64,10 @@ export type SyncStore = {
   acquireLock(itemId: string, staleBefore: Date, now: Date): Promise<SyncItemRecord | null>;
   releaseLock(itemId: string): Promise<void>;
   loadExistingStaged(userId: string, plaidTransactionIds: string[]): Promise<ExistingStagedRow[]>;
-  /** Amounts of the transactions those staged rows were committed to. */
+  /**
+   * Amounts of the transactions those staged rows were committed to, as money out
+   * (`outflowCents`), so they compare with a bank row whatever type the user booked it as.
+   */
   loadApprovedAmounts(userId: string, transactionIds: string[]): Promise<Map<string, number>>;
   /** Applies one page's writes AND its cursor atomically. */
   commitPage(item: SyncItemRecord, plan: PagePlan): Promise<void>;

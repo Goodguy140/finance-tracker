@@ -16,6 +16,8 @@ export {
   updateIncomeAction,
   deleteIncomeTransactionAction,
   createSplitExpenseAction,
+  markAsTransferAction,
+  unmarkTransferAction,
 } from "./actions/transactions";
 export { upsertBudgetAction, updateBudgetAction, deleteBudgetAction, reallocateBudgetAction } from "./actions/budgets";
 export {

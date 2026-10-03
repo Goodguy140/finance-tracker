@@ -32,11 +32,19 @@ enum AccountType {
 enum CategoryKind {
   EXPENSE
   INCOME
+  /// Holds transfers only. One per user ("Transfers"), created on first use; it never
+  /// appears in an expense or income picker and has no budget.
+  TRANSFER
 }
 
 enum TransactionType {
   EXPENSE
   INCOME
+  /// Money moving between the user's own accounts: a credit-card payment from chequing, a
+  /// move to savings. Counted as neither spending nor income, which is the point — booking
+  /// both legs as an expense and an income double-counts. `amountCents` follows the expense
+  /// sign: positive left the row's account, negative arrived in it.
+  TRANSFER
 }
 
 enum TransactionRuleTextOperator {

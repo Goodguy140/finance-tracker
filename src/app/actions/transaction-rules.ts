@@ -59,6 +59,8 @@ async function readRuleForm(userId: string, formData: FormData) {
       select: { kind: true },
     });
     if (!category) throw new Error("Selected category was not found.");
+    // Transfers have one category of their own and are left alone by rules.
+    if (category.kind === "TRANSFER") throw new Error("Rules cannot set the transfer category.");
     // A category belongs to one side of the ledger, so the rule does too. Left on "any",
     // an expense category would silently do nothing for income and confuse the preview.
     const kind = category.kind as unknown as TransactionType;
@@ -205,7 +207,8 @@ async function planForRule(userId: string, ruleId: string) {
       where: {
         userId,
         splitParts: { none: {} },
-        ...(rule.transactionType ? { type: rule.transactionType } : {}),
+        // A rule is about expenses and income; transfers are left alone.
+        type: rule.transactionType ?? { not: TransactionType.TRANSFER },
         ...(rule.matchAccountId ? { accountId: rule.matchAccountId } : {}),
       },
       select: {

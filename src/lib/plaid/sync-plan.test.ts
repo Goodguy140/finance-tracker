@@ -29,6 +29,7 @@ function context(overrides: Partial<SyncItemContext> = {}): SyncItemContext {
     fallbackCategoryId: {
       [CategoryKind.EXPENSE]: "cat-uncat-expense",
       [CategoryKind.INCOME]: "cat-uncat-income",
+      [CategoryKind.TRANSFER]: "cat-transfer",
     },
     ...overrides,
   };
@@ -95,6 +96,30 @@ describe("planPage: staging", () => {
       amountCents: 1250,
     });
     expect(plan.nextCursor).toBe("cursor-2");
+  });
+
+  it("stages a card payment as a transfer in the transfer category", () => {
+    const plan = planPage(
+      page({
+        added: [
+          txn({
+            amount: 400,
+            personal_finance_category: { primary: "LOAN_PAYMENTS", detailed: "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT" },
+          }),
+          txn({
+            transaction_id: "ptx-2",
+            amount: -400,
+            personal_finance_category: { primary: "TRANSFER_IN", detailed: "TRANSFER_IN_ACCOUNT_TRANSFER" },
+          }),
+        ],
+      }),
+      context(),
+      existingMap([]),
+    );
+    expect(plan.upserts.map((u) => [u.type, u.amountCents, u.suggestedCategoryId])).toEqual([
+      [TransactionType.TRANSFER, 40000, "cat-transfer"],
+      [TransactionType.TRANSFER, -40000, "cat-transfer"],
+    ]);
   });
 
   it("skips accounts the user has not mapped, and ones they switched off", () => {
@@ -452,6 +477,19 @@ describe("keepChangedRevisions", () => {
   it("keeps a revision whose amount differs", () => {
     const kept = keepChangedRevisions(revisedPlan(20), new Map([["txn-abc", 1250]]));
     expect(kept.flagRevised).toEqual([{ plaidTransactionId: "ptx-1", transactionId: "txn-abc" }]);
+  });
+
+  it("compares as money out, so income the user booked as a transfer is not re-asked", () => {
+    // Bank: $500 deposit (staged as income, +50000). The user booked it as a transfer, which
+    // stores the same money as -50000; loadApprovedAmounts reports that as money out.
+    const plan = planPage(
+      page({ modified: [txn({ amount: -500, personal_finance_category: { primary: "INCOME", detailed: null } })] }),
+      context(),
+      existingMap([{ plaidTransactionId: "ptx-1", status: PlaidStagedStatus.ADDED, resolvedTransactionId: "txn-abc" }]),
+    );
+    expect(plan.upserts[0]).toMatchObject({ type: TransactionType.INCOME, amountCents: 50000 });
+    expect(keepChangedRevisions(plan, new Map([["txn-abc", -50000]])).flagRevised).toEqual([]);
+    expect(keepChangedRevisions(plan, new Map([["txn-abc", 50000]])).flagRevised).toHaveLength(1);
   });
 
   it("keeps a revision when the user's amount is unknown", () => {

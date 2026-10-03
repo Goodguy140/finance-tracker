@@ -44,7 +44,7 @@ function record(): SyncItemRecord {
       categories: [],
       budgetNames: [],
       itemDefaultCategoryId: null,
-      fallbackCategoryId: { [CategoryKind.EXPENSE]: "cat-exp", [CategoryKind.INCOME]: "cat-inc" },
+      fallbackCategoryId: { [CategoryKind.EXPENSE]: "cat-exp", [CategoryKind.INCOME]: "cat-inc", [CategoryKind.TRANSFER]: "cat-transfer" },
     },
   };
 }

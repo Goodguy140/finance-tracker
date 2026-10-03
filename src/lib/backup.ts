@@ -51,7 +51,7 @@ export type UserBackupPayload = {
   categories: Array<{
     id: string;
     name: string;
-    kind: "EXPENSE" | "INCOME";
+    kind: "EXPENSE" | "INCOME" | "TRANSFER";
     isDefault: boolean;
     createdAt: IsoString;
     updatedAt: IsoString;
@@ -60,7 +60,7 @@ export type UserBackupPayload = {
     id: string;
     accountId: string | null;
     categoryId: string;
-    type: "EXPENSE" | "INCOME";
+    type: "EXPENSE" | "INCOME" | "TRANSFER";
     amountCents: number;
     preCreditCents: number | null;
     creditCents: number | null;
@@ -93,7 +93,7 @@ export type UserBackupPayload = {
     id: string;
     accountId: string;
     categoryId: string;
-    type: "EXPENSE" | "INCOME";
+    type: "EXPENSE" | "INCOME" | "TRANSFER";
     name: string;
     amountCents: number;
     cadence: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL";
@@ -164,7 +164,7 @@ export type UserBackupPayload = {
     enabled: boolean;
     titleOperator: "CONTAINS" | "EQUALS" | "STARTS_WITH";
     titlePattern: string;
-    transactionType: "EXPENSE" | "INCOME" | null;
+    transactionType: "EXPENSE" | "INCOME" | "TRANSFER" | null;
     matchAccountId: string | null;
     minAmountCents: number | null;
     maxAmountCents: number | null;

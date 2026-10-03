@@ -7,6 +7,7 @@ import type { ListHeight } from "@/lib/dashboard-layout/schema";
 import { useRouter } from "next/navigation";
 import { deleteExpenseTransactionAction, updateExpenseAction } from "@/app/actions";
 import { MetaChip } from "@/components/meta-chip";
+import { MarkAsTransferSection } from "@/components/transfer-log";
 import { VerifiedBadge, verificationTooltip, type VerificationInfo } from "@/components/verified-badge";
 import {
   type ExpenseGroupSummary,
@@ -570,6 +571,8 @@ function EditExpenseModal({
             </button>
           </div>
         </form>
+
+        <MarkAsTransferSection transactionId={entry.id} kind="expense" onDone={onClose} />
 
         <div className={`${spanFullSm} mt-4 border-t border-slate-800/90 pt-4`}>
           <p className="mb-2 text-xs leading-relaxed text-slate-500">
