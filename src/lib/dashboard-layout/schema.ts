@@ -17,6 +17,7 @@ export const CARD_IDS = [
   "income",
   "recurring",
   "insights",
+  "bills-forecast",
 ] as const;
 
 export type DashboardCardId = (typeof CARD_IDS)[number];
@@ -105,6 +106,12 @@ const cardSettingsSchema = z
     insights: z
       .object({
         maxItems: z.union([z.literal(3), z.literal(5), z.literal(8)]).catch(3),
+      })
+      .partial()
+      .catch({}),
+    "bills-forecast": z
+      .object({
+        days: z.union([z.literal(30), z.literal(60), z.literal(90)]).catch(30),
       })
       .partial()
       .catch({}),

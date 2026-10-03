@@ -250,6 +250,22 @@ function CardSettingsFields({
       );
     }
 
+    case "bills-forecast": {
+      const current = settings["bills-forecast"] ?? {};
+      return (
+        <SettingChoiceRow
+          label="Days ahead"
+          value={current.days ?? 30}
+          options={[
+            { value: 30, label: "30" },
+            { value: 60, label: "60" },
+            { value: 90, label: "90" },
+          ]}
+          onChange={(days) => onChange("bills-forecast", { days })}
+        />
+      );
+    }
+
     default:
       return null;
   }

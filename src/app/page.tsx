@@ -17,6 +17,7 @@ import { SpendingByCategoryCardBody } from "@/components/dashboard-cards/spendin
 import { IncomeCardBody } from "@/components/dashboard-cards/income-card";
 import { InsightsCardBody } from "@/components/dashboard-cards/insights-card";
 import { RecurringCardBody } from "@/components/dashboard-cards/recurring-card";
+import { BillsForecastCardBody } from "@/components/dashboard-cards/bills-forecast-card";
 import { ExpenseLogPanel } from "@/components/expense-log";
 import { RefreshLinkedAccountsButton } from "@/components/refresh-linked-accounts";
 import { readDashboardLayout } from "@/lib/dashboard-layout/read";
@@ -43,7 +44,7 @@ import {
   type BudgetProgressRow,
 } from "@/lib/budget-progress";
 import { buildCumulativeSpendSeries, resolveMonthlyExpected } from "@/lib/cumulative-spend";
-import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
+import { dateFromYmd, formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
 import type { VerificationInfo } from "@/components/verified-badge";
 import { PlaidReviewQueue } from "@/components/plaid-review-queue";
@@ -65,6 +66,7 @@ import { currentYmdInTimeZone, currentYmInTimeZone } from "@/lib/period-month";
 import { loadInsights } from "@/lib/insights/load";
 import { prisma } from "@/lib/prisma";
 import { autoPostDueRecurringTransactions } from "@/lib/recurring-post";
+import { DEFAULT_BILLS_FORECAST_DAYS, forecastRecurringOccurrences, groupForecastByDay } from "@/lib/bills-forecast";
 import { requireUser } from "@/lib/session";
 
 const cadenceLabels: Record<RecurringCadence, string> = {
@@ -661,6 +663,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     "add-expense",
     "expense-log",
     "recurring",
+    "bills-forecast",
     "insights",
     ...(showDashboardIncomeCard ? (["income"] as const) : []),
   ];
@@ -671,6 +674,37 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const { stored: storedLayout } = await readDashboardLayout(user.id, availableCardIds);
   const cardSettings = storedLayout.settings;
   const insights = await insightsPromise;
+
+  // Always from today, whatever period is on screen: it answers "what is coming up".
+  const billsForecastDays = cardSettings["bills-forecast"]?.days ?? DEFAULT_BILLS_FORECAST_DAYS;
+  const todayYmd = currentYmdInTimeZone(user.timezone, now);
+  const tomorrowDate = dateFromYmd(todayYmd);
+  tomorrowDate.setUTCDate(tomorrowDate.getUTCDate() + 1);
+  const tomorrowYmd = ymdFromDateUtc(tomorrowDate);
+  const billsForecast = forecastRecurringOccurrences(recurringTransactions, {
+    todayYmd,
+    currentYm: anchorYm,
+    days: billsForecastDays,
+  });
+  const billsForecastDayGroups = groupForecastByDay(billsForecast.occurrences).map((day) => ({
+    dateYmd: day.dateYmd,
+    label:
+      day.dateYmd === todayYmd
+        ? "Today"
+        : day.dateYmd === tomorrowYmd
+          ? "Tomorrow"
+          : formatDateOnlyUtc(day.occurrences[0].date),
+    runningNetCents: day.runningNetCents,
+    items: day.occurrences.map(({ rule, date, overdue, missedSince }) => ({
+      key: `${rule.id}:${ymdFromDateUtc(date)}`,
+      name: rule.name,
+      type: rule.type === TransactionType.INCOME ? ("INCOME" as const) : ("EXPENSE" as const),
+      amountCents: rule.amountCents,
+      categoryLabel: rule.category.name,
+      overdue,
+      missedSinceDisplay: missedSince ? formatDateOnlyUtc(missedSince) : null,
+    })),
+  }));
 
   // The slot map: card bodies rendered here, on the server, and handed to the client grid as
   // props. The grid arranges them without importing a single card, so none of this page's
@@ -761,6 +795,19 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           rowLimit={cardSettings.recurring?.rowLimit}
           outsidePeriodCount={recurringRulesOutsidePeriod}
           periodLabel={periodDescription}
+        />
+      ),
+    },
+    "bills-forecast": {
+      subtitle: `Next ${billsForecastDays} days · from your recurring rules`,
+      body: (
+        <BillsForecastCardBody
+          days={billsForecastDayGroups}
+          windowDays={billsForecastDays}
+          incomeCents={billsForecast.incomeCents}
+          expenseCents={billsForecast.expenseCents}
+          netCents={billsForecast.netCents}
+          ruleCount={recurringTransactions.filter((rule) => rule.enabled).length}
         />
       ),
     },

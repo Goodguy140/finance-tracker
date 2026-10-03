@@ -103,6 +103,18 @@ export const DASHBOARD_CARDS: Record<DashboardCardId, DashboardCardMeta> = {
     conditional: false,
     hasSettings: true,
   },
+  "bills-forecast": {
+    id: "bills-forecast",
+    title: "Upcoming bills",
+    tabLabel: "Upcoming",
+    // Main column, under Insights. Beside Recurring in the side column (as its own slot or
+    // as a tab with it) would give the side column more in it than the main one, and a
+    // narrow window would then fold the main column into it — see `insights`.
+    defaultColumnIndex: 0,
+    defaultSlotIndex: 2,
+    conditional: false,
+    hasSettings: true,
+  },
 };
 
 /**
@@ -118,6 +130,7 @@ export const DEFAULT_LAYOUT: DashboardLayout = {
       slots: [
         { id: "slot-trend", cards: ["cumulative-spend"], activeIndex: 0 },
         { id: "slot-insights", cards: ["insights"], activeIndex: 0 },
+        { id: "slot-bills-forecast", cards: ["bills-forecast"], activeIndex: 0 },
         { id: "slot-add", cards: ["add-expense"], activeIndex: 0 },
         { id: "slot-log", cards: ["expense-log"], activeIndex: 0 },
       ],
@@ -139,7 +152,7 @@ export const DEFAULT_LAYOUT: DashboardLayout = {
 /**
  * Mobile is frozen and never derived from the user's desktop layout: one column, in the
  * order the previous hand-placed `order-1..4` classes produced — the three-panel swipe
- * carousel, then the expense log, income, recurring, and insights. Add Expense is absent because it
+ * carousel, then the expense log, income, recurring, upcoming bills, and insights. Add Expense is absent because it
  * was `hidden lg:block`; below `lg` it lives in the quick-add sheet instead.
  */
 export const MOBILE_SLOTS: readonly DashboardSlot[] = [
@@ -151,6 +164,7 @@ export const MOBILE_SLOTS: readonly DashboardSlot[] = [
   { id: "mobile-log", cards: ["expense-log"], activeIndex: 0 },
   { id: "mobile-income", cards: ["income"], activeIndex: 0 },
   { id: "mobile-recurring", cards: ["recurring"], activeIndex: 0 },
+  { id: "mobile-bills-forecast", cards: ["bills-forecast"], activeIndex: 0 },
   { id: "mobile-insights", cards: ["insights"], activeIndex: 0 },
 ];
 
