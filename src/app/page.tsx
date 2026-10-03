@@ -59,6 +59,7 @@ import {
   computeThreeMonthAverageIncomeCents,
   getPastMonthYmsBefore,
   getRecurringDateStatus,
+  recurringRuleFallsInMonth,
 } from "@/lib/recurring-transactions";
 import { currentYmdInTimeZone, currentYmInTimeZone } from "@/lib/period-month";
 import { loadInsights } from "@/lib/insights/load";
@@ -135,14 +136,15 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       include: { category: true, account: true },
       orderBy: [{ enabled: "desc" }, { nextExpectedDate: "asc" }],
     }),
+    // The queue follows the period on screen, like the log it sits above.
     prisma.plaidStagedTransaction.findMany({
-      where: { userId: user.id, status: PlaidStagedStatus.NEEDS_REVIEW },
+      where: { userId: user.id, status: PlaidStagedStatus.NEEDS_REVIEW, ...transactionDateFilter },
       include: { plaidItem: { select: { institutionName: true } } },
       orderBy: [{ date: "desc" }, { name: "asc" }],
       take: 200,
     }),
     prisma.plaidStagedTransaction.findMany({
-      where: { userId: user.id, revisedAfterResolveAt: { not: null } },
+      where: { userId: user.id, revisedAfterResolveAt: { not: null }, ...transactionDateFilter },
       include: { plaidItem: { select: { institutionName: true } } },
       orderBy: { revisedAfterResolveAt: "desc" },
       take: 50,
@@ -578,7 +580,19 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     verification: toVerificationInfo(txn.verification),
   }));
 
-  const recurringListItems = recurringTransactions.map((rule) => ({
+  // A single month lists only the rules that fall in it: still due there, or already posted
+  // there (the log for the month holds those). YTD and lifetime list them all.
+  const recurringIdsPostedInPeriod = new Set(
+    [...periodExpenses, ...periodIncomes].map((txn) => txn.recurringTransactionId).filter(Boolean),
+  );
+  const periodRecurringTransactions =
+    period.range === "month"
+      ? recurringTransactions.filter(
+          (rule) => recurringIdsPostedInPeriod.has(rule.id) || recurringRuleFallsInMonth(rule, period.ym, anchorYm),
+        )
+      : recurringTransactions;
+  const recurringRulesOutsidePeriod = recurringTransactions.length - periodRecurringTransactions.length;
+  const recurringListItems = periodRecurringTransactions.map((rule) => ({
     id: rule.id,
     type: rule.type,
     typeLabel: rule.type === TransactionType.INCOME ? "Income" : "Expense",
@@ -727,7 +741,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       ),
     },
     recurring: {
-      subtitle: `${recurringTransactions.length} rule${recurringTransactions.length === 1 ? "" : "s"} · due and upcoming first`,
+      subtitle: `${period.range === "month" ? `${periodDescription} · ` : ""}${periodRecurringTransactions.length} rule${periodRecurringTransactions.length === 1 ? "" : "s"} · due and upcoming first`,
       body: (
         <RecurringCardBody
           items={recurringListItems}
@@ -740,6 +754,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           forecastLabel={recurringForecastPeriod.label}
           showCashFlowSummary={cardSettings.recurring?.showCashFlowSummary}
           rowLimit={cardSettings.recurring?.rowLimit}
+          outsidePeriodCount={recurringRulesOutsidePeriod}
+          periodLabel={periodDescription}
         />
       ),
     },
