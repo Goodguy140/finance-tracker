@@ -18,6 +18,9 @@ export type RecurringCardBodyProps = {
   forecastLabel: string;
   showCashFlowSummary?: boolean;
   rowLimit?: number;
+  /** Rules left off because they do not fall in the month on screen. */
+  outsidePeriodCount?: number;
+  periodLabel?: string;
 };
 
 export function RecurringCardBody({
@@ -31,6 +34,8 @@ export function RecurringCardBody({
   forecastLabel,
   showCashFlowSummary = true,
   rowLimit,
+  outsidePeriodCount = 0,
+  periodLabel,
 }: RecurringCardBodyProps) {
   // Items arrive sorted due-and-upcoming first, so a limit keeps what matters.
   const shown = rowLimit ? items.slice(0, rowLimit) : items;
@@ -62,14 +67,24 @@ export function RecurringCardBody({
           <p className="mb-3 text-xs text-slate-500">Forecast: {forecastLabel}</p>
         </>
       ) : null}
-      <RecurringTransactionsPanel
-        items={shown}
-        accounts={accounts}
-        expenseCategories={expenseCategories}
-        incomeCategories={incomeCategories}
-        recentExpenses={recentExpenses}
-        recentIncomes={recentIncomes}
-      />
+      {items.length === 0 && outsidePeriodCount > 0 ? (
+        <p className="text-sm text-slate-400">No recurring transactions in {periodLabel ?? "this month"}.</p>
+      ) : (
+        <RecurringTransactionsPanel
+          items={shown}
+          accounts={accounts}
+          expenseCategories={expenseCategories}
+          incomeCategories={incomeCategories}
+          recentExpenses={recentExpenses}
+          recentIncomes={recentIncomes}
+        />
+      )}
+      {outsidePeriodCount > 0 ? (
+        <p className="mt-2 text-xs text-slate-500">
+          {outsidePeriodCount} rule{outsidePeriodCount === 1 ? "" : "s"} not in {periodLabel ?? "this month"} · pick
+          another month to see {outsidePeriodCount === 1 ? "it" : "them"}
+        </p>
+      ) : null}
       {hidden > 0 ? (
         <p className="mt-2 text-xs text-slate-500">
           {hidden} more rule{hidden === 1 ? "" : "s"} hidden · raise “Rules shown” in this card’s settings

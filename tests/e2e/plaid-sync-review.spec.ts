@@ -182,7 +182,9 @@ test("syncing stages transactions for review, links exact matches, and only a re
   expect(byId.get("fake-txn-groceries")!.matchTransactionId).toBeNull();
 
   // --- review on the dashboard ---
-  await page.goto("/");
+  // Lifetime: the queue follows the period on screen, and the fixtures are dated a few days
+  // back, so in the first days of a month they fall in the previous one.
+  await page.goto("/?range=lifetime");
   const queue = page.locator("section").filter({ hasText: "From your bank" }).first();
   await expect(queue).toBeVisible();
   await expect(queue.getByText("Loblaws")).toBeVisible();

@@ -1,6 +1,6 @@
 import type { RecurringCadence, TransactionType } from "@prisma/client";
 import { shiftYm } from "./dashboard-period";
-import { ymdFromDateUtc } from "./date-only";
+import { dateFromYmd, ymdFromDateUtc } from "./date-only";
 
 /** Add calendar months in UTC, clamping the day (e.g. Jan 31 + 1 month -> Feb 28). */
 export function addUtcMonths(date: Date, months: number): Date {
@@ -67,6 +67,27 @@ export type RecurringForecastRule = {
   endDate: Date | null;
   enabled: boolean;
 };
+
+/**
+ * Whether a rule belongs on the list for the viewed month `ym`, given the current month
+ * `currentYm`. A rule's outstanding occurrence is its `nextExpectedDate`, so that is what
+ * places it: a rule left overdue from an earlier month stays in that month rather than
+ * following the user forward. Months after the current one also show the rule's projected
+ * occurrences, as long as it is not carrying an overdue one from before the current month.
+ */
+export function recurringRuleFallsInMonth(
+  rule: Pick<RecurringForecastRule, "cadence" | "nextExpectedDate" | "endDate">,
+  ym: string,
+  currentYm: string,
+): boolean {
+  const nextYm = ymdFromDateUtc(rule.nextExpectedDate).slice(0, 7);
+  if (nextYm === ym) return true;
+  if (nextYm > ym || nextYm < currentYm) return false;
+  const occurrence = advanceRecurringDateOnOrAfter(rule.nextExpectedDate, rule.cadence, dateFromYmd(`${ym}-01`));
+  const occurrenceYmd = ymdFromDateUtc(occurrence);
+  if (rule.endDate && occurrenceYmd > ymdFromDateUtc(rule.endDate)) return false;
+  return occurrenceYmd.slice(0, 7) === ym;
+}
 
 export type RecurringCashFlowSummary = {
   incomeCents: number;

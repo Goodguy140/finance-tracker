@@ -8,6 +8,7 @@ import {
   computeThreeMonthAverageIncomeCents,
   getPastMonthYmsBefore,
   getRecurringDateStatus,
+  recurringRuleFallsInMonth,
 } from "./recurring-transactions";
 
 describe("advanceRecurringDate", () => {
@@ -182,5 +183,35 @@ describe("computeRecurringCashFlowSummary", () => {
     );
 
     expect(summary.expenseCents).toBe(2_000);
+  });
+});
+
+describe("recurringRuleFallsInMonth", () => {
+  const rule = (nextYmd: string, cadence: "WEEKLY" | "MONTHLY" | "YEARLY" = "MONTHLY", endYmd?: string) => ({
+    cadence,
+    nextExpectedDate: dateFromYmd(nextYmd),
+    endDate: endYmd ? dateFromYmd(endYmd) : null,
+  });
+
+  it("shows a rule in the month of its next expected date", () => {
+    expect(recurringRuleFallsInMonth(rule("2026-10-15"), "2026-10", "2026-10")).toBe(true);
+    expect(recurringRuleFallsInMonth(rule("2026-10-15"), "2026-09", "2026-10")).toBe(false);
+  });
+
+  it("keeps a rule overdue from an earlier month out of later months", () => {
+    expect(recurringRuleFallsInMonth(rule("2026-08-20", "WEEKLY"), "2026-10", "2026-10")).toBe(false);
+    expect(recurringRuleFallsInMonth(rule("2026-08-20", "WEEKLY"), "2026-11", "2026-10")).toBe(false);
+    expect(recurringRuleFallsInMonth(rule("2026-08-20"), "2026-08", "2026-10")).toBe(true);
+  });
+
+  it("projects occurrences into future months", () => {
+    expect(recurringRuleFallsInMonth(rule("2026-10-15"), "2026-12", "2026-10")).toBe(true);
+    expect(recurringRuleFallsInMonth(rule("2026-10-15", "YEARLY"), "2026-12", "2026-10")).toBe(false);
+    expect(recurringRuleFallsInMonth(rule("2026-10-15", "YEARLY"), "2027-10", "2026-10")).toBe(true);
+  });
+
+  it("stops projecting after the rule's end date", () => {
+    expect(recurringRuleFallsInMonth(rule("2026-10-15", "MONTHLY", "2026-11-30"), "2026-11", "2026-10")).toBe(true);
+    expect(recurringRuleFallsInMonth(rule("2026-10-15", "MONTHLY", "2026-11-30"), "2026-12", "2026-10")).toBe(false);
   });
 });
