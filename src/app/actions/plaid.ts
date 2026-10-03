@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { PlaidItemStatus, PlaidStagedStatus, type User } from "@prisma/client";
+import { PlaidStagedStatus, type User } from "@prisma/client";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { describeActionError } from "@/lib/action-errors";
 import { prisma } from "@/lib/prisma";
@@ -37,7 +37,7 @@ import { formatDateOnlyUtc } from "@/lib/date-only";
 import { MfaStepUpRequiredError, requireFreshMfa, requireUser, type MfaStepUpCode } from "@/lib/session";
 import { createSyncBankDeps, syncBank } from "@/lib/plaid/sync-bank";
 import { resolvePlaidWebhookUrl } from "@/lib/plaid/webhook-url";
-import { CLEARED_ATTENTION } from "@/lib/plaid/webhooks";
+import { attentionCleared, newAccountsHandled, parseConsentExpiry } from "@/lib/plaid/item-state";
 import { sweepDuePlaidItems, type SweepSummary } from "@/lib/plaid-sync-scheduler";
 import { describeLogRefresh, LOG_REFRESH_INTERVAL_MINUTES, type LogRefreshResult } from "@/lib/plaid/log-refresh";
 import type { ActionFailure } from "@/lib/action-result";
@@ -246,14 +246,9 @@ export async function exchangePlaidPublicTokenAction(
       await prisma.plaidItem.update({
         where: { id: existing.id },
         data: {
+          ...attentionCleared(),
           accessTokenEnc: sealAccessToken(exchanged.access_token),
-          status: PlaidItemStatus.ACTIVE,
-          errorCode: null,
-          errorMessage: null,
-          lastSyncError: null,
-          consentExpiresAt: item?.consent_expiration_time
-            ? new Date(item.consent_expiration_time)
-            : null,
+          consentExpiresAt: parseConsentExpiry(item?.consent_expiration_time),
         },
       });
       await upsertPlaidAccounts(existing.id, user.id, accounts);
@@ -320,9 +315,7 @@ export async function exchangePlaidPublicTokenAction(
         requestedDays: days,
         historyCutoff: cutoff,
         webhookUrl: resolvePlaidWebhookUrl(),
-        consentExpiresAt: item?.consent_expiration_time
-          ? new Date(item.consent_expiration_time)
-          : null,
+        consentExpiresAt: parseConsentExpiry(item?.consent_expiration_time),
       },
       select: { id: true },
     });
@@ -394,11 +387,11 @@ export async function completePlaidUpdateAction(
     await prisma.plaidItem.update({
       where: { id: item.id },
       data: {
-        ...CLEARED_ATTENTION,
+        ...attentionCleared(),
         // Account selection is also a full update-mode pass, so it clears a sign-in prompt
         // as well; a plain re-auth leaves a new-accounts prompt for its own flow.
-        ...(updateKind === "accounts" ? { newAccountsAvailableAt: null } : {}),
-        consentExpiresAt: fresh?.consent_expiration_time ? new Date(fresh.consent_expiration_time) : null,
+        ...(updateKind === "accounts" ? newAccountsHandled() : {}),
+        consentExpiresAt: parseConsentExpiry(fresh?.consent_expiration_time),
       },
     });
     await recordAuditLog(prisma, {
