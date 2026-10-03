@@ -1,7 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/prisma";
-import { DEFAULT_PLAID_SYNC_INTERVAL_MINUTES } from "@/lib/ops-settings";
 import { PlaidApiError, type PlaidClient } from "@/lib/plaid/client";
+import { backoffAfterFailure, backoffCleared } from "@/lib/plaid/item-state";
 import { requirePlaidClient } from "@/lib/plaid/service";
 import { createSyncStore } from "@/lib/plaid/sync-store";
 import { PlaidSyncBusyError, syncPlaidItem, type SyncStore, type SyncSummary } from "@/lib/plaid/sync";
@@ -18,22 +18,6 @@ import { ensurePlaidItemWebhook } from "@/lib/plaid/webhooks";
  * Callers only decide what to *say* about the outcome (an audit row, a message, a count).
  * Everything written to the item happens here or in `syncPlaidItem`.
  */
-
-/** Caps the backoff so a connection fixed days later is still picked up promptly. */
-export const MAX_SYNC_BACKOFF_MINUTES = 24 * 60;
-
-/**
- * How long to wait before trying a failing bank again.
- *
- * Doubles per consecutive failure from one hour, capped at a day. A connection that is
- * broken until a person fixes it therefore costs one call a day instead of twenty-four,
- * while a one-off network blip is retried within the hour.
- */
-export function plaidSyncBackoffMinutes(consecutiveFailures: number): number {
-  const exponent = Math.max(0, consecutiveFailures - 1);
-  const minutes = DEFAULT_PLAID_SYNC_INTERVAL_MINUTES * 2 ** Math.min(exponent, 10);
-  return Math.min(minutes, MAX_SYNC_BACKOFF_MINUTES);
-}
 
 export type SyncBankOutcome =
   | { kind: "synced"; summary: SyncSummary }
@@ -86,7 +70,7 @@ export async function syncBank(
 async function clearBackoff(db: SyncBankDeps["prisma"], itemId: string): Promise<void> {
   await db.plaidItem.updateMany({
     where: { id: itemId, OR: [{ consecutiveSyncFailures: { gt: 0 } }, { nextSyncAttemptAt: { not: null } }] },
-    data: { consecutiveSyncFailures: 0, nextSyncAttemptAt: null },
+    data: backoffCleared(),
   });
 }
 
@@ -98,12 +82,8 @@ async function recordBackoff(db: SyncBankDeps["prisma"], itemId: string, now: Da
   });
   // The bank was unlinked while it synced; there is nothing left to back off.
   if (!current) return;
-  const failures = current.consecutiveSyncFailures + 1;
   await db.plaidItem.update({
     where: { id: itemId },
-    data: {
-      consecutiveSyncFailures: failures,
-      nextSyncAttemptAt: new Date(now.getTime() + plaidSyncBackoffMinutes(failures) * 60_000),
-    },
+    data: backoffAfterFailure(current.consecutiveSyncFailures + 1, now),
   });
 }

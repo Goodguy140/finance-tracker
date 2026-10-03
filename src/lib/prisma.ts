@@ -17,3 +17,9 @@ export const prisma =
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
+
+/**
+ * For interactive transactions that write many rows (an initial bank backfill, a restore, a
+ * bulk add). Prisma's defaults (2s wait, 5s run) are sized for a handful of writes.
+ */
+export const LONG_TRANSACTION_OPTIONS = { maxWait: 15_000, timeout: 180_000 } as const;
