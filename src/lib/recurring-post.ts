@@ -3,7 +3,7 @@ import { RecurringPostMode } from "@prisma/client";
 import { dateFromYmd, ymdFromDateUtc } from "@/lib/date-only";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
-import { advanceRecurringDate } from "@/lib/recurring-transactions";
+import { advanceRecurringDate, isRecurringOccurrenceOnOrAfterNext } from "@/lib/recurring-transactions";
 import { recomputeSubscriptionTransactionCredits } from "@/lib/subscription-credit";
 
 /**
@@ -19,7 +19,9 @@ function categoryKindFor(type: "EXPENSE" | "INCOME") {
 
 /**
  * Posts the occurrence of `recurringTransactionId` expected on `expectedDate` inside the
- * given transaction client, and advances the rule to its next date. Idempotent: if the
+ * given transaction client, and advances the rule to the occurrence after it. That is
+ * normally the rule's outstanding occurrence; a later one on its cadence is accepted too,
+ * passing over the missed ones before it. Idempotent: if the
  * rule has already moved past that date and a matching transaction exists, nothing
  * happens. Throws with a user-facing message for anything that should stop the caller
  * (disabled rule, archived account, mismatched category, past the end date, or an
@@ -38,7 +40,9 @@ export async function postRecurringOccurrence(
   });
   if (!rule) throw new Error("Recurring transaction not found.");
 
-  if (ymdFromDateUtc(rule.nextExpectedDate) !== expectedYmd) {
+  // A later occurrence on the rule's cadence may be posted directly; it passes over the
+  // ones before it (the dashboard offers this month's occurrence of an overdue rule).
+  if (!isRecurringOccurrenceOnOrAfterNext(rule.nextExpectedDate, rule.cadence, expectedDate)) {
     const posted = await tx.transaction.findFirst({
       where: { userId, recurringTransactionId: rule.id, recurringExpectedDate: expectedDate },
       select: { id: true },
@@ -55,7 +59,7 @@ export async function postRecurringOccurrence(
     throw new Error("Recurring transaction has passed its end date.");
   }
 
-  const nextExpectedDate = advanceRecurringDate(rule.nextExpectedDate, rule.cadence);
+  const nextExpectedDate = advanceRecurringDate(expectedDate, rule.cadence);
   const stillEnabled = !rule.endDate || ymdFromDateUtc(nextExpectedDate) <= ymdFromDateUtc(rule.endDate);
   const updated = await tx.recurringTransaction.updateMany({
     where: { id: rule.id, userId, enabled: true, nextExpectedDate: rule.nextExpectedDate },

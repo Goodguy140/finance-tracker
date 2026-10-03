@@ -96,6 +96,22 @@ describe("postRecurringOccurrence", () => {
     expect(ymdFromDateUtc(db.current().nextExpectedDate)).toBe("2026-07-01");
   });
 
+  it("posts a later occurrence of an overdue rule, passing over the missed ones", async () => {
+    const db = fakeDb(rule({ nextExpectedDate: dateFromYmd("2026-04-15") }));
+    const post = (ymd: string) =>
+      postRecurringOccurrence(db.tx as never, {
+        userId: "u1",
+        recurringTransactionId: "rule-1",
+        expectedDate: dateFromYmd(ymd),
+      });
+    expect(await post("2026-06-15")).toBe("posted");
+    expect(db.posted()).toEqual(["2026-06-15"]);
+    expect(ymdFromDateUtc(db.current().nextExpectedDate)).toBe("2026-07-15");
+    // The passed-over occurrences are gone, and a date off the cadence was never one.
+    await expect(post("2026-05-15")).rejects.toThrow("already moved");
+    await expect(post("2026-07-16")).rejects.toThrow("already moved");
+  });
+
   it("refuses a disabled rule and an archived account with a readable message", async () => {
     await expect(
       postRecurringOccurrence(fakeDb(rule({ enabled: false })).tx as never, {

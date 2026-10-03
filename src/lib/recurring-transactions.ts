@@ -69,24 +69,39 @@ export type RecurringForecastRule = {
 };
 
 /**
- * Whether a rule belongs on the list for the viewed month `ym`, given the current month
- * `currentYm`. A rule's outstanding occurrence is its `nextExpectedDate`, so that is what
- * places it: a rule left overdue from an earlier month stays in that month rather than
- * following the user forward. Months after the current one also show the rule's projected
- * occurrences, as long as it is not carrying an overdue one from before the current month.
+ * The occurrence of a rule to show for the viewed month `ym`, given the current month
+ * `currentYm`, or null when the rule has none there. A rule's outstanding occurrence is its
+ * `nextExpectedDate`, which places it in its own month. From the current month on, the
+ * rule's occurrences are also projected forward from that date, even when it is overdue
+ * from an earlier month, so this month's occurrence can be posted without first clearing
+ * the missed one. Months before the current one show only the outstanding occurrence.
  */
-export function recurringRuleFallsInMonth(
+export function recurringOccurrenceInMonth(
   rule: Pick<RecurringForecastRule, "cadence" | "nextExpectedDate" | "endDate">,
   ym: string,
   currentYm: string,
-): boolean {
+): Date | null {
   const nextYm = ymdFromDateUtc(rule.nextExpectedDate).slice(0, 7);
-  if (nextYm === ym) return true;
-  if (nextYm > ym || nextYm < currentYm) return false;
+  if (nextYm === ym) return rule.nextExpectedDate;
+  if (nextYm > ym || ym < currentYm) return null;
   const occurrence = advanceRecurringDateOnOrAfter(rule.nextExpectedDate, rule.cadence, dateFromYmd(`${ym}-01`));
   const occurrenceYmd = ymdFromDateUtc(occurrence);
-  if (rule.endDate && occurrenceYmd > ymdFromDateUtc(rule.endDate)) return false;
-  return occurrenceYmd.slice(0, 7) === ym;
+  if (rule.endDate && occurrenceYmd > ymdFromDateUtc(rule.endDate)) return null;
+  return occurrenceYmd.slice(0, 7) === ym ? occurrence : null;
+}
+
+/**
+ * Whether `expectedDate` is an occurrence of the rule on or after its outstanding one:
+ * `nextExpectedDate` itself, or a later date its cadence lands on. Posting or skipping a
+ * later occurrence passes over the ones before it.
+ */
+export function isRecurringOccurrenceOnOrAfterNext(
+  nextExpectedDate: Date,
+  cadence: RecurringCadence,
+  expectedDate: Date,
+): boolean {
+  const expectedYmd = ymdFromDateUtc(expectedDate);
+  return ymdFromDateUtc(advanceRecurringDateOnOrAfter(nextExpectedDate, cadence, expectedDate)) === expectedYmd;
 }
 
 export type RecurringCashFlowSummary = {
