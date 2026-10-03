@@ -18,6 +18,7 @@ import { IncomeCardBody } from "@/components/dashboard-cards/income-card";
 import { InsightsCardBody } from "@/components/dashboard-cards/insights-card";
 import { RecurringCardBody } from "@/components/dashboard-cards/recurring-card";
 import { ExpenseLogPanel } from "@/components/expense-log";
+import { RefreshLinkedAccountsButton } from "@/components/refresh-linked-accounts";
 import { readDashboardLayout } from "@/lib/dashboard-layout/read";
 import type { DashboardCardId } from "@/lib/dashboard-layout/schema";
 import {
@@ -706,6 +707,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     },
     "expense-log": {
       subtitle: `${periodDescription} · ${periodExpenses.length} transaction${periodExpenses.length === 1 ? "" : "s"}`,
+      // Beside the card's settings button, so it is there whether or not the period has rows.
+      // Hidden with no bank connected, when it would have nothing to check.
+      headerActions: plaidItemCount > 0 ? <RefreshLinkedAccountsButton /> : undefined,
       body: (
         <>
           {cardSettings["expense-log"]?.showReviewQueue === false ? null : (
@@ -716,7 +720,6 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
             accounts={accountOptions}
             categories={expenseCategoryOptions}
             titleSuggestions={expenseTitleSuggestions}
-            hasLinkedAccounts={plaidItemCount > 0}
             density={cardSettings["expense-log"]?.density}
             maxHeight={cardSettings["expense-log"]?.maxHeight}
           />

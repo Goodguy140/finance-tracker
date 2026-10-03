@@ -276,7 +276,7 @@ test("syncing stages transactions for review, links exact matches, and only a re
     where: { userId: user.id, action: "plaid_item_sync_succeeded" },
   });
 
-  // Lifetime for the same reason: the log, which holds this control, is empty otherwise.
+  // Lifetime so the log shows the rows synced above; the control itself is in the card header.
   await page.goto("/?range=lifetime");
   await page.getByRole("button", { name: "Refresh linked accounts" }).click();
 

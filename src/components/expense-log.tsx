@@ -7,7 +7,6 @@ import type { ListHeight } from "@/lib/dashboard-layout/schema";
 import { useRouter } from "next/navigation";
 import { deleteExpenseTransactionAction, updateExpenseAction } from "@/app/actions";
 import { MetaChip } from "@/components/meta-chip";
-import { RefreshLinkedAccountsButton } from "@/components/refresh-linked-accounts";
 import { VerifiedBadge, verificationTooltip, type VerificationInfo } from "@/components/verified-badge";
 import {
   type ExpenseGroupSummary,
@@ -853,7 +852,6 @@ export function ExpenseLogPanel({
   accounts,
   categories,
   titleSuggestions,
-  hasLinkedAccounts = false,
   density = "expanded",
   maxHeight = "default",
 }: {
@@ -861,8 +859,6 @@ export function ExpenseLogPanel({
   accounts: Option[];
   categories: Option[];
   titleSuggestions: ExpenseTitleSuggestion[];
-  /** False when no bank is connected, which is when the refresh control would do nothing. */
-  hasLinkedAccounts?: boolean;
   /**
    * Density and list height are card settings on the dashboard layout, not per-device
    * localStorage as they once were: every other card setting lives with the account, and
@@ -901,22 +897,11 @@ export function ExpenseLogPanel({
                 autoComplete="off"
               />
             </label>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
-                <p className="text-xs text-slate-500">
-                  {trimmedSearch
-                    ? `${filteredEntries.length} of ${entries.length} shown`
-                    : `${entries.length} transaction${entries.length === 1 ? "" : "s"}`}
-                </p>
-                {hasLinkedAccounts ? <RefreshLinkedAccountsButton /> : null}
-              </div>
-            </div>
-          </div>
-        ) : null}
-        {entries.length === 0 && hasLinkedAccounts ? (
-          // An empty period is exactly when someone reaches for refresh, so it stays here.
-          <div className="mb-2">
-            <RefreshLinkedAccountsButton />
+            <p className="text-xs text-slate-500">
+              {trimmedSearch
+                ? `${filteredEntries.length} of ${entries.length} shown`
+                : `${entries.length} transaction${entries.length === 1 ? "" : "s"}`}
+            </p>
           </div>
         ) : null}
         <div className="space-y-2">
