@@ -1,6 +1,5 @@
 import { CategoryKind, PlaidStagedStatus } from "@prisma/client";
-import { LONG_TRANSACTION_OPTIONS } from "@/app/actions/_helpers";
-import { prisma } from "@/lib/prisma";
+import { LONG_TRANSACTION_OPTIONS, prisma } from "@/lib/prisma";
 import { selectActiveBudgetsByCategory } from "@/lib/budget-progress";
 import { currentYmInTimeZone } from "@/lib/period-month";
 import {
@@ -21,7 +20,7 @@ import { openAccessToken } from "@/lib/plaid/service";
 import { pruneSpentStagedRows } from "@/lib/plaid/purge";
 import { linkStagedRow } from "@/lib/plaid/review";
 import type { ExistingStagedRow } from "@/lib/plaid/sync-plan";
-import type { SyncStore } from "@/lib/plaid/sync";
+import type { SyncItemRecord, SyncStore } from "@/lib/plaid/sync";
 
 /**
  * The Prisma half of the sync walk. Deliberately thin: every decision about what a page
@@ -60,6 +59,74 @@ async function ensureFallbackCategory(
   return created.id;
 }
 
+async function releaseSyncLock(itemId: string): Promise<void> {
+  await prisma.plaidItem.updateMany({ where: { id: itemId }, data: { syncingSince: null } });
+}
+
+/** Everything a sync of this item needs, read once while its lock is held. */
+async function loadSyncItemRecord(itemId: string): Promise<SyncItemRecord | null> {
+  const item = await prisma.plaidItem.findUnique({
+    where: { id: itemId },
+    include: { plaidAccounts: true, user: { select: { timezone: true } } },
+  });
+  if (!item) return null;
+
+  const [categories, budgets] = await Promise.all([
+    prisma.category.findMany({
+      where: { userId: item.userId },
+      select: { id: true, name: true, kind: true },
+    }),
+    prisma.budget.findMany({
+      where: { userId: item.userId },
+      select: { categoryId: true, name: true, periodMonth: true },
+    }),
+  ]);
+
+  const [fallbackExpense, fallbackIncome] = await Promise.all([
+    ensureFallbackCategory(item.userId, CategoryKind.EXPENSE, categories),
+    ensureFallbackCategory(item.userId, CategoryKind.INCOME, categories),
+  ]);
+
+  // Which budget is in force is decided first, then labels are taken from it — picking
+  // the labelled ones first would resurrect a name the user has since moved on from.
+  const budgetNames: UserBudgetName[] = [];
+  const activeBudgets = selectActiveBudgetsByCategory(
+    budgets,
+    currentYmInTimeZone(item.user.timezone),
+  );
+  for (const budget of activeBudgets.values()) {
+    if (budget.name) budgetNames.push({ categoryId: budget.categoryId, name: budget.name });
+  }
+
+  return {
+    id: item.id,
+    userId: item.userId,
+    cursor: item.cursor,
+    accessToken: openAccessToken(item),
+    initialSyncPending: item.initialSyncDoneAt === null,
+    context: {
+      historyCutoff: item.historyCutoff,
+      accounts: new Map(
+        item.plaidAccounts.map((account) => [
+          account.plaidAccountId,
+          {
+            rowId: account.id,
+            accountId: account.accountId,
+            syncEnabled: account.syncEnabled,
+          },
+        ]),
+      ),
+      categories,
+      budgetNames,
+      itemDefaultCategoryId: item.defaultCategoryId,
+      fallbackCategoryId: {
+        [CategoryKind.EXPENSE]: fallbackExpense,
+        [CategoryKind.INCOME]: fallbackIncome,
+      },
+    },
+  };
+}
+
 export function createSyncStore(): SyncStore {
   return {
     async acquireLock(itemId, staleBefore, now) {
@@ -74,71 +141,19 @@ export function createSyncStore(): SyncStore {
       });
       if (claimed.count !== 1) return null;
 
-      const item = await prisma.plaidItem.findUnique({
-        where: { id: itemId },
-        include: { plaidAccounts: true, user: { select: { timezone: true } } },
-      });
-      if (!item) return null;
-
-      const [categories, budgets] = await Promise.all([
-        prisma.category.findMany({
-          where: { userId: item.userId },
-          select: { id: true, name: true, kind: true },
-        }),
-        prisma.budget.findMany({
-          where: { userId: item.userId },
-          select: { categoryId: true, name: true, periodMonth: true },
-        }),
-      ]);
-
-      const [fallbackExpense, fallbackIncome] = await Promise.all([
-        ensureFallbackCategory(item.userId, CategoryKind.EXPENSE, categories),
-        ensureFallbackCategory(item.userId, CategoryKind.INCOME, categories),
-      ]);
-
-      // Which budget is in force is decided first, then labels are taken from it — picking
-      // the labelled ones first would resurrect a name the user has since moved on from.
-      const budgetNames: UserBudgetName[] = [];
-      const activeBudgets = selectActiveBudgetsByCategory(
-        budgets,
-        currentYmInTimeZone(item.user.timezone),
-      );
-      for (const budget of activeBudgets.values()) {
-        if (budget.name) budgetNames.push({ categoryId: budget.categoryId, name: budget.name });
+      // Anything that fails between taking the lock and handing back the record (an access
+      // token a rotated key can no longer decrypt, a database error) must give the lock back.
+      // `syncPlaidItem` only releases a lock it was handed, so without this the bank would
+      // read as "sync already running" until the stale threshold.
+      try {
+        return await loadSyncItemRecord(itemId);
+      } catch (err) {
+        await releaseSyncLock(itemId);
+        throw err;
       }
-
-      return {
-        id: item.id,
-        userId: item.userId,
-        cursor: item.cursor,
-        accessToken: openAccessToken(item),
-        initialSyncPending: item.initialSyncDoneAt === null,
-        context: {
-          historyCutoff: item.historyCutoff,
-          accounts: new Map(
-            item.plaidAccounts.map((account) => [
-              account.plaidAccountId,
-              {
-                rowId: account.id,
-                accountId: account.accountId,
-                syncEnabled: account.syncEnabled,
-              },
-            ]),
-          ),
-          categories,
-          budgetNames,
-          itemDefaultCategoryId: item.defaultCategoryId,
-          fallbackCategoryId: {
-            [CategoryKind.EXPENSE]: fallbackExpense,
-            [CategoryKind.INCOME]: fallbackIncome,
-          },
-        },
-      };
     },
 
-    async releaseLock(itemId) {
-      await prisma.plaidItem.updateMany({ where: { id: itemId }, data: { syncingSince: null } });
-    },
+    releaseLock: releaseSyncLock,
 
     async loadExistingStaged(userId, plaidTransactionIds) {
       if (plaidTransactionIds.length === 0) return [];
