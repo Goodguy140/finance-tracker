@@ -8,7 +8,7 @@ import {
   MIN_TEXT_VISIBLE_PCT,
   type DashboardReadability,
 } from "@/lib/dashboard-readability";
-import { useId, useLayoutEffect, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AccountTypePill } from "@/components/account-type-pill";
 import { ServerActionForm } from "@/components/server-action-form";
@@ -49,6 +49,13 @@ import { ApiTokensPanel, type ApiTokenRow, type ApiTokensMfaState } from "@/comp
 import { PlaidConnectionsPanel, type PlaidConnectionsPanelProps } from "@/components/plaid-connections-panel";
 import { SecurityPanel, type SecurityPanelProps } from "@/components/security-panel";
 import { TransactionRulesPanel, type TransactionRulesPanelProps } from "@/components/transaction-rules-panel";
+import { ContributionRoomPanel, overContributionMessage } from "@/components/contribution-room-panel";
+import {
+  previewContribution,
+  roomFlowsFromData,
+  type ContributionRoomData,
+} from "@/lib/contribution-room";
+import { dateFromYmd } from "@/lib/date-only";
 
 export function BudgetForm({ expenseCategories }: { expenseCategories: Option[] }) {
   const [isPastOverride, setIsPastOverride] = useState(false);
@@ -231,17 +238,53 @@ export function RecurringTransactionForm({
 }
 
 
-export function InvestmentForms({ accounts }: { accounts: Option[] }) {
+export function InvestmentForms({
+  accounts,
+  contributionRoom,
+}: {
+  accounts: Option[];
+  contributionRoom?: ContributionRoomData;
+}) {
   const today = getTodayIsoDate();
   const flowIds = useId();
   const snapIds = useId();
+  const [flowAccountId, setFlowAccountId] = useState(accounts[0]?.id ?? "");
+  const [direction, setDirection] = useState<"CONTRIBUTION" | "WITHDRAWAL">("CONTRIBUTION");
+  const [amount, setAmount] = useState("");
+  const [flowDate, setFlowDate] = useState(today);
+
+  // Checked as the user types, before anything is saved: the record is still allowed (it is
+  // what happened), but going over costs 1% a month, so it should never be a surprise.
+  const roomWarning = useMemo(() => {
+    const accountType = contributionRoom?.accountTypes[flowAccountId];
+    const cents = Math.round(Number(amount) * 100);
+    if (!contributionRoom || !accountType || direction !== "CONTRIBUTION" || !(cents > 0) || !flowDate) return null;
+    const warning = previewContribution(
+      accountType,
+      dateFromYmd(flowDate),
+      cents,
+      contributionRoom.entries,
+      roomFlowsFromData(contributionRoom),
+    );
+    return warning ? { accountType, ...warning } : null;
+  }, [contributionRoom, flowAccountId, direction, amount, flowDate]);
 
   return (
     <div className="space-y-6">
-      <ServerActionForm action={createInvestmentFlowAction} className={formGridResponsive}>
+      <ServerActionForm
+        action={createInvestmentFlowAction}
+        onSuccess={() => setAmount("")}
+        className={formGridResponsive}
+      >
         <p className={`${spanFullSm} text-sm text-slate-300`}>Record a contribution or withdrawal.</p>
         <LabeledField label="Account" hint="Investment account for this flow.">
-          <select id={`${flowIds}-account`} name="accountId" className={selectClass}>
+          <select
+            id={`${flowIds}-account`}
+            name="accountId"
+            className={selectClass}
+            value={flowAccountId}
+            onChange={(e) => setFlowAccountId(e.target.value)}
+          >
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}
@@ -250,18 +293,47 @@ export function InvestmentForms({ accounts }: { accounts: Option[] }) {
           </select>
         </LabeledField>
         <LabeledField label="Direction" hint="Money in or out of the account.">
-          <select id={`${flowIds}-dir`} name="direction" className={selectClass}>
+          <select
+            id={`${flowIds}-dir`}
+            name="direction"
+            className={selectClass}
+            value={direction}
+            onChange={(e) => setDirection(e.target.value === "WITHDRAWAL" ? "WITHDRAWAL" : "CONTRIBUTION")}
+          >
             <option value="CONTRIBUTION">Contribution</option>
             <option value="WITHDRAWAL">Withdrawal</option>
           </select>
         </LabeledField>
-        <CurrencyAmountInput name="amount" label="Amount" placeholder="0.00" />
-        <DateField name="date" label="Flow date" hint="Date for this contribution or withdrawal." defaultValue={today} />
+        <CurrencyAmountInput
+          name="amount"
+          label="Amount"
+          placeholder="0.00"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+        <DateField
+          name="date"
+          label="Flow date"
+          hint="Date for this contribution or withdrawal."
+          value={flowDate}
+          onChange={setFlowDate}
+        />
+        {roomWarning ? (
+          <p
+            role="alert"
+            className={`${spanFullSm} rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-200`}
+          >
+            {roomWarning.remainingBeforeCents > 0
+              ? `Only ${formatCurrency(roomWarning.remainingBeforeCents)} of ${roomWarning.roomYear} ${roomWarning.accountType} room left. `
+              : ""}
+            {overContributionMessage(roomWarning.accountType, roomWarning.overByCents, roomWarning.roomYear)}
+          </p>
+        ) : null}
         <LabeledField label="Note" hint="Optional (max 250 characters)." className={spanFullSm}>
           <textarea name="note" rows={3} maxLength={250} className={textAreaClass} placeholder="Optional memo" />
         </LabeledField>
         <button type="submit" className={`${spanFullSm} ${primaryBtnClass} py-2.5 sm:py-2`}>
-          Add investment flow
+          {roomWarning ? "Add anyway" : "Add investment flow"}
         </button>
       </ServerActionForm>
       <ServerActionForm action={createPortfolioSnapshotAction} className={formGridResponsive}>
@@ -405,6 +477,7 @@ export function SettingsForms({
   security,
   plaid,
   transactionRules,
+  contributionRoom,
 }: {
   defaults: { displayName: string; countryCode: string; timezone: string };
   profileEmail: string;
@@ -423,6 +496,7 @@ export function SettingsForms({
   security: SecurityPanelProps;
   plaid: PlaidConnectionsPanelProps;
   transactionRules: TransactionRulesPanelProps;
+  contributionRoom: ContributionRoomData;
 }) {
   const [tab, setTab] = useState<SettingsTabId>("profile");
   const [editingAccount, setEditingAccount] = useState<{
@@ -449,6 +523,7 @@ export function SettingsForms({
       else if (h === "#subscriptions" || h === "#subs") setTab("subscriptions");
       else if (h === "#accounts" || h === "#data" || h === "#import") setTab("accounts");
       else if (h === "#banks" || h === "#plaid") setTab("accounts");
+      else if (h === "#contribution-room" || h === "#tfsa" || h === "#rrsp" || h === "#fhsa") setTab("accounts");
       else if (h === "#integrations" || h === "#api" || h === "#tokens") setTab("advanced");
       else if (h === "#advanced") setTab("advanced");
       else if (h === "#rules" || h === "#automation") setTab("rules");
@@ -933,6 +1008,8 @@ export function SettingsForms({
                 </div>
               ) : null}
             </div>
+
+            <ContributionRoomPanel data={contributionRoom} />
 
             {/* Below the accounts themselves. Both of these feed those accounts, so they read
                 as "and here is how transactions get into them" — rather than greeting someone
