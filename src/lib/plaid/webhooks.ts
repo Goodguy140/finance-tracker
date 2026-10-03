@@ -1,8 +1,9 @@
 import { PlaidItemStatus, type Prisma, type PrismaClient } from "@prisma/client";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import type { PlaidClient } from "@/lib/plaid/client";
-import { purgePlaidAccountData, purgePlaidItemData } from "@/lib/plaid/purge";
-import { makePlaidItemRevoker, openAccessToken } from "@/lib/plaid/service";
+import { endConnection } from "@/lib/plaid/connections";
+import { purgePlaidAccountData } from "@/lib/plaid/purge";
+import { openAccessToken } from "@/lib/plaid/service";
 import type { PlaidApiErrorPayload } from "@/lib/plaid/types";
 import { attentionCleared, loginRequired, parseConsentExpiry } from "@/lib/plaid/item-state";
 import { resolvePlaidWebhookUrl } from "@/lib/plaid/webhook-url";
@@ -189,8 +190,9 @@ async function applyConsentRevocation(
   if (!item) return "unknown-item";
 
   if (body.webhook_code === "USER_PERMISSION_REVOKED") {
-    await makePlaidItemRevoker(deps.client)(item);
-    await deps.prisma.$transaction((tx) => purgePlaidItemData(tx, item, now));
+    // Removed at Plaid first, as unlinking does. If that fails this throws, the route answers
+    // 500, and Plaid redelivers: nothing is deleted until the connection has ended.
+    await endConnection(deps, item, now);
     await recordAuditLog(deps.prisma, {
       userId: item.userId,
       action: AUDIT_ACTIONS.plaid_item_consent_revoked,

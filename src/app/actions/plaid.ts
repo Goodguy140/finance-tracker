@@ -6,9 +6,8 @@ import { PlaidStagedStatus, type User } from "@prisma/client";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { describeActionError } from "@/lib/action-errors";
 import { prisma } from "@/lib/prisma";
-import { PlaidApiError, type PlaidClient } from "@/lib/plaid/client";
+import { PlaidApiError } from "@/lib/plaid/client";
 import { checkMappingAllowed } from "@/lib/plaid/mapping";
-import { purgePlaidItemData } from "@/lib/plaid/purge";
 import {
   addStagedRow,
   applyBankRevision,
@@ -22,11 +21,13 @@ import {
   type ReviewRefusal,
 } from "@/lib/plaid/review";
 import {
-  makePlaidItemRevoker,
-  openAccessToken,
-  requirePlaidClient,
-  sealAccessToken,
-} from "@/lib/plaid/service";
+  completeUpdate,
+  ConnectionStillLiveError,
+  endConnection,
+  linkBank,
+  type PlaidUpdateKind,
+} from "@/lib/plaid/connections";
+import { openAccessToken, requirePlaidClient } from "@/lib/plaid/service";
 import {
   describeHistoryWindow,
   historyWindowLabel,
@@ -37,7 +38,6 @@ import { formatDateOnlyUtc } from "@/lib/date-only";
 import { MfaStepUpRequiredError, requireFreshMfa, requireUser, type MfaStepUpCode } from "@/lib/session";
 import { createSyncBankDeps, syncBank } from "@/lib/plaid/sync-bank";
 import { resolvePlaidWebhookUrl } from "@/lib/plaid/webhook-url";
-import { attentionCleared, newAccountsHandled, parseConsentExpiry } from "@/lib/plaid/item-state";
 import { sweepDuePlaidItems, type SweepSummary } from "@/lib/plaid-sync-scheduler";
 import { describeLogRefresh, LOG_REFRESH_INTERVAL_MINUTES, type LogRefreshResult } from "@/lib/plaid/log-refresh";
 import type { ActionFailure } from "@/lib/action-result";
@@ -88,29 +88,7 @@ function describePlaidFailure(err: unknown): string {
   return describeActionError(err);
 }
 
-/**
- * Revokes an item we exchanged but are not going to keep.
- *
- * Exchanging a public token creates a billable Item at Plaid whether or not we store it,
- * so refusing a duplicate without this would create exactly the orphaned, billing-forever
- * connection the refusal exists to prevent — and with no local row, nothing would ever
- * point at it again. Best-effort: if the revoke fails the refusal still stands, but the
- * item id is recorded so it can be removed from the Plaid dashboard by hand.
- */
-async function discardRedundantItem(client: PlaidClient, accessToken: string): Promise<void> {
-  try {
-    await client.removeItem(accessToken);
-  } catch (err) {
-    console.error("[plaid] could not revoke a redundant item; remove it from the Plaid dashboard", err);
-  }
-}
-
-/**
- * Which update-mode flow to open. `reauth` covers sign-in required, pending expiration and
- * pending disconnect alike — Plaid's fix for all three is the same re-authentication.
- * `accounts` turns on account selection, for NEW_ACCOUNTS_AVAILABLE.
- */
-export type PlaidUpdateKind = "reauth" | "accounts";
+export type { PlaidUpdateKind };
 
 function parseUpdateKind(raw: string): PlaidUpdateKind {
   return raw === "accounts" ? "accounts" : "reauth";
@@ -232,116 +210,45 @@ export async function exchangePlaidPublicTokenAction(
   const days = parseHistoryWindowDays(getFormValue(formData, "historyDays"));
 
   try {
-    const client = await requirePlaidClient();
-    const exchanged = await client.exchangePublicToken(publicToken);
-    const [{ accounts, item }, existing] = await Promise.all([
-      client.getAccounts(exchanged.access_token),
-      prisma.plaidItem.findUnique({ where: { itemId: exchanged.item_id } }),
-    ]);
+    const outcome = await linkBank(
+      { prisma, client: await requirePlaidClient() },
+      { user, publicToken, days },
+    );
 
-    // Re-authentication of an item we already hold: refresh the credential and clear the
-    // error state, but leave the history window and cursor exactly as they were. Widening
-    // the window here would silently pull history the user never asked for.
-    if (existing && existing.userId === user.id) {
-      await prisma.plaidItem.update({
-        where: { id: existing.id },
-        data: {
-          ...attentionCleared(),
-          accessTokenEnc: sealAccessToken(exchanged.access_token),
-          consentExpiresAt: parseConsentExpiry(item?.consent_expiration_time),
-        },
-      });
-      await upsertPlaidAccounts(existing.id, user.id, accounts);
-      await recordAuditLog(prisma, {
-        userId: user.id,
-        action: AUDIT_ACTIONS.plaid_item_linked,
-        targetType: "PlaidItem",
-        targetId: existing.id,
-        metadata: { mode: "reauth", institution: existing.institutionName, accounts: accounts.length },
-        headers: await headers(),
-      });
-      revalidatePath(SETTINGS_PATH);
+    if (outcome.kind === "refused") {
       return {
-        ok: true,
-        institutionName: existing.institutionName ?? "Your bank",
-        accountCount: accounts.length,
-        cutoffDisplay: formatDateOnlyUtc(existing.historyCutoff),
+        ok: false,
+        error:
+          outcome.reason === "linked-elsewhere"
+            ? "That bank connection is already linked to another account here."
+            : `${outcome.institutionName ?? "That bank"} is already connected. Use “Sync now” to fetch new transactions, or “Sign in again” if it needs re-authenticating — connecting it twice would bill you for two connections.`,
       };
     }
-
-    if (existing) {
-      // The same bank item cannot belong to two accounts on one deployment.
-      await discardRedundantItem(client, exchanged.access_token);
-      return { ok: false, error: "That bank connection is already linked to another account here." };
-    }
-
-    // Plaid issues a fresh item_id every time Link completes, so connecting the same bank
-    // a second time does NOT collide on `itemId` — it silently creates a second Item, and
-    // Plaid bills per Item per month. Re-authenticating an existing connection is what the
-    // user almost always meant, so refuse and point them at it.
-    if (item?.institution_id) {
-      const sameInstitution = await prisma.plaidItem.findFirst({
-        where: { userId: user.id, institutionId: item.institution_id },
-        select: { institutionName: true },
-      });
-      if (sameInstitution) {
-        await discardRedundantItem(client, exchanged.access_token);
-        return {
-          ok: false,
-          error: `${sameInstitution.institutionName ?? "That bank"} is already connected. Use “Sync now” to fetch new transactions, or “Sign in again” if it needs re-authenticating — connecting it twice would bill you for two connections.`,
-        };
-      }
-    }
-
-    let institutionName: string | null = null;
-    if (item?.institution_id) {
-      try {
-        const resolved = await client.getInstitution(item.institution_id, [user.countryCode || "CA"]);
-        institutionName = resolved.institution?.name ?? null;
-      } catch {
-        // A missing display name is cosmetic; it must not fail the link.
-        institutionName = null;
-      }
-    }
-
-    const cutoff = resolveHistoryCutoff(days, user.timezone);
-    const created = await prisma.plaidItem.create({
-      data: {
-        userId: user.id,
-        itemId: exchanged.item_id,
-        accessTokenEnc: sealAccessToken(exchanged.access_token),
-        institutionId: item?.institution_id ?? null,
-        institutionName,
-        requestedDays: days,
-        historyCutoff: cutoff,
-        webhookUrl: resolvePlaidWebhookUrl(),
-        consentExpiresAt: parseConsentExpiry(item?.consent_expiration_time),
-      },
-      select: { id: true },
-    });
-    await upsertPlaidAccounts(created.id, user.id, accounts);
 
     await recordAuditLog(prisma, {
       userId: user.id,
       action: AUDIT_ACTIONS.plaid_item_linked,
       targetType: "PlaidItem",
-      targetId: created.id,
-      metadata: {
-        mode: "create",
-        institution: institutionName,
-        requestedDays: days,
-        historyWindow: historyWindowLabel(days),
-        accounts: accounts.length,
-      },
+      targetId: outcome.plaidItemId,
+      metadata:
+        outcome.mode === "reauth"
+          ? { mode: "reauth", institution: outcome.institutionName, accounts: outcome.accountCount }
+          : {
+              mode: "create",
+              institution: outcome.institutionName,
+              requestedDays: days,
+              historyWindow: historyWindowLabel(days),
+              accounts: outcome.accountCount,
+            },
       headers: await headers(),
     });
 
     revalidatePath(SETTINGS_PATH);
     return {
       ok: true,
-      institutionName: institutionName ?? "Your bank",
-      accountCount: accounts.length,
-      cutoffDisplay: formatDateOnlyUtc(cutoff),
+      institutionName: outcome.institutionName ?? "Your bank",
+      accountCount: outcome.accountCount,
+      cutoffDisplay: formatDateOnlyUtc(outcome.historyCutoff),
     };
   } catch (err) {
     return { ok: false, error: describePlaidFailure(err) };
@@ -378,28 +285,17 @@ export async function completePlaidUpdateAction(
   if (!item) return { ok: false, error: "That bank connection was not found." };
 
   try {
-    const client = await requirePlaidClient();
-    const { accounts, item: fresh } = await client.getAccounts(openAccessToken(item));
-    const known = await prisma.plaidAccount.count({
-      where: { plaidItemId: item.id, plaidAccountId: { in: accounts.map((a) => a.account_id) } },
-    });
-    await upsertPlaidAccounts(item.id, user.id, accounts);
-    await prisma.plaidItem.update({
-      where: { id: item.id },
-      data: {
-        ...attentionCleared(),
-        // Account selection is also a full update-mode pass, so it clears a sign-in prompt
-        // as well; a plain re-auth leaves a new-accounts prompt for its own flow.
-        ...(updateKind === "accounts" ? newAccountsHandled() : {}),
-        consentExpiresAt: parseConsentExpiry(fresh?.consent_expiration_time),
-      },
-    });
+    const { accountCount, newAccounts } = await completeUpdate(
+      { prisma, client: await requirePlaidClient() },
+      item,
+      updateKind,
+    );
     await recordAuditLog(prisma, {
       userId: user.id,
       action: AUDIT_ACTIONS.plaid_item_update_completed,
       targetType: "PlaidItem",
       targetId: item.id,
-      metadata: { updateKind, institution: item.institutionName, accounts: accounts.length },
+      metadata: { updateKind, institution: item.institutionName, accounts: accountCount },
       headers: await headers(),
     });
     revalidatePath(SETTINGS_PATH);
@@ -408,55 +304,10 @@ export async function completePlaidUpdateAction(
       ok: true,
       institutionName: item.institutionName ?? "Your bank",
       updateKind,
-      newAccounts: Math.max(0, accounts.length - known),
+      newAccounts,
     };
   } catch (err) {
     return { ok: false, error: describePlaidFailure(err) };
-  }
-}
-
-/** Records the accounts inside an item. Never clears a mapping the user already made. */
-async function upsertPlaidAccounts(
-  plaidItemId: string,
-  userId: string,
-  accounts: Array<{
-    account_id: string;
-    name: string;
-    official_name?: string | null;
-    mask?: string | null;
-    type: string;
-    subtype?: string | null;
-    balances?: { iso_currency_code?: string | null; unofficial_currency_code?: string | null };
-  }>,
-): Promise<void> {
-  for (const account of accounts) {
-    const currency =
-      account.balances?.iso_currency_code ?? account.balances?.unofficial_currency_code ?? null;
-    await prisma.plaidAccount.upsert({
-      where: { userId_plaidAccountId: { userId, plaidAccountId: account.account_id } },
-      create: {
-        userId,
-        plaidItemId,
-        plaidAccountId: account.account_id,
-        name: account.name,
-        officialName: account.official_name ?? null,
-        mask: account.mask ?? null,
-        plaidType: account.type,
-        plaidSubtype: account.subtype ?? null,
-        currency,
-      },
-      // Metadata only. `accountId` and `syncEnabled` are the user's choices and are not
-      // touched by a re-link or a re-authentication.
-      update: {
-        plaidItemId,
-        name: account.name,
-        officialName: account.official_name ?? null,
-        mask: account.mask ?? null,
-        plaidType: account.type,
-        plaidSubtype: account.subtype ?? null,
-        currency,
-      },
-    });
   }
 }
 
@@ -532,9 +383,9 @@ export async function unlinkPlaidItemAction(
   if (!item) return { ok: false, error: "That bank connection was not found." };
 
   try {
-    const client = await requirePlaidClient();
-    await makePlaidItemRevoker(client)(item);
+    await endConnection({ prisma, client: await requirePlaidClient() }, item);
   } catch (err) {
+    if (!(err instanceof ConnectionStillLiveError)) throw err;
     await recordAuditLog(prisma, {
       userId: user.id,
       action: AUDIT_ACTIONS.plaid_item_unlink_failed,
@@ -547,11 +398,9 @@ export async function unlinkPlaidItemAction(
     });
     return {
       ok: false,
-      error: `${describePlaidFailure(err)} Nothing was disconnected — the bank connection is still live at Plaid, so it was left in place rather than hidden from you.`,
+      error: `${describePlaidFailure(err.cause)} Nothing was disconnected — the bank connection is still live at Plaid, so it was left in place rather than hidden from you.`,
     };
   }
-
-  await prisma.$transaction((tx) => purgePlaidItemData(tx, item));
 
   await recordAuditLog(prisma, {
     userId: user.id,
