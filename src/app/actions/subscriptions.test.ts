@@ -198,6 +198,30 @@ describe("skipRecurringOccurrenceAction", () => {
     });
   });
 
+  it("skips a later occurrence of an overdue rule, advancing past it", async () => {
+    const tx = {
+      recurringTransaction: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "rule-1",
+          name: "Netflix",
+          cadence: "MONTHLY",
+          enabled: true,
+          endDate: null,
+          nextExpectedDate: dateFromYmd("2026-05-01"),
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      transaction: { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
+    };
+    mockPrisma.$transaction.mockImplementation(async (cb: (arg: typeof tx) => Promise<void>) => cb(tx));
+
+    await skipRecurringOccurrenceAction(
+      form({ recurringTransactionId: "rule-1", expectedDate: "2026-07-01", reason: "skip_once" }),
+    );
+
+    expect(ymdFromDateUtc(tx.recurringTransaction.updateMany.mock.calls[0][0].data.nextExpectedDate)).toBe("2026-08-01");
+  });
+
   it("rejects when the occurrence has already moved on", async () => {
     const tx = {
       recurringTransaction: {

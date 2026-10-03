@@ -59,7 +59,7 @@ import {
   computeThreeMonthAverageIncomeCents,
   getPastMonthYmsBefore,
   getRecurringDateStatus,
-  recurringRuleFallsInMonth,
+  recurringOccurrenceInMonth,
 } from "@/lib/recurring-transactions";
 import { currentYmdInTimeZone, currentYmInTimeZone } from "@/lib/period-month";
 import { loadInsights } from "@/lib/insights/load";
@@ -580,19 +580,19 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     verification: toVerificationInfo(txn.verification),
   }));
 
-  // A single month lists only the rules that fall in it: still due there, or already posted
-  // there (the log for the month holds those). YTD and lifetime list them all.
+  // A single month lists only the rules that fall in it: due there, or already posted there
+  // (the log for the month holds those). YTD and lifetime list them all, at their next date.
   const recurringIdsPostedInPeriod = new Set(
     [...periodExpenses, ...periodIncomes].map((txn) => txn.recurringTransactionId).filter(Boolean),
   );
-  const periodRecurringTransactions =
-    period.range === "month"
-      ? recurringTransactions.filter(
-          (rule) => recurringIdsPostedInPeriod.has(rule.id) || recurringRuleFallsInMonth(rule, period.ym, anchorYm),
-        )
-      : recurringTransactions;
-  const recurringRulesOutsidePeriod = recurringTransactions.length - periodRecurringTransactions.length;
-  const recurringListItems = periodRecurringTransactions.map((rule) => ({
+  const periodRecurringRules = recurringTransactions.flatMap((rule) => {
+    if (period.range !== "month") return [{ rule, occurrence: rule.nextExpectedDate }];
+    const occurrence = recurringOccurrenceInMonth(rule, period.ym, anchorYm);
+    if (occurrence) return [{ rule, occurrence }];
+    return recurringIdsPostedInPeriod.has(rule.id) ? [{ rule, occurrence: rule.nextExpectedDate }] : [];
+  });
+  const recurringRulesOutsidePeriod = recurringTransactions.length - periodRecurringRules.length;
+  const recurringListItems = periodRecurringRules.map(({ rule, occurrence }) => ({
     id: rule.id,
     type: rule.type,
     typeLabel: rule.type === TransactionType.INCOME ? "Income" : "Expense",
@@ -606,12 +606,17 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     cadenceLabel: cadenceLabels[rule.cadence],
     nextExpectedDateYmd: ymdFromDateUtc(rule.nextExpectedDate),
     nextExpectedDateDisplay: formatDateOnlyUtc(rule.nextExpectedDate),
+    occurrenceDateYmd: ymdFromDateUtc(occurrence),
+    occurrenceDateDisplay: formatDateOnlyUtc(occurrence),
+    // An overdue rule carried into this month: the missed occurrence it passes over.
+    missedSinceDisplay:
+      ymdFromDateUtc(occurrence) > ymdFromDateUtc(rule.nextExpectedDate) ? formatDateOnlyUtc(rule.nextExpectedDate) : null,
     endDateYmd: rule.endDate ? ymdFromDateUtc(rule.endDate) : null,
     endDateDisplay: rule.endDate ? formatDateOnlyUtc(rule.endDate) : null,
     note: rule.note,
     enabled: rule.enabled,
     postMode: rule.postMode,
-    status: rule.enabled ? getRecurringDateStatus(rule.nextExpectedDate, now) : ("disabled" as const),
+    status: rule.enabled ? getRecurringDateStatus(occurrence, now) : ("disabled" as const),
   }));
 
   const toRecentOption = (txn: { id: string; title: string | null; date: Date; amountCents: number }) => ({
@@ -741,7 +746,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       ),
     },
     recurring: {
-      subtitle: `${period.range === "month" ? `${periodDescription} · ` : ""}${periodRecurringTransactions.length} rule${periodRecurringTransactions.length === 1 ? "" : "s"} · due and upcoming first`,
+      subtitle: `${period.range === "month" ? `${periodDescription} · ` : ""}${periodRecurringRules.length} rule${periodRecurringRules.length === 1 ? "" : "s"} · due and upcoming first`,
       body: (
         <RecurringCardBody
           items={recurringListItems}

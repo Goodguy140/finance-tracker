@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { dateFromYmd, ymdFromDateUtc } from "@/lib/date-only";
 import { toCents } from "@/lib/money";
 import { requireUser } from "@/lib/session";
-import { advanceRecurringDate } from "@/lib/recurring-transactions";
+import { advanceRecurringDate, isRecurringOccurrenceOnOrAfterNext } from "@/lib/recurring-transactions";
 import { recomputeSubscriptionTransactionCredits } from "@/lib/subscription-credit";
 import {
   deleteSubscriptionMemberSchema,
@@ -192,8 +192,9 @@ export const skipRecurringOccurrenceAction = formAction(async (formData: FormDat
       });
       if (!rule) throw new Error("Subscription not found.");
 
-      // Optimistic concurrency: only advance if this is still the current occurrence.
-      if (ymdFromDateUtc(rule.nextExpectedDate) !== payload.expectedDate) {
+      // Optimistic concurrency: only advance if this is still the current occurrence, or a
+      // later one on the rule's cadence (which passes over the missed ones before it).
+      if (!isRecurringOccurrenceOnOrAfterNext(rule.nextExpectedDate, rule.cadence, expectedDate)) {
         throw new Error("This subscription has already moved to a different expected date.");
       }
       if (!rule.enabled) throw new Error("Subscription is disabled.");
@@ -207,7 +208,7 @@ export const skipRecurringOccurrenceAction = formAction(async (formData: FormDat
         });
       }
 
-      const nextExpectedDate = advanceRecurringDate(rule.nextExpectedDate, rule.cadence);
+      const nextExpectedDate = advanceRecurringDate(expectedDate, rule.cadence);
       const stillEnabled = !rule.endDate || ymdFromDateUtc(nextExpectedDate) <= ymdFromDateUtc(rule.endDate);
       await tx.recurringTransaction.updateMany({
         where: { id: rule.id, userId: user.id, enabled: true, nextExpectedDate: rule.nextExpectedDate },

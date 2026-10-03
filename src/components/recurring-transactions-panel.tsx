@@ -27,6 +27,11 @@ export type RecurringTransactionListItem = {
   cadenceLabel: string;
   nextExpectedDateYmd: string;
   nextExpectedDateDisplay: string;
+  /** The occurrence on show: the next expected date, or this month's for a carried-over rule. */
+  occurrenceDateYmd: string;
+  occurrenceDateDisplay: string;
+  /** Set when the occurrence on show passes over an earlier, unposted one. */
+  missedSinceDisplay: string | null;
   endDateYmd: string | null;
   endDateDisplay: string | null;
   note: string | null;
@@ -110,7 +115,8 @@ function RecurringCard({
         <MetaChip label="Category">{item.categoryLabel}</MetaChip>
         <MetaChip label="Account">{item.accountLabel}</MetaChip>
         <MetaChip label="Cadence">{item.cadenceLabel}</MetaChip>
-        <MetaChip label="Next">{item.nextExpectedDateDisplay}</MetaChip>
+        <MetaChip label="Next">{item.occurrenceDateDisplay}</MetaChip>
+        {item.missedSinceDisplay ? <MetaChip label="Unposted since">{item.missedSinceDisplay}</MetaChip> : null}
         {item.endDateDisplay ? <MetaChip label="Ends">{item.endDateDisplay}</MetaChip> : null}
         {item.postMode === "AUTO" ? <MetaChip label="Posting">Automatic</MetaChip> : null}
       </div>
@@ -118,7 +124,7 @@ function RecurringCard({
         {item.enabled ? (
           <ServerActionForm action={postRecurringTransactionAction}>
             <input type="hidden" name="recurringTransactionId" value={item.id} />
-            <input type="hidden" name="expectedDate" value={item.nextExpectedDateYmd} />
+            <input type="hidden" name="expectedDate" value={item.occurrenceDateYmd} />
             <button type="submit" className={primaryBtnClass}>
               Post transaction
             </button>
@@ -346,7 +352,7 @@ function SkipModal({
       <div className="max-h-[min(92vh,44rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 p-4 shadow-2xl">
         <h3 className="text-lg font-semibold text-slate-100">Skip {item.name}</h3>
         <p className="mt-1 text-sm text-slate-400">
-          Due {item.nextExpectedDateDisplay}. Why are you skipping this one?
+          Due {item.occurrenceDateDisplay}. Why are you skipping this one?
         </p>
 
         <div className="mt-3 space-y-2">
@@ -381,7 +387,7 @@ function SkipModal({
                 Auto-match by title
                 <span className="mt-0.5 block text-xs text-slate-400">
                   Finds an unlinked {item.type === "INCOME" ? "income entry" : "expense"} titled “{item.name}” near{" "}
-                  {item.nextExpectedDateDisplay}.
+                  {item.occurrenceDateDisplay}.
                 </span>
               </span>
             </label>
@@ -432,7 +438,7 @@ function SkipModal({
           {reason === "skip_once" ? (
             <ServerActionForm action={skipRecurringOccurrenceAction} onSuccess={onClose}>
               <input type="hidden" name="recurringTransactionId" value={item.id} />
-              <input type="hidden" name="expectedDate" value={item.nextExpectedDateYmd} />
+              <input type="hidden" name="expectedDate" value={item.occurrenceDateYmd} />
               <input type="hidden" name="reason" value="skip_once" />
               <button type="submit" className={primaryBtnClass}>
                 Skip this occurrence
@@ -442,7 +448,7 @@ function SkipModal({
           {reason === "already_logged" ? (
             <ServerActionForm action={skipRecurringOccurrenceAction} onSuccess={onClose}>
               <input type="hidden" name="recurringTransactionId" value={item.id} />
-              <input type="hidden" name="expectedDate" value={item.nextExpectedDateYmd} />
+              <input type="hidden" name="expectedDate" value={item.occurrenceDateYmd} />
               <input type="hidden" name="reason" value="already_logged" />
               {logMode === "pick" && pickedTransactionId ? (
                 <input type="hidden" name="transactionId" value={pickedTransactionId} />
