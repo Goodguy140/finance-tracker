@@ -113,7 +113,7 @@ export type PagePlan = {
   earliestSeen: Date | null;
 };
 
-const emptySkips = (): SkipCounts => ({
+export const emptySkips = (): SkipCounts => ({
   beforeCutoff: 0,
   unmapped: 0,
   zero: 0,

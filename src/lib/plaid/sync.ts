@@ -1,5 +1,6 @@
 import { PlaidApiError, PLAID_SYNC_PAGE_SIZE, type PlaidClient } from "@/lib/plaid/client";
 import {
+  emptySkips,
   keepChangedRevisions,
   markChangedTransfers,
   planPage,
@@ -91,10 +92,6 @@ export class PlaidSyncBusyError extends Error {
     super("A sync is already running for this bank. Give it a moment and try again.");
     this.name = "PlaidSyncBusyError";
   }
-}
-
-function emptySkips(): SkipCounts {
-  return { beforeCutoff: 0, unmapped: 0, zero: 0, outOfRange: 0, unusable: 0 };
 }
 
 function addSkips(into: SkipCounts, from: SkipCounts): void {
