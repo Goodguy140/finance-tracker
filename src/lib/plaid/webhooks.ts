@@ -4,6 +4,7 @@ import type { PlaidClient } from "@/lib/plaid/client";
 import { purgePlaidAccountData, purgePlaidItemData } from "@/lib/plaid/purge";
 import { makePlaidItemRevoker, openAccessToken } from "@/lib/plaid/service";
 import type { PlaidApiErrorPayload } from "@/lib/plaid/types";
+import { attentionCleared, loginRequired, parseConsentExpiry } from "@/lib/plaid/item-state";
 import { resolvePlaidWebhookUrl } from "@/lib/plaid/webhook-url";
 
 /**
@@ -41,46 +42,17 @@ export type PlaidWebhookPlan = {
   auditAction: string;
 };
 
-const LOGIN_REQUIRED_FALLBACK =
-  "Your bank needs you to sign in again before it will share new transactions.";
-
-/** Everything that means "a person has dealt with this", cleared together. */
-export const CLEARED_ATTENTION = {
-  status: PlaidItemStatus.ACTIVE,
-  errorCode: null,
-  errorMessage: null,
-  lastSyncError: null,
-  consecutiveSyncFailures: 0,
-  nextSyncAttemptAt: null,
-  pendingExpirationAt: null,
-  pendingDisconnectAt: null,
-  pendingDisconnectReason: null,
-} satisfies Prisma.PlaidItemUpdateInput;
-
-function parseDate(value: unknown): Date | null {
-  if (typeof value !== "string" || !value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
 export function planPlaidWebhook(body: PlaidWebhookBody, now: Date): PlaidWebhookPlan | null {
   if (body.webhook_type !== "ITEM") return null;
   const code = typeof body.webhook_code === "string" ? body.webhook_code : "";
 
-  const loginRequired =
+  const signInNeeded =
     (code === "ERROR" && body.error?.error_code === "ITEM_LOGIN_REQUIRED") ||
     code === "ITEM_LOGIN_REQUIRED";
-  if (loginRequired) {
+  if (signInNeeded) {
     return {
       code: "ITEM_LOGIN_REQUIRED",
-      data: {
-        status: PlaidItemStatus.LOGIN_REQUIRED,
-        errorCode: "ITEM_LOGIN_REQUIRED",
-        errorMessage: body.error?.display_message || LOGIN_REQUIRED_FALLBACK,
-        // The sweep already skips anything not ACTIVE; a pending backoff would only delay
-        // the first sync after the user fixes it.
-        nextSyncAttemptAt: null,
-      },
+      data: loginRequired(body.error?.display_message),
       refreshConsent: false,
       auditAction: AUDIT_ACTIONS.plaid_item_reauth_required,
     };
@@ -102,7 +74,7 @@ export function planPlaidWebhook(body: PlaidWebhookBody, now: Date): PlaidWebhoo
         auditAction: AUDIT_ACTIONS.plaid_webhook_received,
       };
     case "PENDING_EXPIRATION": {
-      const expires = parseDate(body.consent_expiration_time);
+      const expires = parseConsentExpiry(body.consent_expiration_time);
       return {
         code,
         data: { pendingExpirationAt: now, ...(expires ? { consentExpiresAt: expires } : {}) },
@@ -125,7 +97,7 @@ export function planPlaidWebhook(body: PlaidWebhookBody, now: Date): PlaidWebhoo
       // every prompt that asked them to is now wrong.
       return {
         code,
-        data: { ...CLEARED_ATTENTION },
+        data: attentionCleared(),
         refreshConsent: true,
         auditAction: AUDIT_ACTIONS.plaid_webhook_received,
       };
@@ -170,7 +142,7 @@ export async function applyPlaidWebhook(
       const { item: fresh } = await deps.client.getAccounts(openAccessToken(item));
       await deps.prisma.plaidItem.update({
         where: { id: item.id },
-        data: { consentExpiresAt: parseDate(fresh?.consent_expiration_time) },
+        data: { consentExpiresAt: parseConsentExpiry(fresh?.consent_expiration_time) },
       });
     } catch (err) {
       // Cosmetic: the prompt is already cleared, and the next sync reports any real fault.
