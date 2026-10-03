@@ -1,4 +1,4 @@
-import { CategoryKind, PlaidItemStatus, PlaidStagedStatus } from "@prisma/client";
+import { CategoryKind, PlaidStagedStatus } from "@prisma/client";
 import { LONG_TRANSACTION_OPTIONS, prisma } from "@/lib/prisma";
 import { selectActiveBudgetsByCategory } from "@/lib/budget-progress";
 import { currentYmInTimeZone } from "@/lib/period-month";
@@ -15,6 +15,7 @@ import {
   type MatchCandidate,
   type StagedForMatch,
 } from "@/lib/plaid/matcher";
+import { syncFailed, syncSucceeded } from "@/lib/plaid/item-state";
 import { openAccessToken } from "@/lib/plaid/service";
 import { pruneSpentStagedRows } from "@/lib/plaid/purge";
 import { linkStagedRow } from "@/lib/plaid/review";
@@ -291,18 +292,9 @@ export function createSyncStore(): SyncStore {
     async finalize(input) {
       await prisma.plaidItem.update({
         where: { id: input.itemId },
-        data: {
-          lastSyncedAt: input.error ? undefined : input.now,
-          lastSyncError: input.error,
-          status: input.needsReauth ? PlaidItemStatus.LOGIN_REQUIRED : undefined,
-          errorMessage: input.error,
-          ...(input.completedInitialSync
-            ? {
-                initialSyncDoneAt: input.now,
-                ...(input.earliestObserved ? { earliestObservedAt: input.earliestObserved } : {}),
-              }
-            : {}),
-        },
+        data: input.error
+          ? syncFailed({ error: input.error, needsReauth: input.needsReauth })
+          : syncSucceeded(input),
       });
       // Withdrawn and superseded rows past their grace period — see pruneSpentStagedRows.
       if (!input.error) await pruneSpentStagedRows(prisma, input.itemId, input.now);
