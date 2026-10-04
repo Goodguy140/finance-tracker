@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { makeStagedProposer, type StagedRuleProposal } from "@/lib/plaid/staged-rules";
 import type { RuleTransactionType } from "@/lib/transaction-rules";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
+import { convertAmountCents } from "@/lib/transfer-type";
 
 /**
  * Every write a review decision makes on a synced bank row: link it to a transaction the
@@ -149,6 +150,10 @@ export async function linkStagedRow(
 /**
  * Adds this bank row to the log as a new transaction: the bank's account, amount and dates,
  * with the title, category and note the queue proposed.
+ *
+ * `type` books it as something other than the sync guessed — a transfer the bank filed as a
+ * purchase, or the reverse. The amount is the bank's either way, converted to the new type's
+ * sign (`convertAmountCents`); the staged row keeps the bank's own view.
  */
 export async function addStagedRow(
   tx: Tx,
@@ -157,9 +162,11 @@ export async function addStagedRow(
     staged: CommittableStagedRow;
     categoryId: string;
     proposal: Pick<StagedRuleProposal, "title" | "note">;
+    type?: TransactionType;
   },
 ): Promise<ReviewOutcome> {
   const { userId, staged } = input;
+  const type = input.type ?? staged.type;
   // Claimed before the transaction exists, so a losing double-submit creates nothing. The
   // resolved id is filled in below, inside the same database transaction.
   if (!(await claim(tx, userId, staged.id, PlaidStagedStatus.ADDED, null))) {
@@ -170,8 +177,8 @@ export async function addStagedRow(
       userId,
       accountId: staged.suggestedAccountId,
       categoryId: input.categoryId,
-      type: staged.type,
-      amountCents: staged.amountCents,
+      type,
+      amountCents: convertAmountCents(staged.type, staged.amountCents, type),
       date: staged.date,
       postedDate: staged.postedDate,
       title: input.proposal.title,
@@ -195,17 +202,30 @@ export async function ignoreStagedRow(tx: Tx, input: { userId: string; stagedId:
 /**
  * Takes the bank's revised amount and dates onto the transaction the row was committed as.
  * False when there is no such revision.
+ *
+ * The amount is converted to the transaction's type, which is not necessarily the staged
+ * row's: income the user booked as a transfer keeps the transfer's sign.
  */
 export async function applyBankRevision(tx: Tx, input: { userId: string; stagedId: string }): Promise<boolean> {
   const staged = await tx.plaidStagedTransaction.findFirst({
     where: { id: input.stagedId, userId: input.userId },
-    select: { id: true, resolvedTransactionId: true, amountCents: true, date: true, postedDate: true },
+    select: { id: true, resolvedTransactionId: true, type: true, amountCents: true, date: true, postedDate: true },
   });
   if (!staged?.resolvedTransactionId) return false;
-  await tx.transaction.updateMany({
+  const target = await tx.transaction.findFirst({
     where: { id: staged.resolvedTransactionId, userId: input.userId },
-    data: { amountCents: staged.amountCents, date: staged.date, postedDate: staged.postedDate },
+    select: { id: true, type: true },
   });
+  if (target) {
+    await tx.transaction.update({
+      where: { id: target.id },
+      data: {
+        amountCents: convertAmountCents(staged.type, staged.amountCents, target.type),
+        date: staged.date,
+        postedDate: staged.postedDate,
+      },
+    });
+  }
   await tx.plaidStagedTransaction.update({ where: { id: staged.id }, data: { revisedAfterResolveAt: null } });
   return true;
 }

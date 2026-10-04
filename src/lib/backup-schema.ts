@@ -69,7 +69,7 @@ export const userBackupSchema = z.object({
     z.object({
       id: z.string().min(1),
       name: z.string().min(1).max(80),
-      kind: z.enum(["EXPENSE", "INCOME"]),
+      kind: z.enum(["EXPENSE", "INCOME", "TRANSFER"]),
       isDefault: z.boolean(),
       createdAt: isoDate,
       updatedAt: isoDate,
@@ -80,7 +80,7 @@ export const userBackupSchema = z.object({
       id: z.string().min(1),
       accountId: z.string().min(1).nullable(),
       categoryId: z.string().min(1),
-      type: z.enum(["EXPENSE", "INCOME"]),
+      type: z.enum(["EXPENSE", "INCOME", "TRANSFER"]),
       amountCents: signedCents,
       preCreditCents: signedCents.nullable(),
       creditCents: signedCents.nullable(),
@@ -120,7 +120,7 @@ export const userBackupSchema = z.object({
         id: z.string().min(1).optional(),
         accountId: z.string().min(1),
         categoryId: z.string().min(1),
-        type: z.enum(["EXPENSE", "INCOME"]),
+        type: z.enum(["EXPENSE", "INCOME", "TRANSFER"]),
         name: z.string().min(1).max(80),
         amountCents: positiveCents,
         cadence: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "BIENNIAL"]),
@@ -209,7 +209,7 @@ export const userBackupSchema = z.object({
         enabled: z.boolean(),
         titleOperator: z.enum(["CONTAINS", "EQUALS", "STARTS_WITH"]),
         titlePattern: z.string().min(1).max(200),
-        transactionType: z.enum(["EXPENSE", "INCOME"]).nullable(),
+        transactionType: z.enum(["EXPENSE", "INCOME", "TRANSFER"]).nullable(),
         matchAccountId: z.string().min(1).nullable(),
         minAmountCents: nonNegativeCents.nullable(),
         maxAmountCents: nonNegativeCents.nullable(),
@@ -234,6 +234,17 @@ export const userBackupSchema = z.object({
     .optional()
     .default([]),
   insightPreference: z.object({ habitDetectionEnabled: z.boolean() }).nullable().optional(),
+  contributionRooms: z
+    .array(
+      z.object({
+        accountType: z.enum(["TFSA", "RRSP", "FHSA"]),
+        year: z.number().int().min(2009).max(2200),
+        roomCents: signedCents,
+      }),
+    )
+    .max(1000)
+    .optional()
+    .default([]),
 });
 
 export type ParsedUserBackup = z.infer<typeof userBackupSchema>;

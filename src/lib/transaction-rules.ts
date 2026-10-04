@@ -14,7 +14,8 @@ import {
  */
 
 export type RuleTextOperator = "CONTAINS" | "EQUALS" | "STARTS_WITH";
-export type RuleTransactionType = "EXPENSE" | "INCOME";
+/** TRANSFER only ever appears as a subject or a category kind: a rule cannot be scoped to transfers. */
+export type RuleTransactionType = "EXPENSE" | "INCOME" | "TRANSFER";
 
 /** The serialisable rule shape — what the database row is mapped to and what clients get. */
 export type TransactionRuleInput = {

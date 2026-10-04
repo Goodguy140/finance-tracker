@@ -32,11 +32,19 @@ enum AccountType {
 enum CategoryKind {
   EXPENSE
   INCOME
+  /// Holds transfers only. One per user ("Transfers"), created on first use; it never
+  /// appears in an expense or income picker and has no budget.
+  TRANSFER
 }
 
 enum TransactionType {
   EXPENSE
   INCOME
+  /// Money moving between the user's own accounts: a credit-card payment from chequing, a
+  /// move to savings. Counted as neither spending nor income, which is the point — booking
+  /// both legs as an expense and an income double-counts. `amountCents` follows the expense
+  /// sign: positive left the row's account, negative arrived in it.
+  TRANSFER
 }
 
 enum TransactionRuleTextOperator {
@@ -154,6 +162,7 @@ model User {
   budgets                   Budget[]
   recurringTransactions     RecurringTransaction[]
   investmentFlows           InvestmentFlow[]
+  contributionRooms         ContributionRoom[]
   portfolioSnapshots        PortfolioSnapshot[]
   updatedServerConfig       ServerSetting[]           @relation("ServerSettingUpdatedBy")
   auditLogs                 AuditLog[]
@@ -564,6 +573,27 @@ model InvestmentFlow {
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+}
+
+/// One year's TFSA, RRSP or FHSA room as CRA reported it (My Account or the notice of
+/// assessment), before that year's contributions. Keyed by account type rather than account:
+/// CRA gives one figure per person, however many TFSAs they hold. The remaining room is
+/// computed from InvestmentFlow rows (src/lib/contribution-room.ts), never stored.
+/// Its own table, so no REQUIRED_SCHEMA_COLUMNS / COLUMN_REPAIRS entry is needed.
+model ContributionRoom {
+  id          String      @id @default(cuid())
+  userId      String
+  /// TFSA, RRSP or FHSA only; enforced by the action.
+  accountType AccountType
+  year        Int
+  /// May be negative: a TFSA room statement shows an existing excess that way.
+  roomCents   Int
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, accountType, year])
 }
 
 model PortfolioSnapshot {

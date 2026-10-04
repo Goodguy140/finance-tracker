@@ -15,10 +15,32 @@ import type { PlaidApiTransaction } from "@/lib/plaid/types";
 export type PlaidAmountMapping =
   | { kind: "expense"; type: TransactionType; amountCents: number }
   | { kind: "income"; type: TransactionType; amountCents: number }
+  | { kind: "transfer"; type: TransactionType; amountCents: number }
   | { kind: "skip"; reason: "zero" | "out_of_range" };
 
 /** Plaid's coarse categories that genuinely mean money arriving. */
-const INCOME_PRIMARIES = new Set(["INCOME", "TRANSFER_IN"]);
+const INCOME_PRIMARIES = new Set(["INCOME"]);
+
+/**
+ * Plaid's categories for money moving between accounts. A credit-card payment is filed
+ * under LOAN_PAYMENTS, but it is the same thing seen from the other side: the purchases it
+ * pays off were already counted when they were charged.
+ *
+ * The other loan payments (mortgage, car, student loan) stay expenses. This app has no
+ * loan accounts, so that money leaves everything it tracks, and counting it as a transfer
+ * would make it disappear from spending altogether.
+ *
+ * Only ever a suggestion, like the category: the review queue lets the user book any row
+ * as a transfer or not before it reaches the log.
+ */
+const TRANSFER_PRIMARIES = new Set(["TRANSFER_IN", "TRANSFER_OUT"]);
+const TRANSFER_DETAILED = new Set(["LOAN_PAYMENTS_CREDIT_CARD_PAYMENT"]);
+
+export function isPlaidTransfer(pfcPrimary: string | null | undefined, pfcDetailed: string | null | undefined) {
+  const primary = (pfcPrimary ?? "").trim().toUpperCase();
+  const detailed = (pfcDetailed ?? "").trim().toUpperCase();
+  return TRANSFER_PRIMARIES.has(primary) || TRANSFER_DETAILED.has(detailed);
+}
 
 /**
  * Maps a Plaid amount onto a transaction type and a signed cents value.
@@ -34,6 +56,7 @@ const INCOME_PRIMARIES = new Set(["INCOME", "TRANSFER_IN"]);
 export function mapPlaidAmount(input: {
   amount: number;
   pfcPrimary: string | null | undefined;
+  pfcDetailed?: string | null | undefined;
 }): PlaidAmountMapping {
   if (!Number.isFinite(input.amount) || input.amount === 0) {
     // Plaid emits $0 rows for authorisation holds; they are not transactions.
@@ -45,6 +68,11 @@ export function mapPlaidAmount(input: {
     // Every money column is a signed 32-bit Int. Writing past that is a raw database
     // error, so it is refused here rather than surfacing from Prisma mid-sync.
     return { kind: "skip", reason: "out_of_range" };
+  }
+
+  if (isPlaidTransfer(input.pfcPrimary, input.pfcDetailed)) {
+    // Plaid's sign is already the transfer's: positive left this account, negative arrived.
+    return { kind: "transfer", type: TransactionType.TRANSFER, amountCents: input.amount > 0 ? cents : -cents };
   }
 
   if (input.amount > 0) {
@@ -124,7 +152,8 @@ export function normalizePlaidTransaction(
   }
 
   const pfcPrimary = row.personal_finance_category?.primary ?? null;
-  const mapped = mapPlaidAmount({ amount: row.amount, pfcPrimary });
+  const pfcDetailed = row.personal_finance_category?.detailed ?? null;
+  const mapped = mapPlaidAmount({ amount: row.amount, pfcPrimary, pfcDetailed });
   if (mapped.kind === "skip") return { ok: false, reason: mapped.reason };
 
   // `authorized_date` is when the purchase actually happened; `date` is when it posted or,
@@ -153,7 +182,7 @@ export function normalizePlaidTransaction(
       date,
       postedDate: postedDate && !Number.isNaN(postedDate.getTime()) ? postedDate : null,
       pfcPrimary,
-      pfcDetailed: row.personal_finance_category?.detailed ?? null,
+      pfcDetailed,
     },
   };
 }

@@ -1,3 +1,4 @@
+import { TransactionType } from "@prisma/client";
 import { cache } from "react";
 import { getCountryConfig } from "@/lib/country-config";
 import { prisma } from "@/lib/prisma";
@@ -28,7 +29,9 @@ export const loadInsights = cache(async (userId: string, countryCode: string): P
   const since = daysAgo(now, INSIGHT_HISTORY_DAYS);
   const [transactions, staged, rules, budgets, preference, dismissals] = await Promise.all([
     prisma.transaction.findMany({
-      where: { userId, date: { gte: since } },
+      // Transfers are neither spending nor income: no habit, saving or recurring charge
+      // should be read off a card payment.
+      where: { userId, date: { gte: since }, type: { not: TransactionType.TRANSFER } },
       select: {
         id: true,
         type: true,

@@ -2,12 +2,9 @@ import { CategoryKind, PlaidStagedStatus } from "@prisma/client";
 import { LONG_TRANSACTION_OPTIONS, prisma } from "@/lib/prisma";
 import { selectActiveBudgetsByCategory } from "@/lib/budget-progress";
 import { currentYmInTimeZone } from "@/lib/period-month";
-import {
-  FALLBACK_CATEGORY_NAME,
-  OTHER_CATEGORY_ALIASES,
-  type UserBudgetName,
-  type UserCategory,
-} from "@/lib/plaid/category-map";
+import { ensureFallbackCategory } from "@/lib/fallback-categories";
+import { outflowCents } from "@/lib/transfer-type";
+import type { UserBudgetName } from "@/lib/plaid/category-map";
 import {
   assignMatches,
   MATCH_DATE_TOLERANCE_DAYS,
@@ -28,36 +25,6 @@ import type { SyncItemRecord, SyncStore } from "@/lib/plaid/sync";
  */
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-/**
- * The catch-all category for a kind: the user's own, or a created one as a last resort.
- *
- * A sync must never invent a category, so any catch-all the user already has is used —
- * including the "Uncategorized" that earlier versions of this code created. Creating is
- * reached only by a user who has none, because `Transaction.categoryId` is non-nullable
- * with `onDelete: Restrict`: there is no "no category" for a staged row to point at.
- */
-async function ensureFallbackCategory(
-  userId: string,
-  kind: CategoryKind,
-  categories: UserCategory[],
-): Promise<string> {
-  const aliases = new Set(OTHER_CATEGORY_ALIASES.map((name) => name.trim().toLowerCase()));
-  const existing = categories.find(
-    (category) => category.kind === kind && aliases.has(category.name.trim().toLowerCase()),
-  );
-  if (existing) return existing.id;
-
-  // Upsert rather than create: two items of the same user can sync at once, and the lock
-  // they hold is per item.
-  const created = await prisma.category.upsert({
-    where: { userId_name_kind: { userId, name: FALLBACK_CATEGORY_NAME, kind } },
-    create: { userId, kind, name: FALLBACK_CATEGORY_NAME },
-    update: {},
-    select: { id: true },
-  });
-  return created.id;
-}
 
 async function releaseSyncLock(itemId: string): Promise<void> {
   await prisma.plaidItem.updateMany({ where: { id: itemId }, data: { syncingSince: null } });
@@ -82,9 +49,10 @@ async function loadSyncItemRecord(itemId: string): Promise<SyncItemRecord | null
     }),
   ]);
 
-  const [fallbackExpense, fallbackIncome] = await Promise.all([
-    ensureFallbackCategory(item.userId, CategoryKind.EXPENSE, categories),
-    ensureFallbackCategory(item.userId, CategoryKind.INCOME, categories),
+  const [fallbackExpense, fallbackIncome, transferCategory] = await Promise.all([
+    ensureFallbackCategory(prisma, item.userId, CategoryKind.EXPENSE, categories),
+    ensureFallbackCategory(prisma, item.userId, CategoryKind.INCOME, categories),
+    ensureFallbackCategory(prisma, item.userId, CategoryKind.TRANSFER, categories),
   ]);
 
   // Which budget is in force is decided first, then labels are taken from it — picking
@@ -122,6 +90,7 @@ async function loadSyncItemRecord(itemId: string): Promise<SyncItemRecord | null
       fallbackCategoryId: {
         [CategoryKind.EXPENSE]: fallbackExpense,
         [CategoryKind.INCOME]: fallbackIncome,
+        [CategoryKind.TRANSFER]: transferCategory,
       },
     },
   };
@@ -168,9 +137,11 @@ export function createSyncStore(): SyncStore {
       if (transactionIds.length === 0) return new Map();
       const rows = await prisma.transaction.findMany({
         where: { userId, id: { in: transactionIds } },
-        select: { id: true, amountCents: true },
+        select: { id: true, type: true, amountCents: true },
       });
-      return new Map(rows.map((row) => [row.id, row.amountCents]));
+      // As money out, like the bank's figure: an income row the user booked as a transfer
+      // stores the same money with the opposite sign.
+      return new Map(rows.map((row) => [row.id, outflowCents(row.type, row.amountCents)]));
     },
 
     async commitPage(item, plan) {

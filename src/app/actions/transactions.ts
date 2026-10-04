@@ -11,6 +11,7 @@ import { requireUser } from "@/lib/session";
 import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
 import { appendRuleNote, resolveRuleOutcome } from "@/lib/transaction-rules";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
+import { markAsTransfer, unmarkTransfer, type TransferMarkRefusal } from "@/lib/transfer-marking";
 import {
   expenseCsvImportSchema,
   expenseBaseSchema,
@@ -421,3 +422,32 @@ export const createSplitExpenseAction = formAction(async (formData: FormData) =>
   revalidatePath("/");
 });
 
+
+const TRANSFER_MARK_REFUSALS: Record<TransferMarkRefusal, string> = {
+  "not-found": "Transaction not found.",
+  split: "A split expense cannot be a transfer. Remove the split first.",
+};
+
+/** Books a logged expense or income entry as a transfer between the user's own accounts. */
+export const markAsTransferAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const transactionId = getFormValue(formData, "transactionId");
+  if (!transactionId) throw new Error("Transaction id is required.");
+
+  const outcome = await prisma.$transaction((tx) => markAsTransfer(tx, { userId: user.id, transactionId }));
+  if (!outcome.ok) throw new Error(TRANSFER_MARK_REFUSALS[outcome.reason]);
+  revalidatePath("/");
+});
+
+/** Counts a transfer again: as an expense if the money left the account, income if it arrived. */
+export const unmarkTransferAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const transactionId = getFormValue(formData, "transactionId");
+  if (!transactionId) throw new Error("Transaction id is required.");
+
+  const outcome = await prisma.$transaction((tx) => unmarkTransfer(tx, { userId: user.id, transactionId }));
+  if (!outcome.ok) throw new Error(TRANSFER_MARK_REFUSALS[outcome.reason]);
+  // It now counts toward a budget again, which may push one over.
+  scheduleBudgetAlertEmails(user.id);
+  revalidatePath("/");
+});

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { isRegisteredAccountType } from "@/lib/contribution-room";
 
 export const BACKUP_VERSION = 1;
 
@@ -51,7 +52,7 @@ export type UserBackupPayload = {
   categories: Array<{
     id: string;
     name: string;
-    kind: "EXPENSE" | "INCOME";
+    kind: "EXPENSE" | "INCOME" | "TRANSFER";
     isDefault: boolean;
     createdAt: IsoString;
     updatedAt: IsoString;
@@ -60,7 +61,7 @@ export type UserBackupPayload = {
     id: string;
     accountId: string | null;
     categoryId: string;
-    type: "EXPENSE" | "INCOME";
+    type: "EXPENSE" | "INCOME" | "TRANSFER";
     amountCents: number;
     preCreditCents: number | null;
     creditCents: number | null;
@@ -93,7 +94,7 @@ export type UserBackupPayload = {
     id: string;
     accountId: string;
     categoryId: string;
-    type: "EXPENSE" | "INCOME";
+    type: "EXPENSE" | "INCOME" | "TRANSFER";
     name: string;
     amountCents: number;
     cadence: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL";
@@ -164,7 +165,7 @@ export type UserBackupPayload = {
     enabled: boolean;
     titleOperator: "CONTAINS" | "EQUALS" | "STARTS_WITH";
     titlePattern: string;
-    transactionType: "EXPENSE" | "INCOME" | null;
+    transactionType: "EXPENSE" | "INCOME" | "TRANSFER" | null;
     matchAccountId: string | null;
     minAmountCents: number | null;
     maxAmountCents: number | null;
@@ -185,6 +186,8 @@ export type UserBackupPayload = {
   insightDismissals?: Array<{ insightKey: string; snoozedUntil: IsoString | null }>;
   /** Insight settings. Optional; absent means the defaults. */
   insightPreference?: { habitDetectionEnabled: boolean } | null;
+  /** Yearly TFSA/RRSP/FHSA room figures copied from CRA. Optional: older backups predate them. */
+  contributionRooms?: Array<{ accountType: "TFSA" | "RRSP" | "FHSA"; year: number; roomCents: number }>;
   /**
    * Not a field. Recording an omission so it does not read as an oversight: the desktop
    * dashboard layout (`DashboardLayout`) is deliberately outside this payload. It is a UI
@@ -235,6 +238,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       hiddenTitleSuggestions: true,
       insightDismissals: true,
       insightPreference: true,
+      contributionRooms: { orderBy: [{ accountType: "asc" }, { year: "asc" }] },
     },
   });
 
@@ -397,5 +401,10 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
     insightPreference: user.insightPreference
       ? { habitDetectionEnabled: user.insightPreference.habitDetectionEnabled }
       : null,
+    contributionRooms: user.contributionRooms.flatMap((row) =>
+      isRegisteredAccountType(row.accountType)
+        ? [{ accountType: row.accountType, year: row.year, roomCents: row.roomCents }]
+        : [],
+    ),
   });
 }

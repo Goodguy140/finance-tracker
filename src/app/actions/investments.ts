@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { dateFromYmd } from "@/lib/date-only";
 import { requireUser } from "@/lib/session";
 import {
+  contributionRoomSchema,
   investmentFlowSchema,
   portfolioSnapshotSchema,
 } from "@/lib/validation";
@@ -60,3 +61,30 @@ export const createPortfolioSnapshotAction = formAction(async (formData: FormDat
   revalidatePath("/");
 });
 
+
+/** Saves one year's room for one account type, replacing any figure already entered. */
+export const upsertContributionRoomAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const payload = contributionRoomSchema.parse({
+    accountType: getFormValue(formData, "accountType"),
+    year: getFormValue(formData, "year"),
+    room: getFormValue(formData, "room"),
+  });
+  const roomCents = toCents(payload.room);
+  await prisma.contributionRoom.upsert({
+    where: { userId_accountType_year: { userId: user.id, accountType: payload.accountType, year: payload.year } },
+    create: { userId: user.id, accountType: payload.accountType, year: payload.year, roomCents },
+    update: { roomCents },
+  });
+  revalidatePath("/");
+  revalidatePath("/settings");
+});
+
+export const deleteContributionRoomAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const id = getFormValue(formData, "id");
+  const { count } = await prisma.contributionRoom.deleteMany({ where: { id, userId: user.id } });
+  if (count === 0) throw new Error("That room figure was not found.");
+  revalidatePath("/");
+  revalidatePath("/settings");
+});

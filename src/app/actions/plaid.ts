@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { PlaidStagedStatus, type User } from "@prisma/client";
+import { CategoryKind, PlaidStagedStatus, TransactionType, type User } from "@prisma/client";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { describeActionError } from "@/lib/action-errors";
 import { prisma } from "@/lib/prisma";
@@ -42,6 +42,7 @@ import { sweepDuePlaidItems, type SweepSummary } from "@/lib/plaid-sync-schedule
 import { describeLogRefresh, LOG_REFRESH_INTERVAL_MINUTES, type LogRefreshResult } from "@/lib/plaid/log-refresh";
 import type { ActionFailure } from "@/lib/action-result";
 import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
+import { ensureFallbackCategoryFor } from "@/lib/fallback-categories";
 import {
   assertUserOwnsAccount,
   assertUserOwnsCategory,
@@ -535,6 +536,12 @@ const REVIEW_REFUSALS: Record<ReviewRefusal, string> = {
   "type-mismatch": "An expense cannot be linked to an income entry.",
 };
 
+function parseCountAs(value: string): TransactionType | null {
+  return value === TransactionType.EXPENSE || value === TransactionType.INCOME || value === TransactionType.TRANSFER
+    ? value
+    : null;
+}
+
 /** Throws inside a database transaction, so a refused decision rolls back everything with it. */
 function orRefuse(outcome: ReviewOutcome): void {
   if (!outcome.ok) throw new Error(REVIEW_REFUSALS[outcome.reason]);
@@ -576,13 +583,23 @@ export const resolveStagedTransactionAction = formAction(async (formData: FormDa
       orRefuse(await linkStagedRow(tx, { userId: user.id, staged, transactionId: linkTransactionId })),
     );
   } else if (decision === "add") {
-    const proposal = (await loadStagedProposer(user.id))(row);
-    const resolvedCategoryId = categoryId || proposal.categoryId;
+    // The queue can book a row as a transfer or not, whatever the sync guessed.
+    const type = parseCountAs(getFormValue(formData, "countAs")) ?? staged.type;
+    const proposal = (await loadStagedProposer(user.id))({
+      ...row,
+      type,
+      // The sync's suggestion is a category of the type it guessed.
+      suggestedCategoryId: type === staged.type ? row.suggestedCategoryId : null,
+    });
+    const resolvedCategoryId =
+      type === TransactionType.TRANSFER
+        ? await ensureFallbackCategoryFor(prisma, user.id, CategoryKind.TRANSFER)
+        : categoryId || proposal.categoryId;
     if (!resolvedCategoryId) throw new Error("Choose a category for this transaction.");
-    await assertUserOwnsCategory(user.id, resolvedCategoryId, categoryKindForTransactionType(staged.type));
+    await assertUserOwnsCategory(user.id, resolvedCategoryId, categoryKindForTransactionType(type));
     if (staged.suggestedAccountId) await assertUserOwnsAccount(user.id, staged.suggestedAccountId);
     await prisma.$transaction(async (tx) =>
-      orRefuse(await addStagedRow(tx, { userId: user.id, staged, categoryId: resolvedCategoryId, proposal })),
+      orRefuse(await addStagedRow(tx, { userId: user.id, staged, categoryId: resolvedCategoryId, proposal, type })),
     );
   } else {
     throw new Error("Choose whether to link, add, or ignore this row.");

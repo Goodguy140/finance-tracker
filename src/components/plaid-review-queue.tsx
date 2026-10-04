@@ -24,9 +24,12 @@ export type ReviewRow = {
   institutionName: string;
   heading: string;
   amountCents: number;
-  typeLabel: string;
+  /** The sync took it for money moving between the user's own accounts. */
+  isTransfer: boolean;
   dateDisplay: string;
   accountLabel: string;
+  /** What the row is booked as when it is not a transfer, and that type's categories. */
+  nonTransferType: "EXPENSE" | "INCOME";
   categoryOptions: { id: string; name: string }[];
   suggestedCategoryId: string;
   /** Why the title/category differ from the bank's own: one of the user's rules, or a
@@ -68,6 +71,7 @@ function ReviewRowCard({ row }: { row: ReviewRow }) {
   const [decision, setDecision] = useState<"link" | "add" | "ignore">(
     row.match?.tier === "high" ? "link" : "add",
   );
+  const [asTransfer, setAsTransfer] = useState(row.isTransfer);
 
   return (
     <li className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/50 p-3">
@@ -76,6 +80,7 @@ function ReviewRowCard({ row }: { row: ReviewRow }) {
           <p className="truncate text-sm font-medium text-slate-100">{row.heading}</p>
           <p className="text-xs text-slate-500">
             {row.dateDisplay} · {row.accountLabel}
+            {row.isTransfer ? " · transfer" : ""}
             {row.isPending ? " · pending" : ""}
             {row.proposalReason === "rule"
               ? " · filled in by your rules"
@@ -138,6 +143,26 @@ function ReviewRowCard({ row }: { row: ReviewRow }) {
         </div>
 
         {decision === "add" ? (
+          <>
+            <input type="hidden" name="countAs" value={asTransfer ? "TRANSFER" : row.nonTransferType} />
+            <label className="flex items-start gap-2 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={asTransfer}
+                onChange={(e) => setAsTransfer(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                Transfer between my accounts
+                <span className="block text-slate-500">
+                  Card payments and moves to savings. Not counted as spending or income.
+                </span>
+              </span>
+            </label>
+          </>
+        ) : null}
+
+        {decision === "add" && !asTransfer ? (
           <label className="block space-y-1">
             <span className="text-xs font-medium text-slate-400">Category</span>
             <select

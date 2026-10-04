@@ -26,7 +26,7 @@ import type { Insight, InsightSeverity, RecurringPrefill } from "@/lib/insights/
 import { formatCurrency } from "@/lib/money";
 
 /** An evidence row, flattened for the client: no Dates cross the boundary. */
-export type InsightEvidenceRow = { id: string; date: string; title: string; amountCents: number; type: "EXPENSE" | "INCOME" };
+export type InsightEvidenceRow = { id: string; date: string; title: string; amountCents: number; type: "EXPENSE" | "INCOME" | "TRANSFER" };
 
 export type InsightItemView = Insight & {
   evidence: InsightEvidenceRow[];

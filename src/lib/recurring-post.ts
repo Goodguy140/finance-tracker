@@ -13,8 +13,9 @@ import { recomputeSubscriptionTransactionCredits } from "@/lib/subscription-cred
 
 export type PostOutcome = "posted" | "already_posted" | "no_change";
 
-function categoryKindFor(type: "EXPENSE" | "INCOME") {
-  return type === "INCOME" ? "INCOME" : "EXPENSE";
+/** The two enums share their values: each transaction type has categories of its own kind. */
+function categoryKindFor(type: "EXPENSE" | "INCOME" | "TRANSFER") {
+  return type;
 }
 
 /**

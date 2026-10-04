@@ -261,6 +261,22 @@ export const investmentFlowSchema = z.object({
   note: z.string().max(250).optional(),
 });
 
+/**
+ * One year's contribution room from CRA. Signed, because a TFSA room statement reports an
+ * existing excess as negative room. The year runs up to next year so a notice that arrives
+ * early can be entered ahead of January.
+ */
+export const contributionRoomSchema = z.object({
+  accountType: z.enum(["TFSA", "RRSP", "FHSA"]),
+  year: z.coerce
+    .number()
+    .int()
+    .min(2009, { message: "Registered-account room starts in 2009." })
+    // Checked per call, not at import: a server that runs past New Year must accept the new year.
+    .refine((year) => year <= new Date().getUTCFullYear() + 1, { message: "That year is too far ahead." }),
+  room: z.coerce.number().min(-MAX_AMOUNT, amountTooLarge).max(MAX_AMOUNT, amountTooLarge),
+});
+
 export const portfolioSnapshotSchema = z.object({
   accountId: z.string().min(1),
   totalValue: nonNegativeAmount,

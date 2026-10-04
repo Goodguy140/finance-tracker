@@ -6,6 +6,7 @@ import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   addStagedRow,
+  applyBankRevision,
   COMMITTABLE_STAGED_SELECT,
   ignoreStagedRow,
   linkStagedRow,
@@ -42,7 +43,9 @@ let categoryId: string;
 let staged: CommittableStagedRow;
 let seq = 0;
 
-async function stage(overrides: { amountCents?: number; type?: "EXPENSE" | "INCOME"; postedDate?: Date | null } = {}) {
+async function stage(
+  overrides: { amountCents?: number; type?: "EXPENSE" | "INCOME" | "TRANSFER"; postedDate?: Date | null } = {},
+) {
   seq += 1;
   const item = await db.plaidItem.findFirstOrThrow({ where: { userId } });
   const account = await db.plaidAccount.findFirstOrThrow({ where: { userId } });
@@ -123,6 +126,34 @@ describe("addStagedRow", () => {
     ]);
     expect(outcomes.filter((o) => o.ok)).toHaveLength(1);
     expect(await db.transaction.count({ where: { userId } })).toBe(1);
+  });
+
+  it("books income the user called a transfer with the transfer's sign, and keeps it on revision", async () => {
+    const deposit = await stage({ type: "INCOME", amountCents: 50000 });
+    const transferCategoryId = (await db.category.create({ data: { userId, name: "Transfers", kind: "TRANSFER" } })).id;
+    const outcome = await db.$transaction((tx) =>
+      addStagedRow(tx, { userId, staged: deposit, categoryId: transferCategoryId, proposal, type: "TRANSFER" }),
+    );
+    if (!outcome.ok) throw new Error(outcome.reason);
+    const committed = await db.transaction.findUniqueOrThrow({ where: { id: outcome.transactionId } });
+    // $500 arrived: -50000 as a transfer, not +50000, which would read as $500 leaving.
+    expect(committed).toMatchObject({ type: "TRANSFER", amountCents: -50000, categoryId: transferCategoryId });
+    // The staged row keeps the bank's own view.
+    expect(await db.plaidStagedTransaction.findUniqueOrThrow({ where: { id: deposit.id } })).toMatchObject({
+      type: "INCOME",
+      amountCents: 50000,
+    });
+
+    // The bank revises the deposit to $520; taking its values keeps the transfer's sign.
+    await db.plaidStagedTransaction.update({
+      where: { id: deposit.id },
+      data: { amountCents: 52000, revisedAfterResolveAt: new Date() },
+    });
+    expect(await db.$transaction((tx) => applyBankRevision(tx, { userId, stagedId: deposit.id }))).toBe(true);
+    expect(await db.transaction.findUniqueOrThrow({ where: { id: outcome.transactionId } })).toMatchObject({
+      type: "TRANSFER",
+      amountCents: -52000,
+    });
   });
 
   it("refuses a row that was ignored", async () => {
