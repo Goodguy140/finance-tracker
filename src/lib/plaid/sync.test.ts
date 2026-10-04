@@ -38,6 +38,7 @@ function itemRecord(overrides: Partial<SyncItemRecord> = {}): SyncItemRecord {
       fallbackCategoryId: {
         [CategoryKind.EXPENSE]: "cat-exp",
         [CategoryKind.INCOME]: "cat-inc",
+        [CategoryKind.TRANSFER]: "cat-transfer",
       },
     },
     ...overrides,

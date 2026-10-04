@@ -92,6 +92,7 @@ export async function assertUserOwnsCategory(userId: string, categoryId: string,
   }
 }
 
+/** The two enums share their values: each transaction type has categories of its own kind. */
 export function categoryKindForTransactionType(type: TransactionType): CategoryKind {
-  return type === TransactionType.INCOME ? CategoryKind.INCOME : CategoryKind.EXPENSE;
+  return type;
 }

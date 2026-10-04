@@ -48,8 +48,11 @@ import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
 import type { VerificationInfo } from "@/components/verified-badge";
 import { PlaidReviewQueue } from "@/components/plaid-review-queue";
+import { TransferLog, type TransferLogEntry } from "@/components/transfer-log";
 import { TransactionRulesProvider } from "@/components/transaction-rules-context";
 import { visibleLearnedSuggestions, type RuleTransactionType } from "@/lib/transaction-rules";
+import { catchAllCategoryId } from "@/lib/plaid/category-map";
+import { untransferredType } from "@/lib/transfer-type";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
 import { makeStagedProposer } from "@/lib/plaid/staged-rules";
 import { resolveDisplayName } from "@/lib/plaid/ingest";
@@ -124,7 +127,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const categoryUsageCutoff = new Date(now);
   categoryUsageCutoff.setMonth(categoryUsageCutoff.getMonth() - 3);
 
-  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, ruleContext, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount, plaidAttentionCount, contributionRoom] =
+  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, ruleContext, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount, plaidAttentionCount, contributionRoom, periodTransfers] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -249,6 +252,12 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     // the fix live on Settings; this only makes sure they find out without going there.
     prisma.plaidItem.count({ where: { userId: user.id, ...PLAID_ITEM_NEEDS_ATTENTION_WHERE } }),
     loadContributionRoomData(user.id),
+    // Listed under the expense log, outside every total.
+    prisma.transaction.findMany({
+      where: { userId: user.id, type: TransactionType.TRANSFER, ...transactionDateFilter },
+      include: { account: true, verification: true },
+      orderBy: { date: "desc" },
+    }),
   ]);
 
   const expenseCategories = categories.filter((c) => c.kind === CategoryKind.EXPENSE);
@@ -481,7 +490,16 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
   const propose = makeStagedProposer(ruleContext, categoryKindById);
   const reviewRows = stagedRows.map((row) => {
+    const isTransfer = row.type === TransactionType.TRANSFER;
+    // What the row becomes if the user unticks "transfer" (or never ticks it): its own type,
+    // or for a transfer, spending if the money left and income if it arrived.
+    const nonTransferType = isTransfer ? untransferredType(row.amountCents) : row.type;
     const proposal = propose(row);
+    const nonTransferProposal = isTransfer
+      ? propose({ ...row, type: nonTransferType, suggestedCategoryId: null })
+      : proposal;
+    const nonTransferOptions =
+      nonTransferType === TransactionType.INCOME ? incomeCategoryOptionsForQueue : expenseCategoryOptionsForQueue;
     const candidate = row.matchTransactionId ? matchCandidateById.get(row.matchTransactionId) : undefined;
     const reasons = row.matchReasonsJson ? (JSON.parse(row.matchReasonsJson) as string[]) : [];
     return {
@@ -489,15 +507,14 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       institutionName: row.plaidItem.institutionName ?? "Your bank",
       heading: proposal.title,
       amountCents: row.amountCents,
-      typeLabel: row.type === TransactionType.INCOME ? "Income" : "Expense",
+      isTransfer,
       dateDisplay: formatDateOnlyUtc(row.date),
       accountLabel:
         accounts.find((a) => a.id === row.suggestedAccountId)?.name ?? "Unmapped account",
-      categoryOptions:
-        row.type === TransactionType.INCOME
-          ? incomeCategoryOptionsForQueue
-          : expenseCategoryOptionsForQueue,
-      suggestedCategoryId: proposal.categoryId ?? "",
+      nonTransferType: nonTransferType === TransactionType.INCOME ? ("INCOME" as const) : ("EXPENSE" as const),
+      categoryOptions: nonTransferOptions,
+      suggestedCategoryId:
+        nonTransferProposal.categoryId ?? catchAllCategoryId(nonTransferOptions) ?? nonTransferOptions[0]?.id ?? "",
       proposalReason: proposal.reason,
       isPending: row.isPending,
       match:
@@ -583,6 +600,18 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     verification: toVerificationInfo(txn.verification),
   }));
 
+  const transferLogEntries: TransferLogEntry[] = periodTransfers.map((txn) => ({
+    id: txn.id,
+    amountCents: txn.amountCents,
+    dateDisplay: formatDateOnlyUtc(txn.date),
+    title: txn.title,
+    note: txn.note,
+    accountLabel: txn.account
+      ? `${txn.account.name} (${formatAccountTypeLabel(txn.account.type)})`
+      : (txn.accountDescription ?? "Removed account"),
+    verification: toVerificationInfo(txn.verification),
+  }));
+
   // A single month lists only the rules that fall in it: due there, or already posted there
   // (the log for the month holds those). YTD and lifetime list them all, at their next date.
   const recurringIdsPostedInPeriod = new Set(
@@ -597,7 +626,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const recurringRulesOutsidePeriod = recurringTransactions.length - periodRecurringRules.length;
   const recurringListItems = periodRecurringRules.map(({ rule, occurrence }) => ({
     id: rule.id,
-    type: rule.type,
+    // Recurring rules are only ever expenses or income (`recurringTransactionSchema`).
+    type: rule.type === TransactionType.INCOME ? ("INCOME" as const) : ("EXPENSE" as const),
     typeLabel: rule.type === TransactionType.INCOME ? "Income" : "Expense",
     name: rule.name,
     amountCents: rule.amountCents,
@@ -745,6 +775,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
             density={cardSettings["expense-log"]?.density}
             maxHeight={cardSettings["expense-log"]?.maxHeight}
           />
+          <TransferLog entries={transferLogEntries} />
         </>
       ),
     },

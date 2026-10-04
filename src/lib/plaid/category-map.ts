@@ -8,9 +8,12 @@ import { CategoryKind } from "@prisma/client";
  * is what makes an imperfect mapping acceptable here.
  *
  * The target names are the defaults this app seeds for Canadian users
- * (`countryConfigMap.CA` in country-config.ts). The three categories that have no specific
- * home among them — GOVERNMENT_AND_NON_PROFIT, LOAN_PAYMENTS and TRANSFER_OUT — go to the
- * catch-all rather than to a category that would misreport what the spend was.
+ * (`countryConfigMap.CA` in country-config.ts). The two categories that have no specific
+ * home among them — GOVERNMENT_AND_NON_PROFIT and LOAN_PAYMENTS — go to the catch-all rather
+ * than to a category that would misreport what the spend was.
+ *
+ * TRANSFER_IN and TRANSFER_OUT are absent: those rows are staged as transfers
+ * (`isPlaidTransfer`), which have one category of their own.
  */
 export const PFC_TO_CATEGORY_NAMES: Record<string, string[]> = {
   FOOD_AND_DRINK: ["Dining", "Groceries"],
@@ -26,9 +29,7 @@ export const PFC_TO_CATEGORY_NAMES: Record<string, string[]> = {
   HOME_IMPROVEMENT: ["Fun"],
   GOVERNMENT_AND_NON_PROFIT: ["Other"],
   LOAN_PAYMENTS: ["Other"],
-  TRANSFER_OUT: ["Other"],
   INCOME: ["Salary", "Other Income"],
-  TRANSFER_IN: ["Other Income"],
 };
 
 /**
@@ -123,4 +124,14 @@ export function resolveSuggestedCategoryId(input: {
   }
 
   return input.fallbackCategoryId;
+}
+
+/** The user's catch-all among `categories` (one kind's), in alias order; undefined if none. */
+export function catchAllCategoryId(categories: readonly { id: string; name: string }[]): string | undefined {
+  const byName = new Map(categories.map((c) => [nameKey(c.name), c.id]));
+  for (const alias of OTHER_CATEGORY_ALIASES) {
+    const hit = byName.get(nameKey(alias));
+    if (hit) return hit;
+  }
+  return undefined;
 }

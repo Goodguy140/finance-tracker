@@ -5,6 +5,7 @@ import {
   type UserCategory,
 } from "@/lib/plaid/category-map";
 import { normalizePlaidTransaction } from "@/lib/plaid/ingest";
+import { outflowCents } from "@/lib/transfer-type";
 import type { PlaidApiTransaction, PlaidSyncPage } from "@/lib/plaid/types";
 
 /**
@@ -121,9 +122,14 @@ export const emptySkips = (): SkipCounts => ({
   unusable: 0,
 });
 
+/** The two enums share their values: each type has categories of its own kind. */
 function kindFor(type: TransactionType): CategoryKind {
-  return type === TransactionType.INCOME ? CategoryKind.INCOME : CategoryKind.EXPENSE;
+  return type;
 }
+
+/** A staged row's amount as money out, the form `loadApprovedAmounts` reports in. */
+const stagedOutflow = (upsert: StagedUpsert | undefined) =>
+  upsert === undefined ? undefined : outflowCents(upsert.type, upsert.amountCents);
 
 /** Every Plaid transaction id a page refers to, so the caller can load them in one query. */
 export function referencedPlaidTransactionIds(page: PlaidSyncPage): string[] {
@@ -344,7 +350,7 @@ export function markChangedTransfers(
       const approved = approvedAmountByTransactionId.get(
         transfer.transactionId,
       );
-      const posted = byNewId.get(transfer.toPlaidTransactionId)?.amountCents;
+      const posted = stagedOutflow(byNewId.get(transfer.toPlaidTransactionId));
       const amountChanged =
         approved !== undefined && posted !== undefined && approved !== posted;
       return { ...transfer, amountChanged };
@@ -370,7 +376,7 @@ export function keepChangedRevisions(
       const approved = revised.transactionId
         ? approvedAmountByTransactionId.get(revised.transactionId)
         : undefined;
-      const reported = byId.get(revised.plaidTransactionId)?.amountCents;
+      const reported = stagedOutflow(byId.get(revised.plaidTransactionId));
       return approved === undefined || reported === undefined || approved !== reported;
     }),
   };
