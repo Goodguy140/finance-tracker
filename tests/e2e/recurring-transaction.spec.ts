@@ -60,9 +60,10 @@ test("desktop: create and post a recurring expense", async ({ page }, testInfo) 
   await addDialog.getByRole("button", { name: "Add recurring transaction" }).click();
   await addDialog.getByRole("button", { name: "Close" }).click();
 
-  await expect(page.getByText(name, { exact: true })).toBeVisible({ timeout: 15_000 });
-
+  // Scoped to the card: the rule is also listed under Upcoming bills.
   const recurringPanel = page.getByRole("region", { name: "Recurring transactions" });
+  await expect(recurringPanel.getByText(name, { exact: true })).toBeVisible({ timeout: 15_000 });
+
   await recurringPanel.getByRole("button", { name: "Post transaction" }).click();
 
   await expectExpenseInLog(page, name);
@@ -114,6 +115,11 @@ test("an overdue rule from an earlier month can be posted for the current month"
   const recurringPanel = page.getByRole("region", { name: "Recurring transactions" });
   await expect(recurringPanel.getByText(name, { exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(recurringPanel.getByText("Unposted since")).toBeVisible();
+
+  // Upcoming bills lists it once, at this month's date, carried past the missed one.
+  const upcoming = page.getByRole("region", { name: "Upcoming bills" });
+  await expect(upcoming.getByText(name, { exact: true })).toHaveCount(1);
+  await expect(upcoming.getByText(/Unposted since/)).toBeVisible();
   await recurringPanel.getByRole("button", { name: "Post transaction" }).click();
 
   const thisMonthYmd = `${currentYm}-10`;
