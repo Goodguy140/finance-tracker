@@ -27,7 +27,7 @@ export type BillsForecast<T> = {
 };
 
 /**
- * The occurrences of every enabled rule from the start of the current month through `days`
+ * The occurrences of every enabled expense and income rule from the start of the current month through `days`
  * days after today, earliest first.
  *
  * A rule starts from its outstanding occurrence, carried forward to the current month when
@@ -47,7 +47,8 @@ export function forecastRecurringOccurrences<T extends ForecastableRule>(
 
   const occurrences: BillsForecastOccurrence<T>[] = [];
   for (const rule of rules) {
-    if (!rule.enabled) continue;
+    // Only bills and income: a transfer rule moves money between the user's own accounts.
+    if (!rule.enabled || (rule.type !== "EXPENSE" && rule.type !== "INCOME")) continue;
     const endYmd = rule.endDate ? ymdFromDateUtc(rule.endDate) : null;
     const nextYmd = ymdFromDateUtc(rule.nextExpectedDate);
     let date = advanceRecurringDateOnOrAfter(rule.nextExpectedDate, rule.cadence, monthStart);
@@ -76,7 +77,7 @@ export function forecastRecurringOccurrences<T extends ForecastableRule>(
   let expenseCents = 0;
   for (const { rule } of occurrences) {
     if (rule.type === "INCOME") incomeCents += rule.amountCents;
-    else expenseCents += rule.amountCents;
+    else if (rule.type === "EXPENSE") expenseCents += rule.amountCents;
   }
   return { occurrences, incomeCents, expenseCents, netCents: incomeCents - expenseCents };
 }

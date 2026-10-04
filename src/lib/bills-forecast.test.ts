@@ -89,6 +89,17 @@ describe("forecastRecurringOccurrences", () => {
     ]);
   });
 
+  it("leaves transfer rules out of the list and the totals", () => {
+    const result = forecastRecurringOccurrences(
+      [rule("To savings", { type: "TRANSFER" as TransactionType }), rule("Phone", { next: "2026-10-12", amountCents: 5_000 })],
+      { ...TODAY, days: 30 },
+    );
+
+    expect(rows(result).map((r) => r.name)).toEqual(["Phone"]);
+    expect(result.expenseCents).toBe(5_000);
+    expect(result.netCents).toBe(-5_000);
+  });
+
   it("lists an unposted occurrence from earlier this month as overdue and counts it", () => {
     const result = forecastRecurringOccurrences([rule("Hydro", { next: "2026-10-03" })], { ...TODAY, days: 30 });
 
