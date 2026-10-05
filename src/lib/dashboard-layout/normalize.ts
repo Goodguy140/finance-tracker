@@ -119,9 +119,20 @@ export function reconcileDashboardLayout(
     columns.push({ id: column.id, weight: column.weight, slots });
   }
 
+  // A card the user removed stays removed. One that is also placed somewhere was added back
+  // by a write that raced the removal; being on screen wins, since that is what they can see.
+  const hidden: DashboardCardId[] = [];
+  for (const id of input.hidden ?? []) {
+    if (!isDashboardCardId(id) || seen.has(id) || hidden.includes(id)) {
+      changed = true;
+      continue;
+    }
+    hidden.push(id);
+  }
+
   // Cards this release added since the blob was written land at their registry position.
   for (const cardId of CARD_IDS) {
-    if (seen.has(cardId)) continue;
+    if (seen.has(cardId) || hidden.includes(cardId)) continue;
     changed = true;
     const meta = DASHBOARD_CARDS[cardId];
     const columnIndex = Math.min(Math.max(meta.defaultColumnIndex, 0), columns.length - 1);
@@ -150,6 +161,7 @@ export function reconcileDashboardLayout(
   const stored: DashboardLayout = {
     version: DASHBOARD_LAYOUT_VERSION,
     columns: weighted,
+    ...(hidden.length > 0 ? { hidden } : {}),
     settings,
   };
 
@@ -200,8 +212,8 @@ export function filterToAvailable(
     .filter((column) => options.keepEmptyColumns || column.slots.length > 0);
 
   if (columns.length === 0) {
-    return { version: layout.version, columns: [{ id: "col-empty", weight: 24, slots: [] }], settings: layout.settings };
+    return { ...layout, columns: [{ id: "col-empty", weight: 24, slots: [] }] };
   }
 
-  return { version: layout.version, columns: enforceMinimums(columns), settings: layout.settings };
+  return { ...layout, columns: enforceMinimums(columns) };
 }
