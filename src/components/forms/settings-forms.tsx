@@ -789,7 +789,7 @@ export function SettingsForms({
               <div className="rounded-xl border border-slate-800/90 bg-slate-950/35 p-3 lg:p-3.5">
                 <CardHeading
                   title="Default expense account"
-                  hint="Preselects this account on the dashboard Add Expense form and in CSV import defaults. Choose None to use your first active account instead."
+                  hint="Preselects this account on the dashboard Add card and in CSV import defaults. Choose None to use your first active account instead."
                 />
                 <ServerActionForm action={updateDefaultExpenseAccountAction} className={`${formGridResponsive} items-end`}>
                   <LabeledField
