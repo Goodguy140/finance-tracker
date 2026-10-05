@@ -32,19 +32,19 @@ import {
   type Option,
   getTodayIsoDate,
   getProfileInitials,
-  defaultExpenseAccountSelectValue,
   getCurrentPeriodMonth,
   getPreviousPeriodMonth,
   formatBudgetPeriodLabel,
 } from "./shared";
 import {
   changePasswordAction, clearUserFinancialDataAction, createFinancialAccountAction, createInvestmentFlowAction,
-  createPortfolioSnapshotAction, createRecurringTransactionAction, deleteBudgetAction, deleteFinancialAccountAction,
+  createPortfolioSnapshotAction, deleteBudgetAction, deleteFinancialAccountAction,
   updateDefaultExpenseAccountAction, updateFinancialAccountAction, setFinancialAccountArchivedAction, deleteAccountAction,
   importUserBackupAction, updateBudgetAction, updateDashboardReadabilityAction, updateProfileAction, upsertBudgetAction,
 } from "@/app/actions";
 import { ExpenseCsvImportForm } from "./expense-forms";
 import { SubscriptionsPanel, type SubscriptionView } from "@/components/subscriptions-panel";
+import { RecurringRuleForm } from "@/components/recurring-rule-form";
 import { ApiTokensPanel, type ApiTokenRow, type ApiTokensMfaState } from "@/components/api-tokens-panel";
 import { PlaidConnectionsPanel, type PlaidConnectionsPanelProps } from "@/components/plaid-connections-panel";
 import { SecurityPanel, type SecurityPanelProps } from "@/components/security-panel";
@@ -151,89 +151,13 @@ export function RecurringTransactionForm({
   incomeCategories: Option[];
   defaultExpenseAccountId?: string | null;
 }) {
-  const today = getTodayIsoDate();
-  const fieldIds = useId();
-  const accountSelectDefault = defaultExpenseAccountSelectValue(accounts, defaultExpenseAccountId);
-  const [type, setType] = useState<"EXPENSE" | "INCOME">("EXPENSE");
-  const categoryOptions = type === "INCOME" ? incomeCategories : expenseCategories;
-
   return (
-    <ServerActionForm action={createRecurringTransactionAction} className={formGridResponsive}>
-      <LabeledField label="Recurring transaction name" hint="Shown in your recurring transactions list." className={spanFullSm}>
-        <textarea
-          name="name"
-          rows={2}
-          maxLength={80}
-          className={textAreaClass}
-          placeholder="e.g. Paycheque, rent, gym membership"
-        />
-      </LabeledField>
-      <LabeledField label="Type" hint="Whether this repeats as income or an expense.">
-        <select
-          id={`${fieldIds}-type`}
-          name="type"
-          className={selectClass}
-          value={type}
-          onChange={(event) => setType(event.target.value as "EXPENSE" | "INCOME")}
-        >
-          <option value="EXPENSE">Expense</option>
-          <option value="INCOME">Income</option>
-        </select>
-      </LabeledField>
-      <LabeledField label="Account" hint="Account for this recurring transaction.">
-        <select
-          id={`${fieldIds}-account`}
-          name="accountId"
-          className={selectClass}
-          defaultValue={accountSelectDefault}
-        >
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-      </LabeledField>
-      <LabeledField label="Category" hint={type === "INCOME" ? "Income category for this deposit." : "Expense category for budgeting."}>
-        <select id={`${fieldIds}-category`} name="categoryId" className={selectClass}>
-          {categoryOptions.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </LabeledField>
-      <CurrencyAmountInput name="amount" label="Amount each time" placeholder="0.00" />
-      <LabeledField label="Cadence" hint="How often this transaction is expected.">
-        <select id={`${fieldIds}-cadence`} name="cadence" className={selectClass}>
-          <option value="WEEKLY">Weekly</option>
-          <option value="BIWEEKLY">Biweekly</option>
-          <option value="MONTHLY">Monthly</option>
-          <option value="QUARTERLY">Quarterly</option>
-          <option value="YEARLY">Yearly</option>
-          <option value="BIENNIAL">Every 2 years</option>
-        </select>
-      </LabeledField>
-      <DateField
-        name="nextExpectedDate"
-        label="Next expected date"
-        hint="The next date you expect this transaction."
-        defaultValue={today}
-      />
-      <DateField name="endDate" label="End date" hint="Optional final expected date." />
-      <LabeledField label="Posting" hint="Automatic rules are posted to your log as soon as they are due.">
-        <select name="postMode" defaultValue="REVIEW" className={selectClass}>
-          <option value="REVIEW">Post by hand when due</option>
-          <option value="AUTO">Post automatically when due</option>
-        </select>
-      </LabeledField>
-      <LabeledField label="Note" hint="Optional note copied to posted transactions." className={spanFullSm}>
-        <textarea name="note" rows={2} maxLength={250} className={textAreaClass} placeholder="Optional details" />
-      </LabeledField>
-      <button type="submit" className={`${spanFullSm} ${primaryBtnClass} py-2.5 sm:py-2`}>
-        Add recurring transaction
-      </button>
-    </ServerActionForm>
+    <RecurringRuleForm
+      accounts={accounts}
+      expenseCategories={expenseCategories}
+      incomeCategories={incomeCategories}
+      defaultExpenseAccountId={defaultExpenseAccountId}
+    />
   );
 }
 
