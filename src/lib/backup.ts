@@ -126,6 +126,8 @@ export type UserBackupPayload = {
     direction: "CONTRIBUTION" | "WITHDRAWAL";
     amountCents: number;
     note: string | null;
+    /** The transfer it was counted from; absent in backups written before the link existed. */
+    transactionId?: string | null;
     createdAt: IsoString;
   }>;
   portfolioSnapshots: Array<{
@@ -361,6 +363,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       direction: row.direction,
       amountCents: row.amountCents,
       note: row.note,
+      transactionId: row.transactionId,
       createdAt: row.createdAt.toISOString(),
     })),
     portfolioSnapshots: user.portfolioSnapshots.map((row) => ({

@@ -20,6 +20,8 @@ import { AddEntryCardBody } from "@/components/dashboard-cards/add-entry-card";
 import { BillsForecastCardBody } from "@/components/dashboard-cards/bills-forecast-card";
 import { ExpenseLogPanel } from "@/components/expense-log";
 import { loadContributionRoomData } from "@/lib/contribution-room-data";
+import { isRegisteredAccountType } from "@/lib/contribution-room";
+import { InvestmentsCardBody, type InvestmentActivityItem } from "@/components/dashboard-cards/investments-card";
 import { RefreshLinkedAccountsButton } from "@/components/refresh-linked-accounts";
 import { readDashboardLayout } from "@/lib/dashboard-layout/read";
 import type { DashboardCardId } from "@/lib/dashboard-layout/schema";
@@ -129,7 +131,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const categoryUsageCutoff = new Date(now);
   categoryUsageCutoff.setMonth(categoryUsageCutoff.getMonth() - 3);
 
-  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, ruleContext, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount, plaidAttentionCount, contributionRoom, periodTransfers] =
+  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, ruleContext, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount, plaidAttentionCount, contributionRoom, periodTransfers, periodInvestmentFlows, periodPortfolioSnapshots] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -257,8 +259,19 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     // Listed under the expense log, outside every total.
     prisma.transaction.findMany({
       where: { userId: user.id, type: TransactionType.TRANSFER, ...transactionDateFilter },
-      include: { account: true, verification: true },
+      include: { account: true, verification: true, investmentFlow: { select: { id: true } } },
       orderBy: { date: "desc" },
+    }),
+    // The Investments card's activity for the period on screen.
+    prisma.investmentFlow.findMany({
+      where: { userId: user.id, ...transactionDateFilter },
+      include: { account: true },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    }),
+    prisma.portfolioSnapshot.findMany({
+      where: { userId: user.id, ...transactionDateFilter },
+      include: { account: true },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     }),
   ]);
 
@@ -704,6 +717,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     "recurring",
     "bills-forecast",
     "insights",
+    "investments",
     ...(showDashboardIncomeCard ? (["income"] as const) : []),
   ];
   // Reconciliation is deterministic and runs on every render, so a layout blob that predates
@@ -744,6 +758,48 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       missedSinceDisplay: missedSince ? formatDateOnlyUtc(missedSince) : null,
     })),
   }));
+
+  // Newest first across the three kinds. A transfer already counted toward room is left out:
+  // the contribution recorded from it is in the list, marked as such.
+  const investmentActivity: InvestmentActivityItem[] = [
+    ...periodInvestmentFlows.map((row) => ({
+      kind: "flow" as const,
+      id: row.id,
+      accountId: row.accountId,
+      accountName: row.account.name,
+      direction: row.direction,
+      amountCents: row.amountCents,
+      dateYmd: ymdFromDateUtc(row.date),
+      dateDisplay: formatDateOnlyUtc(row.date),
+      note: row.note,
+      fromTransfer: row.transactionId !== null,
+    })),
+    ...periodPortfolioSnapshots.map((row) => ({
+      kind: "snapshot" as const,
+      id: row.id,
+      accountId: row.accountId,
+      accountName: row.account.name,
+      totalValueCents: row.totalValueCents,
+      dateYmd: ymdFromDateUtc(row.date),
+      dateDisplay: formatDateOnlyUtc(row.date),
+      note: row.note,
+    })),
+    ...periodTransfers.flatMap((row) =>
+      row.account && isRegisteredAccountType(row.account.type) && row.amountCents < 0 && !row.investmentFlow
+        ? [
+            {
+              kind: "transfer" as const,
+              id: row.id,
+              accountName: row.account.name,
+              amountCents: row.amountCents,
+              dateYmd: ymdFromDateUtc(row.date),
+              dateDisplay: formatDateOnlyUtc(row.date),
+              title: row.title,
+            },
+          ]
+        : [],
+    ),
+  ].sort((a, b) => b.dateYmd.localeCompare(a.dateYmd));
 
   // The slot map: card bodies rendered here, on the server, and handed to the client grid as
   // props. The grid arranges them without importing a single card, so none of this page's
@@ -868,6 +924,21 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         <InsightsCardBody insights={insights.visible} maxItems={cardSettings.insights?.maxItems} />
       ) : (
         <p className="text-sm text-slate-400">Insights could not be loaded right now.</p>
+      ),
+    },
+    investments: {
+      subtitle: "TFSA, RRSP, FHSA and other investment accounts",
+      body: (
+        <InvestmentsCardBody
+          accounts={accountOptions}
+          contributionRoom={contributionRoom}
+          activity={investmentActivity}
+          periodLabel={periodDescription}
+          todayYmd={todayYmd}
+          showRoom={cardSettings.investments?.showRoom}
+          showForms={cardSettings.investments?.showForms}
+          showActivity={cardSettings.investments?.showActivity}
+        />
       ),
     },
   };

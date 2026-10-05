@@ -49,6 +49,11 @@ export type { RulePreviewResult, RuleApplyResult } from "./actions/transaction-r
 export {
   createInvestmentFlowAction,
   createPortfolioSnapshotAction,
+  updateInvestmentFlowAction,
+  deleteInvestmentFlowAction,
+  updatePortfolioSnapshotAction,
+  deletePortfolioSnapshotAction,
+  countTransferTowardRoomAction,
   upsertContributionRoomAction,
   deleteContributionRoomAction,
 } from "./actions/investments";

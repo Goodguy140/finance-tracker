@@ -63,6 +63,42 @@ describe("reconcileDashboardLayout — card drift", () => {
     expect(result.changed).toBe(true);
   });
 
+  it("adds a card that joins another's slot as a tab behind the one in front", () => {
+    // A layout saved before Investments existed, with Insights stacked under Trend.
+    const blob = defaultBlob();
+    blob.columns[0].slots = blob.columns[0].slots.filter((slot) => slot.id !== "slot-insights");
+    blob.columns[0].slots[0] = { id: "slot-trend", cards: ["cumulative-spend", "insights"], activeIndex: 1 };
+    const result = reconcileDashboardLayout(json(blob), ALL);
+    const host = result.stored.columns[0].slots[0];
+    expect(host.cards).toEqual(["cumulative-spend", "insights", "investments"]);
+    expect(host.activeIndex).toBe(1);
+    expect(result.stored.columns[0].slots).toHaveLength(blob.columns[0].slots.length);
+    expect(result.changed).toBe(true);
+  });
+
+  it("joins a card that was itself just re-added", () => {
+    // Neither Insights nor Investments in the blob: Insights comes back first, then is joined.
+    const blob = defaultBlob();
+    blob.columns[0].slots = blob.columns[0].slots.filter((slot) => slot.id !== "slot-insights");
+    const result = reconcileDashboardLayout(json(blob), ALL);
+    const host = result.stored.columns.flatMap((column) => column.slots).find((slot) => slot.cards.includes("insights"));
+    expect(host?.cards).toEqual(["insights", "investments"]);
+    expect(placement(result.stored)).toEqual(placement(DEFAULT_LAYOUT));
+  });
+
+  it("gives a joining card a slot of its own when the stack it would join is full", () => {
+    const blob = defaultBlob();
+    blob.columns[0].slots = blob.columns[0].slots.filter((slot) => slot.id !== "slot-insights");
+    blob.columns[1].slots = [
+      { id: "slot-full", cards: ["budgets", "spending-by-category", "income", "recurring", "insights", "add-expense", "expense-log", "bills-forecast"], activeIndex: 0 },
+    ];
+    blob.columns[0].slots = [{ id: "slot-trend", cards: ["cumulative-spend"], activeIndex: 0 }];
+    const result = reconcileDashboardLayout(json(blob), ALL);
+    const slots = result.stored.columns.flatMap((column) => column.slots);
+    expect(slots.find((slot) => slot.id === "slot-full")?.cards).not.toContain("investments");
+    expect(slots.find((slot) => slot.cards.includes("investments"))?.cards).toEqual(["investments"]);
+  });
+
   it("keeps a duplicated card once, in the slot it appeared in first", () => {
     const blob = defaultBlob();
     blob.columns[0].slots.unshift({ id: "slot-dupe", cards: ["budgets"], activeIndex: 0 });

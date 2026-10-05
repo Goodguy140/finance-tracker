@@ -135,6 +135,16 @@ export function reconcileDashboardLayout(
     if (seen.has(cardId) || hidden.includes(cardId)) continue;
     changed = true;
     const meta = DASHBOARD_CARDS[cardId];
+    const host = meta.joinsSlotOf && seen.has(meta.joinsSlotOf) ? meta.joinsSlotOf : null;
+    const hostSlot = host
+      ? columns.flatMap((column) => column.slots).find((slot) => slot.cards.includes(host))
+      : undefined;
+    if (hostSlot && hostSlot.cards.length < MAX_CARDS_PER_SLOT) {
+      // Appended behind the active tab, so the card the user was looking at stays in front.
+      hostSlot.cards.push(cardId);
+      seen.add(cardId);
+      continue;
+    }
     const columnIndex = Math.min(Math.max(meta.defaultColumnIndex, 0), columns.length - 1);
     const target = columns[columnIndex] ?? columns[0];
     const slotIndex = Math.min(Math.max(meta.defaultSlotIndex, 0), target.slots.length);
@@ -143,6 +153,7 @@ export function reconcileDashboardLayout(
       cards: [cardId],
       activeIndex: 0,
     });
+    seen.add(cardId);
   }
 
   const nonEmpty = columns.filter((column) => column.slots.length > 0);

@@ -25,6 +25,13 @@ export type DashboardCardMeta = {
   conditional: boolean;
   /** False for cards with nothing worth configuring; suppresses the header gear. */
   hasSettings: boolean;
+  /**
+   * In a layout saved before this card existed, join this card's slot as a tab (not the active
+   * one) instead of taking a slot of its own. For a card that would otherwise add a slot where
+   * a new one would upset the column balance; falls back to the default position when that
+   * card is not on the dashboard or its stack is full.
+   */
+  joinsSlotOf?: DashboardCardId;
 };
 
 export const DASHBOARD_CARDS: Record<DashboardCardId, DashboardCardMeta> = {
@@ -116,6 +123,18 @@ export const DASHBOARD_CARDS: Record<DashboardCardId, DashboardCardMeta> = {
     conditional: false,
     hasSettings: true,
   },
+  investments: {
+    id: "investments",
+    title: "Investments",
+    tabLabel: "Investments",
+    // A tab on Insights rather than a slot of its own, for the column-fold reason under
+    // `insights`: a new slot in either column could flip which one a narrow window folds.
+    defaultColumnIndex: 0,
+    defaultSlotIndex: 2,
+    joinsSlotOf: "insights",
+    conditional: false,
+    hasSettings: true,
+  },
 };
 
 /**
@@ -130,7 +149,7 @@ export const DEFAULT_LAYOUT: DashboardLayout = {
       weight: 14,
       slots: [
         { id: "slot-trend", cards: ["cumulative-spend"], activeIndex: 0 },
-        { id: "slot-insights", cards: ["insights"], activeIndex: 0 },
+        { id: "slot-insights", cards: ["insights", "investments"], activeIndex: 0 },
         { id: "slot-bills-forecast", cards: ["bills-forecast"], activeIndex: 0 },
         { id: "slot-add", cards: ["add-expense"], activeIndex: 0 },
         { id: "slot-log", cards: ["expense-log"], activeIndex: 0 },
@@ -153,7 +172,8 @@ export const DEFAULT_LAYOUT: DashboardLayout = {
 /**
  * Mobile is frozen and never derived from the user's desktop layout: one column, in the
  * order the previous hand-placed `order-1..4` classes produced — the three-panel swipe
- * carousel, then the expense log, income, recurring, upcoming bills, and insights. Add Expense is absent because it
+ * carousel, then the expense log, income, recurring, upcoming bills, and insights with investments as its second
+ * tab. Add Expense is absent because it
  * was `hidden lg:block`; below `lg` it lives in the quick-add sheet instead.
  */
 export const MOBILE_SLOTS: readonly DashboardSlot[] = [
@@ -166,7 +186,7 @@ export const MOBILE_SLOTS: readonly DashboardSlot[] = [
   { id: "mobile-income", cards: ["income"], activeIndex: 0 },
   { id: "mobile-recurring", cards: ["recurring"], activeIndex: 0 },
   { id: "mobile-bills-forecast", cards: ["bills-forecast"], activeIndex: 0 },
-  { id: "mobile-insights", cards: ["insights"], activeIndex: 0 },
+  { id: "mobile-insights", cards: ["insights", "investments"], activeIndex: 0 },
 ];
 
 export function cardTitle(id: DashboardCardId): string {

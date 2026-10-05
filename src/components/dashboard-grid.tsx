@@ -188,14 +188,21 @@ export function DashboardGrid({
   const savingRef = useRef(false);
   const pendingRef = useRef<DashboardLayout | null>(null);
   const serverSnapshot = useRef(JSON.stringify(storedLayout));
+  // The last layout the server sent, as distinct from the last one this client saved.
+  const lastServerLayout = useRef(JSON.stringify(storedLayout));
 
   const available = useMemo(() => Object.keys(cards) as DashboardCardId[], [cards]);
 
   // Re-seed from the server only when it genuinely changed and nothing is in flight, so a
   // re-render from an unrelated navigation cannot clobber an edit the user is mid-way through.
+  // "Changed" is against the server's previous layout too: a refresh fetched before a save
+  // landed (a form submitted straight after switching tabs) still carries the old layout, and
+  // re-seeding from it would undo a change that is already saved.
   useEffect(() => {
     const next = JSON.stringify(storedLayout);
-    if (next === serverSnapshot.current || savingRef.current || pendingRef.current) return;
+    const previous = lastServerLayout.current;
+    lastServerLayout.current = next;
+    if (next === previous || next === serverSnapshot.current || savingRef.current || pendingRef.current) return;
     serverSnapshot.current = next;
     storedRef.current = storedLayout;
     setStored(storedLayout);
