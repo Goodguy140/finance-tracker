@@ -111,7 +111,7 @@ async function clippedCards(page: Page): Promise<string[]> {
  * then intermediate moves before the drop. A single mouse jump is not seen as a drag.
  */
 async function dragCardTo(page: Page, handleLabel: string, target: { x: number; y: number }) {
-  // Exact: "Move Add Expense" is also a substring of the card's "Remove Add Expense" button.
+  // Exact: "Move Add" is also a substring of the card's "Remove Add" button.
   const handle = page.getByRole("button", { name: handleLabel, exact: true });
   await handle.scrollIntoViewIfNeeded();
   const box = await handle.boundingBox();
