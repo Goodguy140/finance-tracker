@@ -46,10 +46,10 @@ test("room entered from CRA is reduced by contributions, and going over is flagg
 
   await page.goto("/");
   await expectDashboardHome(page);
-  await page.getByRole("button", { name: "Add", exact: true }).click();
-  const addDialog = page.getByRole("dialog", { name: "Add transaction" });
-  await addDialog.getByRole("button", { name: "Investments" }).click();
-  const flowForm = addDialog.locator("form").filter({ has: page.locator('select[name="direction"]') });
+  // The Investments card is the second tab on the Insights card in the default layout.
+  const investments = page.getByRole("region", { name: "Insights, Investments" });
+  await investments.getByRole("tab", { name: "Investments" }).click();
+  const flowForm = investments.getByRole("tabpanel").locator("form").filter({ has: page.locator('select[name="direction"]') });
   await flowForm.locator('select[name="accountId"]').selectOption(tfsa.id);
   const amount = flowForm.locator('input[name="amount"]');
 

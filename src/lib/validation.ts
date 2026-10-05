@@ -81,22 +81,6 @@ export const updateIncomeBaseSchema = incomeBaseSchema.extend({
   transactionId: z.string().min(1),
 });
 
-export const splitExpenseSchema = z.object({
-  accountId: z.string().min(1),
-  date: z.string().min(1),
-  title: z.string().trim().max(120).optional(),
-  note: z.string().max(250).optional(),
-  parts: z
-    .array(
-      z.object({
-        categoryId: z.string().min(1),
-        amount: positiveAmount,
-      }),
-    )
-    .min(1, "Add at least one split line.")
-    .max(50, "A split expense can have at most 50 lines."),
-});
-
 export const budgetSchema = z.object({
   categoryName: z.string().trim().min(1).max(80),
   limit: positiveAmount,

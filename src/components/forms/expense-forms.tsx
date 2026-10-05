@@ -1,12 +1,10 @@
 "use client";
 
 import { useEffect, useId, useImperativeHandle, useRef, useState, useSyncExternalStore, type RefObject } from "react";
-import { createPortal } from "react-dom";
 import { ServerActionForm } from "@/components/server-action-form";
 import { ExpenseTitleAutocomplete } from "@/components/expense-title-autocomplete";
 import { parseImportedDate } from "@/lib/import-dates";
 import { parseStatementAmount } from "@/lib/money";
-import { MOBILE_OVERLAY_ROOT_Z_CLASS, MOBILE_OVERLAY_SHEET_Z_CLASS } from "@/lib/mobile-z-index";
 import {
   inputClass,
   selectClass,
@@ -14,7 +12,6 @@ import {
   formGridResponsive,
   spanFullSm,
   primaryBtnClass,
-  secondaryBtnClass,
   LabeledField,
   FieldHintModeProvider,
   CurrencyAmountInput,
@@ -31,11 +28,7 @@ import {
 import type { ExpenseTitleSuggestion } from "@/lib/expense-title-suggestions";
 import type { RuleOutcome } from "@/lib/transaction-rules";
 import { RuleAutofillHint, useRuleAutofill } from "@/components/transaction-rules-context";
-import { createExpenseAction, importExpensesCsvAction, createSplitExpenseAction } from "@/app/actions";
-import type { AddMenuFormKey } from "./auth-forms";
-import { IncomeForm } from "./income-forms";
-import { RecurringTransactionForm, InvestmentForms } from "./settings-forms";
-import type { ContributionRoomData } from "@/lib/contribution-room";
+import { createExpenseAction, importExpensesCsvAction } from "@/app/actions";
 
 export function ExpenseTitleAndCategoryFields({
   expenseCategories,
@@ -533,156 +526,6 @@ export function ExpenseCsvImportForm({
 }
 
 
-function subscribeMobileViewport(onStoreChange: () => void) {
-  const mediaQuery = window.matchMedia("(max-width: 639px)");
-  mediaQuery.addEventListener("change", onStoreChange);
-  return () => mediaQuery.removeEventListener("change", onStoreChange);
-}
-
-function readMobileViewport() {
-  return window.matchMedia("(max-width: 639px)").matches;
-}
-
-export function AddFormsDropdown({
-  accounts,
-  expenseCategories,
-  incomeCategories,
-  defaultExpenseAccountId,
-  contributionRoom,
-}: {
-  accounts: Option[];
-  expenseCategories: Option[];
-  incomeCategories: Option[];
-  defaultExpenseAccountId?: string | null;
-  contributionRoom?: ContributionRoomData;
-}) {
-  const [open, setOpen] = useState(false);
-  const [activeForm, setActiveForm] = useState<AddMenuFormKey>("income");
-  const isMobileViewport = useSyncExternalStore(subscribeMobileViewport, readMobileViewport, () => true);
-
-  const menuPanel = (
-    <>
-      <h2 id="add-menu-title" className="sr-only">
-        Add transaction
-      </h2>
-      <div className="mb-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setActiveForm("income")}
-          className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-            activeForm === "income" ? "bg-blue-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-          }`}
-        >
-          Income
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveForm("splitExpense")}
-          className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-            activeForm === "splitExpense" ? "bg-blue-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-          }`}
-        >
-          Split Expense
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveForm("recurring")}
-          className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-            activeForm === "recurring" ? "bg-blue-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-          }`}
-        >
-          Recurring
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveForm("investment")}
-          className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-            activeForm === "investment" ? "bg-blue-500 text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-          }`}
-        >
-          Investments
-        </button>
-      </div>
-
-      {activeForm === "income" ? (
-        <IncomeForm accounts={accounts} incomeCategories={incomeCategories} />
-      ) : null}
-      {activeForm === "splitExpense" ? (
-        <SplitExpenseForm
-          accounts={accounts}
-          expenseCategories={expenseCategories}
-          defaultExpenseAccountId={defaultExpenseAccountId}
-        />
-      ) : null}
-      {activeForm === "recurring" ? (
-        <RecurringTransactionForm
-          accounts={accounts}
-          expenseCategories={expenseCategories}
-          incomeCategories={incomeCategories}
-          defaultExpenseAccountId={defaultExpenseAccountId}
-        />
-      ) : null}
-      {activeForm === "investment" ? <InvestmentForms accounts={accounts} contributionRoom={contributionRoom} /> : null}
-
-      <div className="mt-4 flex justify-end sm:mt-3">
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className="w-full touch-manipulation rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-slate-800 sm:w-auto sm:rounded-lg sm:px-2.5 sm:py-1.5 sm:text-xs"
-        >
-          Close
-        </button>
-      </div>
-    </>
-  );
-
-  return (
-    <div className="relative z-50">
-      <button
-        type="button"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => setOpen((prev) => !prev)}
-        className="touch-manipulation rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 transition hover:border-slate-600 hover:bg-slate-800 sm:py-1.5"
-      >
-        Add
-      </button>
-      {open ? (
-        isMobileViewport && typeof document !== "undefined"
-          ? createPortal(
-              <>
-                <button
-                  type="button"
-                  className={`fixed inset-0 ${MOBILE_OVERLAY_ROOT_Z_CLASS} bg-black/50`}
-                  aria-label="Close add menu"
-                  onClick={() => setOpen(false)}
-                />
-                <div
-                  role="dialog"
-                  aria-modal="true"
-                  aria-labelledby="add-menu-title"
-                  className={`fixed inset-x-0 bottom-0 ${MOBILE_OVERLAY_SHEET_Z_CLASS} max-h-[min(calc(100dvh-env(safe-area-inset-top,0px)-12px),42rem)] overflow-y-auto overscroll-contain rounded-t-2xl border border-slate-700 bg-slate-950/98 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl backdrop-blur`}
-                >
-                  {menuPanel}
-                </div>
-              </>,
-              document.body,
-            )
-          : (
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="add-menu-title"
-              className="absolute right-0 top-full z-[60] mt-2 max-h-[min(85vh,40rem)] w-[min(92vw,32rem)] overflow-y-auto overscroll-contain rounded-2xl border border-slate-700 bg-slate-950/98 p-4 shadow-2xl backdrop-blur"
-            >
-              {menuPanel}
-            </div>
-          )
-      ) : null}
-    </div>
-  );
-}
-
 export function ExpenseForm({
   accounts,
   expenseCategories,
@@ -989,128 +832,5 @@ export function ExpenseForm({
       </button>
     </ServerActionForm>
     </FieldHintModeProvider>
-  );
-}
-
-export function SplitExpenseForm({
-  accounts,
-  expenseCategories,
-  defaultExpenseAccountId,
-}: {
-  accounts: Option[];
-  expenseCategories: Option[];
-  defaultExpenseAccountId?: string | null;
-}) {
-  const defaultCategoryId = expenseCategories[0]?.id ?? "";
-  const today = getTodayIsoDate();
-  const fieldIds = useId();
-  const accountSelectDefault = defaultExpenseAccountSelectValue(accounts, defaultExpenseAccountId);
-  const [parts, setParts] = useState<Array<{ categoryId: string; amount: string }>>([
-    { categoryId: defaultCategoryId, amount: "0" },
-  ]);
-  const serializedParts = JSON.stringify(
-    parts.map((part) => ({
-      categoryId: part.categoryId,
-      amount: Number(part.amount || 0),
-    })),
-  );
-
-  return (
-    <ServerActionForm action={createSplitExpenseAction} className={formGridResponsive}>
-      <LabeledField label="Account" hint="Account for this split expense.">
-        <select
-          id={`${fieldIds}-account`}
-          name="accountId"
-          className={selectClass}
-          defaultValue={accountSelectDefault}
-        >
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-      </LabeledField>
-      <DateField
-        name="date"
-        label="Transaction date"
-        hint="Date shown for the combined split transaction."
-        defaultValue={today}
-      />
-      {parts.map((part, index) => (
-        <div
-          key={`split-part-${index}`}
-          className={`${spanFullSm} grid grid-cols-1 gap-3 border-t border-slate-800 pt-3 sm:grid-cols-5 sm:gap-2 sm:border-0 sm:pt-0`}
-        >
-          <LabeledField label="Category for this portion" className="sm:col-span-3">
-            <select
-              id={`${fieldIds}-split-cat-${index}`}
-              value={part.categoryId}
-              onChange={(e) =>
-                setParts((prev) =>
-                  prev.map((entry, entryIndex) =>
-                    entryIndex === index ? { ...entry, categoryId: e.target.value } : entry,
-                  ),
-                )
-              }
-              className={selectClass}
-            >
-              {expenseCategories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </LabeledField>
-          <CurrencyAmountInput
-            label="Part amount"
-            value={part.amount}
-            onChange={(e) =>
-              setParts((prev) =>
-                prev.map((entry, entryIndex) =>
-                  entryIndex === index ? { ...entry, amount: e.target.value } : entry,
-                ),
-              )
-            }
-            placeholder="0.00"
-            className="sm:col-span-2"
-          />
-          {parts.length > 1 ? (
-            <button
-              type="button"
-              onClick={() => setParts((prev) => prev.filter((_, partIndex) => partIndex !== index))}
-              className={`sm:col-span-5 ${secondaryBtnClass} py-2.5 sm:py-2`}
-            >
-              Remove this portion
-            </button>
-          ) : null}
-        </div>
-      ))}
-      <div className={`${spanFullSm} flex flex-col gap-2 sm:flex-row sm:items-center`}>
-        <button
-          type="button"
-          onClick={() => setParts((prev) => [...prev, { categoryId: defaultCategoryId, amount: "0" }])}
-          className={`${secondaryBtnClass} py-2.5 sm:py-2`}
-        >
-          Add another portion
-        </button>
-      </div>
-      <input type="hidden" name="parts" value={serializedParts} />
-      <LabeledField label="Title" hint="Optional (max 120 characters)." className={spanFullSm}>
-        <textarea
-          name="title"
-          rows={2}
-          maxLength={120}
-          className={textAreaClass}
-          placeholder="Overall split title"
-        />
-      </LabeledField>
-      <LabeledField label="Note" hint="Optional (max 250 characters)." className={spanFullSm}>
-        <textarea name="note" rows={4} maxLength={250} className={textAreaClass} placeholder="Notes for this split" />
-      </LabeledField>
-      <button type="submit" className={`${spanFullSm} ${primaryBtnClass} py-2.5 sm:py-2`}>
-        Add split expense
-      </button>
-    </ServerActionForm>
   );
 }
