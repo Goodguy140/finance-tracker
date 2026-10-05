@@ -53,7 +53,7 @@ test("desktop: create and post a recurring expense", async ({ page }, testInfo) 
 
   const { nextExpectedDate, nextDuePattern } = recurringExpenseDates();
   const name = `Recurring gym ${stamp}`;
-  await addDialog.locator('textarea[name="name"]').fill(name);
+  await addDialog.locator('[name="name"]').fill(name);
   await addDialog.locator('input[name="amount"]').fill("19.99");
   await addDialog.locator('select[name="cadence"]').selectOption("MONTHLY");
   await addDialog.locator('input[name="nextExpectedDate"]').fill(nextExpectedDate);
@@ -134,4 +134,71 @@ test("an overdue rule from an earlier month can be posted for the current month"
     .toBe(thisMonthYmd);
   const advanced = await prisma.recurringTransaction.findUniqueOrThrow({ where: { id: rule.id } });
   expect(ymdFromDateUtc(advanced.nextExpectedDate)).toBe(`${shiftYm(currentYm, 1)}-10`);
+});
+
+test("desktop: edit a recurring rule from the Recurring card", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "The edit dialog is the same on mobile; covered once");
+
+  const stamp = uniqueStamp();
+  const email = `e2e-recurring-edit-${stamp}@example.com`;
+  const password = "e2e-password-123";
+  const user = await prisma.user.create({
+    data: {
+      email,
+      passwordHash: await hash(password, 12),
+      displayName: "E2E Recurring User",
+      countryCode: "CA",
+      timezone: "America/Toronto",
+      role: "USER",
+    },
+  });
+  await ensureDefaultDataForUser(user);
+  const account = await prisma.account.findFirstOrThrow({ where: { userId: user.id } });
+  const category = await prisma.category.findFirstOrThrow({ where: { userId: user.id, kind: "EXPENSE" } });
+
+  // Overdue from last month, so it shows in the current month whatever today's date is.
+  const currentYm = currentYmInTimeZone(user.timezone);
+  const name = `Editable gym ${stamp}`;
+  const rule = await prisma.recurringTransaction.create({
+    data: {
+      userId: user.id,
+      accountId: account.id,
+      categoryId: category.id,
+      type: "EXPENSE",
+      name,
+      amountCents: 1999,
+      cadence: "MONTHLY",
+      nextExpectedDate: dateFromYmd(`${shiftYm(currentYm, -1)}-10`),
+    },
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("Email").fill(email);
+  await page.getByPlaceholder("Password").fill(password);
+  await page.getByRole("button", { name: "Login" }).click();
+  await expectDashboardHome(page);
+
+  const recurringPanel = page.getByRole("region", { name: "Recurring transactions" });
+  await expect(recurringPanel.getByText(name, { exact: true })).toBeVisible({ timeout: 15_000 });
+  await recurringPanel.getByRole("button", { name: "Edit", exact: true }).click();
+
+  // The shared form opens filled with the rule as stored.
+  const dialog = page.getByRole("dialog", { name: "Edit recurring transaction" });
+  const amount = dialog.getByLabel("Amount each time");
+  await expect(amount).toHaveValue("19.99");
+  await expect(dialog.getByLabel("Category")).toHaveValue(category.id);
+  await amount.fill("25.50");
+  await dialog.getByLabel("Note").fill("Price went up");
+  await dialog.getByRole("button", { name: "Save changes" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  await expect
+    .poll(
+      async () => {
+        const row = await prisma.recurringTransaction.findUnique({ where: { id: rule.id } });
+        return row ? { amountCents: row.amountCents, note: row.note, categoryId: row.categoryId, type: row.type } : null;
+      },
+      { timeout: 10_000 },
+    )
+    .toEqual({ amountCents: 2550, note: "Price went up", categoryId: category.id, type: "EXPENSE" });
 });
