@@ -153,7 +153,7 @@ test("a card dragged to another column stays there across a reload", async ({ pa
   const targetCard = page.locator('[data-column-index="1"] [data-card-id]').first();
   const target = await targetCard.boundingBox();
   if (!target) throw new Error("no card in the side column");
-  await dragCardTo(page, "Move Add Expense", {
+  await dragCardTo(page, "Move Add", {
     x: target.x + target.width / 2,
     y: target.y + target.height / 2,
   });
