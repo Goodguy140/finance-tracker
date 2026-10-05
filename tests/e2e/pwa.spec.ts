@@ -80,7 +80,7 @@ test("offline: last dashboard stays readable, writes are refused, sign-out drops
   if (testInfo.project.name === "mobile-chromium") {
     await expect(page.getByRole("button", { name: "Quick add expense" })).toBeDisabled();
   } else {
-    const section = page.getByRole("region", { name: "Add Expense" });
+    const section = page.getByRole("region", { name: "Add", exact: true });
     await section.getByPlaceholder("e.g. Weekly groceries, Shell fuel").fill(offlineTitle);
     await section.locator('input[name="amount"]').fill("9.99");
     await section.getByRole("button", { name: "Add expense", exact: true }).click();

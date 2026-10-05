@@ -111,7 +111,7 @@ async function clippedCards(page: Page): Promise<string[]> {
  * then intermediate moves before the drop. A single mouse jump is not seen as a drag.
  */
 async function dragCardTo(page: Page, handleLabel: string, target: { x: number; y: number }) {
-  // Exact: "Move Add Expense" is also a substring of the card's "Remove Add Expense" button.
+  // Exact: "Move Add" is also a substring of the card's "Remove Add" button.
   const handle = page.getByRole("button", { name: handleLabel, exact: true });
   await handle.scrollIntoViewIfNeeded();
   const box = await handle.boundingBox();
@@ -154,7 +154,7 @@ test("a card dragged to another column stays there across a reload", async ({ pa
   const targetCard = page.locator('[data-column-index="1"] [data-card-id]').first();
   const target = await targetCard.boundingBox();
   if (!target) throw new Error("no card in the side column");
-  await dragCardTo(page, "Move Add Expense", {
+  await dragCardTo(page, "Move Add", {
     x: target.x + target.width / 2,
     y: target.y + target.height / 2,
   });

@@ -64,7 +64,8 @@ export const DASHBOARD_CARDS: Record<DashboardCardId, DashboardCardMeta> = {
   },
   "add-expense": {
     id: "add-expense",
-    title: "Add Expense",
+    // The id predates income being added here; it stays, since saved layouts refer to it.
+    title: "Add",
     tabLabel: "Add",
     defaultColumnIndex: 0,
     defaultSlotIndex: 1,

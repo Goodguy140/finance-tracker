@@ -86,6 +86,7 @@ function RecurringCard({
   onEdit: (item: RecurringTransactionListItem) => void;
   onSkip: (item: RecurringTransactionListItem) => void;
 }) {
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5 text-left text-sm text-slate-100">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -142,19 +143,39 @@ function RecurringCard({
             {item.enabled ? "Disable" : "Enable"}
           </button>
         </ServerActionForm>
-        <ServerActionForm action={deleteRecurringTransactionAction}>
-          <input type="hidden" name="recurringTransactionId" value={item.id} />
-          <button type="submit" className={secondaryBtnClass}>
-            Remove
-          </button>
-        </ServerActionForm>
+        <button type="button" className={secondaryBtnClass} onClick={() => setConfirmingRemove(true)}>
+          Remove
+        </button>
       </div>
+      {confirmingRemove ? (
+        // Removing a rule cannot be undone, so it asks first. Entries it already posted stay.
+        <div
+          role="group"
+          aria-label={`Remove ${item.name}?`}
+          className="mt-2 flex flex-wrap items-center justify-end gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-2"
+        >
+          <span className="mr-auto text-xs text-red-100">Remove {item.name}? Entries it already posted stay in your log.</span>
+          <button type="button" className={secondaryBtnClass} onClick={() => setConfirmingRemove(false)}>
+            Keep
+          </button>
+          <ServerActionForm action={deleteRecurringTransactionAction}>
+            <input type="hidden" name="recurringTransactionId" value={item.id} />
+            <button
+              type="submit"
+              className="touch-manipulation rounded-xl bg-red-500/80 px-3 py-2 text-sm font-medium text-white transition hover:bg-red-500"
+            >
+              Remove rule
+            </button>
+          </ServerActionForm>
+        </div>
+      ) : null}
     </div>
   );
 }
 
 export function RecurringTransactionsPanel({
   items,
+  otherItems = [],
   accounts,
   expenseCategories,
   incomeCategories,
@@ -162,6 +183,8 @@ export function RecurringTransactionsPanel({
   recentIncomes = [],
 }: {
   items: RecurringTransactionListItem[];
+  /** Rules outside the month on screen, listed last when the card is asked to show them. */
+  otherItems?: RecurringTransactionListItem[];
   accounts: Option[];
   expenseCategories: Option[];
   incomeCategories: Option[];
@@ -170,9 +193,10 @@ export function RecurringTransactionsPanel({
   recentIncomes?: RecentExpenseOption[];
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
-  const editingItem = items.find((item) => item.id === editingId) ?? null;
+  const allItems = useMemo(() => [...items, ...otherItems], [items, otherItems]);
+  const editingItem = allItems.find((item) => item.id === editingId) ?? null;
   const [skippingId, setSkippingId] = useState<string | null>(null);
-  const skippingItem = items.find((item) => item.id === skippingId) ?? null;
+  const skippingItem = allItems.find((item) => item.id === skippingId) ?? null;
   const startEditing = (item: RecurringTransactionListItem) => setEditingId(item.id);
   const startSkipping = (item: RecurringTransactionListItem) => setSkippingId(item.id);
 
@@ -182,18 +206,19 @@ export function RecurringTransactionsPanel({
       { key: "due", title: "Due today", items: items.filter((item) => item.status === "due") },
       { key: "upcoming", title: "Upcoming", items: items.filter((item) => item.status === "upcoming") },
       { key: "disabled", title: "Disabled", items: items.filter((item) => item.status === "disabled") },
+      { key: "other", title: "Other months", items: otherItems },
     ],
-    [items],
+    [items, otherItems],
   );
 
-  if (items.length === 0) {
+  if (allItems.length === 0) {
     return (
       <p className="text-sm text-slate-400">
-        No recurring transactions yet. Add one from the{" "}
+        No recurring transactions yet. Add one with{" "}
         <span className="rounded-md border border-slate-700 bg-slate-800/60 px-1.5 py-0.5 text-xs font-medium text-slate-200">
-          Add
+          + New rule
         </span>{" "}
-        menu.
+        above.
       </p>
     );
   }

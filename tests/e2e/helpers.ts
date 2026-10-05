@@ -66,7 +66,7 @@ export async function addExpenseOnDashboard(
     await sheet.locator('input[name="amount"]').fill(amount);
     await sheet.getByRole("button", { name: "Add expense" }).click();
   } else {
-    const section = page.getByRole("region", { name: "Add Expense" });
+    const section = page.getByRole("region", { name: "Add", exact: true });
     await section.getByPlaceholder("e.g. Weekly groceries, Shell fuel").fill(title);
     await section.locator('input[name="amount"]').fill(amount);
     // Exact: every card header carries a settings button named "<card> settings", which a

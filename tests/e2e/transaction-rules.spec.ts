@@ -36,7 +36,7 @@ async function createUserAndLogin(page: Page, label: string) {
 }
 
 function addExpenseCard(page: Page) {
-  return page.getByRole("region", { name: "Add Expense" });
+  return page.getByRole("region", { name: "Add", exact: true });
 }
 
 test("a rule fills category and account on the add-expense form", async ({ page }, testInfo) => {

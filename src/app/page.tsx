@@ -3,7 +3,6 @@ import { CategoryKind, PlaidStagedStatus, RecurringCadence, TransactionType } fr
 import Link from "next/link";
 import {
   AddFormsDropdown,
-  ExpenseForm,
   LogoutButton,
 } from "@/components/forms";
 import { DashboardMobileActions } from "@/components/dashboard-mobile-actions";
@@ -16,7 +15,8 @@ import { BudgetsCardActions, BudgetsCardBody } from "@/components/dashboard-card
 import { SpendingByCategoryCardBody } from "@/components/dashboard-cards/spending-by-category-card";
 import { IncomeCardBody } from "@/components/dashboard-cards/income-card";
 import { InsightsCardBody } from "@/components/dashboard-cards/insights-card";
-import { RecurringCardBody } from "@/components/dashboard-cards/recurring-card";
+import { RecurringCardActions, RecurringCardBody } from "@/components/dashboard-cards/recurring-card";
+import { AddEntryCardBody } from "@/components/dashboard-cards/add-entry-card";
 import { BillsForecastCardBody } from "@/components/dashboard-cards/bills-forecast-card";
 import { ExpenseLogPanel } from "@/components/expense-log";
 import { loadContributionRoomData } from "@/lib/contribution-room-data";
@@ -638,8 +638,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     if (occurrence) return [{ rule, occurrence }];
     return recurringIdsPostedInPeriod.has(rule.id) ? [{ rule, occurrence: rule.nextExpectedDate }] : [];
   });
-  const recurringRulesOutsidePeriod = recurringTransactions.length - periodRecurringRules.length;
-  const recurringListItems = periodRecurringRules.map(({ rule, occurrence }) => ({
+  const toRecurringListItem = ({ rule, occurrence }: (typeof periodRecurringRules)[number]) => ({
     id: rule.id,
     // Recurring rules are only ever expenses or income (`recurringTransactionSchema`).
     type: rule.type === TransactionType.INCOME ? ("INCOME" as const) : ("EXPENSE" as const),
@@ -665,7 +664,14 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     enabled: rule.enabled,
     postMode: rule.postMode,
     status: rule.enabled ? getRecurringDateStatus(occurrence, now) : ("disabled" as const),
-  }));
+  });
+  const recurringListItems = periodRecurringRules.map(toRecurringListItem);
+  // The rest, at their next date, for the card's "show them" control: a rule due next quarter
+  // can still be edited or removed without switching months.
+  const periodRecurringIds = new Set(periodRecurringRules.map(({ rule }) => rule.id));
+  const recurringOtherItems = recurringTransactions
+    .filter((rule) => !periodRecurringIds.has(rule.id))
+    .map((rule) => toRecurringListItem({ rule, occurrence: rule.nextExpectedDate }));
 
   const toRecentOption = (txn: { id: string; title: string | null; date: Date; amountCents: number }) => ({
     id: txn.id,
@@ -838,12 +844,15 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     },
     "add-expense": {
       body: (
-        <ExpenseForm
-          accounts={accountOptions}
-          expenseCategories={expenseCategoryAddOptions}
-          defaultExpenseAccountId={user.defaultExpenseAccountId}
-          titleSuggestions={expenseTitleSuggestions}
-          fieldDefaults={cardSettings["add-expense"]}
+        <AddEntryCardBody
+          expense={{
+            accounts: accountOptions,
+            expenseCategories: expenseCategoryAddOptions,
+            defaultExpenseAccountId: user.defaultExpenseAccountId,
+            titleSuggestions: expenseTitleSuggestions,
+            fieldDefaults: cardSettings["add-expense"],
+          }}
+          incomeCategories={incomeCategoryOptions}
         />
       ),
     },
@@ -871,6 +880,14 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     },
     recurring: {
       subtitle: `${period.range === "month" ? `${periodDescription} · ` : ""}${periodRecurringRules.length} rule${periodRecurringRules.length === 1 ? "" : "s"} · due and upcoming first`,
+      headerActions: (
+        <RecurringCardActions
+          accounts={accountOptions}
+          expenseCategories={expenseCategoryOptions}
+          incomeCategories={incomeCategoryOptions}
+          defaultExpenseAccountId={user.defaultExpenseAccountId}
+        />
+      ),
       body: (
         <RecurringCardBody
           items={recurringListItems}
@@ -883,7 +900,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           forecastLabel={recurringForecastPeriod.label}
           showCashFlowSummary={cardSettings.recurring?.showCashFlowSummary}
           rowLimit={cardSettings.recurring?.rowLimit}
-          outsidePeriodCount={recurringRulesOutsidePeriod}
+          otherItems={recurringOtherItems}
           periodLabel={periodDescription}
         />
       ),
