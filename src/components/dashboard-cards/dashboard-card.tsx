@@ -25,6 +25,8 @@ export type DashboardCardProps = {
   settingsControl?: ReactNode;
   /** The drag handle; only supplied in edit mode. */
   dragControl?: ReactNode;
+  /** Takes the card (or a stack's tab on screen) off the dashboard; only supplied in edit mode. */
+  removeControl?: ReactNode;
   /**
    * Covers the body while the layout is being edited, so a drag cannot land inside a live
    * form or a chart tooltip. Sits above the body and below the header, leaving the gear and
@@ -44,6 +46,7 @@ export function DashboardCard({
   headerActions,
   settingsControl,
   dragControl,
+  removeControl,
   editing = false,
   style,
   className = "",
@@ -72,6 +75,7 @@ export function DashboardCard({
           {headerActions}
           {settingsControl}
           {dragControl}
+          {removeControl}
         </div>
       </header>
 
@@ -123,6 +127,34 @@ export function DragHandle({
         <circle cx="10.5" cy="8" r="1.4" />
         <circle cx="5.5" cy="13" r="1.4" />
         <circle cx="10.5" cy="13" r="1.4" />
+      </svg>
+    </button>
+  );
+}
+
+/** The control that takes a card off the dashboard while the layout is being edited. */
+export function RemoveCardButton({
+  title,
+  disabled,
+  onRemove,
+}: {
+  title: string;
+  /** True for the last card on the dashboard, which has to stay so there is a way back. */
+  disabled: boolean;
+  onRemove: () => void;
+}) {
+  const label = `Remove ${title}`;
+  return (
+    <button
+      type="button"
+      onClick={onRemove}
+      disabled={disabled}
+      aria-label={label}
+      title={disabled ? "The dashboard needs at least one card" : `${label} — add it back from Add card`}
+      className="rounded-lg border border-slate-700/80 bg-slate-900/90 p-1.5 text-slate-300 transition hover:border-red-500/50 hover:bg-slate-800 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+        <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
       </svg>
     </button>
   );
