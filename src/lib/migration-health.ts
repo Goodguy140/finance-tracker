@@ -1,7 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { tryDecryptSecret } from "./security";
 
-export const SCHEMA_REPAIR_VERSION = "6";
+export const SCHEMA_REPAIR_VERSION = "7";
 
 export const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 export const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
@@ -25,6 +25,7 @@ export const REQUIRED_SCHEMA_COLUMNS = [
   { table: "PlaidItem", column: "webhookUrl" },
   { table: "User", column: "dashboardTextVisiblePct" },
   { table: "User", column: "dashboardBudgetNameVisiblePct" },
+  { table: "InvestmentFlow", column: "transactionId" },
 ] as const;
 
 const OAUTH_KEY_PREFIX = "oauth.";

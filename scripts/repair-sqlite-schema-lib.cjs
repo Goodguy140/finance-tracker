@@ -1,5 +1,5 @@
 /** Keep in sync with SCHEMA_REPAIR_VERSION in src/lib/migration-health.ts */
-const SCHEMA_REPAIR_VERSION = "6";
+const SCHEMA_REPAIR_VERSION = "7";
 const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
 
@@ -84,6 +84,11 @@ const COLUMN_REPAIRS = [
     table: "User",
     column: "dashboardBudgetNameVisiblePct",
     ddl: 'ALTER TABLE "User" ADD COLUMN "dashboardBudgetNameVisiblePct" INTEGER NOT NULL DEFAULT 90',
+  },
+  {
+    table: "InvestmentFlow",
+    column: "transactionId",
+    ddl: 'ALTER TABLE "InvestmentFlow" ADD COLUMN "transactionId" TEXT',
   },
 ];
 

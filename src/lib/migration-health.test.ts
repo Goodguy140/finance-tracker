@@ -66,6 +66,13 @@ async function createMinimalSchema(prisma: PrismaClient) {
       "webhookUrl" TEXT
     )
   `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "InvestmentFlow" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "transactionId" TEXT
+    )
+  `);
 }
 
 describe("migration-health", () => {

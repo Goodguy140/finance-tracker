@@ -176,6 +176,7 @@ export const userBackupSchema = z.object({
       direction: z.enum(["CONTRIBUTION", "WITHDRAWAL"]),
       amountCents: positiveCents,
       note: z.string().max(250).nullable(),
+      transactionId: z.string().min(1).nullable().optional(),
       createdAt: isoDate,
     }),
   ),

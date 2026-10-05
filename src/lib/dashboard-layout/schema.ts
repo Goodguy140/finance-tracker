@@ -18,6 +18,7 @@ export const CARD_IDS = [
   "recurring",
   "insights",
   "bills-forecast",
+  "investments",
 ] as const;
 
 export type DashboardCardId = (typeof CARD_IDS)[number];
@@ -112,6 +113,14 @@ const cardSettingsSchema = z
     "bills-forecast": z
       .object({
         days: z.union([z.literal(30), z.literal(60), z.literal(90)]).catch(30),
+      })
+      .partial()
+      .catch({}),
+    investments: z
+      .object({
+        showRoom: z.boolean().catch(true),
+        showForms: z.boolean().catch(true),
+        showActivity: z.boolean().catch(true),
       })
       .partial()
       .catch({}),

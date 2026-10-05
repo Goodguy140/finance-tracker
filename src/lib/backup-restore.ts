@@ -88,6 +88,9 @@ export function assertBackupReferencesResolve(parsed: ParsedUserBackup): void {
     if (!accountIds.has(row.accountId)) {
       throw new Error("Backup references unknown investment account.");
     }
+    if (row.transactionId && !transactionIds.has(row.transactionId)) {
+      throw new Error("Backup references unknown counted transfer.");
+    }
   }
   for (const row of parsed.portfolioSnapshots) {
     if (!accountIds.has(row.accountId)) {

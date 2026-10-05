@@ -266,6 +266,32 @@ function CardSettingsFields({
       );
     }
 
+    case "investments": {
+      const current = settings.investments ?? {};
+      return (
+        <>
+          <SettingToggleRow
+            label="Show room left"
+            hint="TFSA, RRSP and FHSA room for this year, as entered in Settings."
+            checked={current.showRoom ?? true}
+            onChange={(showRoom) => onChange("investments", { showRoom })}
+          />
+          <SettingToggleRow
+            label="Show the add forms"
+            hint="Record a contribution, a withdrawal or a portfolio value."
+            checked={current.showForms ?? true}
+            onChange={(showForms) => onChange("investments", { showForms })}
+          />
+          <SettingToggleRow
+            label="Show recent activity"
+            hint="Contributions, withdrawals, portfolio values and transfers into registered accounts in the period on screen."
+            checked={current.showActivity ?? true}
+            onChange={(showActivity) => onChange("investments", { showActivity })}
+          />
+        </>
+      );
+    }
+
     default:
       return null;
   }

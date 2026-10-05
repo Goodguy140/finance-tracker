@@ -372,6 +372,61 @@ describe("importUserBackupAction", () => {
     expect(mockPrisma.transaction.create).not.toHaveBeenCalled();
   });
 
+  it("restores a counted transfer's link under the transfer's new id", async () => {
+    const iso = "2026-01-01T00:00:00.000Z";
+    mockPrisma.account.create.mockResolvedValue({ id: "acc-new" });
+    mockPrisma.category.create.mockResolvedValue({ id: "cat-new" });
+    mockPrisma.transaction.create.mockResolvedValue({ id: "txn-new" });
+    const backup = {
+      ...minimalBackup("user@example.com"),
+      accounts: [
+        { id: "acc-old", name: "TFSA", type: "TFSA", currency: "CAD", countryCode: "CA", provider: null, archived: false, createdAt: iso, updatedAt: iso },
+      ],
+      categories: [{ id: "cat-old", name: "Transfer", kind: "EXPENSE", isDefault: false, createdAt: iso, updatedAt: iso }],
+      transactions: [
+        {
+          id: "txn-old", accountId: "acc-old", categoryId: "cat-old", type: "TRANSFER", amountCents: -50000, preCreditCents: null,
+          creditCents: null, creditBreakdownJson: null, title: null, date: iso, postedDate: null, accountDescription: null,
+          note: null, recurringTransactionId: null, recurringExpectedDate: null, createdAt: iso, updatedAt: iso, splitParts: [],
+        },
+      ],
+      investmentFlows: [
+        { accountId: "acc-old", date: iso, direction: "CONTRIBUTION", amountCents: 50000, note: null, transactionId: "txn-old", createdAt: iso },
+      ],
+    };
+    const file = new File([JSON.stringify(backup)], "backup.json", { type: "application/json" });
+    const formData = new FormData();
+    formData.set("backupJson", file);
+
+    await importUserBackupAction(formData);
+
+    expect(mockPrisma.investmentFlow.createMany.mock.calls[0]?.[0]?.data).toEqual([
+      expect.objectContaining({ accountId: "acc-new", transactionId: "txn-new" }),
+    ]);
+  });
+
+  it("refuses a file whose contribution points at a transfer it does not contain", async () => {
+    const iso = "2026-01-01T00:00:00.000Z";
+    const backup = {
+      ...minimalBackup("user@example.com"),
+      accounts: [
+        { id: "acc-old", name: "TFSA", type: "TFSA", currency: "CAD", countryCode: "CA", provider: null, archived: false, createdAt: iso, updatedAt: iso },
+      ],
+      investmentFlows: [
+        { accountId: "acc-old", date: iso, direction: "CONTRIBUTION", amountCents: 50000, note: null, transactionId: "txn-missing", createdAt: iso },
+      ],
+    };
+    const file = new File([JSON.stringify(backup)], "backup.json", { type: "application/json" });
+    const formData = new FormData();
+    formData.set("backupJson", file);
+
+    expect(await importUserBackupAction(formData)).toEqual({
+      ok: false,
+      error: "Backup references unknown counted transfer.",
+    });
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("never touches linked SSO identities, whatever the file contains", async () => {
     // Linking a provider requires a fresh passkey assertion; a plain session uploading a
     // file must not be able to attach (or silently drop) provider identities.

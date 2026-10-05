@@ -367,6 +367,10 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
         if (!mappedAccountId) {
           throw new Error("Backup references unknown investment account.");
         }
+        const mappedTransactionId = row.transactionId ? transactionIdMap.get(row.transactionId) : undefined;
+        if (row.transactionId && !mappedTransactionId) {
+          throw new Error("Backup references unknown counted transfer.");
+        }
         return {
           userId: user.id,
           accountId: mappedAccountId,
@@ -374,6 +378,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
           direction: row.direction,
           amountCents: row.amountCents,
           note: row.note,
+          transactionId: mappedTransactionId ?? null,
           createdAt: new Date(row.createdAt),
         };
       }),
