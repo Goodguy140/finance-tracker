@@ -1,9 +1,13 @@
 "use client";
 
-import { type ComponentProps, useState } from "react";
+import { type ComponentProps, useEffect, useState } from "react";
 import { ExpenseForm, IncomeForm } from "@/components/forms";
 
 type Option = { id: string; name: string };
+type EntryKind = "expense" | "income";
+
+/** Which side was used last, per browser. A convenience, not a setting, so it is not synced. */
+const KIND_STORAGE_KEY = "dashboard.add-card.kind";
 
 /**
  * The Add card: logging an expense or an income from the same place. Income used to sit behind
@@ -17,7 +21,26 @@ export function AddEntryCardBody({
   expense: ComponentProps<typeof ExpenseForm>;
   incomeCategories: Option[];
 }) {
-  const [kind, setKind] = useState<"expense" | "income">("expense");
+  const [kind, setKind] = useState<EntryKind>("expense");
+
+  // Read after mount: the server renders the expense side, and storage can be unavailable.
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-off restore after hydration
+      if (window.localStorage.getItem(KIND_STORAGE_KEY) === "income") setKind("income");
+    } catch {
+      // Private windows and blocked storage just start on Expense.
+    }
+  }, []);
+
+  function choose(next: EntryKind) {
+    setKind(next);
+    try {
+      window.localStorage.setItem(KIND_STORAGE_KEY, next);
+    } catch {
+      // Not remembered; nothing else depends on it.
+    }
+  }
 
   return (
     <>
@@ -28,7 +51,7 @@ export function AddEntryCardBody({
             type="button"
             role="radio"
             aria-checked={kind === option}
-            onClick={() => setKind(option)}
+            onClick={() => choose(option)}
             className={`rounded-md px-3 py-1 text-xs font-medium transition ${
               kind === option ? "bg-blue-500 text-white" : "text-slate-300 hover:bg-slate-800"
             }`}

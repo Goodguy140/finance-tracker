@@ -70,6 +70,12 @@ test("income is added from the Add card", async ({ page }, testInfo) => {
       return row ? { type: row.type, amountCents: row.amountCents } : null;
     })
     .toEqual({ type: "INCOME", amountCents: 123456 });
+
+  // The card comes back on the side last used.
+  await page.reload();
+  await expectDashboardHome(page);
+  await expect(card.getByRole("radio", { name: "Income" })).toHaveAttribute("aria-checked", "true");
+  await expect(card.getByRole("button", { name: "Add income" })).toBeVisible();
 });
 
 test("a rule is added from the Recurring card's New rule button", async ({ page }, testInfo) => {
