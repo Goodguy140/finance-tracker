@@ -408,12 +408,14 @@ test("a removed card stays off across a reload and can be added back as a tab", 
   await page.setViewportSize({ width: 1600, height: 1000 });
   const user = await signInFreshUser(page, "remove");
 
-  // Starting position, so the test cannot pass on a dashboard that never showed the card.
-  expect((await columnCards(page)).flat()).toContain("insights");
+  // Upcoming bills rather than Insights: it is a card on its own, where Insights shares a stack
+  // with Investments. Starting position, so the test cannot pass on a dashboard that never
+  // showed the card.
+  expect((await columnCards(page)).flat()).toContain("bills-forecast");
 
   await page.getByRole("button", { name: "Edit layout" }).click();
-  await page.getByRole("button", { name: "Remove Insights" }).click();
-  await expect(page.locator('[data-card-id="insights"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "Remove Upcoming bills" }).click();
+  await expect(page.locator('[data-card-id="bills-forecast"]')).toHaveCount(0);
   await page.getByRole("button", { name: "Done" }).click();
 
   // Wait on the row the save writes, then reload: the reconciler re-adds any card it does not
@@ -426,18 +428,18 @@ test("a removed card stays off across a reload and can be added back as a tab", 
       },
       { timeout: 10_000 },
     )
-    .toEqual(["insights"]);
+    .toEqual(["bills-forecast"]);
 
   await page.reload();
   await expectDashboardHome(page);
-  expect((await columnCards(page)).flat()).not.toContain("insights");
+  expect((await columnCards(page)).flat()).not.toContain("bills-forecast");
 
   await page.getByRole("button", { name: "Edit layout" }).click();
   await page.getByRole("button", { name: "Add card (1)" }).click();
-  await page.getByLabel("Insights", { exact: true }).selectOption({ label: "Tab on Budgets" });
-  await page.getByRole("button", { name: "Add Insights" }).click();
+  await page.getByLabel("Upcoming bills", { exact: true }).selectOption({ label: "Tab on Budgets" });
+  await page.getByRole("button", { name: "Add Upcoming bills" }).click();
 
-  const stack = page.getByRole("region", { name: "Budgets, Insights" });
+  const stack = page.getByRole("region", { name: "Budgets, Upcoming bills" });
   await expect(stack).toBeVisible();
   await expect(page.getByRole("button", { name: "Add card" })).toBeDisabled();
   await page.getByRole("button", { name: "Done" }).click();
@@ -454,7 +456,7 @@ test("a removed card stays off across a reload and can be added back as a tab", 
         return {
           hidden: parsed.hidden ?? [],
           stacked: parsed.columns.some((column) =>
-            column.slots.some((slot) => slot.cards.join(",") === "budgets,insights"),
+            column.slots.some((slot) => slot.cards.join(",") === "budgets,bills-forecast"),
           ),
         };
       },
