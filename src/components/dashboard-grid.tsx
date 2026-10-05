@@ -34,11 +34,15 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { saveDashboardLayoutAction } from "@/app/actions";
-import { DashboardCard, DragHandle } from "@/components/dashboard-cards/dashboard-card";
+import { DashboardCard, DragHandle, RemoveCardButton } from "@/components/dashboard-cards/dashboard-card";
 import { CardSettingsControl, type CardSettingsChange } from "@/components/dashboard-cards/card-settings-forms";
 import { useCardStack } from "@/components/dashboard-cards/card-stack";
 import { DashboardColumnResizer } from "@/components/dashboard-column-resizer";
-import { DashboardEditToolbar, type LayoutSaveStatus } from "@/components/dashboard-edit-toolbar";
+import {
+  DashboardEditToolbar,
+  type AddCardDestination,
+  type LayoutSaveStatus,
+} from "@/components/dashboard-edit-toolbar";
 import { DASHBOARD_CARDS, DEFAULT_LAYOUT, MOBILE_SLOTS, slotAccessibleName } from "@/lib/dashboard-layout/cards";
 import {
   enforceMinimums,
@@ -49,6 +53,15 @@ import {
   resizeAdjacent,
 } from "@/lib/dashboard-layout/columns";
 import { filterToAvailable } from "@/lib/dashboard-layout/normalize";
+import {
+  addCard,
+  canAddCardTo,
+  canRemoveCard,
+  hiddenCards,
+  removeCard,
+  removedCardsInOrder,
+  type AddCardTarget,
+} from "@/lib/dashboard-layout/visibility";
 import { measureTextVisibility, visibleShare } from "@/lib/dashboard-layout/text-visibility";
 import type { DashboardReadability } from "@/lib/dashboard-readability";
 import {
@@ -496,6 +509,39 @@ export function DashboardGrid({
 
   const canAddColumn = stored.columns.length < MAX_COLUMNS;
 
+  const onRemoveCard = useCallback(
+    (cardId: DashboardCardId) => mutate((current) => removeCard(current, cardId)),
+    [mutate],
+  );
+
+  const onAddCard = useCallback(
+    (cardId: DashboardCardId, target: AddCardTarget) => mutate((current) => addCard(current, cardId, target)),
+    [mutate],
+  );
+
+  const removedCards = useMemo(
+    () => removedCardsInOrder(stored).map((id) => ({ id, title: DASHBOARD_CARDS[id].title })),
+    [stored],
+  );
+
+  // Every column, then every existing card as a tab target. Built from the stored layout, not
+  // the columns that fit the window, so a column merged away by a narrow window is still offered.
+  const addDestinations = useMemo<AddCardDestination[]>(() => {
+    const columns = stored.columns.map((column, index) => ({
+      key: `column:${column.id}`,
+      label: `New card in column ${index + 1}`,
+      target: { kind: "column" as const, columnId: column.id },
+    }));
+    const tabs = stored.columns.flatMap((column) =>
+      column.slots.map((slot) => ({
+        key: `tab:${slot.id}`,
+        label: `Tab on ${slotAccessibleName(slot.cards)}`,
+        target: { kind: "tab" as const, slotId: slot.id },
+      })),
+    );
+    return [...columns, ...tabs].filter((destination) => canAddCardTo(stored, destination.target));
+  }, [stored]);
+
   const renderSlot = (slot: DashboardSlot, mode: "tabs" | "swipe") => (
     <SlotView
       key={slot.id}
@@ -506,17 +552,21 @@ export function DashboardGrid({
       editing={editing && mode === "tabs"}
       onSettingsChange={onSettingsChange}
       onActiveIndexChange={onActiveIndexChange}
+      onRemoveCard={onRemoveCard}
+      canRemove={(cardId) => canRemoveCard(stored, cardId)}
       cardStyle={cardStyle}
     />
   );
 
+  // Phones keep their fixed order, minus anything the user removed on the desktop.
   const mobileSlots = useMemo(() => {
-    const allowed = new Set(available);
+    const removed = new Set(hiddenCards(stored));
+    const allowed = new Set(available.filter((card) => !removed.has(card)));
     return MOBILE_SLOTS.map((slot) => ({
       ...slot,
       cards: slot.cards.filter((card) => allowed.has(card)),
     })).filter((slot) => slot.cards.length > 0);
-  }, [available]);
+  }, [available, stored]);
 
   return (
     <>
@@ -533,6 +583,9 @@ export function DashboardGrid({
               columnCount={stored.columns.length}
               canAddColumn={canAddColumn}
               saveStatus={saveStatus}
+              removedCards={removedCards}
+              destinations={addDestinations}
+              onAddCard={onAddCard}
               onAddColumn={addColumn}
               onReset={resetLayout}
               onDone={() => onEditingChange(false)}
@@ -753,6 +806,8 @@ function SlotView({
   editing,
   onSettingsChange,
   onActiveIndexChange,
+  onRemoveCard,
+  canRemove,
   cardStyle,
 }: {
   slot: DashboardSlot;
@@ -762,6 +817,8 @@ function SlotView({
   editing: boolean;
   onSettingsChange: CardSettingsChange;
   onActiveIndexChange: (slotId: string, index: number) => void;
+  onRemoveCard: (cardId: DashboardCardId) => void;
+  canRemove: (cardId: DashboardCardId) => boolean;
   cardStyle: (cardId: DashboardCardId) => CSSProperties | undefined;
 }) {
   // Destructured at the call rather than kept as an object: forwarding `sortable.setNodeRef`
@@ -861,6 +918,15 @@ function SlotView({
             onSettingsChange={onSettingsChange}
             isStackTarget={isStackOver}
             style={cardStyle(slot.cards[0])}
+            removeControl={
+              editing ? (
+                <RemoveCardButton
+                  title={DASHBOARD_CARDS[slot.cards[0]].title}
+                  disabled={!canRemove(slot.cards[0])}
+                  onRemove={() => onRemoveCard(slot.cards[0])}
+                />
+              ) : null
+            }
             dragControl={
               editing ? (
                 <DragHandle
@@ -893,6 +959,16 @@ function SlotView({
           settingsControl={
             activeCard ? (
               <CardSettingsControl cardId={activeCard} settings={settings} onChange={onSettingsChange} />
+            ) : null
+          }
+          // In a stack, Remove takes off the tab on screen and leaves the others.
+          removeControl={
+            editing && activeCard ? (
+              <RemoveCardButton
+                title={DASHBOARD_CARDS[activeCard].title}
+                disabled={!canRemove(activeCard)}
+                onRemove={() => onRemoveCard(activeCard)}
+              />
             ) : null
           }
           dragControl={
@@ -937,6 +1013,7 @@ function SingleCard({
   editing,
   onSettingsChange,
   dragControl,
+  removeControl,
   isStackTarget,
   style,
 }: {
@@ -946,6 +1023,7 @@ function SingleCard({
   editing: boolean;
   onSettingsChange: CardSettingsChange;
   dragControl?: ReactNode;
+  removeControl?: ReactNode;
   isStackTarget?: boolean;
   style?: CSSProperties;
 }) {
@@ -965,6 +1043,7 @@ function SingleCard({
       style={style}
       settingsControl={<CardSettingsControl cardId={cardId} settings={settings} onChange={onSettingsChange} />}
       dragControl={dragControl}
+      removeControl={removeControl}
     >
       {content.body}
     </DashboardCard>

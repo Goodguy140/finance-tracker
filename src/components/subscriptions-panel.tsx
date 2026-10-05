@@ -2,23 +2,20 @@
 
 import { useState } from "react";
 import {
-  createRecurringTransactionAction,
   createSubscriptionMemberAction,
   deleteRecurringTransactionAction,
   deleteSubscriptionMemberAction,
   setRecurringTransactionEnabledAction,
   setSubscriptionShareStatusAction,
-  updateRecurringTransactionAction,
   updateSubscriptionMemberAction,
 } from "@/app/actions";
 import { ServerActionForm } from "@/components/server-action-form";
 import { MetaChip } from "@/components/meta-chip";
 import { formatCurrency } from "@/lib/money";
 import { MOBILE_OVERLAY_ROOT_Z_CLASS } from "@/lib/mobile-z-index";
+import { RecurringRuleForm } from "@/components/recurring-rule-form";
 import {
   inputClass,
-  selectClass,
-  textAreaClass,
   primaryBtnClass,
   secondaryBtnClass,
   type Option,
@@ -248,15 +245,6 @@ function SubscriptionCard({
   );
 }
 
-const cadenceOptions: { value: SubscriptionView["cadence"]; label: string }[] = [
-  { value: "WEEKLY", label: "Weekly" },
-  { value: "BIWEEKLY", label: "Biweekly" },
-  { value: "MONTHLY", label: "Monthly" },
-  { value: "QUARTERLY", label: "Quarterly" },
-  { value: "YEARLY", label: "Yearly" },
-  { value: "BIENNIAL", label: "Every 2 years" },
-];
-
 export function SubscriptionsPanel({
   subscriptions,
   accounts,
@@ -270,10 +258,6 @@ export function SubscriptionsPanel({
 }) {
   const [editing, setEditing] = useState<SubscriptionView | null>(null);
   const canCreate = accounts.length > 0 && expenseCategories.length > 0;
-  const accountDefault =
-    defaultExpenseAccountId && accounts.some((a) => a.id === defaultExpenseAccountId)
-      ? defaultExpenseAccountId
-      : accounts[0]?.id;
 
   return (
     <div className="space-y-6">
@@ -285,69 +269,16 @@ export function SubscriptionsPanel({
           </p>
         </div>
         {canCreate ? (
-          <ServerActionForm action={createRecurringTransactionAction} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <input type="hidden" name="type" value="EXPENSE" />
-            <label className="sm:col-span-2">
-              <span className="mb-1 block text-xs text-slate-400">Name</span>
-              <input name="name" className={inputClass} placeholder="e.g. Netflix, internet, gym" required />
-            </label>
-            <label>
-              <span className="mb-1 block text-xs text-slate-400">Account</span>
-              <select name="accountId" defaultValue={accountDefault} className={selectClass}>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span className="mb-1 block text-xs text-slate-400">Category</span>
-              <select name="categoryId" className={selectClass}>
-                {expenseCategories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span className="mb-1 block text-xs text-slate-400">Amount each time</span>
-              <input name="amount" type="number" step="0.01" min="0.01" className={inputClass} placeholder="0.00" required />
-            </label>
-            <label>
-              <span className="mb-1 block text-xs text-slate-400">Cadence</span>
-              <select name="cadence" defaultValue="MONTHLY" className={selectClass}>
-                {cadenceOptions.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span className="mb-1 block text-xs text-slate-400">Next charge date</span>
-              <input name="nextExpectedDate" type="date" className={inputClass} required />
-            </label>
-            <label>
-              <span className="mb-1 block text-xs text-slate-400">Posting</span>
-              <select name="postMode" defaultValue="REVIEW" className={selectClass}>
-                <option value="REVIEW">Post by hand when due</option>
-                <option value="AUTO">Post automatically when due</option>
-              </select>
-            </label>
-            <label>
-              <span className="mb-1 block text-xs text-slate-400">End date (optional)</span>
-              <input name="endDate" type="date" className={inputClass} />
-            </label>
-            <label className="sm:col-span-2">
-              <span className="mb-1 block text-xs text-slate-400">Note (optional)</span>
-              <textarea name="note" rows={2} maxLength={250} className={textAreaClass} placeholder="Optional details" />
-            </label>
-            <button type="submit" className={`${primaryBtnClass} py-2.5 sm:col-span-2 sm:py-2`}>
-              Add subscription
-            </button>
-          </ServerActionForm>
+          <RecurringRuleForm
+            accounts={accounts}
+            expenseCategories={expenseCategories}
+            incomeCategories={[]}
+            defaultExpenseAccountId={defaultExpenseAccountId}
+            fixedType="EXPENSE"
+            namePlaceholder="e.g. Netflix, internet, gym"
+            dateLabel="Next charge date"
+            submitLabel="Add subscription"
+          />
         ) : (
           <p className="text-sm text-slate-400">
             Add at least one account and one expense category first (in Import &amp; accounts and Budgets) before creating a
@@ -373,62 +304,18 @@ export function SubscriptionsPanel({
         <div className={`fixed inset-0 ${MOBILE_OVERLAY_ROOT_Z_CLASS} flex items-center justify-center bg-black/60 p-3`}>
           <div className="max-h-[min(92vh,44rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 p-4 shadow-2xl">
             <h3 className="text-lg font-semibold text-slate-100">Edit subscription</h3>
-            <ServerActionForm
-              action={updateRecurringTransactionAction}
-              className="mt-3 space-y-3"
-              onSuccess={() => setEditing(null)}
-            >
-              <input type="hidden" name="recurringTransactionId" value={editing.id} />
-              <input type="hidden" name="type" value="EXPENSE" />
-              <input name="name" defaultValue={editing.name} className={inputClass} placeholder="Name" required />
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <select name="accountId" defaultValue={editing.accountId} className={selectClass}>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-                <select name="categoryId" defaultValue={editing.categoryId} className={selectClass}>
-                  {expenseCategories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  name="amount"
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  defaultValue={(editing.amountCents / 100).toFixed(2)}
-                  className={inputClass}
-                  required
-                />
-                <select name="cadence" defaultValue={editing.cadence} className={selectClass}>
-                  {cadenceOptions.map((c) => (
-                    <option key={c.value} value={c.value}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-                <input name="nextExpectedDate" type="date" defaultValue={editing.nextExpectedDateYmd} className={inputClass} required />
-                <input name="endDate" type="date" defaultValue={editing.endDateYmd ?? ""} className={inputClass} aria-label="Optional end date" />
-                <select name="postMode" defaultValue={editing.postMode} className={selectClass} aria-label="Posting">
-                  <option value="REVIEW">Post by hand when due</option>
-                  <option value="AUTO">Post automatically when due</option>
-                </select>
-              </div>
-              <textarea name="note" defaultValue={editing.note ?? ""} className={textAreaClass} placeholder="Optional note" maxLength={250} />
-              <div className="flex justify-end gap-2">
-                <button type="button" className={secondaryBtnClass} onClick={() => setEditing(null)}>
-                  Cancel
-                </button>
-                <button type="submit" className={primaryBtnClass}>
-                  Save changes
-                </button>
-              </div>
-            </ServerActionForm>
+            <div className="mt-3">
+              <RecurringRuleForm
+                rule={{ ...editing, type: "EXPENSE" }}
+                accounts={accounts}
+                expenseCategories={expenseCategories}
+                incomeCategories={[]}
+                fixedType="EXPENSE"
+                dateLabel="Next charge date"
+                onSuccess={() => setEditing(null)}
+                onCancel={() => setEditing(null)}
+              />
+            </div>
           </div>
         </div>
       ) : null}

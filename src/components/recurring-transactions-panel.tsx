@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   deleteRecurringTransactionAction,
   postRecurringTransactionAction,
   setRecurringTransactionEnabledAction,
   skipRecurringOccurrenceAction,
-  updateRecurringTransactionAction,
 } from "@/app/actions";
+import { RecurringRuleForm } from "@/components/recurring-rule-form";
 import { ServerActionForm } from "@/components/server-action-form";
 import { MetaChip } from "@/components/meta-chip";
 import { formatCurrency } from "@/lib/money";
@@ -49,12 +50,8 @@ export type RecentExpenseOption = {
   amountCents: number;
 };
 
-const inputClass =
-  "w-full min-h-[2.75rem] rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2.5 text-base leading-normal text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 sm:text-sm";
 const selectClass =
   "w-full min-h-[2.75rem] rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2.5 text-base text-slate-100 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 sm:text-sm";
-const textAreaClass =
-  "w-full min-h-[4.5rem] rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2.5 text-base leading-normal text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 sm:text-sm";
 const primaryBtnClass =
   "touch-manipulation rounded-xl bg-blue-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-400";
 const secondaryBtnClass =
@@ -174,13 +171,9 @@ export function RecurringTransactionsPanel({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const editingItem = items.find((item) => item.id === editingId) ?? null;
-  const [editingType, setEditingType] = useState<"EXPENSE" | "INCOME">("EXPENSE");
   const [skippingId, setSkippingId] = useState<string | null>(null);
   const skippingItem = items.find((item) => item.id === skippingId) ?? null;
-  const startEditing = (item: RecurringTransactionListItem) => {
-    setEditingType(item.type);
-    setEditingId(item.id);
-  };
+  const startEditing = (item: RecurringTransactionListItem) => setEditingId(item.id);
   const startSkipping = (item: RecurringTransactionListItem) => setSkippingId(item.id);
 
   const groups = useMemo(
@@ -192,7 +185,6 @@ export function RecurringTransactionsPanel({
     ],
     [items],
   );
-  const categoryOptions = editingType === "INCOME" ? incomeCategories : expenseCategories;
 
   if (items.length === 0) {
     return (
@@ -220,104 +212,43 @@ export function RecurringTransactionsPanel({
           ) : null,
         )}
       </div>
-      {editingItem ? (
+      {/* Portalled: the card body is a size container, which makes it the containing block for
+          anything `fixed` inside it, so an inline dialog was clipped to the card and scrolled
+          with it instead of covering the window. The skip dialog below is portalled for the
+          same reason. */}
+      {editingItem && typeof document !== "undefined" ? createPortal(
         <div className={`fixed inset-0 ${MOBILE_OVERLAY_ROOT_Z_CLASS} flex items-center justify-center bg-black/60 p-3`}>
-          <div className="max-h-[min(92vh,44rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 p-4 shadow-2xl">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Edit recurring transaction"
+            className="max-h-[min(92vh,44rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 p-4 shadow-2xl"
+          >
             <h3 className="text-lg font-semibold text-slate-100">Edit recurring transaction</h3>
-            <ServerActionForm
-              action={updateRecurringTransactionAction}
-              className="mt-3 space-y-3"
-              onSuccess={() => setEditingId(null)}
-            >
-              <input type="hidden" name="recurringTransactionId" value={editingItem.id} />
-              <input name="name" defaultValue={editingItem.name} className={inputClass} placeholder="Name" required />
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <select
-                  name="type"
-                  value={editingType}
-                  onChange={(event) => setEditingType(event.target.value as "EXPENSE" | "INCOME")}
-                  className={selectClass}
-                >
-                  <option value="EXPENSE">Expense</option>
-                  <option value="INCOME">Income</option>
-                </select>
-                <select name="accountId" defaultValue={editingItem.accountId} className={selectClass}>
-                  {accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name}
-                    </option>
-                  ))}
-                </select>
-                <select name="categoryId" defaultValue={editingItem.categoryId} className={selectClass}>
-                  {categoryOptions.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  name="amount"
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  defaultValue={(editingItem.amountCents / 100).toFixed(2)}
-                  className={inputClass}
-                  placeholder="Amount"
-                  required
-                />
-                <select name="cadence" defaultValue={editingItem.cadence} className={selectClass}>
-                  <option value="WEEKLY">Weekly</option>
-                  <option value="BIWEEKLY">Biweekly</option>
-                  <option value="MONTHLY">Monthly</option>
-                  <option value="QUARTERLY">Quarterly</option>
-                  <option value="YEARLY">Yearly</option>
-                  <option value="BIENNIAL">Every 2 years</option>
-                </select>
-                <input
-                  name="nextExpectedDate"
-                  type="date"
-                  defaultValue={editingItem.nextExpectedDateYmd}
-                  className={inputClass}
-                  required
-                />
-                <input
-                  name="endDate"
-                  type="date"
-                  defaultValue={editingItem.endDateYmd ?? ""}
-                  className={inputClass}
-                  aria-label="Optional end date"
-                />
-                <select name="postMode" defaultValue={editingItem.postMode} className={selectClass} aria-label="Posting">
-                  <option value="REVIEW">Post by hand when due</option>
-                  <option value="AUTO">Post automatically when due</option>
-                </select>
-              </div>
-              <textarea
-                name="note"
-                defaultValue={editingItem.note ?? ""}
-                className={textAreaClass}
-                placeholder="Optional note"
-                maxLength={250}
+            <div className="mt-3">
+              <RecurringRuleForm
+                rule={editingItem}
+                accounts={accounts}
+                expenseCategories={expenseCategories}
+                incomeCategories={incomeCategories}
+                onSuccess={() => setEditingId(null)}
+                onCancel={() => setEditingId(null)}
               />
-              <div className="flex justify-end gap-2">
-                <button type="button" className={secondaryBtnClass} onClick={() => setEditingId(null)}>
-                  Cancel
-                </button>
-                <button type="submit" className={primaryBtnClass}>
-                  Save changes
-                </button>
-              </div>
-            </ServerActionForm>
+            </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
-      {skippingItem ? (
-        <SkipModal
-          item={skippingItem}
-          recentExpenses={skippingItem.type === "INCOME" ? recentIncomes : recentExpenses}
-          onClose={() => setSkippingId(null)}
-        />
-      ) : null}
+      {skippingItem && typeof document !== "undefined"
+        ? createPortal(
+            <SkipModal
+              item={skippingItem}
+              recentExpenses={skippingItem.type === "INCOME" ? recentIncomes : recentExpenses}
+              onClose={() => setSkippingId(null)}
+            />,
+            document.body,
+          )
+        : null}
     </>
   );
 }

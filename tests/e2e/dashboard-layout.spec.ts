@@ -111,7 +111,8 @@ async function clippedCards(page: Page): Promise<string[]> {
  * then intermediate moves before the drop. A single mouse jump is not seen as a drag.
  */
 async function dragCardTo(page: Page, handleLabel: string, target: { x: number; y: number }) {
-  const handle = page.getByRole("button", { name: handleLabel });
+  // Exact: "Move Add Expense" is also a substring of the card's "Remove Add Expense" button.
+  const handle = page.getByRole("button", { name: handleLabel, exact: true });
   await handle.scrollIntoViewIfNeeded();
   const box = await handle.boundingBox();
   if (!box) throw new Error(`No bounding box for ${handleLabel}`);
@@ -399,4 +400,65 @@ test("columns can be added and removed, and removing one keeps its cards", async
   // The point of the assertion: a removed column hands its cards to a neighbour rather than
   // taking them with it.
   expect((await columnCards(page)).flat().sort()).toEqual(before);
+});
+
+test("a removed card stays off across a reload and can be added back as a tab", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const user = await signInFreshUser(page, "remove");
+
+  // Starting position, so the test cannot pass on a dashboard that never showed the card.
+  expect((await columnCards(page)).flat()).toContain("insights");
+
+  await page.getByRole("button", { name: "Edit layout" }).click();
+  await page.getByRole("button", { name: "Remove Insights" }).click();
+  await expect(page.locator('[data-card-id="insights"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "Done" }).click();
+
+  // Wait on the row the save writes, then reload: the reconciler re-adds any card it does not
+  // know was removed, so this is the assertion that the removal persisted.
+  await expect
+    .poll(
+      async () => {
+        const row = await prisma.dashboardLayout.findUnique({ where: { userId: user.id } });
+        return row ? (JSON.parse(row.layoutJson) as { hidden?: string[] }).hidden ?? null : null;
+      },
+      { timeout: 10_000 },
+    )
+    .toEqual(["insights"]);
+
+  await page.reload();
+  await expectDashboardHome(page);
+  expect((await columnCards(page)).flat()).not.toContain("insights");
+
+  await page.getByRole("button", { name: "Edit layout" }).click();
+  await page.getByRole("button", { name: "Add card (1)" }).click();
+  await page.getByLabel("Insights", { exact: true }).selectOption({ label: "Tab on Budgets" });
+  await page.getByRole("button", { name: "Add Insights" }).click();
+
+  const stack = page.getByRole("region", { name: "Budgets, Insights" });
+  await expect(stack).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add card" })).toBeDisabled();
+  await page.getByRole("button", { name: "Done" }).click();
+
+  await expect
+    .poll(
+      async () => {
+        const row = await prisma.dashboardLayout.findUnique({ where: { userId: user.id } });
+        if (!row) return null;
+        const parsed = JSON.parse(row.layoutJson) as {
+          hidden?: string[];
+          columns: { slots: { cards: string[] }[] }[];
+        };
+        return {
+          hidden: parsed.hidden ?? [],
+          stacked: parsed.columns.some((column) =>
+            column.slots.some((slot) => slot.cards.join(",") === "budgets,insights"),
+          ),
+        };
+      },
+      { timeout: 10_000 },
+    )
+    .toEqual({ hidden: [], stacked: true });
 });

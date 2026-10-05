@@ -149,9 +149,21 @@ const columnSchema = z.object({
   slots: z.array(slotSchema).max(MAX_SLOTS_PER_COLUMN),
 });
 
+/**
+ * Cards the user took off the dashboard. Without this the reconciler could not tell a card the
+ * user removed from one a new release added, and would put every removed card straight back.
+ *
+ * Optional rather than a version bump: a blob without it simply has nothing removed, and an
+ * older release reading a newer blob drops the key and shows every card, which is the safe
+ * direction. Ids are read as strings and filtered by the reconciler, so one unknown id (a card
+ * a later release retired) cannot fail the parse and reset the user's arrangement.
+ */
+const hiddenSchema = z.array(z.string().max(64)).max(32).optional().catch(undefined);
+
 export const dashboardLayoutSchema = z.object({
   version: z.literal(DASHBOARD_LAYOUT_VERSION),
   columns: z.array(columnSchema).min(1).max(MAX_COLUMNS),
+  hidden: hiddenSchema,
   settings: cardSettingsSchema,
 });
 
