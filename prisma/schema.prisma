@@ -393,6 +393,7 @@ model Account {
   user                   User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   defaultExpenseForUsers User[]                 @relation("UserDefaultExpenseAccount")
   transactions           Transaction[]
+  transfersFromOrTo      Transaction[]          @relation("TransactionTransferAccount")
   recurringTransactions  RecurringTransaction[]
   investmentFlows        InvestmentFlow[]
   portfolioSnapshots     PortfolioSnapshot[]
@@ -447,16 +448,26 @@ model Transaction {
   note                   String?
   recurringTransactionId String?
   recurringExpectedDate  DateTime?
+  /// Transfers only: the account on the other side. Money left `accountId` for this one when
+  /// `amountCents` is positive, and arrived from it when negative. NULL when the user has not
+  /// said, or the account was removed.
+  transferAccountId      String?
+  /// Transfers only: the other leg of the same transfer, when both banks' rows are in the log
+  /// (a card payment as it left chequing and as it reached the card). Set on both legs.
+  transferPeerId         String?         @unique
   createdAt              DateTime        @default(now())
   updatedAt              DateTime        @updatedAt
 
-  user           User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account        Account?                 @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  category       Category                 @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  splitParts     SplitTransactionPart[]
-  verification   TransactionVerification?
+  user            User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account         Account?                 @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  transferAccount Account?                 @relation("TransactionTransferAccount", fields: [transferAccountId], references: [id], onDelete: SetNull)
+  transferPeer    Transaction?             @relation("TransferPeer", fields: [transferPeerId], references: [id], onDelete: SetNull)
+  transferPeerOf  Transaction?             @relation("TransferPeer")
+  category        Category                 @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  splitParts      SplitTransactionPart[]
+  verification    TransactionVerification?
   /// Set when this transfer has been counted toward contribution room.
-  investmentFlow InvestmentFlow?
+  investmentFlow  InvestmentFlow?
 
   @@unique([userId, recurringTransactionId, recurringExpectedDate])
   /// The dashboard runs four `userId + type + date` range queries per page load and the

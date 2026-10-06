@@ -93,6 +93,9 @@ export const userBackupSchema = z.object({
       /** Absent in files exported before recurring links were included. */
       recurringTransactionId: z.string().min(1).nullable().optional(),
       recurringExpectedDate: isoDate.nullable().optional(),
+      /** Absent in files exported before transfers carried their other side. */
+      transferAccountId: z.string().min(1).nullable().optional(),
+      transferPeerId: z.string().min(1).nullable().optional(),
       createdAt: isoDate,
       updatedAt: isoDate,
       splitParts: z.array(

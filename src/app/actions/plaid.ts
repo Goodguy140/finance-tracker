@@ -16,7 +16,9 @@ import {
   ignoreStagedRow,
   linkStagedRow,
   loadStagedProposer,
+  pairStagedRows,
   toCommittable,
+  type PairOutcome,
   type ReviewOutcome,
   type ReviewRefusal,
 } from "@/lib/plaid/review";
@@ -534,6 +536,8 @@ const REVIEW_REFUSALS: Record<ReviewRefusal, string> = {
   "target-not-found": "The transaction to link to was not found.",
   "target-verified": "That transaction is already confirmed against another bank record.",
   "type-mismatch": "An expense cannot be linked to an income entry.",
+  "not-a-pair":
+    "Those two cannot be one transfer: they need the same amount leaving one account and arriving in another, a few days apart at most.",
 };
 
 function parseCountAs(value: string): TransactionType | null {
@@ -543,7 +547,7 @@ function parseCountAs(value: string): TransactionType | null {
 }
 
 /** Throws inside a database transaction, so a refused decision rolls back everything with it. */
-function orRefuse(outcome: ReviewOutcome): void {
+function orRefuse(outcome: ReviewOutcome | PairOutcome): void {
   if (!outcome.ok) throw new Error(REVIEW_REFUSALS[outcome.reason]);
 }
 
@@ -606,6 +610,47 @@ export const resolveStagedTransactionAction = formAction(async (formData: FormDa
   }
 
   scheduleBudgetAlertEmails(user.id);
+  revalidatePath("/");
+});
+
+/**
+ * Adds two bank rows as the two legs of one transfer: the money leaving one account and
+ * arriving in the other, each kept out of every total and each naming the other's account.
+ */
+export const pairStagedTransfersAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const stagedIds = [getFormValue(formData, "stagedId"), getFormValue(formData, "peerStagedId")];
+  if (!stagedIds[0] || !stagedIds[1] || stagedIds[0] === stagedIds[1]) {
+    throw new Error("Choose the two sides of the transfer.");
+  }
+
+  const rows = await prisma.plaidStagedTransaction.findMany({
+    where: { id: { in: stagedIds }, userId: user.id },
+    select: { ...COMMITTABLE_STAGED_SELECT, status: true, name: true, merchantName: true, suggestedCategoryId: true },
+  });
+  const ordered = stagedIds.map((id) => rows.find((row) => row.id === id));
+  const [a, b] = ordered;
+  if (!a || !b) throw new Error("That synced transaction was not found.");
+  if (a.status !== PlaidStagedStatus.NEEDS_REVIEW || b.status !== PlaidStagedStatus.NEEDS_REVIEW) {
+    throw new Error(REVIEW_REFUSALS["already-reviewed"]);
+  }
+  for (const row of ordered) {
+    if (row?.suggestedAccountId) await assertUserOwnsAccount(user.id, row.suggestedAccountId);
+  }
+
+  const propose = await loadStagedProposer(user.id);
+  const leg = (row: typeof a) => ({
+    staged: toCommittable(row),
+    proposal: propose({
+      ...row,
+      type: TransactionType.TRANSFER,
+      suggestedCategoryId: row.type === TransactionType.TRANSFER ? row.suggestedCategoryId : null,
+    }),
+  });
+  const categoryId = await ensureFallbackCategoryFor(prisma, user.id, CategoryKind.TRANSFER);
+  await prisma.$transaction(async (tx) =>
+    orRefuse(await pairStagedRows(tx, { userId: user.id, legs: [leg(a), leg(b)], categoryId })),
+  );
   revalidatePath("/");
 });
 

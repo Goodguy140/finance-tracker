@@ -1,11 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { markAsTransferAction, unmarkTransferAction } from "@/app/actions";
+import {
+  markAsTransferAction,
+  setTransferAccountAction,
+  unmarkTransferAction,
+  unpairTransferAction,
+} from "@/app/actions";
 import { MetaChip } from "@/components/meta-chip";
 import { ServerActionForm } from "@/components/server-action-form";
 import { VerifiedBadge, type VerificationInfo } from "@/components/verified-badge";
-import { secondaryBtnClass } from "@/components/forms/shared";
+import { inputClass, secondaryBtnClass } from "@/components/forms/shared";
 import { formatCurrency } from "@/lib/money";
 
 export type TransferLogEntry = {
@@ -15,15 +20,23 @@ export type TransferLogEntry = {
   dateDisplay: string;
   title: string | null;
   note: string | null;
+  accountId: string | null;
   accountLabel: string;
+  /** The account on the other side, when known. */
+  transferAccountId: string | null;
+  transferAccountLabel: string | null;
+  /** Both legs are in the log and linked; the other side comes from the pair. */
+  paired: boolean;
   verification: VerificationInfo | null;
 };
+
+type AccountOption = { id: string; name: string };
 
 /**
  * The period's transfers, under the expense log. They are kept out of every total, so they
  * are listed apart from the spending rather than mixed into it, collapsed unless asked for.
  */
-export function TransferLog({ entries }: { entries: TransferLogEntry[] }) {
+export function TransferLog({ entries, accounts }: { entries: TransferLogEntry[]; accounts: AccountOption[] }) {
   const [open, setOpen] = useState(false);
   if (entries.length === 0) return null;
 
@@ -46,7 +59,7 @@ export function TransferLog({ entries }: { entries: TransferLogEntry[] }) {
       {open ? (
         <ul className="space-y-2">
           {entries.map((entry) => (
-            <TransferRow key={entry.id} entry={entry} />
+            <TransferRow key={entry.id} entry={entry} accounts={accounts} />
           ))}
         </ul>
       ) : null}
@@ -54,16 +67,19 @@ export function TransferLog({ entries }: { entries: TransferLogEntry[] }) {
   );
 }
 
-function TransferRow({ entry }: { entry: TransferLogEntry }) {
+function TransferRow({ entry, accounts }: { entry: TransferLogEntry; accounts: AccountOption[] }) {
   const arrived = entry.amountCents < 0;
+  const otherLabel = entry.transferAccountLabel ?? "Not set";
   return (
     <li className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/50 p-2.5 text-sm">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="font-semibold leading-snug text-slate-100">{entry.title?.trim() || "Transfer"}</p>
           <div className="mt-1 flex flex-wrap gap-1.5">
-            <MetaChip label={arrived ? "Into" : "From"}>{entry.accountLabel}</MetaChip>
+            <MetaChip label="From">{arrived ? otherLabel : entry.accountLabel}</MetaChip>
+            <MetaChip label="To">{arrived ? entry.accountLabel : otherLabel}</MetaChip>
             <MetaChip label="Date">{entry.dateDisplay}</MetaChip>
+            {entry.paired ? <MetaChip label="Paired">both sides in your log</MetaChip> : null}
             {entry.note ? <MetaChip label="Note">{entry.note}</MetaChip> : null}
           </div>
         </div>
@@ -74,12 +90,50 @@ function TransferRow({ entry }: { entry: TransferLogEntry }) {
           {entry.verification ? <VerifiedBadge info={entry.verification} variant="text" /> : null}
         </div>
       </div>
-      <ServerActionForm action={unmarkTransferAction}>
-        <input type="hidden" name="transactionId" value={entry.id} />
-        <button type="submit" className={`${secondaryBtnClass} text-xs`}>
-          Not a transfer: count as {arrived ? "income" : "an expense"}
-        </button>
-      </ServerActionForm>
+      {entry.paired ? null : (
+        <ServerActionForm action={setTransferAccountAction} className="flex flex-wrap items-end gap-2">
+          <input type="hidden" name="transactionId" value={entry.id} />
+          <label className="min-w-0 flex-1 space-y-1">
+            <span className="text-xs font-medium text-slate-400">{arrived ? "Came from" : "Went to"}</span>
+            <select
+              name="transferAccountId"
+              defaultValue={entry.transferAccountId ?? ""}
+              className={inputClass}
+              aria-label={`${arrived ? "Came from" : "Went to"} for ${entry.title?.trim() || "transfer"}`}
+            >
+              <option value="">Not set</option>
+              {accounts
+                .filter((account) => account.id !== entry.accountId)
+                .map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <button type="submit" className={`${secondaryBtnClass} text-xs`}>
+            Save
+          </button>
+        </ServerActionForm>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <ServerActionForm action={unmarkTransferAction}>
+          <input type="hidden" name="transactionId" value={entry.id} />
+          <button type="submit" className={`${secondaryBtnClass} text-xs`}>
+            {entry.paired
+              ? "Not a transfer: count both sides"
+              : `Not a transfer: count as ${arrived ? "income" : "an expense"}`}
+          </button>
+        </ServerActionForm>
+        {entry.paired ? (
+          <ServerActionForm action={unpairTransferAction}>
+            <input type="hidden" name="transactionId" value={entry.id} />
+            <button type="submit" className={`${secondaryBtnClass} text-xs`}>
+              Unpair
+            </button>
+          </ServerActionForm>
+        ) : null}
+      </div>
     </li>
   );
 }
