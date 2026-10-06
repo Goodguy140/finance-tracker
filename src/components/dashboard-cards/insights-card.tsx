@@ -27,6 +27,10 @@ export function InsightsCardBody({ insights, maxItems = 3 }: InsightsCardBodyPro
         <Link href="/insights" className="text-blue-300 underline underline-offset-4">
           Open insights
         </Link>
+        {" · "}
+        <Link href="/reports" className="text-blue-300 underline underline-offset-4">
+          Reports
+        </Link>
       </p>
     );
   }
@@ -58,9 +62,15 @@ export function InsightsCardBody({ insights, maxItems = 3 }: InsightsCardBodyPro
           </li>
         ))}
       </ul>
-      <Link href="/insights" className="inline-block text-sm text-blue-300 underline underline-offset-4">
-        {insights.length > top.length ? `See all ${insights.length} insights` : "Open insights"}
-      </Link>
+      <p className="text-sm">
+        <Link href="/insights" className="text-blue-300 underline underline-offset-4">
+          {insights.length > top.length ? `See all ${insights.length} insights` : "Open insights"}
+        </Link>
+        {" · "}
+        <Link href="/reports" className="text-blue-300 underline underline-offset-4">
+          Reports
+        </Link>
+      </p>
     </div>
   );
 }
