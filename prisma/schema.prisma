@@ -176,6 +176,7 @@ model User {
   dashboardLayout           DashboardLayout?
   transactionRules          TransactionRule[]
   hiddenTitleSuggestions    HiddenTitleSuggestion[]
+  tags                      Tag[]
   insightDismissals         InsightDismissal[]
   insightPreference         InsightPreference?
 }
@@ -468,6 +469,7 @@ model Transaction {
   verification    TransactionVerification?
   /// Set when this transfer has been counted toward contribution room.
   investmentFlow  InvestmentFlow?
+  tags            TransactionTag[]
 
   @@unique([userId, recurringTransactionId, recurringExpectedDate])
   /// The dashboard runs four `userId + type + date` range queries per page load and the
@@ -862,6 +864,9 @@ model TransactionRule {
   setAmountCents Int?
   setAccountId   String?
   appendNote     String?
+  /// Added alongside any tags the transaction already has. Unlike the other actions, every
+  /// matching rule's tag is added, not only the first.
+  addTagId       String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -872,12 +877,42 @@ model TransactionRule {
   /// SetNull: a rule must never block deleting a category or an account.
   setCategory  Category? @relation(fields: [setCategoryId], references: [id], onDelete: SetNull)
   setAccount   Account?  @relation("TransactionRuleSetAccount", fields: [setAccountId], references: [id], onDelete: SetNull)
+  addTag       Tag?      @relation(fields: [addTagId], references: [id], onDelete: SetNull)
 
   @@index([userId, priority])
 }
 
 /// A learned Title → Category combo the user asked to stop auto-filling. The combos themselves
 /// are derived from transaction history on every load; only the opt-out is stored.
+/// A label that cuts across categories: a trip, "reimbursable", "tax deductible".
+model Tag {
+  id        String   @id @default(cuid())
+  userId    String
+  /// As the user typed it.
+  name      String
+  /// Lowercased `name`, so "Trip" and "trip" are one tag.
+  nameKey   String
+  createdAt DateTime @default(now())
+
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions TransactionTag[]
+  rules        TransactionRule[]
+
+  @@unique([userId, nameKey])
+}
+
+model TransactionTag {
+  transactionId String
+  tagId         String
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  tag         Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([transactionId, tagId])
+  /// The log filter looks transactions up by tag.
+  @@index([tagId])
+}
+
 model HiddenTitleSuggestion {
   id        String   @id @default(cuid())
   userId    String

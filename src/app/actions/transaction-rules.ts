@@ -14,6 +14,8 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { planRuleApplication, type RuleChange, type RuleTransactionType } from "@/lib/transaction-rules";
 import { toTransactionRuleInput } from "@/lib/transaction-rules-server";
+import { normalizeTagName } from "@/lib/tags";
+import { addTagsToTransaction, resolveTagIds } from "@/lib/tags-server";
 import {
   learnedTitleSchema,
   moveTransactionRuleSchema,
@@ -50,6 +52,7 @@ async function readRuleForm(userId: string, formData: FormData) {
     setAmount: optional(formData, "setAmount"),
     setAccountId: optional(formData, "setAccountId"),
     appendNote: optional(formData, "appendNote"),
+    addTag: optional(formData, "addTag"),
   });
 
   let transactionType = (payload.transactionType as TransactionType | undefined) ?? null;
@@ -75,6 +78,9 @@ async function readRuleForm(userId: string, formData: FormData) {
     payload.matchAccountId ? assertUserOwnsAccount(userId, payload.matchAccountId) : undefined,
     payload.setAccountId ? assertUserOwnsActiveAccount(userId, payload.setAccountId) : undefined,
   ]);
+  const tagName = payload.addTag ? normalizeTagName(payload.addTag) : "";
+  if (payload.addTag && !tagName) throw new Error("Enter a tag name for the rule to add.");
+  const [addTagId] = tagName ? await resolveTagIds(prisma, userId, [tagName]) : [null];
 
   return {
     titleOperator: payload.titleOperator as TransactionRuleTextOperator,
@@ -88,6 +94,7 @@ async function readRuleForm(userId: string, formData: FormData) {
     setAmountCents: payload.setAmount !== undefined ? toCents(payload.setAmount) : null,
     setAccountId: payload.setAccountId ?? null,
     appendNote: payload.appendNote || null,
+    addTagId,
   } satisfies Omit<Prisma.TransactionRuleUncheckedCreateInput, "userId" | "priority">;
 }
 
@@ -219,13 +226,18 @@ async function planForRule(userId: string, ruleId: string) {
         accountId: true,
         categoryId: true,
         note: true,
+        tags: { select: { tagId: true } },
       },
       orderBy: { date: "desc" },
     }),
     prisma.category.findMany({ where: { userId }, select: { id: true, kind: true } }),
   ]);
   const kinds = new Map(categories.map((c) => [c.id, c.kind as RuleTransactionType]));
-  return planRuleApplication(rule, rows, kinds);
+  return planRuleApplication(
+    rule,
+    rows.map(({ tags, ...row }) => ({ ...row, tagIds: tags.map((t) => t.tagId) })),
+    kinds,
+  );
 }
 
 export type RulePreviewResult = { ok: true; total: number; sample: RuleChange[] } | ActionFailure;
@@ -246,7 +258,7 @@ export type RuleApplyResult = { ok: true; updated: number } | ActionFailure;
 /**
  * Rewrites past transactions the rule matches. Re-plans on the server rather than trusting
  * the preview the client saw, so a stale preview can never write values the rule no longer
- * produces. Title, category, account and note only — never the amount.
+ * produces. Title, category, account, note and tag only — never the amount.
  */
 export async function applyTransactionRuleAction(ruleId: string): Promise<RuleApplyResult> {
   try {
@@ -264,6 +276,7 @@ export async function applyTransactionRuleAction(ruleId: string): Promise<RuleAp
               note: change.after.note,
             },
           });
+          if (change.addTagId) await addTagsToTransaction(tx, change.id, [change.addTagId]);
         }
       }, LONG_TRANSACTION_OPTIONS);
       await recordAuditLog(prisma, {

@@ -27,7 +27,8 @@ import {
 } from "./shared";
 import type { ExpenseTitleSuggestion } from "@/lib/expense-title-suggestions";
 import type { RuleOutcome } from "@/lib/transaction-rules";
-import { RuleAutofillHint, useRuleAutofill } from "@/components/transaction-rules-context";
+import { RuleAutofillHint, useRuleAutofill, useTagOptions } from "@/components/transaction-rules-context";
+import { TagInput, type TagInputHandle } from "@/components/tag-input";
 import { createExpenseAction, importExpensesCsvAction } from "@/app/actions";
 
 export function ExpenseTitleAndCategoryFields({
@@ -553,6 +554,11 @@ export function ExpenseForm({
   };
 }) {
   const today = getTodayIsoDate();
+  const tagOptions = useTagOptions();
+  const tagInput = useRef<TagInputHandle>(null);
+  const [showTags, setShowTags] = useState(false);
+  // Tags a rule added before the field was open: seeded when it opens.
+  const [tagSeed, setTagSeed] = useState<string[]>([]);
   const fieldIds = useId();
   const accountSelectDefault = defaultExpenseAccountSelectValue(accounts, defaultExpenseAccountId);
   const [receiptBreakdown, setReceiptBreakdown] = useState(fieldDefaults?.showReceiptBreakdown ?? false);
@@ -602,6 +608,15 @@ export function ExpenseForm({
       } else {
         setNoteSeed(outcome.appendNote);
         setShowNote(true);
+      }
+    }
+    const tagNames = tagOptions.namesFor(outcome.tagIds);
+    if (tagNames.length > 0) {
+      if (tagInput.current) {
+        tagInput.current.add(tagNames);
+      } else {
+        setTagSeed(tagNames);
+        setShowTags(true);
       }
     }
   }
@@ -785,6 +800,17 @@ export function ExpenseForm({
         </button>
         <button
           type="button"
+          onClick={() => setShowTags((v) => !v)}
+          className={`min-h-11 rounded-full border px-3 py-2 text-xs font-medium transition touch-manipulation sm:min-h-0 sm:py-1.5 ${
+            showTags
+              ? "border-blue-500/40 bg-blue-500/15 text-blue-100"
+              : "border-slate-700/80 bg-slate-950/50 text-slate-300 hover:bg-slate-900/70"
+          }`}
+        >
+          Tags
+        </button>
+        <button
+          type="button"
           onClick={toggleReceiptBreakdown}
           className={`min-h-11 rounded-full border px-3 py-2 text-xs font-medium transition touch-manipulation sm:min-h-0 sm:py-1.5 ${
             receiptBreakdown
@@ -827,6 +853,11 @@ export function ExpenseForm({
       ) : (
         <input type="hidden" name="note" value="" />
       )}
+      {showTags ? (
+        <div className={`${noteOrder} ${spanFullSm}`}>
+          <TagInput handleRef={tagInput} defaultTags={tagSeed} suggestions={tagOptions.names} />
+        </div>
+      ) : null}
       <button type="submit" className={`${submitOrder} ${spanFullSm} ${primaryBtnClass} py-2.5 sm:py-2`}>
         Add expense
       </button>

@@ -120,6 +120,16 @@ describe("addStagedRow", () => {
     expect(verification).toMatchObject({ source: "IMPORTED", institutionName: "Test Credit Union" });
   });
 
+  it("puts the tags the queue proposed on the new transaction", async () => {
+    const tagId = (await db.tag.create({ data: { userId, name: "Coffee", nameKey: "coffee" } })).id;
+    const outcome = await db.$transaction((tx) =>
+      addStagedRow(tx, { userId, staged, categoryId, proposal: { ...proposal, tagIds: [tagId] } }),
+    );
+    expect(outcome.ok).toBe(true);
+    const links = await db.transactionTag.findMany({ where: { tagId } });
+    expect(links.map((l) => l.transactionId)).toEqual([outcome.ok ? outcome.transactionId : null]);
+  });
+
   it("adds the row once when two submits race", async () => {
     const outcomes = await Promise.all([
       db.$transaction((tx) => addStagedRow(tx, { userId, staged, categoryId, proposal })),

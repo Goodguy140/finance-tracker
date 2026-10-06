@@ -29,6 +29,7 @@ export function toTransactionRuleInput(row: TransactionRule): TransactionRuleInp
     setAmountCents: row.setAmountCents,
     setAccountId: row.setAccountId,
     appendNote: row.appendNote,
+    addTagId: row.addTagId,
   };
 }
 

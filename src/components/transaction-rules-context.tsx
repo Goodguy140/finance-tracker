@@ -10,6 +10,7 @@ import {
   type RuleTransactionType,
   type TransactionRuleInput,
 } from "@/lib/transaction-rules";
+import type { TagOption } from "@/lib/tags";
 
 /**
  * The user's enabled rules, for the manual add/edit forms. Provided once by the dashboard
@@ -18,6 +19,8 @@ import {
 export type FormRules = {
   rules: TransactionRuleInput[];
   categoryKinds: Record<string, RuleTransactionType>;
+  /** The user's tags: suggestions for the tag fields, and names for the tags rules add. */
+  tags: TagOption[];
 };
 
 const TransactionRulesContext = createContext<FormRules | null>(null);
@@ -66,7 +69,7 @@ export function useRuleAutofill({
 
   function evaluate(subject: Omit<RuleSubject, "type">) {
     const next = peek(subject);
-    const key = JSON.stringify([next.categoryId, next.accountId, next.amountCents, next.appendNote, next.title]);
+    const key = JSON.stringify([next.categoryId, next.accountId, next.amountCents, next.appendNote, next.title, next.tagIds]);
     const fresh = key !== lastKey.current;
     lastKey.current = key;
     setOutcome(next);
@@ -74,6 +77,23 @@ export function useRuleAutofill({
   }
 
   return { evaluate, peek, outcome };
+}
+
+const NO_TAGS: TagOption[] = [];
+
+/**
+ * The user's tags: `names` for a tag field's suggestions, `namesFor` to turn the tag ids a
+ * rule adds into what the field shows. Empty outside the dashboard.
+ */
+export function useTagOptions() {
+  const tags = useContext(TransactionRulesContext)?.tags ?? NO_TAGS;
+  return useMemo(
+    () => ({
+      names: tags.map((tag) => tag.name),
+      namesFor: (ids: readonly string[]) => ids.flatMap((id) => tags.find((tag) => tag.id === id)?.name ?? []),
+    }),
+    [tags],
+  );
 }
 
 export function RuleAutofillHint({ outcome }: { outcome: RuleOutcome | null }) {

@@ -12,6 +12,8 @@ const mockPrisma = vi.hoisted(() => ({
     update: vi.fn(),
   },
   hiddenTitleSuggestion: { upsert: vi.fn(), deleteMany: vi.fn() },
+  tag: { findMany: vi.fn(), upsert: vi.fn() },
+  transactionTag: { findMany: vi.fn(), createMany: vi.fn() },
   $transaction: vi.fn(),
 }));
 
@@ -57,6 +59,7 @@ function ruleRow(overrides: Record<string, unknown> = {}) {
     setAmountCents: 1599,
     setAccountId: null,
     appendNote: null,
+    addTagId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -92,6 +95,24 @@ describe("transaction rule actions", () => {
           minAmountCents: null,
           setTitle: null,
         }),
+      });
+    });
+
+    it("creates the tag a rule adds when the user does not have it yet", async () => {
+      mockPrisma.tag.findMany.mockResolvedValue([]);
+      mockPrisma.tag.upsert.mockResolvedValue({ id: "tag-new" });
+
+      const result = await createTransactionRuleAction(form({ titlePattern: "uber", addTag: " #Reimbursable " }));
+
+      expect(result).toBeUndefined();
+      expect(mockPrisma.tag.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId_nameKey: { userId: "user-1", nameKey: "reimbursable" } },
+          create: { userId: "user-1", name: "Reimbursable", nameKey: "reimbursable" },
+        }),
+      );
+      expect(mockPrisma.transactionRule.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ addTagId: "tag-new", setCategoryId: null, transactionType: null }),
       });
     });
 
@@ -164,9 +185,9 @@ describe("transaction rule actions", () => {
         { id: "cat-other", kind: "EXPENSE" },
       ]);
       mockPrisma.transaction.findMany.mockResolvedValue([
-        { id: "t1", title: "NETFLIX.COM", type: "EXPENSE", amountCents: 1299, accountId: "a", categoryId: "cat-other", note: null },
-        { id: "t2", title: "Netflix", type: "EXPENSE", amountCents: 1599, accountId: "a", categoryId: "cat-subs", note: null },
-        { id: "t3", title: "Groceries", type: "EXPENSE", amountCents: 5000, accountId: "a", categoryId: "cat-other", note: null },
+        { id: "t1", title: "NETFLIX.COM", type: "EXPENSE", amountCents: 1299, accountId: "a", categoryId: "cat-other", note: null, tags: [] },
+        { id: "t2", title: "Netflix", type: "EXPENSE", amountCents: 1599, accountId: "a", categoryId: "cat-subs", note: null, tags: [] },
+        { id: "t3", title: "Groceries", type: "EXPENSE", amountCents: 5000, accountId: "a", categoryId: "cat-other", note: null, tags: [] },
       ]);
     });
 
@@ -192,6 +213,21 @@ describe("transaction rule actions", () => {
         mockPrisma,
         expect.objectContaining({ action: "transaction_rule_applied", metadata: { updated: 1 } }),
       );
+    });
+
+    it("adds the rule's tag to rows that lack it, even when nothing else changes", async () => {
+      mockPrisma.transactionRule.findFirst.mockResolvedValue(
+        ruleRow({ setCategoryId: null, setTitle: null, setAmountCents: null, addTagId: "tag-subs" }),
+      );
+      mockPrisma.transaction.findMany.mockResolvedValue([
+        { id: "t1", title: "NETFLIX.COM", type: "EXPENSE", amountCents: 1299, accountId: "a", categoryId: "c", note: null, tags: [] },
+        { id: "t2", title: "Netflix", type: "EXPENSE", amountCents: 1599, accountId: "a", categoryId: "c", note: null, tags: [{ tagId: "tag-subs" }] },
+      ]);
+      mockPrisma.transactionTag.findMany.mockResolvedValue([]);
+
+      expect(await applyTransactionRuleAction("rule-1")).toEqual({ ok: true, updated: 1 });
+      expect(mockPrisma.transactionTag.createMany).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.transactionTag.createMany).toHaveBeenCalledWith({ data: [{ transactionId: "t1", tagId: "tag-subs" }] });
     });
 
     it("refuses a rule the user does not own", async () => {

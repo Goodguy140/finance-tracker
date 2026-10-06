@@ -40,6 +40,7 @@ export function expenseLogMatchesQuery(
     categoryLabel: string;
     accountLabel: string;
     amountCents: number;
+    tags?: readonly string[];
   },
   query: string,
   formatAmount: (cents: number) => string,
@@ -53,6 +54,7 @@ export function expenseLogMatchesQuery(
     entry.accountLabel,
     formatAmount(entry.amountCents),
     String((entry.amountCents / 100).toFixed(2)),
+    ...(entry.tags ?? []),
   ]
     .filter(Boolean)
     .join(" ")

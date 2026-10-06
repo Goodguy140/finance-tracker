@@ -71,6 +71,7 @@ describe("bulkAddStagedTransactionsAction with rules", () => {
           setAmountCents: 999,
           setAccountId: "acc-rule",
           appendNote: "streaming",
+          addTagId: null,
         },
       ],
       learned: [],

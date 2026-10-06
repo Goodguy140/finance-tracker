@@ -4,6 +4,7 @@ import { makeStagedProposer, type StagedRuleProposal } from "@/lib/plaid/staged-
 import type { RuleTransactionType } from "@/lib/transaction-rules";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
 import { transferPairDateDelta } from "@/lib/plaid/transfer-pairing";
+import { addTagsToTransaction } from "@/lib/tags-server";
 import { convertAmountCents } from "@/lib/transfer-type";
 
 /**
@@ -154,9 +155,12 @@ export async function linkStagedRow(
   return { ok: true, transactionId: target.id };
 }
 
+/** What a commit takes from the queue's proposal. Tags are optional for callers that have none. */
+type StagedProposalFields = Pick<StagedRuleProposal, "title" | "note"> & Partial<Pick<StagedRuleProposal, "tagIds">>;
+
 /**
  * Adds this bank row to the log as a new transaction: the bank's account, amount and dates,
- * with the title, category and note the queue proposed.
+ * with the title, category, note and tags the queue proposed.
  *
  * `type` books it as something other than the sync guessed — a transfer the bank filed as a
  * purchase, or the reverse. The amount is the bank's either way, converted to the new type's
@@ -168,7 +172,7 @@ export async function addStagedRow(
     userId: string;
     staged: CommittableStagedRow;
     categoryId: string;
-    proposal: Pick<StagedRuleProposal, "title" | "note">;
+    proposal: StagedProposalFields;
     type?: TransactionType;
   },
 ): Promise<ReviewOutcome> {
@@ -193,6 +197,7 @@ export async function addStagedRow(
     },
     select: { id: true },
   });
+  await addTagsToTransaction(tx, created.id, input.proposal.tagIds ?? []);
   await verify(tx, userId, staged, created.id, "IMPORTED");
   await tx.plaidStagedTransaction.update({
     where: { id: staged.id },
@@ -214,8 +219,8 @@ export async function pairStagedRows(
   input: {
     userId: string;
     legs: [
-      { staged: CommittableStagedRow; proposal: Pick<StagedRuleProposal, "title" | "note"> },
-      { staged: CommittableStagedRow; proposal: Pick<StagedRuleProposal, "title" | "note"> },
+      { staged: CommittableStagedRow; proposal: StagedProposalFields },
+      { staged: CommittableStagedRow; proposal: StagedProposalFields },
     ];
     /** The user's transfer category. */
     categoryId: string;
