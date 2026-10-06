@@ -2,11 +2,14 @@ import type { RecurringCadence, TransactionType } from "@prisma/client";
 import { shiftYm } from "./dashboard-period";
 import { dateFromYmd, ymdFromDateUtc } from "./date-only";
 
-/** Add calendar months in UTC, clamping the day (e.g. Jan 31 + 1 month -> Feb 28). */
-export function addUtcMonths(date: Date, months: number): Date {
+/**
+ * Add calendar months in UTC, clamping the day (e.g. Jan 31 + 1 month -> Feb 28). `day` is the
+ * day of the month to aim for, which defaults to `date`'s own; pass a rule's anchor day so a
+ * date already clamped (Feb 28) does not carry the clamp into later months.
+ */
+export function addUtcMonths(date: Date, months: number, day: number = date.getUTCDate()): Date {
   const y = date.getUTCFullYear();
   const m = date.getUTCMonth();
-  const day = date.getUTCDate();
   const targetMonth = m + months;
   const anchor = new Date(Date.UTC(y, targetMonth, 1));
   const lastDay = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 0)).getUTCDate();
@@ -14,7 +17,22 @@ export function addUtcMonths(date: Date, months: number): Date {
   return new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), dayClamped));
 }
 
-export function advanceRecurringDate(date: Date, cadence: RecurringCadence): Date {
+/**
+ * The day of the month a monthly, quarterly, yearly or biennial rule falls on. Stored as
+ * `anchorDay` because `nextExpectedDate` cannot hold it: a rule on the 31st sits on Feb 28 for
+ * a month, and advancing from there alone would keep it on the 28th from then on. A rule saved
+ * before the column existed has none, and its outstanding date's day stands in.
+ */
+export function recurringAnchorDay(rule: { anchorDay?: number | null; nextExpectedDate: Date }): number {
+  return rule.anchorDay ?? rule.nextExpectedDate.getUTCDate();
+}
+
+/** The occurrence after `date`. Month-based cadences land on `anchorDay`, clamped to the month. */
+export function advanceRecurringDate(
+  date: Date,
+  cadence: RecurringCadence,
+  anchorDay: number = date.getUTCDate(),
+): Date {
   const next = new Date(date.getTime());
   switch (cadence) {
     case "WEEKLY":
@@ -24,13 +42,13 @@ export function advanceRecurringDate(date: Date, cadence: RecurringCadence): Dat
       next.setUTCDate(next.getUTCDate() + 14);
       return next;
     case "MONTHLY":
-      return addUtcMonths(date, 1);
+      return addUtcMonths(date, 1, anchorDay);
     case "QUARTERLY":
-      return addUtcMonths(date, 3);
+      return addUtcMonths(date, 3, anchorDay);
     case "YEARLY":
-      return addUtcMonths(date, 12);
+      return addUtcMonths(date, 12, anchorDay);
     case "BIENNIAL":
-      return addUtcMonths(date, 24);
+      return addUtcMonths(date, 24, anchorDay);
   }
 }
 
@@ -38,12 +56,13 @@ export function advanceRecurringDateOnOrAfter(
   nextExpectedDate: Date,
   cadence: RecurringCadence,
   onOrAfter: Date,
+  anchorDay: number = nextExpectedDate.getUTCDate(),
 ): Date {
   let date = new Date(nextExpectedDate.getTime());
   const targetYmd = ymdFromDateUtc(onOrAfter);
   let guard = 0;
   while (ymdFromDateUtc(date) < targetYmd && guard < 1040) {
-    date = advanceRecurringDate(date, cadence);
+    date = advanceRecurringDate(date, cadence, anchorDay);
     guard++;
   }
   return date;
@@ -64,6 +83,7 @@ export type RecurringForecastRule = {
   amountCents: number;
   cadence: RecurringCadence;
   nextExpectedDate: Date;
+  anchorDay?: number | null;
   endDate: Date | null;
   enabled: boolean;
 };
@@ -77,14 +97,19 @@ export type RecurringForecastRule = {
  * the missed one. Months before the current one show only the outstanding occurrence.
  */
 export function recurringOccurrenceInMonth(
-  rule: Pick<RecurringForecastRule, "cadence" | "nextExpectedDate" | "endDate">,
+  rule: Pick<RecurringForecastRule, "cadence" | "nextExpectedDate" | "anchorDay" | "endDate">,
   ym: string,
   currentYm: string,
 ): Date | null {
   const nextYm = ymdFromDateUtc(rule.nextExpectedDate).slice(0, 7);
   if (nextYm === ym) return rule.nextExpectedDate;
   if (nextYm > ym || ym < currentYm) return null;
-  const occurrence = advanceRecurringDateOnOrAfter(rule.nextExpectedDate, rule.cadence, dateFromYmd(`${ym}-01`));
+  const occurrence = advanceRecurringDateOnOrAfter(
+    rule.nextExpectedDate,
+    rule.cadence,
+    dateFromYmd(`${ym}-01`),
+    recurringAnchorDay(rule),
+  );
   const occurrenceYmd = ymdFromDateUtc(occurrence);
   if (rule.endDate && occurrenceYmd > ymdFromDateUtc(rule.endDate)) return null;
   return occurrenceYmd.slice(0, 7) === ym ? occurrence : null;
@@ -99,9 +124,12 @@ export function isRecurringOccurrenceOnOrAfterNext(
   nextExpectedDate: Date,
   cadence: RecurringCadence,
   expectedDate: Date,
+  anchorDay: number = nextExpectedDate.getUTCDate(),
 ): boolean {
   const expectedYmd = ymdFromDateUtc(expectedDate);
-  return ymdFromDateUtc(advanceRecurringDateOnOrAfter(nextExpectedDate, cadence, expectedDate)) === expectedYmd;
+  return (
+    ymdFromDateUtc(advanceRecurringDateOnOrAfter(nextExpectedDate, cadence, expectedDate, anchorDay)) === expectedYmd
+  );
 }
 
 export type RecurringCashFlowSummary = {
@@ -150,7 +178,8 @@ export function computeRecurringCashFlowSummary(
   for (const rule of rules) {
     if (!rule.enabled) continue;
 
-    let occurrence = advanceRecurringDateOnOrAfter(rule.nextExpectedDate, rule.cadence, period.start);
+    const anchorDay = recurringAnchorDay(rule);
+    let occurrence = advanceRecurringDateOnOrAfter(rule.nextExpectedDate, rule.cadence, period.start, anchorDay);
     let guard = 0;
     while (ymdFromDateUtc(occurrence) < periodEndYmd && guard < 1040) {
       if (rule.endDate && ymdFromDateUtc(occurrence) > ymdFromDateUtc(rule.endDate)) break;
@@ -159,7 +188,7 @@ export function computeRecurringCashFlowSummary(
       } else {
         expenseCents += rule.amountCents;
       }
-      occurrence = advanceRecurringDate(occurrence, rule.cadence);
+      occurrence = advanceRecurringDate(occurrence, rule.cadence, anchorDay);
       guard++;
     }
   }

@@ -103,6 +103,8 @@ export type UserBackupPayload = {
     amountCents: number;
     cadence: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL";
     nextExpectedDate: IsoString;
+    /** Day of the month the rule falls on; null for a rule saved before it was stored. */
+    anchorDay: number | null;
     endDate: IsoString | null;
     postMode: "REVIEW" | "AUTO";
     enabled: boolean;
@@ -342,6 +344,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       amountCents: row.amountCents,
       cadence: row.cadence,
       nextExpectedDate: row.nextExpectedDate.toISOString(),
+      anchorDay: row.anchorDay,
       endDate: toIso(row.endDate),
       postMode: row.postMode,
       enabled: row.enabled,

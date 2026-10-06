@@ -92,6 +92,16 @@ export function syncSucceeded(input: {
 }
 
 /**
+ * A sync got through while the item was marked LOGIN_REQUIRED, so the bank is accepting the
+ * login after all (the user signed in at the bank, or the error was transient). Only the
+ * sign-in state goes: the other prompts are about consent and accounts, which a sync does not
+ * answer. Applied only to an item that is LOGIN_REQUIRED, never one that was removed.
+ */
+export function loginWorks() {
+  return { status: PlaidItemStatus.ACTIVE, errorCode: null } satisfies ItemUpdate;
+}
+
+/**
  * A walk that failed. The error is recorded where the connections panel shows it; a sign-in
  * problem also flips the item to LOGIN_REQUIRED. `lastSyncedAt` keeps its old value, since
  * that is the last time the data actually came through.

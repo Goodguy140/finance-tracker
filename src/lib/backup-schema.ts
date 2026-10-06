@@ -128,6 +128,8 @@ export const userBackupSchema = z.object({
         amountCents: positiveCents,
         cadence: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "BIENNIAL"]),
         nextExpectedDate: isoDate,
+        /** Absent in files exported before rules stored the day they fall on. */
+        anchorDay: z.number().int().min(1).max(31).nullable().optional(),
         endDate: isoDate.nullable(),
         postMode: z.enum(["REVIEW", "AUTO"]),
         enabled: z.boolean(),

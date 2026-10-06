@@ -30,6 +30,15 @@ describe("advanceRecurringDate", () => {
     expect(ymdFromDateUtc(advanceRecurringDate(dateFromYmd("2024-02-29"), "BIENNIAL"))).toBe("2026-02-28");
   });
 
+  it("returns to the anchor day after a month that clamped it", () => {
+    const feb = dateFromYmd("2026-02-28");
+    expect(ymdFromDateUtc(advanceRecurringDate(feb, "MONTHLY", 31))).toBe("2026-03-31");
+    expect(ymdFromDateUtc(advanceRecurringDate(dateFromYmd("2026-03-31"), "MONTHLY", 31))).toBe("2026-04-30");
+    expect(ymdFromDateUtc(advanceRecurringDate(dateFromYmd("2025-11-30"), "QUARTERLY", 31))).toBe("2026-02-28");
+    expect(ymdFromDateUtc(advanceRecurringDate(dateFromYmd("2025-02-28"), "YEARLY", 29))).toBe("2026-02-28");
+    expect(ymdFromDateUtc(advanceRecurringDate(dateFromYmd("2027-02-28"), "YEARLY", 29))).toBe("2028-02-29");
+  });
+
   it("advances overdue occurrences one cadence at a time", () => {
     const overdue = dateFromYmd("2026-01-15");
 
@@ -45,6 +54,14 @@ describe("advanceRecurringDateOnOrAfter", () => {
 
     expect(advanceRecurringDateOnOrAfter(current, "WEEKLY", today).getTime()).toBe(current.getTime());
     expect(advanceRecurringDateOnOrAfter(future, "WEEKLY", today).getTime()).toBe(future.getTime());
+  });
+
+  it("does not drift when rolling a month-end date through February", () => {
+    const rolled = advanceRecurringDateOnOrAfter(dateFromYmd("2026-01-31"), "MONTHLY", dateFromYmd("2026-03-01"));
+    expect(ymdFromDateUtc(rolled)).toBe("2026-03-31");
+    // A rule already waiting on Feb 28 lands back on its anchor.
+    const fromClamped = advanceRecurringDateOnOrAfter(dateFromYmd("2026-02-28"), "MONTHLY", dateFromYmd("2026-03-01"), 31);
+    expect(ymdFromDateUtc(fromClamped)).toBe("2026-03-31");
   });
 
   it("rolls dates forward only when a forecast needs the first occurrence in a period", () => {
@@ -212,6 +229,11 @@ describe("recurringOccurrenceInMonth", () => {
   it("keeps the overdue occurrence in its own month and out of the months in between", () => {
     expect(occurrence(rule("2026-08-20"), "2026-08")).toBe("2026-08-20");
     expect(occurrence(rule("2026-08-20"), "2026-09")).toBeNull();
+  });
+
+  it("projects a month-end rule waiting on Feb 28 back to the 31st", () => {
+    const waiting = { cadence: "MONTHLY" as const, nextExpectedDate: dateFromYmd("2027-02-28"), anchorDay: 31, endDate: null };
+    expect(ymdFromDateUtc(recurringOccurrenceInMonth(waiting, "2027-03", "2026-10")!)).toBe("2027-03-31");
   });
 
   it("projects occurrences into future months", () => {
