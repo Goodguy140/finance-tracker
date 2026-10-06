@@ -203,6 +203,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
           amountCents: row.amountCents,
           cadence: row.cadence,
           nextExpectedDate: new Date(row.nextExpectedDate),
+          anchorDay: row.anchorDay ?? null,
           endDate: row.endDate ? new Date(row.endDate) : null,
           postMode: row.postMode,
           enabled: row.enabled,

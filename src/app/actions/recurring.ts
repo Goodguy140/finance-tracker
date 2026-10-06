@@ -57,6 +57,7 @@ export const createRecurringTransactionAction = formAction(async (formData: Form
       amountCents: toCents(payload.amount),
       cadence: payload.cadence,
       nextExpectedDate,
+      anchorDay: nextExpectedDate.getUTCDate(),
       endDate,
       postMode: payload.postMode as RecurringPostMode,
       note: payload.note || null,
@@ -97,13 +98,18 @@ export const updateRecurringTransactionAction = formAction(async (formData: Form
 
   const existing = await prisma.recurringTransaction.findFirst({
     where: { id: payload.recurringTransactionId, userId: user.id },
-    select: { id: true },
+    select: { id: true, nextExpectedDate: true },
   });
   if (!existing) throw new Error("Recurring transaction not found.");
 
   await prisma.recurringTransaction.update({
     where: { id: existing.id },
     data: {
+      // A new date sets the day the rule falls on. An unchanged one keeps the anchor, which
+      // can be later than the date shown (a rule on the 31st waiting on Feb 28).
+      ...(existing.nextExpectedDate.getTime() === nextExpectedDate.getTime()
+        ? {}
+        : { anchorDay: nextExpectedDate.getUTCDate() }),
       accountId: payload.accountId,
       categoryId: payload.categoryId,
       type,

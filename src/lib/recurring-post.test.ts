@@ -15,6 +15,7 @@ type Rule = {
   amountCents: number;
   cadence: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL";
   nextExpectedDate: Date;
+  anchorDay?: number | null;
   endDate: Date | null;
   note: string | null;
   enabled: boolean;
@@ -139,6 +140,15 @@ describe("autoPostDueRecurringTransactions", () => {
     expect(result).toEqual({ posted: 3, ruleIds: ["rule-1"] });
     expect(db.posted()).toEqual(["2026-04-01", "2026-05-01", "2026-06-01"]);
     expect(ymdFromDateUtc(db.current().nextExpectedDate)).toBe("2026-07-01");
+  });
+
+  it("keeps a rule on the 31st on the last day of every month after February", async () => {
+    // Saved before anchorDay existed: the first post stores the 31st before it clamps to Feb 28.
+    const db = fakeDb(rule({ nextExpectedDate: dateFromYmd("2026-01-31"), anchorDay: null }));
+    await autoPostDueRecurringTransactions("u1", new Date("2026-04-30T12:00:00.000Z"), db.client as never);
+    expect(db.posted()).toEqual(["2026-01-31", "2026-02-28", "2026-03-31", "2026-04-30"]);
+    expect(ymdFromDateUtc(db.current().nextExpectedDate)).toBe("2026-05-31");
+    expect(db.current().anchorDay).toBe(31);
   });
 
   it("decides 'today' in the user's time zone", async () => {

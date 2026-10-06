@@ -37,6 +37,15 @@ function rows(result: ReturnType<typeof forecastRecurringOccurrences<ReturnType<
 }
 
 describe("forecastRecurringOccurrences", () => {
+  it("keeps a month-end bill on the last day of each month across February", () => {
+    const result = forecastRecurringOccurrences([rule("Rent", { next: "2027-01-31" })], {
+      todayYmd: "2027-01-10",
+      currentYm: "2027-01",
+      days: 90,
+    });
+    expect(rows(result).map((r) => r.date)).toEqual(["2027-01-31", "2027-02-28", "2027-03-31"]);
+  });
+
   it("lists every occurrence in the window, earliest first, and totals them by type", () => {
     const result = forecastRecurringOccurrences(
       [

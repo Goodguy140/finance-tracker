@@ -3,7 +3,11 @@ import { RecurringPostMode } from "@prisma/client";
 import { dateFromYmd, ymdFromDateUtc } from "@/lib/date-only";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
-import { advanceRecurringDate, isRecurringOccurrenceOnOrAfterNext } from "@/lib/recurring-transactions";
+import {
+  advanceRecurringDate,
+  isRecurringOccurrenceOnOrAfterNext,
+  recurringAnchorDay,
+} from "@/lib/recurring-transactions";
 import { recomputeSubscriptionTransactionCredits } from "@/lib/subscription-credit";
 
 /**
@@ -43,7 +47,8 @@ export async function postRecurringOccurrence(
 
   // A later occurrence on the rule's cadence may be posted directly; it passes over the
   // ones before it (the dashboard offers this month's occurrence of an overdue rule).
-  if (!isRecurringOccurrenceOnOrAfterNext(rule.nextExpectedDate, rule.cadence, expectedDate)) {
+  const anchorDay = recurringAnchorDay(rule);
+  if (!isRecurringOccurrenceOnOrAfterNext(rule.nextExpectedDate, rule.cadence, expectedDate, anchorDay)) {
     const posted = await tx.transaction.findFirst({
       where: { userId, recurringTransactionId: rule.id, recurringExpectedDate: expectedDate },
       select: { id: true },
@@ -60,11 +65,12 @@ export async function postRecurringOccurrence(
     throw new Error("Recurring transaction has passed its end date.");
   }
 
-  const nextExpectedDate = advanceRecurringDate(expectedDate, rule.cadence);
+  const nextExpectedDate = advanceRecurringDate(expectedDate, rule.cadence, anchorDay);
   const stillEnabled = !rule.endDate || ymdFromDateUtc(nextExpectedDate) <= ymdFromDateUtc(rule.endDate);
   const updated = await tx.recurringTransaction.updateMany({
     where: { id: rule.id, userId, enabled: true, nextExpectedDate: rule.nextExpectedDate },
-    data: { nextExpectedDate, enabled: stillEnabled },
+    // Stored on a rule saved before anchorDay existed, before its date can be clamped.
+    data: { nextExpectedDate, anchorDay, enabled: stillEnabled },
   });
   if (updated.count === 0) return "no_change";
 

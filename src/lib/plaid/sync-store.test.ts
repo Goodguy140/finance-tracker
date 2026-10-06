@@ -59,3 +59,60 @@ describe("createSyncStore().acquireLock", () => {
     expect(after.syncingSince).toBeNull();
   });
 });
+
+describe("createSyncStore().finalize", () => {
+  async function itemWithStatus(itemId: string, status: "LOGIN_REQUIRED" | "REMOVED") {
+    const user = await db.user.create({ data: { email: `${itemId}@example.test`, displayName: "Test" } });
+    return db.plaidItem.create({
+      data: {
+        userId: user.id,
+        itemId,
+        accessTokenEnc: "unused",
+        requestedDays: 90,
+        historyCutoff: new Date("2026-06-01T00:00:00Z"),
+        status,
+        errorCode: "ITEM_LOGIN_REQUIRED",
+        errorMessage: "Sign in again",
+        // Raised separately by Plaid; a sync does not answer it.
+        pendingExpirationAt: new Date("2026-10-01T00:00:00Z"),
+      },
+    });
+  }
+
+  const outcome = (itemId: string, error: string | null) => ({
+    itemId,
+    now: new Date(),
+    earliestObserved: null,
+    completedInitialSync: false,
+    error,
+    needsReauth: error !== null,
+  });
+
+  it("clears needs-sign-in once a sync gets through", async () => {
+    const item = await itemWithStatus("item-signed-in", "LOGIN_REQUIRED");
+
+    await createSyncStore().finalize(outcome(item.id, null));
+
+    const after = await db.plaidItem.findUniqueOrThrow({ where: { id: item.id } });
+    expect(after).toMatchObject({ status: "ACTIVE", errorCode: null, errorMessage: null });
+    expect(after.pendingExpirationAt).not.toBeNull();
+  });
+
+  it("leaves needs-sign-in in place when the sync failed", async () => {
+    const item = await itemWithStatus("item-still-locked", "LOGIN_REQUIRED");
+
+    await createSyncStore().finalize(outcome(item.id, "Sign in again"));
+
+    const after = await db.plaidItem.findUniqueOrThrow({ where: { id: item.id } });
+    expect(after.status).toBe("LOGIN_REQUIRED");
+  });
+
+  it("does not bring a removed connection back", async () => {
+    const item = await itemWithStatus("item-removed", "REMOVED");
+
+    await createSyncStore().finalize(outcome(item.id, null));
+
+    const after = await db.plaidItem.findUniqueOrThrow({ where: { id: item.id } });
+    expect(after.status).toBe("REMOVED");
+  });
+});

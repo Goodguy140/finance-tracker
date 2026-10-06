@@ -6,7 +6,11 @@ import { prisma } from "@/lib/prisma";
 import { dateFromYmd, ymdFromDateUtc } from "@/lib/date-only";
 import { toCents } from "@/lib/money";
 import { requireUser } from "@/lib/session";
-import { advanceRecurringDate, isRecurringOccurrenceOnOrAfterNext } from "@/lib/recurring-transactions";
+import {
+  advanceRecurringDate,
+  isRecurringOccurrenceOnOrAfterNext,
+  recurringAnchorDay,
+} from "@/lib/recurring-transactions";
 import { recomputeSubscriptionTransactionCredits } from "@/lib/subscription-credit";
 import {
   deleteSubscriptionMemberSchema,
@@ -188,13 +192,23 @@ export const skipRecurringOccurrenceAction = formAction(async (formData: FormDat
     await prisma.$transaction(async (tx) => {
       const rule = await tx.recurringTransaction.findFirst({
         where: { id: payload.recurringTransactionId, userId: user.id },
-        select: { id: true, name: true, type: true, cadence: true, enabled: true, endDate: true, nextExpectedDate: true },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          cadence: true,
+          enabled: true,
+          endDate: true,
+          nextExpectedDate: true,
+          anchorDay: true,
+        },
       });
       if (!rule) throw new Error("Subscription not found.");
 
       // Optimistic concurrency: only advance if this is still the current occurrence, or a
       // later one on the rule's cadence (which passes over the missed ones before it).
-      if (!isRecurringOccurrenceOnOrAfterNext(rule.nextExpectedDate, rule.cadence, expectedDate)) {
+      const anchorDay = recurringAnchorDay(rule);
+      if (!isRecurringOccurrenceOnOrAfterNext(rule.nextExpectedDate, rule.cadence, expectedDate, anchorDay)) {
         throw new Error("This subscription has already moved to a different expected date.");
       }
       if (!rule.enabled) throw new Error("Subscription is disabled.");
@@ -208,11 +222,11 @@ export const skipRecurringOccurrenceAction = formAction(async (formData: FormDat
         });
       }
 
-      const nextExpectedDate = advanceRecurringDate(expectedDate, rule.cadence);
+      const nextExpectedDate = advanceRecurringDate(expectedDate, rule.cadence, anchorDay);
       const stillEnabled = !rule.endDate || ymdFromDateUtc(nextExpectedDate) <= ymdFromDateUtc(rule.endDate);
       await tx.recurringTransaction.updateMany({
         where: { id: rule.id, userId: user.id, enabled: true, nextExpectedDate: rule.nextExpectedDate },
-        data: { nextExpectedDate, enabled: stillEnabled },
+        data: { nextExpectedDate, anchorDay, enabled: stillEnabled },
       });
     });
   } catch (error) {
