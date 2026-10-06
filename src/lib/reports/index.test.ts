@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { tx } from "@/lib/insights/test-fixtures";
 import {
   cashFlow,
+  filterByTag,
   incomeVsSpendingByMonth,
   merchantActivity,
   merchantSummaries,
@@ -207,5 +208,14 @@ describe("yearsWithActivity", () => {
       "2025",
       "2024",
     ]);
+  });
+});
+
+describe("filterByTag", () => {
+  it("keeps only rows carrying the tag, and everything without one", () => {
+    const tagged = { ...expense("2026-08-01", "Hotel", 20_000, "Travel"), tagIds: ["trip"] };
+    const plain = expense("2026-08-02", "Store", 5_000);
+    expect(filterByTag([tagged, plain], "trip")).toEqual([tagged]);
+    expect(filterByTag([tagged, plain], null)).toHaveLength(2);
   });
 });

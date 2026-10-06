@@ -26,6 +26,7 @@ export async function loadReportTxs(userId: string, since: Date | null): Promise
         recurringTransactionId: true,
         category: { select: { name: true } },
         splitParts: { select: { categoryId: true, amountCents: true, category: { select: { name: true } } } },
+        tags: { select: { tagId: true } },
       },
       orderBy: { date: "asc" },
     }),
@@ -49,6 +50,7 @@ export async function loadReportTxs(userId: string, since: Date | null): Promise
     recurringTransactionId: t.recurringTransactionId,
     splits: t.splitParts.map((p) => ({ categoryId: p.categoryId, categoryName: p.category.name, amountCents: p.amountCents })),
     merchantName: merchantByTx.get(t.id) ?? null,
+    tagIds: t.tags.map((tag) => tag.tagId),
   }));
 }
 

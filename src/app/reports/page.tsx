@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { TagFilterSelect } from "@/components/expense-log";
 import { CashFlowSankey, IncomeSpendingChart } from "@/components/reports/report-charts";
 import { getCountryConfig } from "@/lib/country-config";
 import { formatCurrency } from "@/lib/money";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import {
   cashFlow,
+  filterByTag,
   incomeVsSpendingByMonth,
   merchantSummaries,
   previousYearWindow,
@@ -14,7 +16,10 @@ import {
   yearsWithActivity,
 } from "@/lib/reports";
 import { loadActivityBounds, loadReportTxs } from "@/lib/reports/load";
+import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { resolveTagFilter } from "@/lib/tags";
+import { listTags } from "@/lib/tags-server";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +30,11 @@ const TOP_MERCHANTS = 15;
 const linkBtn =
   "inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 transition hover:bg-slate-800";
 const card = "rounded-2xl border border-slate-800 bg-slate-900/70 p-4 lg:p-5";
+
+function reportsHref(periodKey: string, tagQuery: string): string {
+  const params = [periodKey === "12m" ? "" : `period=${periodKey}`, tagQuery].filter(Boolean).join("&");
+  return params ? `/reports?${params}` : "/reports";
+}
 
 function firstParam(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
@@ -44,10 +54,15 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   const currency = getCountryConfig(user.countryCode).defaultCurrency;
   const fmt = (cents: number) => formatCurrency(cents, currency);
 
-  const [txs, activityYears] = await Promise.all([
+  const [loaded, activityYears, tags] = await Promise.all([
     loadReportTxs(user.id, previousYearWindow(period).start),
     loadActivityBounds(user.id),
+    listTags(prisma, user.id),
   ]);
+  // `?tag=`, as on the dashboard: every view on this page narrows to rows carrying the tag.
+  const tagFilter = resolveTagFilter(sp.tag, tags);
+  const txs = filterByTag(loaded, tagFilter?.id ?? null);
+  const tagQuery = tagFilter ? `tag=${encodeURIComponent(tagFilter.id)}` : "";
   const inPeriod = withinWindow(txs, period);
   const months = incomeVsSpendingByMonth(inPeriod, period.months);
   const flow = cashFlow(inPeriod);
@@ -79,25 +94,35 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
         </div>
       </div>
 
-      <nav aria-label="Report period" className="flex flex-wrap gap-2">
-        {periodOptions.map((option) => {
-          const active = option.key === period.key;
-          return (
-            <Link
-              key={option.key}
-              href={option.key === "12m" ? "/reports" : `/reports?period=${option.key}`}
-              aria-current={active ? "page" : undefined}
-              className={`rounded-full border px-3 py-1 text-sm transition ${
-                active
-                  ? "border-sky-400/60 bg-sky-500/15 text-sky-100"
-                  : "border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              {option.label}
-            </Link>
-          );
-        })}
-      </nav>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <nav aria-label="Report period" className="flex flex-wrap gap-2">
+          {periodOptions.map((option) => {
+            const active = option.key === period.key;
+            return (
+              <Link
+                key={option.key}
+                href={reportsHref(option.key, tagQuery)}
+                aria-current={active ? "page" : undefined}
+                className={`rounded-full border px-3 py-1 text-sm transition ${
+                  active
+                    ? "border-sky-400/60 bg-sky-500/15 text-sky-100"
+                    : "border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                {option.label}
+              </Link>
+            );
+          })}
+        </nav>
+        {tags.length ? (
+          <TagFilterSelect tags={tags} selectedId={tagFilter?.id ?? null} className="block w-40 shrink-0" />
+        ) : null}
+      </div>
+      {tagFilter ? (
+        <p className="text-sm text-slate-400" data-testid="report-tag-note">
+          Showing only entries tagged <span className="text-slate-200">#{tagFilter.name}</span>.
+        </p>
+      ) : null}
 
       <section aria-label="Totals" className="grid grid-cols-3 gap-2 sm:gap-3" data-testid="report-totals">
         {[

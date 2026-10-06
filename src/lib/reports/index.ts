@@ -15,7 +15,16 @@ import type { InsightTx } from "@/lib/insights/types";
  * A negative expense is a refund: it reduces spending in its own category rather than
  * counting as income.
  */
-export type ReportTx = InsightTx;
+export type ReportTx = InsightTx & {
+  /** Ids of the tags on the row; absent when the caller did not load them. */
+  tagIds?: string[];
+};
+
+/** The dashboard's `?tag=` filter applied to report rows; everything when no tag is chosen. */
+export function filterByTag<T extends ReportTx>(txs: readonly T[], tagId: string | null): T[] {
+  if (!tagId) return [...txs];
+  return txs.filter((tx) => tx.tagIds?.includes(tagId));
+}
 
 /** `12m` is the trailing twelve months; a four-digit year is that calendar year. */
 export type ReportPeriodKey = "12m" | `${number}`;

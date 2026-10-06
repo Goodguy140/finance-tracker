@@ -18,7 +18,7 @@ function firstOfMonthsAgo(monthsBack: number) {
  * left out so a UTC/Toronto month boundary cannot push a row into the future), a transfer
  * that must not count, and one expense thirteen months back for the year-over-year column.
  */
-async function seedUser(page: Page) {
+async function seedUser(page: Page): Promise<string> {
   const email = `e2e-reports-${uniqueStamp()}@example.com`;
   const password = "e2e-password-123";
   const user = await prisma.user.create({
@@ -88,6 +88,7 @@ async function seedUser(page: Page) {
   await page.getByPlaceholder("Password").fill(password);
   await page.getByRole("button", { name: "Login" }).click();
   await expectDashboardHome(page);
+  return user.id;
 }
 
 test("reports total income and spending without transfers, and open a payee", async ({ page }, testInfo) => {
@@ -115,4 +116,20 @@ test("reports total income and spending without transfers, and open a payee", as
   await page.getByTestId("report-merchants").getByRole("link", { name: /Loblaws/ }).click();
   await expect(page.getByTestId("merchant-name")).toHaveText("Loblaws");
   await expect(page.getByTestId("merchant-transactions").getByRole("listitem")).toHaveCount(11);
+});
+
+test("the tag filter narrows every report to tagged entries", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Same page on every viewport; the desktop project covers it");
+  const userId = await seedUser(page);
+  const groceries = await prisma.transaction.findFirstOrThrow({ where: { userId, title: "Loblaws" } });
+  const tag = await prisma.tag.create({ data: { userId, name: "Party", nameKey: "party" } });
+  await prisma.transactionTag.create({ data: { transactionId: groceries.id, tagId: tag.id } });
+
+  await page.goto("/reports");
+  await page.getByTestId("tag-filter").selectOption(tag.id);
+  await expect(page.getByTestId("report-tag-note")).toContainText("#Party");
+  const totals = page.getByTestId("report-totals");
+  await expect(totals).toContainText("$0.00");
+  await expect(totals).toContainText("$400.00");
+  await expect(page.getByTestId("report-merchants").getByRole("listitem")).toHaveCount(1);
 });
