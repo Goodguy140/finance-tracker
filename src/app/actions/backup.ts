@@ -328,6 +328,20 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
           createdAt: new Date(row.createdAt),
           updatedAt: new Date(row.updatedAt),
           ...(splitParts.length > 0 ? { splitParts: { create: splitParts } } : {}),
+          ...(row.owedShares.length > 0
+            ? {
+                owedShares: {
+                  create: row.owedShares.map((share) => ({
+                    userId: user.id,
+                    name: share.name,
+                    amountCents: share.amountCents,
+                    paidAt: share.paidAt ? new Date(share.paidAt) : null,
+                    createdAt: new Date(share.createdAt),
+                    updatedAt: new Date(share.updatedAt),
+                  })),
+                },
+              }
+            : {}),
         },
         select: { id: true },
       });

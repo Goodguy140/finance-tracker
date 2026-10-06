@@ -107,6 +107,18 @@ export const userBackupSchema = z.object({
           amountCents: signedCents,
         }),
       ),
+      /** Absent in files exported before reimbursements. */
+      owedShares: z
+        .array(
+          z.object({
+            name: z.string().min(1).max(80),
+            amountCents: positiveCents,
+            paidAt: isoDate.nullable(),
+            createdAt: isoDate,
+            updatedAt: isoDate,
+          }),
+        )
+        .default([]),
     }),
   ),
   budgets: z.array(

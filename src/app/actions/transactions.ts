@@ -10,6 +10,7 @@ import { dateFromYmd } from "@/lib/date-only";
 import { parseImportedDate } from "@/lib/import-dates";
 import { requireUser } from "@/lib/session";
 import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
+import { ownPartCents, parseOwedSharesFromForm, saveOwedShares } from "@/lib/owed-shares";
 import { appendRuleNote, resolveRuleOutcome } from "@/lib/transaction-rules";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
 import { addTagsToTransaction, replaceTransactionTags, resolveTagIds } from "@/lib/tags-server";
@@ -97,20 +98,42 @@ export const updateExpenseAction = formAction(async (formData: FormData) => {
     assertUserOwnsCategory(user.id, payload.categoryId, CategoryKind.EXPENSE),
   ]);
 
-  const existing = await prisma.transaction.findFirst({
-    where: {
-      id: payload.transactionId,
-      userId: user.id,
-      type: TransactionType.EXPENSE,
-    },
-    include: { splitParts: true },
-  });
-  if (!existing) throw new Error("Expense not found.");
-  if (existing.splitParts.length > 0) {
-    throw new Error("Split expenses cannot be edited here.");
-  }
+  const owedRows = parseOwedSharesFromForm(formData);
 
   await prisma.$transaction(async (tx) => {
+    const existing = await tx.transaction.findFirst({
+      where: {
+        id: payload.transactionId,
+        userId: user.id,
+        type: TransactionType.EXPENSE,
+      },
+      select: {
+        id: true,
+        recurringTransactionId: true,
+        _count: { select: { splitParts: true } },
+        owedShares: { select: { id: true, amountCents: true } },
+      },
+    });
+    if (!existing) throw new Error("Expense not found.");
+    if (existing._count.splitParts > 0) {
+      throw new Error("Split expenses cannot be edited here.");
+    }
+
+    // The form's amount is what the user paid; what others owe comes out of it. A form that
+    // does not carry the owed rows keeps the ones already there.
+    const shares = owedRows ?? existing.owedShares;
+    if (owedRows && owedRows.length > 0 && existing.owedShares.length === 0 && existing.recurringTransactionId) {
+      // A shared subscription credits its members' shares onto this same amount when they
+      // pay; a second way of netting on top of that would count them twice.
+      const members = await tx.subscriptionMember.count({
+        where: { userId: user.id, recurringTransactionId: existing.recurringTransactionId },
+      });
+      if (members > 0) {
+        throw new Error("This bill's subscription already splits it. Track who owes what on the subscription instead.");
+      }
+    }
+    const amountCents = ownPartCents(amounts.amountCents, shares);
+
     await tx.transaction.update({
       where: { id: existing.id },
       data: {
@@ -118,7 +141,7 @@ export const updateExpenseAction = formAction(async (formData: FormData) => {
           ? { connect: { id: payload.accountId } }
           : { disconnect: true },
         category: { connect: { id: payload.categoryId } },
-        amountCents: amounts.amountCents,
+        amountCents,
         preCreditCents: amounts.preCreditCents,
         creditCents: amounts.creditCents,
         creditBreakdownJson: amounts.creditBreakdownJson,
@@ -128,6 +151,9 @@ export const updateExpenseAction = formAction(async (formData: FormData) => {
         note: payload.note,
       },
     });
+    if (owedRows) {
+      await saveOwedShares(tx, { userId: user.id, transactionId: existing.id, rows: owedRows });
+    }
     if (tagNames) await replaceTransactionTags(tx, existing.id, await resolveTagIds(tx, user.id, tagNames));
   });
   scheduleBudgetAlertEmails(user.id);
@@ -411,6 +437,7 @@ export const deleteIncomeTransactionAction = formAction(async (formData: FormDat
 const TRANSFER_MARK_REFUSALS: Record<TransferMarkRefusal, string> = {
   "not-found": "Transaction not found.",
   split: "A split expense cannot be a transfer. Remove the split first.",
+  owed: "Someone owes you part of this expense. Remove what they owe before making it a transfer.",
   "same-account": "A transfer cannot go to the account it came from.",
 };
 

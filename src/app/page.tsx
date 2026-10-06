@@ -74,6 +74,8 @@ import { listTags } from "@/lib/tags-server";
 import { autoPostDueRecurringTransactions } from "@/lib/recurring-post";
 import { DEFAULT_BILLS_FORECAST_DAYS, forecastRecurringOccurrences, groupForecastByDay } from "@/lib/bills-forecast";
 import { requireUser } from "@/lib/session";
+import { paidCentsOf } from "@/lib/owed-shares";
+import { OwedToYouList, type OwedToYouItem } from "@/components/owed-to-you";
 
 const cadenceLabels: Record<RecurringCadence, string> = {
   WEEKLY: "Weekly",
@@ -93,6 +95,9 @@ type SearchParams = Promise<{
 }>;
 
 export const dynamic = "force-dynamic";
+
+/** How long a share paid back stays in "Owed to you", where it can still be undone. */
+const OWED_PAID_RECENT_DAYS = 30;
 
 /** Shapes a stored verification for the log badge; null for unverified rows. */
 function toVerificationInfo(
@@ -137,7 +142,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const categoryUsageCutoff = new Date(now);
   categoryUsageCutoff.setMonth(categoryUsageCutoff.getMonth() - 3);
 
-  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, ruleContext, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount, plaidAttentionCount, contributionRoom, periodTransfers, periodInvestmentFlows, periodPortfolioSnapshots, transferPairingPool, tags] =
+  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, ruleContext, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount, plaidAttentionCount, contributionRoom, periodTransfers, periodInvestmentFlows, periodPortfolioSnapshots, transferPairingPool, tags, owedShareRows] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -175,6 +180,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         splitParts: { include: { category: true } },
         verification: true,
         tags: { select: { tagId: true } },
+        owedShares: { orderBy: { createdAt: "asc" } },
       },
       orderBy: { date: "desc" },
     }),
@@ -308,6 +314,16 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       },
     }),
     listTags(prisma, user.id),
+    // "Owed to you": everything still outstanding whatever the period, since a debt from
+    // March is no less owed in May, and what was paid back lately so a slip can be undone.
+    prisma.owedShare.findMany({
+      where: {
+        userId: user.id,
+        OR: [{ paidAt: null }, { paidAt: { gte: new Date(now.getTime() - OWED_PAID_RECENT_DAYS * 24 * 60 * 60 * 1000) } }],
+      },
+      include: { transaction: { select: { title: true, date: true, category: { select: { name: true } } } } },
+      orderBy: [{ transaction: { date: "desc" } }, { createdAt: "asc" }],
+    }),
   ]);
 
   // `?tag=`: the logs, their counts and Spending by category show only what carries the tag.
@@ -619,7 +635,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const revisionTargets = revisionCandidateIds.length
     ? await prisma.transaction.findMany({
         where: { userId: user.id, id: { in: revisionCandidateIds } },
-        select: { id: true, amountCents: true },
+        select: { id: true, amountCents: true, owedShares: { select: { amountCents: true } } },
       })
     : [];
   const revisionTargetById = new Map(revisionTargets.map((row) => [row.id, row]));
@@ -629,13 +645,14 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     // Same amount on both sides: nothing to choose between. Sync no longer raises these, but
     // a row can still get here if the user edited their entry to the bank's amount after the
     // flag was raised, and rows flagged before sync stopped raising them still carry it.
-    if (!target || target.amountCents === row.amountCents) return [];
+    // What the user paid, like the bank's figure: what others owe was taken out of the amount.
+    if (!target || paidCentsOf(target) === row.amountCents) return [];
     return [
       {
         id: row.id,
         heading: resolveDisplayName(row.name, row.merchantName),
         institutionName: row.plaidItem.institutionName ?? "Your bank",
-        approvedAmountCents: target.amountCents,
+        approvedAmountCents: paidCentsOf(target),
         bankAmountCents: row.amountCents,
         bankDateDisplay: formatDateOnlyUtc(row.date),
       },
@@ -662,7 +679,22 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     categoryLabel: txn.category.name,
     isSplit: txn.splitParts.length > 0,
     verification: toVerificationInfo(txn.verification),
+    owedShares: txn.owedShares.map((share) => ({
+      id: share.id,
+      name: share.name,
+      amountCents: share.amountCents,
+      paid: share.paidAt !== null,
+    })),
     tags: tagNamesOf(txn),
+  }));
+
+  const owedToYouItems: OwedToYouItem[] = owedShareRows.map((share) => ({
+    id: share.id,
+    name: share.name,
+    amountCents: share.amountCents,
+    expenseLabel: share.transaction.title?.trim() || share.transaction.category.name,
+    expenseDateDisplay: formatDateOnlyUtc(share.transaction.date),
+    paidDisplay: share.paidAt ? formatDateOnlyUtc(share.paidAt) : null,
   }));
 
   const incomeLogEntries = logIncomes.map((txn) => ({
@@ -948,6 +980,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           {cardSettings["expense-log"]?.showReviewQueue === false ? null : (
             <PlaidReviewQueue rows={reviewRows} revisions={revisionRows} />
           )}
+          <OwedToYouList items={owedToYouItems} />
           <ExpenseLogPanel
             entries={expenseLogEntries}
             accounts={accountOptions}

@@ -33,6 +33,7 @@ import {
 import { expenseLogMatchesQuery } from "@/lib/expense-title-suggestions";
 import { MOBILE_OVERLAY_ROOT_Z_CLASS } from "@/lib/mobile-z-index";
 import { formatCurrency } from "@/lib/money";
+import { OWED_SHARE_NAME_MAX, OWED_SHARES_FIELD, owedTotalCents } from "@/lib/owed-shares";
 
 type Option = { id: string; name: string };
 
@@ -60,7 +61,13 @@ export type ExpenseLogEntry = {
   verification: VerificationInfo | null;
   /** Tag names, sorted. */
   tags: string[];
+  /** What others owe back on this expense; already taken out of `amountCents`. */
+  owedShares: ExpenseOwedShare[];
 };
+
+export type ExpenseOwedShare = { id: string; name: string; amountCents: number; paid: boolean };
+
+type OwedRowDraft = { key: string; id: string | null; name: string; amount: string; paid: boolean };
 
 type UpdateState = { ok: true } | { ok: false; error: string | null };
 
@@ -77,11 +84,22 @@ function showReceiptBreakdown(txn: ExpenseLogEntry) {
 
 function ExpenseAmountBlock({ txn, size }: { txn: ExpenseLogEntry; size: "default" | "compact" }) {
   const meta = showReceiptBreakdown(txn);
+  const owedCents = owedTotalCents(txn.owedShares);
   const textClass =
     size === "compact" ? "text-[10px] leading-tight" : "text-xs leading-snug";
   return (
     <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-      <AmountPill cents={txn.amountCents} size={size} />
+      <AmountPill cents={txn.amountCents} size={size} label={owedCents > 0 ? "Yours" : "Paid"} />
+      {owedCents > 0 ? (
+        <div className={`max-w-[16rem] space-y-0.5 ${textClass}`} data-testid="expense-owed-breakdown">
+          <p className="tabular-nums text-slate-400">
+            Paid <span className="font-medium text-slate-300">{formatCurrency(txn.amountCents + owedCents)}</span>
+          </p>
+          <p className="tabular-nums text-amber-300/95">
+            Owed to you <span className="font-medium">{formatCurrency(-owedCents)}</span>
+          </p>
+        </div>
+      ) : null}
       {meta ? (
         <div className={`max-w-[16rem] space-y-0.5 ${textClass}`}>
           <p className="tabular-nums text-slate-400">
@@ -103,7 +121,15 @@ function ExpenseAmountBlock({ txn, size }: { txn: ExpenseLogEntry; size: "defaul
   );
 }
 
-function AmountPill({ cents, size = "default" }: { cents: number; size?: "default" | "compact" }) {
+function AmountPill({
+  cents,
+  size = "default",
+  label = "Paid",
+}: {
+  cents: number;
+  size?: "default" | "compact";
+  label?: string;
+}) {
   const credit = cents < 0;
   const sizeClass =
     size === "compact"
@@ -117,7 +143,7 @@ function AmountPill({ cents, size = "default" }: { cents: number; size?: "defaul
           : `shrink-0 rounded-full border border-violet-500/35 bg-violet-500/15 text-violet-100 ${sizeClass}`
       }
     >
-      {credit ? formatCurrency(cents) : <>Paid {formatCurrency(cents)}</>}
+      {credit ? formatCurrency(cents) : <>{label} {formatCurrency(cents)}</>}
     </span>
   );
 }
@@ -327,7 +353,28 @@ function EditExpenseModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const amountDollars = (entry.amountCents / 100).toFixed(2);
+  // The amount field is what the user paid; what others owe comes out of it on save.
+  const initialOwedCents = owedTotalCents(entry.owedShares);
+  const amountDollars = ((entry.amountCents + initialOwedCents) / 100).toFixed(2);
+  const [owedRows, setOwedRows] = useState<OwedRowDraft[]>(() =>
+    entry.owedShares.map((share) => ({
+      key: share.id,
+      id: share.id,
+      name: share.name,
+      amount: (share.amountCents / 100).toFixed(2),
+      paid: share.paid,
+    })),
+  );
+  const owedSum = owedRows.reduce((sum, row) => {
+    const n = Number(row.amount);
+    return Number.isFinite(n) && n > 0 ? sum + n : sum;
+  }, 0);
+  function updateOwedRow(key: string, patch: Partial<OwedRowDraft>) {
+    setOwedRows((rows) => rows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+  }
+  function addOwedRow() {
+    setOwedRows((rows) => [...rows, { key: `new-${Date.now()}-${rows.length}`, id: null, name: "", amount: "", paid: false }]);
+  }
   const preDollarsDefault =
     entry.preCreditCents != null ? (entry.preCreditCents / 100).toFixed(2) : amountDollars;
   const creditDollarsDefault =
@@ -341,6 +388,8 @@ function EditExpenseModal({
   const preCreditNumber = Number(preCreditValue);
   const hasValidPreCredit = Number.isFinite(preCreditNumber);
   const netPaidPreview = hasValidPreCredit ? preCreditNumber - creditSum : null;
+  const paidPreview = receiptBreakdown ? netPaidPreview : Number(amountValue);
+  const ownPartPreview = paidPreview !== null && Number.isFinite(paidPreview) ? paidPreview - owedSum : null;
 
   function sumCredits(rows: string[]) {
     return rows.reduce((sum, row) => {
@@ -446,6 +495,17 @@ function EditExpenseModal({
             >
               Receipt breakdown
             </button>
+            <button
+              type="button"
+              onClick={addOwedRow}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                owedRows.length > 0
+                  ? "border-amber-500/45 bg-amber-500/15 text-amber-100"
+                  : "border-slate-700/80 bg-slate-950/50 text-slate-300 hover:bg-slate-900/70"
+              }`}
+            >
+              {owedRows.length > 0 ? "Someone else owes too" : "Someone owes me"}
+            </button>
           </div>
 
           {!receiptBreakdown ? (
@@ -538,6 +598,64 @@ function EditExpenseModal({
               <input type="hidden" name="amount" value="" />
             </div>
           )}
+
+          <input type="hidden" name={OWED_SHARES_FIELD} value="1" />
+          {owedRows.length > 0 ? (
+            <div
+              className={`${spanFullSm} space-y-3 rounded-xl border border-amber-500/20 bg-slate-950/60 p-4`}
+              data-testid="owed-shares-editor"
+            >
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-slate-100">Owed to you</p>
+                <p className="text-xs leading-relaxed text-slate-500">
+                  Left out of your spending from now on. Track it under Owed to you until it is paid back.
+                </p>
+              </div>
+              {owedRows.map((row, idx) => (
+                <div key={row.key} className="flex flex-wrap items-end gap-2">
+                  <input type="hidden" name="owedShareId" value={row.id ?? ""} />
+                  <label className="min-w-[8rem] flex-1 space-y-1">
+                    <span className="text-xs font-medium text-slate-400">Who</span>
+                    <input
+                      name="owedName"
+                      value={row.name}
+                      maxLength={OWED_SHARE_NAME_MAX}
+                      onChange={(e) => updateOwedRow(row.key, { name: e.target.value })}
+                      placeholder="Name"
+                      className={inputClass}
+                      aria-label={`Who owes amount ${idx + 1}`}
+                      required
+                    />
+                  </label>
+                  <div className="w-36">
+                    <CurrencyAmountInput
+                      name="owedAmount"
+                      label="Owes"
+                      placeholder="0.00"
+                      value={row.amount}
+                      onChange={(e) => updateOwedRow(row.key, { amount: e.target.value })}
+                      required
+                    />
+                  </div>
+                  {row.paid ? <span className="pb-2 text-xs text-emerald-300">Paid back</span> : null}
+                  <button
+                    type="button"
+                    onClick={() => setOwedRows((rows) => rows.filter((r) => r.key !== row.key))}
+                    className="mb-0.5 shrink-0 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+                    aria-label={`Remove what ${row.name || `person ${idx + 1}`} owes`}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <p className="text-xs tabular-nums text-slate-400">
+                Your share:{" "}
+                <span className="font-medium text-slate-200" data-testid="owed-own-part-preview">
+                  {ownPartPreview !== null ? ownPartPreview.toFixed(2) : "--"}
+                </span>
+              </p>
+            </div>
+          ) : null}
 
           <DateField
             name="date"

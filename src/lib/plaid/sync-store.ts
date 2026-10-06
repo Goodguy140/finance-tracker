@@ -1,4 +1,5 @@
 import { CategoryKind, PlaidItemStatus, PlaidStagedStatus } from "@prisma/client";
+import { paidCentsOf } from "@/lib/owed-shares";
 import { LONG_TRANSACTION_OPTIONS, prisma } from "@/lib/prisma";
 import { selectActiveBudgetsByCategory } from "@/lib/budget-progress";
 import { currentYmInTimeZone } from "@/lib/period-month";
@@ -137,11 +138,12 @@ export function createSyncStore(): SyncStore {
       if (transactionIds.length === 0) return new Map();
       const rows = await prisma.transaction.findMany({
         where: { userId, id: { in: transactionIds } },
-        select: { id: true, type: true, amountCents: true },
+        select: { id: true, type: true, amountCents: true, owedShares: { select: { amountCents: true } } },
       });
       // As money out, like the bank's figure: an income row the user booked as a transfer
-      // stores the same money with the opposite sign.
-      return new Map(rows.map((row) => [row.id, outflowCents(row.type, row.amountCents)]));
+      // stores the same money with the opposite sign. What others owe the user on an expense
+      // was taken out of its amount but was still charged, so it is added back.
+      return new Map(rows.map((row) => [row.id, outflowCents(row.type, paidCentsOf(row))]));
     },
 
     async commitPage(item, plan) {
@@ -328,6 +330,7 @@ export function createSyncStore(): SyncStore {
           postedDate: true,
           title: true,
           splitParts: { select: { id: true }, take: 1 },
+          owedShares: { select: { amountCents: true } },
         },
       });
 
@@ -335,7 +338,8 @@ export function createSyncStore(): SyncStore {
         id: row.id,
         accountId: row.accountId,
         type: row.type,
-        amountCents: row.amountCents,
+        // What the bank charged, including any part others owe the user.
+        amountCents: paidCentsOf(row),
         date: row.date,
         postedDate: row.postedDate,
         title: row.title,

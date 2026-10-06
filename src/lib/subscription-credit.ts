@@ -69,8 +69,14 @@ type SubscriptionCreditTxClient = {
   transaction: {
     findFirst: (args: {
       where: { userId: string; recurringTransactionId: string; recurringExpectedDate: Date };
-      select: { id: true; amountCents: true; preCreditCents: true };
-    }) => Promise<{ id: string; amountCents: number; preCreditCents: number | null } | null>;
+      select: { id: true; amountCents: true; preCreditCents: true; owedShares: { select: { id: true } } };
+    }) => Promise<{
+      id: string;
+      amountCents: number;
+      preCreditCents: number | null;
+      /** Absent from test doubles that predate one-off owed shares. */
+      owedShares?: Array<{ id: string }>;
+    } | null>;
     update: (args: { where: { id: string }; data: SubscriptionCreditResult }) => Promise<unknown>;
   };
 };
@@ -90,9 +96,14 @@ export async function recomputeSubscriptionTransactionCredits(
       recurringTransactionId: params.recurringTransactionId,
       recurringExpectedDate: params.expectedDate,
     },
-    select: { id: true, amountCents: true, preCreditCents: true },
+    select: { id: true, amountCents: true, preCreditCents: true, owedShares: { select: { id: true } } },
   });
   if (!txn) return;
+  // Shares owed on the expense itself were already taken out of its amount; crediting the
+  // members on top would rebuild the amount from the wrong gross.
+  if ((txn.owedShares?.length ?? 0) > 0) {
+    throw new Error("This bill already has amounts owed to you on it. Remove them from the expense first.");
+  }
 
   const statuses = await tx.subscriptionShareStatus.findMany({
     where: {
