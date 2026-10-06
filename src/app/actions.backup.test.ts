@@ -11,7 +11,7 @@ const mockPrisma = vi.hoisted(() => ({
   recurringTransaction: { deleteMany: vi.fn(), create: vi.fn() },
   investmentFlow: { deleteMany: vi.fn(), create: vi.fn(), createMany: vi.fn() },
   portfolioSnapshot: { deleteMany: vi.fn(), create: vi.fn(), createMany: vi.fn() },
-  transaction: { deleteMany: vi.fn(), create: vi.fn() },
+  transaction: { deleteMany: vi.fn(), create: vi.fn(), update: vi.fn() },
   account: { deleteMany: vi.fn(), create: vi.fn() },
   category: { deleteMany: vi.fn(), create: vi.fn() },
   plaidItem: { deleteMany: vi.fn(), findMany: vi.fn(), count: vi.fn() },
@@ -403,6 +403,70 @@ describe("importUserBackupAction", () => {
     expect(mockPrisma.investmentFlow.createMany.mock.calls[0]?.[0]?.data).toEqual([
       expect.objectContaining({ accountId: "acc-new", transactionId: "txn-new" }),
     ]);
+  });
+
+  it("restores both legs of a paired transfer, each pointing at the other's new id", async () => {
+    const iso = "2026-01-01T00:00:00.000Z";
+    mockPrisma.account.create.mockResolvedValueOnce({ id: "chq-new" }).mockResolvedValueOnce({ id: "visa-new" });
+    mockPrisma.category.create.mockResolvedValue({ id: "cat-new" });
+    mockPrisma.transaction.create.mockResolvedValueOnce({ id: "out-new" }).mockResolvedValueOnce({ id: "in-new" });
+    const account = (id: string, name: string, type: string) => ({
+      id, name, type, currency: "CAD", countryCode: "CA", provider: null, archived: false, createdAt: iso, updatedAt: iso,
+    });
+    const leg = (id: string, accountId: string, amountCents: number, transferAccountId: string, transferPeerId: string) => ({
+      id, accountId, categoryId: "cat-old", type: "TRANSFER", amountCents, preCreditCents: null, creditCents: null,
+      creditBreakdownJson: null, title: null, date: iso, postedDate: null, accountDescription: null, note: null,
+      recurringTransactionId: null, recurringExpectedDate: null, transferAccountId, transferPeerId,
+      createdAt: iso, updatedAt: iso, splitParts: [],
+    });
+    const backup = {
+      ...minimalBackup("user@example.com"),
+      accounts: [account("chq-old", "Chequing", "CHEQUING"), account("visa-old", "Visa", "CREDIT_CARD")],
+      categories: [{ id: "cat-old", name: "Transfers", kind: "TRANSFER", isDefault: false, createdAt: iso, updatedAt: iso }],
+      transactions: [
+        leg("out-old", "chq-old", 50000, "visa-old", "in-old"),
+        leg("in-old", "visa-old", -50000, "chq-old", "out-old"),
+      ],
+    };
+    const file = new File([JSON.stringify(backup)], "backup.json", { type: "application/json" });
+    const formData = new FormData();
+    formData.set("backupJson", file);
+
+    await importUserBackupAction(formData);
+
+    expect(mockPrisma.transaction.create.mock.calls.map((call) => call[0].data.transferAccountId)).toEqual([
+      "visa-new",
+      "chq-new",
+    ]);
+    expect(mockPrisma.transaction.update.mock.calls.map((call) => call[0])).toEqual([
+      { where: { id: "out-new" }, data: { transferPeerId: "in-new" } },
+      { where: { id: "in-new" }, data: { transferPeerId: "out-new" } },
+    ]);
+  });
+
+  it("refuses a file whose transfer points at a leg it does not contain", async () => {
+    const iso = "2026-01-01T00:00:00.000Z";
+    const backup = {
+      ...minimalBackup("user@example.com"),
+      categories: [{ id: "cat-old", name: "Transfers", kind: "TRANSFER", isDefault: false, createdAt: iso, updatedAt: iso }],
+      transactions: [
+        {
+          id: "out-old", accountId: null, categoryId: "cat-old", type: "TRANSFER", amountCents: 50000, preCreditCents: null,
+          creditCents: null, creditBreakdownJson: null, title: null, date: iso, postedDate: null, accountDescription: null,
+          note: null, recurringTransactionId: null, recurringExpectedDate: null, transferAccountId: null,
+          transferPeerId: "in-missing", createdAt: iso, updatedAt: iso, splitParts: [],
+        },
+      ],
+    };
+    const file = new File([JSON.stringify(backup)], "backup.json", { type: "application/json" });
+    const formData = new FormData();
+    formData.set("backupJson", file);
+
+    expect(await importUserBackupAction(formData)).toEqual({
+      ok: false,
+      error: "Backup references unknown transfer leg.",
+    });
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("refuses a file whose contribution points at a transfer it does not contain", async () => {

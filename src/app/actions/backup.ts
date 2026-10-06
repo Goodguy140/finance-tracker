@@ -259,6 +259,10 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
       if (row.recurringTransactionId && !mappedRecurringId) {
         throw new Error("Backup references unknown recurring transaction.");
       }
+      const mappedTransferAccountId = row.transferAccountId ? accountIdMap.get(row.transferAccountId) : null;
+      if (row.transferAccountId && !mappedTransferAccountId) {
+        throw new Error("Backup references unknown transfer account.");
+      }
       // Split parts are nested rather than written in a second pass: it removes a
       // round trip per part. (The id map below exists for verifications, which are keyed
       // by the exported transaction id and written after every row is in.)
@@ -291,6 +295,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
           note: row.note,
           recurringTransactionId: mappedRecurringId ?? null,
           recurringExpectedDate: mappedRecurringId && row.recurringExpectedDate ? new Date(row.recurringExpectedDate) : null,
+          transferAccountId: mappedTransferAccountId ?? null,
           createdAt: new Date(row.createdAt),
           updatedAt: new Date(row.updatedAt),
           ...(splitParts.length > 0 ? { splitParts: { create: splitParts } } : {}),
@@ -298,6 +303,20 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
         select: { id: true },
       });
       transactionIdMap.set(row.id, createdTransaction.id);
+    }
+
+    // The two legs of a transfer point at each other, so neither can be written with its
+    // link until both exist.
+    for (const row of parsed.transactions) {
+      if (!row.transferPeerId) continue;
+      const mappedPeerId = transactionIdMap.get(row.transferPeerId);
+      if (!mappedPeerId) {
+        throw new Error("Backup references unknown transfer leg.");
+      }
+      await tx.transaction.update({
+        where: { id: transactionIdMap.get(row.id)! },
+        data: { transferPeerId: mappedPeerId },
+      });
     }
 
     // Verification rows carry no Plaid identifiers — the export strips them, because a

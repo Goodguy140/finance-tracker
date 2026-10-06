@@ -65,6 +65,12 @@ export function assertBackupReferencesResolve(parsed: ParsedUserBackup): void {
     if (row.recurringTransactionId && !recurringIds.has(row.recurringTransactionId)) {
       throw new Error("Backup references unknown recurring transaction.");
     }
+    if (row.transferAccountId && !accountIds.has(row.transferAccountId)) {
+      throw new Error("Backup references unknown transfer account.");
+    }
+    if (row.transferPeerId && !transactionIds.has(row.transferPeerId)) {
+      throw new Error("Backup references unknown transfer leg.");
+    }
     if (row.splitParts.some((part) => !categoryIds.has(part.categoryId))) {
       throw new Error("Backup references unknown split category.");
     }

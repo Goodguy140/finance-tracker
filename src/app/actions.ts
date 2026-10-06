@@ -17,6 +17,8 @@ export {
   deleteIncomeTransactionAction,
   markAsTransferAction,
   unmarkTransferAction,
+  unpairTransferAction,
+  setTransferAccountAction,
 } from "./actions/transactions";
 export { upsertBudgetAction, updateBudgetAction, deleteBudgetAction, reallocateBudgetAction } from "./actions/budgets";
 export {

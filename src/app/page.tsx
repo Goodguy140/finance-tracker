@@ -52,7 +52,8 @@ import { TransferLog, type TransferLogEntry } from "@/components/transfer-log";
 import { TransactionRulesProvider } from "@/components/transaction-rules-context";
 import { visibleLearnedSuggestions, type RuleTransactionType } from "@/lib/transaction-rules";
 import { catchAllCategoryId } from "@/lib/plaid/category-map";
-import { untransferredType } from "@/lib/transfer-type";
+import { outflowCents, untransferredType } from "@/lib/transfer-type";
+import { assignTransferPairs, widenDateFilterForPairing } from "@/lib/plaid/transfer-pairing";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
 import { makeStagedProposer } from "@/lib/plaid/staged-rules";
 import { resolveDisplayName } from "@/lib/plaid/ingest";
@@ -128,7 +129,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const categoryUsageCutoff = new Date(now);
   categoryUsageCutoff.setMonth(categoryUsageCutoff.getMonth() - 3);
 
-  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, ruleContext, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount, plaidAttentionCount, contributionRoom, periodTransfers, periodInvestmentFlows, periodPortfolioSnapshots] =
+  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, ruleContext, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount, plaidAttentionCount, contributionRoom, periodTransfers, periodInvestmentFlows, periodPortfolioSnapshots, transferPairingPool] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -256,7 +257,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     // Listed under the expense log, outside every total.
     prisma.transaction.findMany({
       where: { userId: user.id, type: TransactionType.TRANSFER, ...transactionDateFilter },
-      include: { account: true, verification: true, investmentFlow: { select: { id: true } } },
+      include: {
+        account: true,
+        transferAccount: true,
+        verification: true,
+        investmentFlow: { select: { id: true } },
+        transferPeer: { select: { id: true } },
+      },
       orderBy: { date: "desc" },
     }),
     // The Investments card's activity for the period on screen.
@@ -269,6 +276,26 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       where: { userId: user.id, ...transactionDateFilter },
       include: { account: true },
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    }),
+    // Unreviewed bank rows that could be the other side of a transfer in the queue. Wider than
+    // the period, so a card paid on the 30th still finds the payment that arrived on the 1st.
+    prisma.plaidStagedTransaction.findMany({
+      where: {
+        userId: user.id,
+        status: PlaidStagedStatus.NEEDS_REVIEW,
+        ...widenDateFilterForPairing(transactionDateFilter),
+      },
+      select: {
+        id: true,
+        suggestedAccountId: true,
+        type: true,
+        amountCents: true,
+        date: true,
+        postedDate: true,
+        name: true,
+        merchantName: true,
+        suggestedCategoryId: true,
+      },
     }),
   ]);
 
@@ -501,6 +528,12 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     .map((c) => ({ id: c.id, name: c.name }));
 
   const propose = makeStagedProposer(ruleContext, categoryKindById);
+  const transferPairs = assignTransferPairs(
+    transferPairingPool.map((row) => ({ ...row, accountId: row.suggestedAccountId })),
+  );
+  const pairingPoolById = new Map(transferPairingPool.map((row) => [row.id, row]));
+  const stagedAccountLabel = (accountId: string | null) =>
+    accounts.find((a) => a.id === accountId)?.name ?? "Unmapped account";
   const reviewRows = stagedRows.map((row) => {
     const isTransfer = row.type === TransactionType.TRANSFER;
     // What the row becomes if the user unticks "transfer" (or never ticks it): its own type,
@@ -521,8 +554,19 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       amountCents: row.amountCents,
       isTransfer,
       dateDisplay: formatDateOnlyUtc(row.date),
-      accountLabel:
-        accounts.find((a) => a.id === row.suggestedAccountId)?.name ?? "Unmapped account",
+      accountLabel: stagedAccountLabel(row.suggestedAccountId),
+      transferPair: (() => {
+        const peer = pairingPoolById.get(transferPairs.get(row.id) ?? "");
+        if (!peer) return null;
+        return {
+          stagedId: peer.id,
+          heading: propose(peer).title,
+          accountLabel: stagedAccountLabel(peer.suggestedAccountId),
+          dateDisplay: formatDateOnlyUtc(peer.date),
+          // Which way the money went, from this row's side.
+          outflow: outflowCents(row.type, row.amountCents) > 0,
+        };
+      })(),
       nonTransferType: nonTransferType === TransactionType.INCOME ? ("INCOME" as const) : ("EXPENSE" as const),
       categoryOptions: nonTransferOptions,
       suggestedCategoryId:
@@ -612,17 +656,28 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     verification: toVerificationInfo(txn.verification),
   }));
 
-  const transferLogEntries: TransferLogEntry[] = periodTransfers.map((txn) => ({
-    id: txn.id,
-    amountCents: txn.amountCents,
-    dateDisplay: formatDateOnlyUtc(txn.date),
-    title: txn.title,
-    note: txn.note,
-    accountLabel: txn.account
-      ? `${txn.account.name} (${formatAccountTypeLabel(txn.account.type)})`
-      : (txn.accountDescription ?? "Removed account"),
-    verification: toVerificationInfo(txn.verification),
-  }));
+  // A paired transfer is listed once, from the leg the money left. When only the arriving leg
+  // falls in the period (paid on the 30th, arrived on the 1st), that leg stands for the pair.
+  const periodTransferIds = new Set(periodTransfers.map((txn) => txn.id));
+  const transferLogEntries: TransferLogEntry[] = periodTransfers
+    .filter((txn) => !(txn.transferPeerId && txn.amountCents < 0 && periodTransferIds.has(txn.transferPeerId)))
+    .map((txn) => ({
+      id: txn.id,
+      amountCents: txn.amountCents,
+      dateDisplay: formatDateOnlyUtc(txn.date),
+      title: txn.title,
+      note: txn.note,
+      accountId: txn.accountId,
+      accountLabel: txn.account
+        ? `${txn.account.name} (${formatAccountTypeLabel(txn.account.type)})`
+        : (txn.accountDescription ?? "Removed account"),
+      transferAccountId: txn.transferAccountId,
+      transferAccountLabel: txn.transferAccount
+        ? `${txn.transferAccount.name} (${formatAccountTypeLabel(txn.transferAccount.type)})`
+        : null,
+      paired: txn.transferPeer !== null,
+      verification: toVerificationInfo(txn.verification),
+    }));
 
   // A single month lists only the rules that fall in it: due there, or already posted there
   // (the log for the month holds those). YTD and lifetime list them all, at their next date.
@@ -871,7 +926,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
             density={cardSettings["expense-log"]?.density}
             maxHeight={cardSettings["expense-log"]?.maxHeight}
           />
-          <TransferLog entries={transferLogEntries} />
+          <TransferLog entries={transferLogEntries} accounts={accountOptions} />
         </>
       ),
     },

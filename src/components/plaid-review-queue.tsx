@@ -8,6 +8,7 @@ import {
   applyBankRevisionAction,
   bulkAddStagedTransactionsAction,
   dismissBankRevisionAction,
+  pairStagedTransfersAction,
   resolveStagedTransactionAction,
 } from "@/app/actions/plaid";
 import { formatCurrency } from "@/lib/money";
@@ -38,6 +39,15 @@ export type ReviewRow = {
   isPending: boolean;
   /** Proposed link, when the matcher found a plausible one. */
   match: { candidate: ReviewCandidate; tier: "high" | "low"; reasons: string[] } | null;
+  /** Another bank row that looks like the other side of the same transfer. */
+  transferPair: {
+    stagedId: string;
+    heading: string;
+    accountLabel: string;
+    dateDisplay: string;
+    /** The money left this row's account (and arrived in the other's). */
+    outflow: boolean;
+  } | null;
 };
 
 export type RevisionRow = {
@@ -68,8 +78,10 @@ function AmountText({ cents }: { cents: number }) {
 function ReviewRowCard({ row }: { row: ReviewRow }) {
   // Pre-selection follows the matcher's confidence: a strong match proposes Link, anything
   // weaker proposes Add and shows the candidate so the user can override.
-  const [decision, setDecision] = useState<"link" | "add" | "ignore">(
-    row.match?.tier === "high" ? "link" : "add",
+  // A pair beats a weak match: two bank rows agreeing to the cent on opposite sides is
+  // stronger evidence than a hand-entered row that only roughly fits.
+  const [decision, setDecision] = useState<"link" | "pair" | "add" | "ignore">(
+    row.match?.tier === "high" ? "link" : row.transferPair ? "pair" : "add",
   );
   const [asTransfer, setAsTransfer] = useState(row.isTransfer);
 
@@ -106,17 +118,40 @@ function ReviewRowCard({ row }: { row: ReviewRow }) {
         </div>
       ) : null}
 
-      <ServerActionForm action={resolveStagedTransactionAction} className="space-y-2">
+      {row.transferPair ? (
+        <div className="rounded-lg border border-sky-500/30 bg-sky-950/30 px-3 py-2 text-xs text-slate-300">
+          <p>
+            Looks like the other side of a transfer:{" "}
+            <span className="font-medium text-slate-100">{row.transferPair.heading}</span> (
+            {row.transferPair.accountLabel} · {row.transferPair.dateDisplay})
+          </p>
+          <p className="mt-0.5 text-slate-500">
+            {row.transferPair.outflow
+              ? `${row.accountLabel} → ${row.transferPair.accountLabel}`
+              : `${row.transferPair.accountLabel} → ${row.accountLabel}`}{" "}
+            · same amount, opposite sides
+          </p>
+        </div>
+      ) : null}
+
+      <ServerActionForm
+        action={decision === "pair" ? pairStagedTransfersAction : resolveStagedTransactionAction}
+        className="space-y-2"
+      >
         <input type="hidden" name="stagedId" value={row.id} />
         <input type="hidden" name="decision" value={decision} />
         {row.match ? (
           <input type="hidden" name="linkTransactionId" value={row.match.candidate.id} />
+        ) : null}
+        {decision === "pair" && row.transferPair ? (
+          <input type="hidden" name="peerStagedId" value={row.transferPair.stagedId} />
         ) : null}
 
         <div className="flex flex-wrap gap-1.5" role="group" aria-label={`What to do with ${row.heading}`}>
           {(
             [
               ["link", "Link"],
+              ...(row.transferPair ? ([["pair", "Pair as transfer"]] as const) : []),
               ["add", "Add as new"],
               ["ignore", "Ignore"],
             ] as const
@@ -181,7 +216,13 @@ function ReviewRowCard({ row }: { row: ReviewRow }) {
         ) : null}
 
         <button type="submit" className={secondaryBtnClass}>
-          {decision === "link" ? "Link it" : decision === "add" ? "Add it" : "Ignore it"}
+          {decision === "link"
+            ? "Link it"
+            : decision === "pair"
+              ? "Add both as one transfer"
+              : decision === "add"
+                ? "Add it"
+                : "Ignore it"}
         </button>
       </ServerActionForm>
     </li>
@@ -191,7 +232,8 @@ function ReviewRowCard({ row }: { row: ReviewRow }) {
 export function PlaidReviewQueue({ rows, revisions }: PlaidReviewQueueProps) {
   const [open, setOpen] = useState(true);
   const unmatchedIds = useMemo(
-    () => rows.filter((row) => !row.match).map((row) => row.id),
+    // A suggested transfer pair is left out: adding both sides on their own would lose the pair.
+    () => rows.filter((row) => !row.match && !row.transferPair).map((row) => row.id),
     [rows],
   );
 

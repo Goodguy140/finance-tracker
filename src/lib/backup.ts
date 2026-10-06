@@ -74,6 +74,10 @@ export type UserBackupPayload = {
     /** The recurring rule (by its exported `id`) this row was posted from, if any. */
     recurringTransactionId: string | null;
     recurringExpectedDate: IsoString | null;
+    /** Transfers: the account (by its exported `id`) on the other side. */
+    transferAccountId: string | null;
+    /** Transfers: the other leg (by its exported `id`) when both are in the log. */
+    transferPeerId: string | null;
     createdAt: IsoString;
     updatedAt: IsoString;
     splitParts: Array<{
@@ -312,6 +316,8 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       note: row.note,
       recurringTransactionId: row.recurringTransactionId,
       recurringExpectedDate: toIso(row.recurringExpectedDate),
+      transferAccountId: row.transferAccountId,
+      transferPeerId: row.transferPeerId,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       splitParts: row.splitParts.map((part) => ({

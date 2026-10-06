@@ -1,14 +1,15 @@
-import { PlaidStagedStatus, type Prisma, type TransactionType } from "@prisma/client";
+import { PlaidStagedStatus, TransactionType, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { makeStagedProposer, type StagedRuleProposal } from "@/lib/plaid/staged-rules";
 import type { RuleTransactionType } from "@/lib/transaction-rules";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
+import { transferPairDateDelta } from "@/lib/plaid/transfer-pairing";
 import { convertAmountCents } from "@/lib/transfer-type";
 
 /**
  * Every write a review decision makes on a synced bank row: link it to a transaction the
- * user already entered, add it as a new one, ignore it, or settle a revision the bank sent
- * after it was committed.
+ * user already entered, add it as a new one, add it and another row as the two legs of one
+ * transfer, ignore it, or settle a revision the bank sent after it was committed.
  *
  * The review queue's buttons and the sync's auto-link both come through here, so "linked"
  * means one thing wherever it happens: a verification row, the bank's posted date only when
@@ -47,9 +48,15 @@ export type ReviewRefusal =
   /** The transaction is already confirmed against another bank record. */
   | "target-verified"
   /** An expense row cannot back an income entry, or the other way round. */
-  | "type-mismatch";
+  | "type-mismatch"
+  /** The two rows cannot be the two sides of one transfer (`transferPairDateDelta`). */
+  | "not-a-pair";
 
 export type ReviewOutcome = { ok: true; transactionId: string } | { ok: false; reason: ReviewRefusal };
+
+export type PairOutcome =
+  | { ok: true; transactionIds: [string, string] }
+  | { ok: false; reason: ReviewRefusal };
 
 /** The select that produces a `CommittableStagedRow`, with `toCommittable`. */
 export const COMMITTABLE_STAGED_SELECT = {
@@ -192,6 +199,56 @@ export async function addStagedRow(
     data: { resolvedTransactionId: created.id },
   });
   return { ok: true, transactionId: created.id };
+}
+
+/**
+ * Adds two bank rows as the two legs of one transfer: each a transfer on its own account,
+ * pointing at the other leg and naming the other's account as where the money went or came
+ * from.
+ *
+ * Both are claimed, so a refusal on the second leg must roll the first back: callers run
+ * this inside a database transaction and throw on `ok: false`, as with every decision here.
+ */
+export async function pairStagedRows(
+  tx: Tx,
+  input: {
+    userId: string;
+    legs: [
+      { staged: CommittableStagedRow; proposal: Pick<StagedRuleProposal, "title" | "note"> },
+      { staged: CommittableStagedRow; proposal: Pick<StagedRuleProposal, "title" | "note"> },
+    ];
+    /** The user's transfer category. */
+    categoryId: string;
+  },
+): Promise<PairOutcome> {
+  const [a, b] = input.legs;
+  const pairable = (row: CommittableStagedRow) => ({ ...row, accountId: row.suggestedAccountId });
+  if (transferPairDateDelta(pairable(a.staged), pairable(b.staged)) === null) {
+    return { ok: false, reason: "not-a-pair" };
+  }
+
+  const added: string[] = [];
+  for (const leg of input.legs) {
+    const outcome = await addStagedRow(tx, {
+      userId: input.userId,
+      staged: leg.staged,
+      categoryId: input.categoryId,
+      proposal: leg.proposal,
+      type: TransactionType.TRANSFER,
+    });
+    if (!outcome.ok) return outcome;
+    added.push(outcome.transactionId);
+  }
+  const [aId, bId] = added;
+  await tx.transaction.update({
+    where: { id: aId },
+    data: { transferAccountId: b.staged.suggestedAccountId, transferPeerId: bId },
+  });
+  await tx.transaction.update({
+    where: { id: bId },
+    data: { transferAccountId: a.staged.suggestedAccountId, transferPeerId: aId },
+  });
+  return { ok: true, transactionIds: [aId, bId] };
 }
 
 /** Dismisses a bank row without adding anything. False when it was already decided. */

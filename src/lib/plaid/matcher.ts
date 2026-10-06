@@ -128,7 +128,10 @@ function dayDelta(a: Date, b: Date): number {
  * when they made it while the bank often dates it from when it settled. Comparing only
  * `date` to `date` would miss the common weekend-purchase-posts-Monday case.
  */
-export function bestDateDelta(staged: StagedForMatch, candidate: MatchCandidate): number {
+export function bestDateDelta(
+  staged: Pick<StagedForMatch, "date" | "postedDate">,
+  candidate: Pick<MatchCandidate, "date" | "postedDate">,
+): number {
   const stagedDates = [staged.date, staged.postedDate].filter((d): d is Date => Boolean(d));
   const candidateDates = [candidate.date, candidate.postedDate].filter((d): d is Date => Boolean(d));
   let best = Number.POSITIVE_INFINITY;

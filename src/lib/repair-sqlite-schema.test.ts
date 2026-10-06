@@ -77,6 +77,8 @@ describe("repair-sqlite-schema runRepair", () => {
     expect(after.has("preCreditCents")).toBe(true);
     expect(after.has("creditCents")).toBe(true);
     expect(after.has("creditBreakdownJson")).toBe(true);
+    expect(after.has("transferAccountId")).toBe(true);
+    expect(after.has("transferPeerId")).toBe(true);
   });
 
   it("is idempotent when credit columns already exist", async () => {

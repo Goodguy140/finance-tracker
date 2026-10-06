@@ -10,6 +10,7 @@ import {
   COMMITTABLE_STAGED_SELECT,
   ignoreStagedRow,
   linkStagedRow,
+  pairStagedRows,
   toCommittable,
   type CommittableStagedRow,
 } from "@/lib/plaid/review";
@@ -214,5 +215,115 @@ describe("linkStagedRow", () => {
       linkStagedRow(tx, { userId: "someone-else", staged, transactionId: target.id }),
     );
     expect(outcome).toEqual({ ok: false, reason: "target-not-found" });
+  });
+});
+
+describe("pairStagedRows", () => {
+  /** A card payment as both banks report it, each on its own mapped account. */
+  async function paymentLegs(opts: { inAmountCents?: number } = {}) {
+    const item = await db.plaidItem.findFirstOrThrow({ where: { userId } });
+    const chequing = await db.account.create({ data: { userId, name: "Chequing", type: "CHEQUING" } });
+    const visa = await db.account.create({ data: { userId, name: "Visa", type: "CREDIT_CARD" } });
+    const leg = async (accountId: string, amountCents: number, day: string) => {
+      seq += 1;
+      const plaidAccount = await db.plaidAccount.create({
+        data: { userId, plaidItemId: item.id, plaidAccountId: `acct-${seq}`, name: "x", plaidType: "depository", accountId },
+      });
+      const row = await db.plaidStagedTransaction.create({
+        data: {
+          userId,
+          plaidItemId: item.id,
+          plaidAccountRowId: plaidAccount.id,
+          plaidTransactionId: `ptx-${seq}`,
+          name: "PAYMENT",
+          amountCents,
+          type: "TRANSFER",
+          date: new Date(`${day}T00:00:00Z`),
+          suggestedAccountId: accountId,
+        },
+        select: COMMITTABLE_STAGED_SELECT,
+      });
+      return toCommittable(row);
+    };
+    const out = await leg(chequing.id, 50000, "2026-09-30");
+    const arrived = await leg(visa.id, opts.inAmountCents ?? -50000, "2026-10-01");
+    const transferCategoryId = (await db.category.create({ data: { userId, name: "Transfers", kind: "TRANSFER" } })).id;
+    return { out, arrived, chequing, visa, transferCategoryId };
+  }
+
+  it("adds both legs as transfers that point at each other and name the other's account", async () => {
+    const { out, arrived, chequing, visa, transferCategoryId } = await paymentLegs();
+    const outcome = await db.$transaction((tx) =>
+      pairStagedRows(tx, {
+        userId,
+        legs: [
+          { staged: out, proposal: { title: "Visa payment", note: null } },
+          { staged: arrived, proposal: { title: "Payment received", note: null } },
+        ],
+        categoryId: transferCategoryId,
+      }),
+    );
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+
+    const [outTx, inTx] = await Promise.all(
+      outcome.transactionIds.map((id) => db.transaction.findUniqueOrThrow({ where: { id }, include: { verification: true } })),
+    );
+    expect(outTx).toMatchObject({
+      type: "TRANSFER",
+      amountCents: 50000,
+      accountId: chequing.id,
+      transferAccountId: visa.id,
+      transferPeerId: inTx.id,
+    });
+    expect(inTx).toMatchObject({
+      type: "TRANSFER",
+      amountCents: -50000,
+      accountId: visa.id,
+      transferAccountId: chequing.id,
+      transferPeerId: outTx.id,
+    });
+    expect(outTx.verification).not.toBeNull();
+    expect(inTx.verification).not.toBeNull();
+    const statuses = await db.plaidStagedTransaction.findMany({ where: { id: { in: [out.id, arrived.id] } } });
+    expect(statuses.map((r) => r.status)).toEqual(["ADDED", "ADDED"]);
+  });
+
+  it("refuses two rows that cannot be one transfer, writing nothing", async () => {
+    const { out, arrived, transferCategoryId } = await paymentLegs({ inAmountCents: -49000 });
+    const before = await db.transaction.count({ where: { userId } });
+    const outcome = await db.$transaction((tx) =>
+      pairStagedRows(tx, {
+        userId,
+        legs: [
+          { staged: out, proposal },
+          { staged: arrived, proposal },
+        ],
+        categoryId: transferCategoryId,
+      }),
+    );
+    expect(outcome).toEqual({ ok: false, reason: "not-a-pair" });
+    expect(await db.transaction.count({ where: { userId } })).toBe(before);
+  });
+
+  it("reports a leg someone already reviewed, so the caller rolls the other back", async () => {
+    const { out, arrived, transferCategoryId } = await paymentLegs();
+    await db.$transaction((tx) => ignoreStagedRow(tx, { userId, stagedId: arrived.id }));
+    const before = await db.transaction.count({ where: { userId } });
+    await expect(
+      db.$transaction(async (tx) => {
+        const outcome = await pairStagedRows(tx, {
+          userId,
+          legs: [
+            { staged: out, proposal },
+            { staged: arrived, proposal },
+          ],
+          categoryId: transferCategoryId,
+        });
+        if (!outcome.ok) throw new Error(outcome.reason);
+      }),
+    ).rejects.toThrow("already-reviewed");
+    expect(await db.transaction.count({ where: { userId } })).toBe(before);
+    expect((await db.plaidStagedTransaction.findUniqueOrThrow({ where: { id: out.id } })).status).toBe("NEEDS_REVIEW");
   });
 });

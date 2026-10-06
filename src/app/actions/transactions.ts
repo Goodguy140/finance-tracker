@@ -11,7 +11,13 @@ import { requireUser } from "@/lib/session";
 import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
 import { appendRuleNote, resolveRuleOutcome } from "@/lib/transaction-rules";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
-import { markAsTransfer, unmarkTransfer, type TransferMarkRefusal } from "@/lib/transfer-marking";
+import {
+  markAsTransfer,
+  setTransferAccount,
+  unmarkTransfer,
+  unpairTransfer,
+  type TransferMarkRefusal,
+} from "@/lib/transfer-marking";
 import {
   expenseCsvImportSchema,
   expenseBaseSchema,
@@ -377,6 +383,7 @@ export const deleteIncomeTransactionAction = formAction(async (formData: FormDat
 const TRANSFER_MARK_REFUSALS: Record<TransferMarkRefusal, string> = {
   "not-found": "Transaction not found.",
   split: "A split expense cannot be a transfer. Remove the split first.",
+  "same-account": "A transfer cannot go to the account it came from.",
 };
 
 /** Books a logged expense or income entry as a transfer between the user's own accounts. */
@@ -400,5 +407,30 @@ export const unmarkTransferAction = formAction(async (formData: FormData) => {
   if (!outcome.ok) throw new Error(TRANSFER_MARK_REFUSALS[outcome.reason]);
   // It now counts toward a budget again, which may push one over.
   scheduleBudgetAlertEmails(user.id);
+  revalidatePath("/");
+});
+
+/** Separates the two legs of a paired transfer; both stay transfers. */
+export const unpairTransferAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const transactionId = getFormValue(formData, "transactionId");
+  if (!transactionId) throw new Error("Transaction id is required.");
+
+  const outcome = await prisma.$transaction((tx) => unpairTransfer(tx, { userId: user.id, transactionId }));
+  if (!outcome.ok) throw new Error(TRANSFER_MARK_REFUSALS[outcome.reason]);
+  revalidatePath("/");
+});
+
+/** Names the account on the other side of a transfer; an empty value clears it. */
+export const setTransferAccountAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const transactionId = getFormValue(formData, "transactionId");
+  if (!transactionId) throw new Error("Transaction id is required.");
+  const transferAccountId = getFormValue(formData, "transferAccountId") || null;
+
+  const outcome = await prisma.$transaction((tx) =>
+    setTransferAccount(tx, { userId: user.id, transactionId, transferAccountId }),
+  );
+  if (!outcome.ok) throw new Error(TRANSFER_MARK_REFUSALS[outcome.reason]);
   revalidatePath("/");
 });
