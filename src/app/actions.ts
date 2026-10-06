@@ -47,6 +47,7 @@ export {
   applyTransactionRuleAction,
 } from "./actions/transaction-rules";
 export type { RulePreviewResult, RuleApplyResult } from "./actions/transaction-rules";
+export { renameTagAction, deleteTagAction } from "./actions/tags";
 export {
   createInvestmentFlowAction,
   createPortfolioSnapshotAction,

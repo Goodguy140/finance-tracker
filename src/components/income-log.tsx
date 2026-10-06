@@ -6,7 +6,9 @@ import { COMPACT_LIST_MAX_HEIGHT_CLASS } from "@/lib/dashboard-layout/display";
 import type { ListHeight } from "@/lib/dashboard-layout/schema";
 import { useRouter } from "next/navigation";
 import { deleteIncomeTransactionAction, updateIncomeAction } from "@/app/actions";
-import { MetaChip } from "@/components/meta-chip";
+import { MetaChip, TagChips } from "@/components/meta-chip";
+import { TagInput } from "@/components/tag-input";
+import { useTagOptions } from "@/components/transaction-rules-context";
 import { MarkAsTransferSection } from "@/components/transfer-log";
 import { VerifiedBadge, verificationTooltip, type VerificationInfo } from "@/components/verified-badge";
 import { formatCurrency } from "@/lib/money";
@@ -39,6 +41,8 @@ export type IncomeLogEntry = {
   accountLabel: string;
   /** Set once the entry has been confirmed against a bank record. */
   verification: VerificationInfo | null;
+  /** Tag names, sorted. */
+  tags: string[];
 };
 
 type UpdateState = { ok: true } | { ok: false; error: string | null };
@@ -69,6 +73,7 @@ function IncomeChipRow({ entry }: { entry: IncomeLogEntry }) {
       {entry.verification ? <VerifiedBadge info={entry.verification} /> : null}
       <MetaChip label="Date">{entry.dateDisplay}</MetaChip>
       {entry.note ? <MetaChip label="Note">{entry.note}</MetaChip> : null}
+      <TagChips tags={entry.tags} />
     </div>
   );
 }
@@ -79,6 +84,7 @@ function IncomeLogMeta({ entry, density }: { entry: IncomeLogEntry; density: Inc
     if (entry.title) parts.push(entry.title);
     parts.push(entry.sourceLabel, entry.accountLabel, entry.dateDisplay);
     if (entry.note) parts.push(entry.note);
+    if (entry.tags.length > 0) parts.push(entry.tags.map((tag) => `#${tag}`).join(" "));
     const line = parts.join(" · ");
     return (
       <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-slate-400 sm:text-xs" title={line}>
@@ -113,6 +119,7 @@ function IncomeLogMobileCard({
         <MetaChip label="Account">{entry.accountLabel}</MetaChip>
         <MetaChip label="Date">{entry.dateDisplay}</MetaChip>
         {entry.verification ? <VerifiedBadge info={entry.verification} /> : null}
+        <TagChips tags={entry.tags} />
       </div>
       {/* `title` never fires on touch, so the badge's detail is spelled out on the card. */}
       {entry.verification ? (
@@ -139,6 +146,8 @@ function EditIncomeModal({
   const fieldIds = useId();
   const [showTitle, setShowTitle] = useState(Boolean(entry.title));
   const [showNote, setShowNote] = useState(Boolean(entry.note));
+  const [showTags, setShowTags] = useState(entry.tags.length > 0);
+  const tagOptions = useTagOptions();
 
   const [state, formAction, isPending] = useActionState(
     async (_prev: UpdateState, formData: FormData): Promise<UpdateState> => {
@@ -267,6 +276,17 @@ function EditIncomeModal({
             >
               Note
             </button>
+            <button
+              type="button"
+              onClick={() => setShowTags((v) => !v)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                showTags
+                  ? "border-blue-500/40 bg-blue-500/15 text-blue-100"
+                  : "border-slate-700/80 bg-slate-950/50 text-slate-300 hover:bg-slate-900/70"
+              }`}
+            >
+              Tags
+            </button>
           </div>
           <CurrencyAmountInput
             name="amount"
@@ -309,6 +329,13 @@ function EditIncomeModal({
             </LabeledField>
           ) : (
             <input type="hidden" name="note" value="" />
+          )}
+          {showTags ? (
+            <div className={spanFullSm}>
+              <TagInput defaultTags={entry.tags} suggestions={tagOptions.names} />
+            </div>
+          ) : (
+            <input type="hidden" name="tags" value="" />
           )}
           {state.ok === false && state.error ? (
             <p className={`${spanFullSm} text-sm text-red-300`}>{state.error}</p>

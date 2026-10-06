@@ -33,6 +33,7 @@ export type TransactionRuleInput = {
   setAmountCents: number | null;
   setAccountId: string | null;
   appendNote: string | null;
+  addTagId: string | null;
 };
 
 export type RuleSubject = {
@@ -52,6 +53,8 @@ export type RuleOutcome = {
   amountCents?: number;
   accountId?: string;
   appendNote?: string;
+  /** Unlike the fields above, every matching rule adds its tag, in priority order. */
+  tagIds: string[];
   /** Rules that contributed at least one field, in priority order. */
   ruleIds: string[];
 };
@@ -105,7 +108,7 @@ export function resolveRuleOutcome(
   categoryKindById: ReadonlyMap<string, RuleTransactionType>,
   learned?: LearnedRuleContext,
 ): RuleOutcome {
-  const outcome: RuleOutcome = { ruleIds: [] };
+  const outcome: RuleOutcome = { tagIds: [], ruleIds: [] };
   for (const rule of sortRules(rules)) {
     if (!ruleMatches(rule, subject)) continue;
     let contributed = false;
@@ -132,6 +135,10 @@ export function resolveRuleOutcome(
     }
     if (outcome.appendNote === undefined && rule.appendNote?.trim()) {
       outcome.appendNote = rule.appendNote.trim();
+      contributed = true;
+    }
+    if (rule.addTagId && !outcome.tagIds.includes(rule.addTagId)) {
+      outcome.tagIds.push(rule.addTagId);
       contributed = true;
     }
     if (contributed) outcome.ruleIds.push(rule.id);
@@ -205,7 +212,12 @@ export function describeRuleCondition(
 
 export function describeRuleActions(
   rule: TransactionRuleInput,
-  labels: { category: (id: string) => string; account: (id: string) => string; amount: (cents: number) => string },
+  labels: {
+    category: (id: string) => string;
+    account: (id: string) => string;
+    amount: (cents: number) => string;
+    tag: (id: string) => string;
+  },
 ) {
   const parts: string[] = [];
   if (rule.setCategoryId) parts.push(`category → ${labels.category(rule.setCategoryId)}`);
@@ -213,6 +225,7 @@ export function describeRuleActions(
   if (rule.setAmountCents !== null) parts.push(`amount → ${labels.amount(rule.setAmountCents)}`);
   if (rule.setAccountId) parts.push(`account → ${labels.account(rule.setAccountId)}`);
   if (rule.appendNote) parts.push(`note + “${rule.appendNote}”`);
+  if (rule.addTagId) parts.push(`tag + ${labels.tag(rule.addTagId)}`);
   return parts.join(", ") || "no actions";
 }
 
@@ -224,12 +237,17 @@ export type PastTransaction = {
   accountId: string | null;
   categoryId: string;
   note: string | null;
+  tagIds: string[];
 };
+
+type RuleChangeFields = Pick<PastTransaction, "title" | "categoryId" | "accountId" | "note">;
 
 export type RuleChange = {
   id: string;
-  before: Pick<PastTransaction, "title" | "categoryId" | "accountId" | "note">;
-  after: Pick<PastTransaction, "title" | "categoryId" | "accountId" | "note">;
+  before: RuleChangeFields;
+  after: RuleChangeFields;
+  /** The rule's tag, when the transaction does not have it yet. */
+  addTagId: string | null;
 };
 
 /**
@@ -261,13 +279,15 @@ export function planRuleApplication(
     if (active.setTitle?.trim()) after.title = active.setTitle.trim();
     if (active.setAccountId) after.accountId = active.setAccountId;
     if (active.appendNote?.trim()) after.note = appendRuleNote(row.note, active.appendNote.trim());
+    const addTagId = active.addTagId && !row.tagIds.includes(active.addTagId) ? active.addTagId : null;
     if (
       after.categoryId !== before.categoryId ||
       after.title !== before.title ||
       after.accountId !== before.accountId ||
-      (after.note ?? null) !== (before.note ?? null)
+      (after.note ?? null) !== (before.note ?? null) ||
+      addTagId
     ) {
-      changes.push({ id: row.id, before, after });
+      changes.push({ id: row.id, before, after, addTagId });
     }
   }
   return changes;

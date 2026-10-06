@@ -19,6 +19,8 @@ export type StagedRuleProposal = {
   title: string;
   categoryId: string | null;
   note: string | null;
+  /** Tags the rules add. */
+  tagIds: string[];
   /** Why the proposal differs from the sync's own suggestion, for the queue to say so. */
   reason: "rule" | "learned" | null;
 };
@@ -50,11 +52,12 @@ export function proposeForStagedRow(
     categoryKindById,
     learned,
   );
-  const changed = outcome.title !== undefined || outcome.appendNote !== undefined;
+  const changed = outcome.title !== undefined || outcome.appendNote !== undefined || outcome.tagIds.length > 0;
   return {
     title: outcome.title ?? displayName,
     categoryId: outcome.categoryId ?? staged.suggestedCategoryId,
     note: outcome.appendNote ?? null,
+    tagIds: outcome.tagIds,
     reason: outcome.categoryFrom ?? (changed ? "rule" : null),
   };
 }

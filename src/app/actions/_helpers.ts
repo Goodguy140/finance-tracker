@@ -3,6 +3,7 @@ import { unstable_rethrow } from "next/navigation";
 import { describeActionError, isExpectedActionError } from "@/lib/action-errors";
 import type { ActionFailure } from "@/lib/action-result";
 import { prisma } from "@/lib/prisma";
+import { parseTagNames } from "@/lib/tags";
 
 export { publicSignupAllowed, resolveSignupRole } from "@/lib/signup-policy";
 
@@ -34,6 +35,16 @@ export function formAction(
 
 export function getFormValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "");
+}
+
+/**
+ * Tag names from the form's `tags` fields (the tag input posts one per tag, plus whatever is
+ * still typed). Undefined when the form has no tag field at all, so a caller that never sends
+ * tags leaves a transaction's tags alone rather than clearing them.
+ */
+export function getTagNames(formData: FormData): string[] | undefined {
+  if (!formData.has("tags")) return undefined;
+  return parseTagNames(formData.getAll("tags").map(String));
 }
 
 /**
