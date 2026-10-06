@@ -15,7 +15,6 @@ export {
   createIncomeAction,
   updateIncomeAction,
   deleteIncomeTransactionAction,
-  createSplitExpenseAction,
   markAsTransferAction,
   unmarkTransferAction,
 } from "./actions/transactions";

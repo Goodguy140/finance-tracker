@@ -22,7 +22,7 @@ function recurringExpenseDates(reference = new Date()) {
 }
 
 test("desktop: create and post a recurring expense", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Desktop add menu flow is covered by the chromium project");
+  test.skip(testInfo.project.name !== "chromium", "The Recurring card's New rule flow is covered by the chromium project");
 
   const stamp = uniqueStamp();
   const email = `e2e-recurring-${stamp}@example.com`;
@@ -47,9 +47,12 @@ test("desktop: create and post a recurring expense", async ({ page }, testInfo) 
 
   await expectDashboardHome(page);
 
-  await page.getByRole("button", { name: "Add", exact: true }).click();
-  const addDialog = page.getByRole("dialog", { name: "Add transaction" });
-  await addDialog.getByRole("button", { name: "Recurring" }).click();
+  // The header's Add menu is gone; rules are added from the card that manages them.
+  await expect(page.getByRole("button", { name: "Add", exact: true })).toHaveCount(0);
+  // Scoped to the card: the rule is also listed under Upcoming bills.
+  const recurringPanel = page.getByRole("region", { name: "Recurring transactions" });
+  await recurringPanel.getByRole("button", { name: "New rule" }).click();
+  const addDialog = page.getByRole("dialog", { name: "New recurring transaction" });
 
   const { nextExpectedDate, nextDuePattern } = recurringExpenseDates();
   const name = `Recurring gym ${stamp}`;
@@ -58,10 +61,8 @@ test("desktop: create and post a recurring expense", async ({ page }, testInfo) 
   await addDialog.locator('select[name="cadence"]').selectOption("MONTHLY");
   await addDialog.locator('input[name="nextExpectedDate"]').fill(nextExpectedDate);
   await addDialog.getByRole("button", { name: "Add recurring transaction" }).click();
-  await addDialog.getByRole("button", { name: "Close" }).click();
+  await expect(addDialog).toHaveCount(0);
 
-  // Scoped to the card: the rule is also listed under Upcoming bills.
-  const recurringPanel = page.getByRole("region", { name: "Recurring transactions" });
   await expect(recurringPanel.getByText(name, { exact: true })).toBeVisible({ timeout: 15_000 });
 
   await recurringPanel.getByRole("button", { name: "Post transaction" }).click();

@@ -1,10 +1,7 @@
 import { Suspense } from "react";
 import { CategoryKind, PlaidStagedStatus, RecurringCadence, TransactionType } from "@prisma/client";
 import Link from "next/link";
-import {
-  AddFormsDropdown,
-  LogoutButton,
-} from "@/components/forms";
+import { LogoutButton } from "@/components/forms";
 import { DashboardMobileActions } from "@/components/dashboard-mobile-actions";
 import { DashboardMonthFilter } from "@/components/dashboard-month-filter";
 import { BudgetAlertsPanel } from "@/components/budget-alerts-panel";
@@ -1020,13 +1017,6 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                   budgets={budgetProgressItems}
                   periodLabel={periodDescription}
                   periodKey={period.ym}
-                />
-                <AddFormsDropdown
-                  accounts={accountOptions}
-                  expenseCategories={expenseCategoryAddOptions}
-                  incomeCategories={incomeCategoryOptions}
-                  defaultExpenseAccountId={user.defaultExpenseAccountId}
-                  contributionRoom={contributionRoom}
                 />
                 <div className="hidden items-center gap-2 lg:flex">
                   <Link

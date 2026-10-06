@@ -212,7 +212,6 @@ export function LogoutButton() {
   );
 }
 
-export type AddMenuFormKey = "income" | "splitExpense" | "recurring" | "investment";
 
 
 export function PasswordResetRequestForm() {

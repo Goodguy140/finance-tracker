@@ -44,7 +44,6 @@ import {
 } from "@/app/actions";
 import { ExpenseCsvImportForm } from "./expense-forms";
 import { SubscriptionsPanel, type SubscriptionView } from "@/components/subscriptions-panel";
-import { RecurringRuleForm } from "@/components/recurring-rule-form";
 import { ApiTokensPanel, type ApiTokenRow, type ApiTokensMfaState } from "@/components/api-tokens-panel";
 import { PlaidConnectionsPanel, type PlaidConnectionsPanelProps } from "@/components/plaid-connections-panel";
 import { SecurityPanel, type SecurityPanelProps } from "@/components/security-panel";
@@ -139,28 +138,6 @@ export function BudgetForm({ expenseCategories }: { expenseCategories: Option[] 
     </ServerActionForm>
   );
 }
-
-export function RecurringTransactionForm({
-  accounts,
-  expenseCategories,
-  incomeCategories,
-  defaultExpenseAccountId,
-}: {
-  accounts: Option[];
-  expenseCategories: Option[];
-  incomeCategories: Option[];
-  defaultExpenseAccountId?: string | null;
-}) {
-  return (
-    <RecurringRuleForm
-      accounts={accounts}
-      expenseCategories={expenseCategories}
-      incomeCategories={incomeCategories}
-      defaultExpenseAccountId={defaultExpenseAccountId}
-    />
-  );
-}
-
 
 export function InvestmentForms({
   accounts,

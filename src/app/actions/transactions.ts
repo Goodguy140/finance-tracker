@@ -19,7 +19,6 @@ import {
   updateIncomeBaseSchema,
   updateExpenseBaseSchema,
   positiveAmount,
-  splitExpenseSchema,
 } from "@/lib/validation";
 import {
   getFormValue,
@@ -374,54 +373,6 @@ export const deleteIncomeTransactionAction = formAction(async (formData: FormDat
   await prisma.transaction.delete({ where: { id: existing.id } });
   revalidatePath("/");
 });
-
-export const createSplitExpenseAction = formAction(async (formData: FormData) => {
-  const user = await requireUser();
-  const parsedParts = parseJsonField<unknown>(getFormValue(formData, "parts"), [], "Split lines could not be read. Try again.");
-  const payload = splitExpenseSchema.parse({
-    accountId: getFormValue(formData, "accountId"),
-    date: getFormValue(formData, "date"),
-    title: getFormValue(formData, "title") || undefined,
-    note: getFormValue(formData, "note"),
-    parts: parsedParts,
-  });
-  await Promise.all([
-    assertUserOwnsAccount(user.id, payload.accountId),
-    ...payload.parts.map((part) =>
-      assertUserOwnsCategory(user.id, part.categoryId, CategoryKind.EXPENSE),
-    ),
-  ]);
-
-  const totalCents = payload.parts.reduce((sum, p) => sum + toCents(p.amount), 0);
-  const fallbackCategory = await prisma.category.findFirst({
-    where: { userId: user.id, kind: CategoryKind.EXPENSE },
-    orderBy: { createdAt: "asc" },
-  });
-  if (!fallbackCategory) throw new Error("Missing expense category.");
-
-  await prisma.transaction.create({
-    data: {
-      userId: user.id,
-      accountId: payload.accountId,
-      categoryId: fallbackCategory.id,
-      type: TransactionType.EXPENSE,
-      amountCents: totalCents,
-      date: dateFromYmd(payload.date),
-      title: payload.title,
-      note: payload.note || "Split expense",
-      splitParts: {
-        create: payload.parts.map((part) => ({
-          userId: user.id,
-          categoryId: part.categoryId,
-          amountCents: toCents(part.amount),
-        })),
-      },
-    },
-  });
-  scheduleBudgetAlertEmails(user.id);
-  revalidatePath("/");
-});
-
 
 const TRANSFER_MARK_REFUSALS: Record<TransferMarkRefusal, string> = {
   "not-found": "Transaction not found.",
