@@ -1145,6 +1145,12 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                     Insights
                   </Link>
                   <Link
+                    href="/reports"
+                    className="touch-manipulation inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-200 transition hover:bg-slate-800"
+                  >
+                    Reports
+                  </Link>
+                  <Link
                     href="/settings"
                     className="touch-manipulation inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-200 transition hover:bg-slate-800"
                   >

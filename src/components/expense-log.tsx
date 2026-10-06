@@ -1110,14 +1110,23 @@ export function ExpenseLogPanel({
 
 /**
  * Narrows the dashboard to one tag through `?tag=`, so the income and transfer lists and
- * Spending by category follow along with this log, and the choice survives a reload.
+ * Spending by category follow along with this log, and the choice survives a reload. The
+ * Reports page reuses it for the same parameter.
  */
-function TagFilterSelect({ tags, selectedId }: { tags: TagOption[]; selectedId: string | null }) {
+export function TagFilterSelect({
+  tags,
+  selectedId,
+  className = "block w-[38%] max-w-[12rem] shrink-0",
+}: {
+  tags: TagOption[];
+  selectedId: string | null;
+  className?: string;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   return (
-    <label className="block w-[38%] max-w-[12rem] shrink-0">
+    <label className={className}>
       <span className="sr-only">Filter by tag</span>
       <select
         className={`${inputClass} truncate`}

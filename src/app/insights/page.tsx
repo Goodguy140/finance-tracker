@@ -76,6 +76,9 @@ export default async function InsightsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <Link href="/reports" className={linkBtn}>
+            Reports
+          </Link>
           <Link href="/settings" className={linkBtn}>
             Settings
           </Link>
