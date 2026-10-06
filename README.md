@@ -9,6 +9,7 @@ Self-hosted personal finance app. Next.js, SQLite and Prisma, shipped as a singl
 - **Recurring rules** for bills and salary, posted by hand or automatically
 - **Upcoming bills** forecast for the next 30, 60 or 90 days
 - **Transfers** between accounts, kept out of income and spending
+- **Tags** that cut across categories, added by hand or by transaction rules, with a dashboard filter
 - **Investments** with TFSA, RRSP and FHSA contribution room tracking
 - **Bank sync** through Plaid; synced transactions wait in a review queue and are never posted on their own
 - **Multi-user** with roles, Google or Authentik SSO, passkeys, and an admin audit log

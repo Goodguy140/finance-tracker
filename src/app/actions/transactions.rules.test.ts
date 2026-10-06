@@ -6,6 +6,7 @@ const mockPrisma = vi.hoisted(() => ({
   account: { findFirst: vi.fn(), findMany: vi.fn() },
   category: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
   transaction: { createMany: vi.fn() },
+  transactionTag: { createMany: vi.fn() },
   $transaction: vi.fn(),
 }));
 const ruleContext = vi.hoisted(() => ({ current: null as null | RuleContext }));
@@ -37,6 +38,7 @@ const baseRule: TransactionRuleInput = {
   setAmountCents: 999,
   setAccountId: "acc-card",
   appendNote: "streaming",
+  addTagId: null,
 };
 
 function csvForm(rows: Record<string, string>[], mapping: Record<string, string>) {
@@ -90,6 +92,24 @@ describe("importExpensesCsvAction with rules", () => {
         amountCents: 1599,
       }),
     ]);
+  });
+
+  it("tags the rows a tagging rule matches, by ids given to those rows", async () => {
+    ruleContext.current = { ...ruleContext.current!, rules: [{ ...baseRule, addTagId: "tag-subs" }] };
+    await importExpensesCsvAction(
+      csvForm([{ Amount: "15.99", Desc: "NETFLIX.COM" }, { Amount: "5", Desc: "Corner shop" }], { amount: "Amount", title: "Desc" }),
+    );
+    const [netflix, shop] = writtenRows();
+    expect(typeof netflix.id).toBe("string");
+    expect(shop.id).toBeUndefined();
+    expect(mockPrisma.transactionTag.createMany).toHaveBeenCalledWith({
+      data: [{ transactionId: netflix.id, tagId: "tag-subs" }],
+    });
+  });
+
+  it("writes no tags when no rule adds one", async () => {
+    await importExpensesCsvAction(csvForm([{ Amount: "15.99", Desc: "NETFLIX.COM" }], { amount: "Amount", title: "Desc" }));
+    expect(mockPrisma.transactionTag.createMany).not.toHaveBeenCalled();
   });
 
   it("lets a category or account named by the row win over the rule", async () => {

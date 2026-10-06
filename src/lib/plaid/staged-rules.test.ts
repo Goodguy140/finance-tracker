@@ -17,6 +17,7 @@ const rule: TransactionRuleInput = {
   setAmountCents: 999,
   setAccountId: "acc-other",
   appendNote: "streaming",
+  addTagId: null,
 };
 
 const kinds = new Map<string, RuleTransactionType>([
@@ -42,6 +43,15 @@ describe("proposeForStagedRow", () => {
       title: "Netflix",
       categoryId: "cat-subs",
       note: "streaming",
+      tagIds: [],
+      reason: "rule",
+    });
+  });
+
+  it("carries the tags rules add, and counts a tag alone as a rule's doing", () => {
+    const tagOnly = { ...rule, setCategoryId: null, setTitle: null, appendNote: null, addTagId: "tag-subs" };
+    expect(proposeForStagedRow(staged, [tagOnly], kinds, noLearned)).toMatchObject({
+      tagIds: ["tag-subs"],
       reason: "rule",
     });
   });
@@ -67,6 +77,7 @@ describe("proposeForStagedRow", () => {
       title: "Tim Hortons",
       categoryId: "cat-food",
       note: null,
+      tagIds: [],
       reason: "learned",
     });
   });

@@ -49,6 +49,7 @@ export function assertBackupReferencesResolve(parsed: ParsedUserBackup): void {
   const categoryIds = new Set(parsed.categories.map((row) => row.id));
   const recurringIds = new Set(parsed.recurringTransactions.flatMap((row) => (row.id ? [row.id] : [])));
   const transactionIds = new Set(parsed.transactions.map((row) => row.id));
+  const tagIds = new Set((parsed.tags ?? []).map((row) => row.id));
 
   for (const row of parsed.recurringTransactions) {
     if (!categoryIds.has(row.categoryId) || !accountIds.has(row.accountId)) {
@@ -73,6 +74,9 @@ export function assertBackupReferencesResolve(parsed: ParsedUserBackup): void {
     }
     if (row.splitParts.some((part) => !categoryIds.has(part.categoryId))) {
       throw new Error("Backup references unknown split category.");
+    }
+    if ((row.tagIds ?? []).some((id) => !tagIds.has(id))) {
+      throw new Error("Backup references unknown tag.");
     }
   }
   for (const row of parsed.transactionVerifications ?? []) {
@@ -110,6 +114,9 @@ export function assertBackupReferencesResolve(parsed: ParsedUserBackup): void {
       (row.setAccountId && !accountIds.has(row.setAccountId))
     ) {
       throw new Error("Backup references unknown rule account or category.");
+    }
+    if (row.addTagId && !tagIds.has(row.addTagId)) {
+      throw new Error("Backup references unknown tag.");
     }
   }
 }

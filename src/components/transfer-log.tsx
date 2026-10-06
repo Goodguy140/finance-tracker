@@ -7,7 +7,7 @@ import {
   unmarkTransferAction,
   unpairTransferAction,
 } from "@/app/actions";
-import { MetaChip } from "@/components/meta-chip";
+import { MetaChip, TagChips } from "@/components/meta-chip";
 import { ServerActionForm } from "@/components/server-action-form";
 import { VerifiedBadge, type VerificationInfo } from "@/components/verified-badge";
 import { inputClass, secondaryBtnClass } from "@/components/forms/shared";
@@ -28,6 +28,8 @@ export type TransferLogEntry = {
   /** Both legs are in the log and linked; the other side comes from the pair. */
   paired: boolean;
   verification: VerificationInfo | null;
+  /** Tag names, sorted. */
+  tags: string[];
 };
 
 type AccountOption = { id: string; name: string };
@@ -81,6 +83,7 @@ function TransferRow({ entry, accounts }: { entry: TransferLogEntry; accounts: A
             <MetaChip label="Date">{entry.dateDisplay}</MetaChip>
             {entry.paired ? <MetaChip label="Paired">both sides in your log</MetaChip> : null}
             {entry.note ? <MetaChip label="Note">{entry.note}</MetaChip> : null}
+            <TagChips tags={entry.tags} />
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1 text-right">

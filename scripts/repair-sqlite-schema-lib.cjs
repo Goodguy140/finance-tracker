@@ -1,5 +1,5 @@
 /** Keep in sync with SCHEMA_REPAIR_VERSION in src/lib/migration-health.ts */
-const SCHEMA_REPAIR_VERSION = "9";
+const SCHEMA_REPAIR_VERSION = "10";
 const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
 
@@ -104,6 +104,11 @@ const COLUMN_REPAIRS = [
     table: "RecurringTransaction",
     column: "anchorDay",
     ddl: 'ALTER TABLE "RecurringTransaction" ADD COLUMN "anchorDay" INTEGER',
+  },
+  {
+    table: "TransactionRule",
+    column: "addTagId",
+    ddl: 'ALTER TABLE "TransactionRule" ADD COLUMN "addTagId" TEXT REFERENCES "Tag" ("id") ON DELETE SET NULL ON UPDATE CASCADE',
   },
 ];
 

@@ -20,6 +20,8 @@ const mockPrisma = vi.hoisted(() => ({
   transactionVerification: { deleteMany: vi.fn(), create: vi.fn() },
   transactionRule: { deleteMany: vi.fn(), createMany: vi.fn() },
   hiddenTitleSuggestion: { deleteMany: vi.fn(), createMany: vi.fn() },
+  tag: { deleteMany: vi.fn(), create: vi.fn() },
+  transactionTag: { createMany: vi.fn() },
   insightDismissal: { deleteMany: vi.fn(), createMany: vi.fn() },
   insightPreference: { deleteMany: vi.fn(), create: vi.fn() },
   contributionRoom: { deleteMany: vi.fn(), createMany: vi.fn() },
@@ -340,6 +342,79 @@ describe("importUserBackupAction", () => {
       ok: false,
       error: "Backup references unknown rule account or category.",
     });
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("restores tags, merging names that differ only in case, onto transactions and rules", async () => {
+    const iso = "2026-01-01T00:00:00.000Z";
+    mockPrisma.account.create.mockResolvedValue({ id: "acc-new" });
+    mockPrisma.category.create.mockResolvedValue({ id: "cat-new" });
+    mockPrisma.transaction.create.mockResolvedValue({ id: "txn-new" });
+    mockPrisma.tag.create.mockResolvedValueOnce({ id: "tag-trip-new" }).mockResolvedValueOnce({ id: "tag-tax-new" });
+    const backup = {
+      ...minimalBackup("user@example.com"),
+      accounts: [
+        { id: "acc-old", name: "Chequing", type: "CHEQUING", currency: "CAD", countryCode: "CA", provider: null, archived: false, createdAt: iso, updatedAt: iso },
+      ],
+      categories: [{ id: "cat-old", name: "Travel", kind: "EXPENSE", isDefault: false, createdAt: iso, updatedAt: iso }],
+      tags: [
+        { id: "tag-trip", name: "Trip", createdAt: iso },
+        { id: "tag-trip-dup", name: "trip", createdAt: iso },
+        { id: "tag-tax", name: "Tax", createdAt: iso },
+      ],
+      transactions: [
+        {
+          id: "txn-old", accountId: "acc-old", categoryId: "cat-old", type: "EXPENSE", amountCents: 1, preCreditCents: null,
+          creditCents: null, creditBreakdownJson: null, title: null, date: iso, postedDate: null, accountDescription: null,
+          note: null, recurringTransactionId: null, recurringExpectedDate: null, createdAt: iso, updatedAt: iso, splitParts: [],
+          tagIds: ["tag-trip", "tag-trip-dup", "tag-tax"],
+        },
+      ],
+      transactionRules: [
+        {
+          priority: 0, enabled: true, titleOperator: "CONTAINS", titlePattern: "air", transactionType: null,
+          matchAccountId: null, minAmountCents: null, maxAmountCents: null, setCategoryId: null, setTitle: null,
+          setAmountCents: null, setAccountId: null, appendNote: null, addTagId: "tag-trip-dup", createdAt: iso,
+        },
+      ],
+    };
+    const file = new File([JSON.stringify(backup)], "backup.json", { type: "application/json" });
+    const formData = new FormData();
+    formData.set("backupJson", file);
+
+    expect(await importUserBackupAction(formData)).toBeUndefined();
+    expect(mockPrisma.tag.deleteMany).toHaveBeenCalledWith({ where: { userId: "user-1" } });
+    expect(mockPrisma.tag.create).toHaveBeenCalledTimes(2);
+    expect(mockPrisma.transactionTag.createMany).toHaveBeenCalledWith({
+      data: [
+        { transactionId: "txn-new", tagId: "tag-trip-new" },
+        { transactionId: "txn-new", tagId: "tag-tax-new" },
+      ],
+    });
+    expect(mockPrisma.transactionRule.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ addTagId: "tag-trip-new" })],
+    });
+  });
+
+  it("refuses a file whose transaction carries a tag it does not contain", async () => {
+    const iso = "2026-01-01T00:00:00.000Z";
+    const backup = {
+      ...minimalBackup("user@example.com"),
+      categories: [{ id: "cat-old", name: "Travel", kind: "EXPENSE", isDefault: false, createdAt: iso, updatedAt: iso }],
+      transactions: [
+        {
+          id: "txn-old", accountId: null, categoryId: "cat-old", type: "EXPENSE", amountCents: 1, preCreditCents: null,
+          creditCents: null, creditBreakdownJson: null, title: null, date: iso, postedDate: null, accountDescription: null,
+          note: null, recurringTransactionId: null, recurringExpectedDate: null, createdAt: iso, updatedAt: iso, splitParts: [],
+          tagIds: ["tag-missing"],
+        },
+      ],
+    };
+    const file = new File([JSON.stringify(backup)], "backup.json", { type: "application/json" });
+    const formData = new FormData();
+    formData.set("backupJson", file);
+
+    expect(await importUserBackupAction(formData)).toEqual({ ok: false, error: "Backup references unknown tag." });
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
