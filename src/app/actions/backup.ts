@@ -9,6 +9,7 @@ import { requireUser } from "@/lib/session";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { userBackupSchema } from "@/lib/backup-schema";
 import { assertBackupReferencesResolve, resolveBackupUserProfileFields } from "@/lib/backup-restore";
+import { normalizeTagName, tagNameKey } from "@/lib/tags";
 import { revokePlaidItemsForUser } from "@/lib/plaid/unlink";
 import { tryMakePlaidItemRevoker } from "@/lib/plaid/service";
 import {
@@ -34,6 +35,7 @@ export const clearUserFinancialDataAction = formAction(async (formData: FormData
     });
     await tx.transactionRule.deleteMany({ where: { userId: user.id } });
     await tx.hiddenTitleSuggestion.deleteMany({ where: { userId: user.id } });
+    await tx.tag.deleteMany({ where: { userId: user.id } });
     await tx.insightDismissal.deleteMany({ where: { userId: user.id } });
     await tx.insightPreference.deleteMany({ where: { userId: user.id } });
     await tx.budget.deleteMany({ where: { userId: user.id } });
@@ -106,6 +108,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
     await tx.passwordResetToken.deleteMany({ where: { userId: user.id } });
     await tx.transactionRule.deleteMany({ where: { userId: user.id } });
     await tx.hiddenTitleSuggestion.deleteMany({ where: { userId: user.id } });
+    await tx.tag.deleteMany({ where: { userId: user.id } });
     await tx.insightDismissal.deleteMany({ where: { userId: user.id } });
     await tx.insightPreference.deleteMany({ where: { userId: user.id } });
     await tx.budget.deleteMany({ where: { userId: user.id } });
@@ -183,6 +186,31 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
         select: { id: true },
       });
       categoryIdMap.set(category.id, created.id);
+    }
+
+    // Tags go in before the transactions and rules that carry them. Names are matched the
+    // way the app matches them, so a hand-edited file with "Trip" and "trip" makes one tag.
+    const tagIdMap = new Map<string, string>();
+    const tagIdByKey = new Map<string, string>();
+    const mappedTagId = (id: string) => {
+      const mapped = tagIdMap.get(id);
+      if (!mapped) throw new Error("Backup references unknown tag.");
+      return mapped;
+    };
+    for (const row of parsed.tags ?? []) {
+      const name = normalizeTagName(row.name);
+      if (!name) throw new Error("Backup has a tag with no name.");
+      const nameKey = tagNameKey(name);
+      let id = tagIdByKey.get(nameKey);
+      if (!id) {
+        const created = await tx.tag.create({
+          data: { userId: user.id, name, nameKey, createdAt: new Date(row.createdAt) },
+          select: { id: true },
+        });
+        id = created.id;
+        tagIdByKey.set(nameKey, id);
+      }
+      tagIdMap.set(row.id, id);
     }
 
     // Rules go in before transactions so posted occurrences can point back at them.
@@ -318,6 +346,12 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
         select: { id: true },
       });
       transactionIdMap.set(row.id, createdTransaction.id);
+      const mappedTagIds = new Set((row.tagIds ?? []).map(mappedTagId));
+      if (mappedTagIds.size > 0) {
+        await tx.transactionTag.createMany({
+          data: [...mappedTagIds].map((tagId) => ({ transactionId: createdTransaction.id, tagId })),
+        });
+      }
     }
 
     // The two legs of a transfer point at each other, so neither can be written with its
@@ -458,6 +492,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
           setAmountCents: row.setAmountCents,
           setAccountId: mapped(accountIdMap, row.setAccountId),
           appendNote: row.appendNote,
+          addTagId: row.addTagId ? mappedTagId(row.addTagId) : null,
           createdAt: new Date(row.createdAt),
         };
       }),

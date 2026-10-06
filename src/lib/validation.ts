@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { MAX_AMOUNT, MAX_AMOUNT_CENTS } from "@/lib/money";
 import { YM_PATTERN } from "@/lib/period-month";
+import { MAX_TAG_NAME_LENGTH } from "@/lib/tags";
 
 /**
  * Money inputs. Every money column is a 32-bit `Int` of cents, so amounts are capped at
@@ -189,6 +190,8 @@ export const transactionRuleSchema = z
     setAmount: positiveAmount.optional(),
     setAccountId: z.string().min(1).optional(),
     appendNote: z.string().trim().max(250).optional(),
+    /** A tag name; the action creates the tag if the user does not have it yet. */
+    addTag: z.string().trim().max(MAX_TAG_NAME_LENGTH + 10).optional(),
   })
   .refine((r) => r.minAmount === undefined || r.maxAmount === undefined || r.minAmount <= r.maxAmount, {
     message: "The minimum amount must not exceed the maximum.",
@@ -196,7 +199,7 @@ export const transactionRuleSchema = z
   })
   .refine(
     (r) =>
-      !!(r.setCategoryId || r.setTitle || r.setAmount !== undefined || r.setAccountId || r.appendNote),
+      !!(r.setCategoryId || r.setTitle || r.setAmount !== undefined || r.setAccountId || r.appendNote || r.addTag),
     { message: "Choose at least one thing for the rule to set.", path: ["setCategoryId"] },
   );
 

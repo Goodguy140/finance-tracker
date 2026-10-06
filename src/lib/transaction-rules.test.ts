@@ -26,6 +26,7 @@ function rule(overrides: Partial<TransactionRuleInput> = {}): TransactionRuleInp
     setAmountCents: null,
     setAccountId: null,
     appendNote: null,
+    addTagId: null,
     ...overrides,
   };
 }
@@ -121,6 +122,18 @@ describe("resolveRuleOutcome", () => {
     expect(resolveRuleOutcome([], subject({ type: "INCOME" }), kinds, visible).categoryId).toBeUndefined();
   });
 
+  it("adds every matching rule's tag, not only the first, without repeats", () => {
+    const rules = [
+      rule({ id: "a", priority: 0, addTagId: "tag-subs" }),
+      rule({ id: "b", priority: 1, addTagId: "tag-tax" }),
+      rule({ id: "c", priority: 2, addTagId: "tag-subs" }),
+      rule({ id: "d", priority: 3, titlePattern: "spotify", addTagId: "tag-music" }),
+    ];
+    const outcome = resolveRuleOutcome(rules, subject(), kinds);
+    expect(outcome.tagIds).toEqual(["tag-subs", "tag-tax"]);
+    expect(outcome.ruleIds).toEqual(["a", "b"]);
+  });
+
   it("ignores disabled rules", () => {
     expect(resolveRuleOutcome([rule({ enabled: false, setCategoryId: "subs" })], subject(), kinds).ruleIds).toEqual([]);
   });
@@ -147,9 +160,9 @@ describe("appendRuleNote", () => {
 
 describe("planRuleApplication", () => {
   const rows = [
-    { id: "t1", title: "NETFLIX.COM", type: "EXPENSE" as const, amountCents: 1599, accountId: "acc1", categoryId: "shopping", note: null },
-    { id: "t2", title: "Netflix", type: "EXPENSE" as const, amountCents: 1599, accountId: "acc1", categoryId: "subs", note: null },
-    { id: "t3", title: "Groceries", type: "EXPENSE" as const, amountCents: 5000, accountId: "acc1", categoryId: "shopping", note: null },
+    { id: "t1", title: "NETFLIX.COM", type: "EXPENSE" as const, amountCents: 1599, accountId: "acc1", categoryId: "shopping", note: null, tagIds: [] },
+    { id: "t2", title: "Netflix", type: "EXPENSE" as const, amountCents: 1599, accountId: "acc1", categoryId: "subs", note: null, tagIds: [] },
+    { id: "t3", title: "Groceries", type: "EXPENSE" as const, amountCents: 5000, accountId: "acc1", categoryId: "shopping", note: null, tagIds: [] },
   ];
 
   it("lists only rows the rule matches and would change, and never touches the amount", () => {
@@ -163,6 +176,7 @@ describe("planRuleApplication", () => {
         id: "t1",
         before: { title: "NETFLIX.COM", categoryId: "shopping", accountId: "acc1", note: null },
         after: { title: "Netflix", categoryId: "subs", accountId: "acc1", note: null },
+        addTagId: null,
       },
     ]);
     expect(changes[0].after).not.toHaveProperty("amountCents");
@@ -170,5 +184,12 @@ describe("planRuleApplication", () => {
 
   it("applies even when the rule is currently disabled (an explicit request)", () => {
     expect(planRuleApplication(rule({ enabled: false, setCategoryId: "subs" }), rows, kinds).map((c) => c.id)).toEqual(["t1"]);
+  });
+
+  it("adds the rule's tag to matching rows that lack it, and skips rows that already have it", () => {
+    const tagged = rows.map((row) => (row.id === "t2" ? { ...row, tagIds: ["tag-subs"] } : row));
+    const changes = planRuleApplication(rule({ addTagId: "tag-subs" }), tagged, kinds);
+    expect(changes.map((c) => [c.id, c.addTagId])).toEqual([["t1", "tag-subs"]]);
+    expect(changes[0].after).toEqual(changes[0].before);
   });
 });

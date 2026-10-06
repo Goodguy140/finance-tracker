@@ -78,6 +78,8 @@ export type UserBackupPayload = {
     transferAccountId: string | null;
     /** Transfers: the other leg (by its exported `id`) when both are in the log. */
     transferPeerId: string | null;
+    /** The transaction's tags, by their exported `tags[].id`. */
+    tagIds: string[];
     createdAt: IsoString;
     updatedAt: IsoString;
     splitParts: Array<{
@@ -190,8 +192,12 @@ export type UserBackupPayload = {
     setAmountCents: number | null;
     setAccountId: string | null;
     appendNote: string | null;
+    /** By its exported `tags[].id`. */
+    addTagId: string | null;
     createdAt: IsoString;
   }>;
+  /** The user's tags. Optional: older backups predate them. */
+  tags?: Array<{ id: string; name: string; createdAt: IsoString }>;
   /** Learned Title → Category combos the user hid (normalised title keys). Optional. */
   hiddenTitleSuggestions?: Array<{ titleKey: string }>;
   /**
@@ -242,7 +248,13 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       resetTokens: true,
       accounts: true,
       categories: true,
-      transactions: { include: { splitParts: true, owedShares: { orderBy: { createdAt: "asc" } } } },
+      transactions: {
+        include: {
+          splitParts: true,
+          tags: { select: { tagId: true } },
+          owedShares: { orderBy: { createdAt: "asc" } },
+        },
+      },
       budgets: true,
       recurringTransactions: {
         include: { subscriptionMembers: { include: { shareStatuses: true } } },
@@ -252,6 +264,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       transactionVerifications: true,
       transactionRules: { orderBy: [{ priority: "asc" }, { id: "asc" }] },
       hiddenTitleSuggestions: true,
+      tags: { orderBy: { nameKey: "asc" } },
       insightDismissals: true,
       insightPreference: true,
       contributionRooms: { orderBy: [{ accountType: "asc" }, { year: "asc" }] },
@@ -328,6 +341,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       recurringExpectedDate: toIso(row.recurringExpectedDate),
       transferAccountId: row.transferAccountId,
       transferPeerId: row.transferPeerId,
+      tagIds: row.tags.map((link) => link.tagId),
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       splitParts: row.splitParts.map((part) => ({
@@ -418,8 +432,10 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       setAmountCents: row.setAmountCents,
       setAccountId: row.setAccountId,
       appendNote: row.appendNote,
+      addTagId: row.addTagId,
       createdAt: row.createdAt.toISOString(),
     })),
+    tags: user.tags.map((row) => ({ id: row.id, name: row.name, createdAt: row.createdAt.toISOString() })),
     hiddenTitleSuggestions: user.hiddenTitleSuggestions.map((row) => ({ titleKey: row.titleKey })),
     insightDismissals: user.insightDismissals.map((row) => ({
       insightKey: row.insightKey,

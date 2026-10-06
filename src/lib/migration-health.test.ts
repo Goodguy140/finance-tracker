@@ -82,6 +82,13 @@ async function createMinimalSchema(prisma: PrismaClient) {
       "anchorDay" INTEGER
     )
   `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "TransactionRule" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "addTagId" TEXT
+    )
+  `);
 }
 
 describe("migration-health", () => {

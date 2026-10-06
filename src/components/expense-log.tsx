@@ -4,9 +4,12 @@ import { isActionFailure } from "@/lib/action-result";
 import { useActionState, useEffect, useId, useMemo, useState } from "react";
 import { LIST_MAX_HEIGHT_CLASS } from "@/lib/dashboard-layout/display";
 import type { ListHeight } from "@/lib/dashboard-layout/schema";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { deleteExpenseTransactionAction, updateExpenseAction } from "@/app/actions";
-import { MetaChip } from "@/components/meta-chip";
+import { MetaChip, TagChips } from "@/components/meta-chip";
+import { TagInput } from "@/components/tag-input";
+import { useTagOptions } from "@/components/transaction-rules-context";
+import type { TagOption } from "@/lib/tags";
 import { MarkAsTransferSection } from "@/components/transfer-log";
 import { VerifiedBadge, verificationTooltip, type VerificationInfo } from "@/components/verified-badge";
 import {
@@ -56,6 +59,8 @@ export type ExpenseLogEntry = {
   isSplit: boolean;
   /** Set once the transaction has been confirmed against a bank record. */
   verification: VerificationInfo | null;
+  /** Tag names, sorted. */
+  tags: string[];
   /** What others owe back on this expense; already taken out of `amountCents`. */
   owedShares: ExpenseOwedShare[];
 };
@@ -155,6 +160,7 @@ function ExpenseChipRow({ txn }: { txn: ExpenseLogEntry }) {
       <MetaChip label="Transaction">{txn.dateDisplay}</MetaChip>
       {txn.postedDateDisplay ? <MetaChip label="Posted">{txn.postedDateDisplay}</MetaChip> : null}
       {txn.note ? <MetaChip label="Note">{txn.note}</MetaChip> : null}
+      <TagChips tags={txn.tags} />
     </div>
   );
 }
@@ -172,6 +178,7 @@ function ExpenseLogMeta({
     const parts: string[] = [txn.categoryLabel, txn.accountLabel, txn.dateDisplay];
     if (txn.postedDateDisplay) parts.push(`posted ${txn.postedDateDisplay}`);
     if (txn.note) parts.push(txn.note);
+    if (txn.tags.length > 0) parts.push(txn.tags.map((tag) => `#${tag}`).join(" "));
     const line = parts.join(" · ");
     // `title` never fires on touch, so the verification detail is spelled out here
     // rather than living only in the badge tooltip.
@@ -232,6 +239,7 @@ function ExpenseLogMobileCard({
             Split — view only
           </span>
         ) : null}
+        <TagChips tags={txn.tags} />
       </div>
       <p className="text-xs leading-snug text-slate-500">
         <span className="font-medium text-slate-400">{txn.accountLabel}</span>
@@ -292,6 +300,8 @@ function EditExpenseModal({
   );
   const [showPostedDate, setShowPostedDate] = useState(entry.postedDateYmd != null);
   const [showNote, setShowNote] = useState(Boolean(entry.note));
+  const [showTags, setShowTags] = useState(entry.tags.length > 0);
+  const tagOptions = useTagOptions();
 
   const [state, formAction, isPending] = useActionState(
     async (_prev: UpdateState, formData: FormData): Promise<UpdateState> => {
@@ -462,6 +472,17 @@ function EditExpenseModal({
               }`}
             >
               Note
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowTags((v) => !v)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                showTags
+                  ? "border-blue-500/40 bg-blue-500/15 text-blue-100"
+                  : "border-slate-700/80 bg-slate-950/50 text-slate-300 hover:bg-slate-900/70"
+              }`}
+            >
+              Tags
             </button>
             <button
               type="button"
@@ -667,6 +688,14 @@ function EditExpenseModal({
             </LabeledField>
           ) : (
             <input type="hidden" name="note" value="" />
+          )}
+          {/* Closing the field removes the tags, the same way closing Note clears the note. */}
+          {showTags ? (
+            <div className={spanFullSm}>
+              <TagInput defaultTags={entry.tags} suggestions={tagOptions.names} />
+            </div>
+          ) : (
+            <input type="hidden" name="tags" value="" />
           )}
           {state.ok === false && state.error ? (
             <p className={`${spanFullSm} text-sm text-red-300`}>{state.error}</p>
@@ -973,6 +1002,7 @@ export function ExpenseLogPanel({
   accounts,
   categories,
   titleSuggestions,
+  tagFilter,
   density = "expanded",
   maxHeight = "default",
 }: {
@@ -980,6 +1010,8 @@ export function ExpenseLogPanel({
   accounts: Option[];
   categories: Option[];
   titleSuggestions: ExpenseTitleSuggestion[];
+  /** The user's tags and the dashboard's `?tag=` filter; `entries` already honour it. */
+  tagFilter?: { tags: TagOption[]; selectedId: string | null };
   /**
    * Density and list height are card settings on the dashboard layout, not per-device
    * localStorage as they once were: every other card setting lives with the account, and
@@ -1005,19 +1037,24 @@ export function ExpenseLogPanel({
   return (
     <>
       <div className={`${LIST_MAX_HEIGHT_CLASS[maxHeight]} overflow-y-auto overflow-x-hidden pr-1 [-webkit-overflow-scrolling:touch]`}>
-        {entries.length > 0 ? (
+        {entries.length > 0 || tagFilter?.selectedId ? (
           <div className="sticky top-0 z-[3] mb-2 space-y-2 border-b border-slate-800/70 bg-slate-900/95 py-2 backdrop-blur-md sm:static sm:z-auto sm:mb-3 sm:border-0 sm:bg-transparent sm:py-0 sm:backdrop-blur-none">
-            <label className="block">
-              <span className="sr-only">Search expense log</span>
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search title, category, account, note, amount…"
-                className={inputClass}
-                autoComplete="off"
-              />
-            </label>
+            <div className="flex gap-2">
+              <label className="block min-w-0 flex-1">
+                <span className="sr-only">Search expense log</span>
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search title, category, account, note, amount…"
+                  className={inputClass}
+                  autoComplete="off"
+                />
+              </label>
+              {tagFilter && (tagFilter.tags.length > 0 || tagFilter.selectedId) ? (
+                <TagFilterSelect tags={tagFilter.tags} selectedId={tagFilter.selectedId} />
+              ) : null}
+            </div>
             <p className="text-xs text-slate-500">
               {trimmedSearch
                 ? `${filteredEntries.length} of ${entries.length} shown`
@@ -1027,7 +1064,9 @@ export function ExpenseLogPanel({
         ) : null}
         <div className="space-y-2">
           {entries.length === 0 ? (
-            <p className="text-sm text-slate-400">No expenses in this period.</p>
+            <p className="text-sm text-slate-400">
+              {tagFilter?.selectedId ? "No expenses with this tag in this period." : "No expenses in this period."}
+            </p>
           ) : filteredEntries.length === 0 ? (
             <p className="text-sm text-slate-400">No expenses match your search.</p>
           ) : (
@@ -1066,5 +1105,39 @@ export function ExpenseLogPanel({
         />
       ) : null}
     </>
+  );
+}
+
+/**
+ * Narrows the dashboard to one tag through `?tag=`, so the income and transfer lists and
+ * Spending by category follow along with this log, and the choice survives a reload.
+ */
+function TagFilterSelect({ tags, selectedId }: { tags: TagOption[]; selectedId: string | null }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  return (
+    <label className="block w-[38%] max-w-[12rem] shrink-0">
+      <span className="sr-only">Filter by tag</span>
+      <select
+        className={`${inputClass} truncate`}
+        value={selectedId ?? ""}
+        data-testid="tag-filter"
+        onChange={(e) => {
+          const next = new URLSearchParams(searchParams.toString());
+          if (e.target.value) next.set("tag", e.target.value);
+          else next.delete("tag");
+          const q = next.toString();
+          router.push(q ? `${pathname}?${q}` : pathname, { scroll: false });
+        }}
+      >
+        <option value="">All tags</option>
+        {tags.map((tag) => (
+          <option key={tag.id} value={tag.id}>
+            #{tag.name}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

@@ -11,3 +11,20 @@ export function MetaChip({ label, children }: { label: string; children: ReactNo
     </span>
   );
 }
+
+const tagChipClass =
+  "inline-flex max-w-full min-w-0 items-center rounded-full border border-teal-500/35 bg-teal-500/10 px-2.5 py-1 text-[11px] font-medium leading-tight text-teal-100 sm:text-xs";
+
+/** A transaction's tags, one chip each. Renders nothing for an untagged transaction. */
+export function TagChips({ tags }: { tags: readonly string[] }) {
+  if (tags.length === 0) return null;
+  return (
+    <>
+      {tags.map((tag) => (
+        <span key={tag} className={tagChipClass} title={`Tag: ${tag}`} data-testid="tag-chip">
+          <span className="min-w-0 truncate">#{tag}</span>
+        </span>
+      ))}
+    </>
+  );
+}

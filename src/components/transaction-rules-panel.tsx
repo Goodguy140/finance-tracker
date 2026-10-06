@@ -5,10 +5,12 @@ import { useEffect, useId, useMemo, useRef, useState, useTransition, type ReactN
 import {
   applyTransactionRuleAction,
   createTransactionRuleAction,
+  deleteTagAction,
   deleteTransactionRuleAction,
   hideLearnedTitleAction,
   moveTransactionRuleAction,
   previewTransactionRuleAction,
+  renameTagAction,
   setTransactionRuleEnabledAction,
   unhideLearnedTitleAction,
   updateTransactionRuleAction,
@@ -25,6 +27,7 @@ import {
   type RuleTransactionType,
   type TransactionRuleInput,
 } from "@/lib/transaction-rules";
+import { MAX_TAG_NAME_LENGTH, type TagOption } from "@/lib/tags";
 
 export type TransactionRulesPanelProps = {
   rules: TransactionRuleInput[];
@@ -34,6 +37,8 @@ export type TransactionRulesPanelProps = {
   orphanHiddenTitles: string[];
   categories: { id: string; name: string; kind: RuleTransactionType }[];
   accounts: { id: string; name: string; archived: boolean }[];
+  /** With how many transactions carry each, for the Tags list. */
+  tags: (TagOption & { transactionCount: number })[];
 };
 
 const sectionClass =
@@ -55,6 +60,7 @@ export function TransactionRulesPanel({
   orphanHiddenTitles,
   categories,
   accounts,
+  tags,
 }: TransactionRulesPanelProps) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [previewRuleId, setPreviewRuleId] = useState<string | null>(null);
@@ -68,11 +74,15 @@ export function TransactionRulesPanel({
     const map = new Map(accounts.map((a) => [a.id, a.name]));
     return (id: string) => map.get(id) ?? "Deleted account";
   }, [accounts]);
+  const tagName = useMemo(() => {
+    const map = new Map(tags.map((t) => [t.id, t.name]));
+    return (id: string) => map.get(id) ?? "Deleted tag";
+  }, [tags]);
   const categoryKinds = useMemo(
     () => new Map(categories.map((c) => [c.id, c.kind] as const)),
     [categories],
   );
-  const labels = { category: categoryName, account: accountName, amount: formatCurrency };
+  const labels = { category: categoryName, account: accountName, amount: formatCurrency, tag: tagName };
 
   function openEditor(next: Draft) {
     setDraft(next);
@@ -98,7 +108,7 @@ export function TransactionRulesPanel({
         </div>
         <p className="max-w-prose text-xs leading-relaxed text-slate-400">
           Rules run top to bottom. Each field is filled by the first matching rule that sets it, so a broad rule and a
-          narrower one can work together. A rule always beats a learned combo below it. Rules never change an amount
+          narrower one can work together, except tags: every matching rule adds its tag. A rule always beats a learned combo below it. Rules never change an amount
           your bank or statement reports — they only suggest one when you add an entry by hand.
         </p>
 
@@ -178,6 +188,7 @@ export function TransactionRulesPanel({
                     ruleId={rule.id}
                     categoryName={categoryName}
                     accountName={accountName}
+                    tagName={tagName}
                     onDone={() => setPreviewRuleId(null)}
                   />
                 ) : null}
@@ -194,12 +205,19 @@ export function TransactionRulesPanel({
             draft={draft}
             categories={categories}
             accounts={accounts}
+            tags={tags}
             onDone={() => setDraft(null)}
           />
         </section>
       ) : null}
 
-      <RuleTester rules={rules} learned={visibleLearned} categoryKinds={categoryKinds} categoryName={categoryName} />
+      <RuleTester
+        rules={rules}
+        learned={visibleLearned}
+        categoryKinds={categoryKinds}
+        categoryName={categoryName}
+        tagName={tagName}
+      />
 
       <section className={sectionClass} aria-labelledby="learned-heading">
         <div className="flex flex-wrap items-center gap-2">
@@ -246,7 +264,94 @@ export function TransactionRulesPanel({
           </details>
         ) : null}
       </section>
+
+      <TagList tags={tags} />
     </div>
+  );
+}
+
+function TagList({ tags }: { tags: TransactionRulesPanelProps["tags"] }) {
+  const ids = useId();
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  return (
+    <section className={sectionClass} aria-labelledby={`${ids}-tags-heading`} data-testid="tag-list">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 id={`${ids}-tags-heading`} className="text-base font-semibold text-slate-100">
+          Tags
+        </h3>
+        <MetaChip label="Tags">{String(tags.length)}</MetaChip>
+      </div>
+      <p className="max-w-prose text-xs leading-relaxed text-slate-400">
+        Labels that cut across categories, like a trip or “reimbursable”. Type one on any entry to create it; filter the
+        dashboard by one from the expense log. Renaming a tag to the name of another merges the two.
+      </p>
+      {tags.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-slate-700 px-3 py-4 text-sm text-slate-400">
+          No tags yet.
+        </p>
+      ) : (
+        <ul className="divide-y divide-slate-800/80 rounded-xl border border-slate-800 bg-slate-950/40">
+          {tags.map((tag) => (
+            <li key={tag.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+              {renamingId === tag.id ? (
+                <ServerActionForm
+                  action={renameTagAction}
+                  onSuccess={() => setRenamingId(null)}
+                  className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5"
+                >
+                  <input type="hidden" name="tagId" value={tag.id} />
+                  <input
+                    name="name"
+                    aria-label={`New name for ${tag.name}`}
+                    className={`${inputClass} min-w-0 flex-1`}
+                    defaultValue={tag.name}
+                    maxLength={MAX_TAG_NAME_LENGTH}
+                    required
+                    autoFocus
+                  />
+                  <button type="submit" className={smallBtnClass}>
+                    Save
+                  </button>
+                  <button type="button" className={smallBtnClass} onClick={() => setRenamingId(null)}>
+                    Cancel
+                  </button>
+                </ServerActionForm>
+              ) : (
+                <>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-slate-100">{tag.name}</p>
+                    <p className="text-xs text-slate-400">
+                      {tag.transactionCount} transaction{tag.transactionCount === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      className={smallBtnClass}
+                      onClick={() => setRenamingId(tag.id)}
+                      aria-label={`Rename ${tag.name}`}
+                    >
+                      Rename
+                    </button>
+                    <ServerActionForm
+                      action={deleteTagAction}
+                      beforeSubmit={async () =>
+                        window.confirm(`Delete the tag “${tag.name}”? The transactions themselves are kept.`)
+                      }
+                    >
+                      <input type="hidden" name="tagId" value={tag.id} />
+                      <button type="submit" className={`${smallBtnClass} text-red-200`} aria-label={`Delete ${tag.name}`}>
+                        Delete
+                      </button>
+                    </ServerActionForm>
+                  </div>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -278,11 +383,13 @@ function RuleEditor({
   draft,
   categories,
   accounts,
+  tags,
   onDone,
 }: {
   draft: Draft;
   categories: TransactionRulesPanelProps["categories"];
   accounts: TransactionRulesPanelProps["accounts"];
+  tags: TagOption[];
   onDone: () => void;
 }) {
   const ids = useId();
@@ -497,6 +604,28 @@ function RuleEditor({
               maxLength={250}
             />,
           )}
+          {field(
+            "addTag",
+            "Add tag",
+            <>
+              <input
+                id={`${ids}-addTag`}
+                name="addTag"
+                className={inputClass}
+                defaultValue={tags.find((t) => t.id === draft.addTagId)?.name ?? ""}
+                placeholder="None"
+                maxLength={MAX_TAG_NAME_LENGTH}
+                list={`${ids}-tag-options`}
+                autoComplete="off"
+              />
+              <datalist id={`${ids}-tag-options`}>
+                {tags.map((t) => (
+                  <option key={t.id} value={t.name} />
+                ))}
+              </datalist>
+            </>,
+            "Kept alongside the tags a transaction already has. A new name creates the tag.",
+          )}
         </div>
       </fieldset>
 
@@ -516,11 +645,13 @@ function RulePreview({
   ruleId,
   categoryName,
   accountName,
+  tagName,
   onDone,
 }: {
   ruleId: string;
   categoryName: (id: string) => string;
   accountName: (id: string) => string;
+  tagName: (id: string) => string;
   onDone: () => void;
 }) {
   const router = useRouter();
@@ -586,6 +717,11 @@ function RulePreview({
                         <span className="text-slate-100">{describe(f, change.after[f])}</span>
                       </p>
                     ))}
+                  {change.addTagId ? (
+                    <p>
+                      Tag: <span className="text-slate-100">+ {tagName(change.addTagId)}</span>
+                    </p>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -609,11 +745,13 @@ function RuleTester({
   learned,
   categoryKinds,
   categoryName,
+  tagName,
 }: {
   rules: TransactionRuleInput[];
   learned: { title: string; categoryId: string }[];
   categoryKinds: ReadonlyMap<string, RuleTransactionType>;
   categoryName: (id: string) => string;
+  tagName: (id: string) => string;
 }) {
   const ids = useId();
   const [title, setTitle] = useState("");
@@ -674,6 +812,11 @@ function RuleTester({
                 <li>Amount: <span className="text-slate-100">{formatCurrency(outcome.amountCents)}</span></li>
               ) : null}
               {outcome.appendNote ? <li>Note: <span className="text-slate-100">{outcome.appendNote}</span></li> : null}
+              {outcome.tagIds.length > 0 ? (
+                <li>
+                  Tags: <span className="text-slate-100">{outcome.tagIds.map(tagName).join(", ")}</span>
+                </li>
+              ) : null}
               {ruleNumbers.length > 0 ? (
                 <li className="text-xs text-slate-500">From rule{ruleNumbers.length === 1 ? "" : "s"} {ruleNumbers.join(", ")}</li>
               ) : null}

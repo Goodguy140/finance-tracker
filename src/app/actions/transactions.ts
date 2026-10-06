@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { CategoryKind, Prisma, TransactionType } from "@prisma/client";
 import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
@@ -12,6 +13,7 @@ import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
 import { ownPartCents, parseOwedSharesFromForm, saveOwedShares } from "@/lib/owed-shares";
 import { appendRuleNote, resolveRuleOutcome } from "@/lib/transaction-rules";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
+import { addTagsToTransaction, replaceTransactionTags, resolveTagIds } from "@/lib/tags-server";
 import {
   markAsTransfer,
   setTransferAccount,
@@ -29,6 +31,7 @@ import {
 } from "@/lib/validation";
 import {
   getFormValue,
+  getTagNames,
   LONG_TRANSACTION_OPTIONS,
   assertUserOwnsAccount,
   assertUserOwnsCategory,
@@ -47,26 +50,31 @@ export const createExpenseAction = formAction(async (formData: FormData) => {
     note: getFormValue(formData, "note"),
   });
   const amounts = parseExpenseAmountFromForm(formData);
+  const tagNames = getTagNames(formData) ?? [];
   await Promise.all([
     payload.accountId ? assertUserOwnsAccount(user.id, payload.accountId) : Promise.resolve(),
     assertUserOwnsCategory(user.id, payload.categoryId, CategoryKind.EXPENSE),
   ]);
 
-  await prisma.transaction.create({
-    data: {
-      userId: user.id,
-      accountId: payload.accountId,
-      categoryId: payload.categoryId,
-      type: TransactionType.EXPENSE,
-      amountCents: amounts.amountCents,
-      preCreditCents: amounts.preCreditCents,
-      creditCents: amounts.creditCents,
-      creditBreakdownJson: amounts.creditBreakdownJson,
-      date: dateFromYmd(payload.date),
-      postedDate: payload.postedDate ? dateFromYmd(payload.postedDate) : null,
-      title: payload.title,
-      note: payload.note,
-    },
+  await prisma.$transaction(async (tx) => {
+    const created = await tx.transaction.create({
+      data: {
+        userId: user.id,
+        accountId: payload.accountId,
+        categoryId: payload.categoryId,
+        type: TransactionType.EXPENSE,
+        amountCents: amounts.amountCents,
+        preCreditCents: amounts.preCreditCents,
+        creditCents: amounts.creditCents,
+        creditBreakdownJson: amounts.creditBreakdownJson,
+        date: dateFromYmd(payload.date),
+        postedDate: payload.postedDate ? dateFromYmd(payload.postedDate) : null,
+        title: payload.title,
+        note: payload.note,
+      },
+      select: { id: true },
+    });
+    await addTagsToTransaction(tx, created.id, await resolveTagIds(tx, user.id, tagNames));
   });
   scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
@@ -84,6 +92,7 @@ export const updateExpenseAction = formAction(async (formData: FormData) => {
     note: getFormValue(formData, "note"),
   });
   const amounts = parseExpenseAmountFromForm(formData);
+  const tagNames = getTagNames(formData);
   await Promise.all([
     payload.accountId ? assertUserOwnsAccount(user.id, payload.accountId) : Promise.resolve(),
     assertUserOwnsCategory(user.id, payload.categoryId, CategoryKind.EXPENSE),
@@ -145,6 +154,7 @@ export const updateExpenseAction = formAction(async (formData: FormData) => {
     if (owedRows) {
       await saveOwedShares(tx, { userId: user.id, transactionId: existing.id, rows: owedRows });
     }
+    if (tagNames) await replaceTransactionTags(tx, existing.id, await resolveTagIds(tx, user.id, tagNames));
   });
   scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
@@ -234,6 +244,9 @@ export const importExpensesCsvAction = formAction(async (formData: FormData) => 
   // transaction timeout and roll the whole import back.
   await prisma.$transaction(async (tx) => {
     const pending: Prisma.TransactionCreateManyInput[] = [];
+    // Tags the rules add. A tagged row gets its id here so its tags can name it in the same
+    // batch; createMany returns no ids.
+    const pendingTags: Prisma.TransactionTagCreateManyInput[] = [];
     for (const row of payload.rows) {
       const amountRaw = row[payload.mapping.amount]?.trim();
       if (!amountRaw) continue;
@@ -291,7 +304,10 @@ export const importExpensesCsvAction = formAction(async (formData: FormData) => 
         }
       }
 
+      const id = rule.tagIds.length > 0 ? randomUUID() : undefined;
+      if (id) pendingTags.push(...rule.tagIds.map((tagId) => ({ transactionId: id, tagId })));
       pending.push({
+        id,
         userId: user.id,
         accountId: resolvedAccountId,
         categoryId: resolvedCategoryId,
@@ -304,6 +320,7 @@ export const importExpensesCsvAction = formAction(async (formData: FormData) => 
       });
     }
     if (pending.length > 0) await tx.transaction.createMany({ data: pending });
+    if (pendingTags.length > 0) await tx.transactionTag.createMany({ data: pendingTags });
   }, LONG_TRANSACTION_OPTIONS);
 
   scheduleBudgetAlertEmails(user.id);
@@ -322,22 +339,27 @@ export const createIncomeAction = formAction(async (formData: FormData) => {
     title: getFormValue(formData, "title") || undefined,
     note: getFormValue(formData, "note"),
   });
+  const tagNames = getTagNames(formData) ?? [];
   await Promise.all([
     payload.accountId ? assertUserOwnsAccount(user.id, payload.accountId) : Promise.resolve(),
     assertUserOwnsCategory(user.id, payload.categoryId, CategoryKind.INCOME),
   ]);
 
-  await prisma.transaction.create({
-    data: {
-      userId: user.id,
-      accountId: payload.accountId,
-      categoryId: payload.categoryId,
-      type: TransactionType.INCOME,
-      amountCents: toCents(payload.amount),
-      date: dateFromYmd(payload.date),
-      title: payload.title,
-      note: payload.note,
-    },
+  await prisma.$transaction(async (tx) => {
+    const created = await tx.transaction.create({
+      data: {
+        userId: user.id,
+        accountId: payload.accountId,
+        categoryId: payload.categoryId,
+        type: TransactionType.INCOME,
+        amountCents: toCents(payload.amount),
+        date: dateFromYmd(payload.date),
+        title: payload.title,
+        note: payload.note,
+      },
+      select: { id: true },
+    });
+    await addTagsToTransaction(tx, created.id, await resolveTagIds(tx, user.id, tagNames));
   });
   revalidatePath("/");
 });
@@ -357,6 +379,7 @@ export const updateIncomeAction = formAction(async (formData: FormData) => {
     throw new Error(parsedAmount.error.issues[0]?.message ?? "Amount must be a positive number.");
   }
   const amount = parsedAmount.data;
+  const tagNames = getTagNames(formData);
   await Promise.all([
     payload.accountId ? assertUserOwnsAccount(user.id, payload.accountId) : Promise.resolve(),
     assertUserOwnsCategory(user.id, payload.categoryId, CategoryKind.INCOME),
@@ -371,21 +394,24 @@ export const updateIncomeAction = formAction(async (formData: FormData) => {
   });
   if (!existing) throw new Error("Income entry not found.");
 
-  await prisma.transaction.update({
-    where: { id: existing.id },
-    data: {
-      account: payload.accountId
-        ? { connect: { id: payload.accountId } }
-        : { disconnect: true },
-      category: { connect: { id: payload.categoryId } },
-      amountCents: toCents(amount),
-      preCreditCents: null,
-      creditCents: null,
-      creditBreakdownJson: null,
-      date: dateFromYmd(payload.date),
-      title: payload.title,
-      note: payload.note,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.transaction.update({
+      where: { id: existing.id },
+      data: {
+        account: payload.accountId
+          ? { connect: { id: payload.accountId } }
+          : { disconnect: true },
+        category: { connect: { id: payload.categoryId } },
+        amountCents: toCents(amount),
+        preCreditCents: null,
+        creditCents: null,
+        creditBreakdownJson: null,
+        date: dateFromYmd(payload.date),
+        title: payload.title,
+        note: payload.note,
+      },
+    });
+    if (tagNames) await replaceTransactionTags(tx, existing.id, await resolveTagIds(tx, user.id, tagNames));
   });
   revalidatePath("/");
 });

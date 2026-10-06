@@ -69,6 +69,8 @@ import {
 import { currentYmdInTimeZone, currentYmInTimeZone } from "@/lib/period-month";
 import { loadInsights } from "@/lib/insights/load";
 import { prisma } from "@/lib/prisma";
+import { resolveTagFilter } from "@/lib/tags";
+import { listTags } from "@/lib/tags-server";
 import { autoPostDueRecurringTransactions } from "@/lib/recurring-post";
 import { DEFAULT_BILLS_FORECAST_DAYS, forecastRecurringOccurrences, groupForecastByDay } from "@/lib/bills-forecast";
 import { requireUser } from "@/lib/session";
@@ -84,7 +86,13 @@ const cadenceLabels: Record<RecurringCadence, string> = {
   BIENNIAL: "Every 2 years",
 };
 
-type SearchParams = Promise<{ month?: string | string[]; range?: string | string[]; preset?: string | string[] }>;
+type SearchParams = Promise<{
+  month?: string | string[];
+  range?: string | string[];
+  preset?: string | string[];
+  /** A tag id: narrows the logs and Spending by category to transactions carrying it. */
+  tag?: string | string[];
+}>;
 
 export const dynamic = "force-dynamic";
 
@@ -134,7 +142,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const categoryUsageCutoff = new Date(now);
   categoryUsageCutoff.setMonth(categoryUsageCutoff.getMonth() - 3);
 
-  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, ruleContext, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount, plaidAttentionCount, contributionRoom, periodTransfers, periodInvestmentFlows, periodPortfolioSnapshots, transferPairingPool, owedShareRows] =
+  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, ruleContext, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount, plaidAttentionCount, contributionRoom, periodTransfers, periodInvestmentFlows, periodPortfolioSnapshots, transferPairingPool, tags, owedShareRows] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -171,6 +179,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         account: true,
         splitParts: { include: { category: true } },
         verification: true,
+        tags: { select: { tagId: true } },
         owedShares: { orderBy: { createdAt: "asc" } },
       },
       orderBy: { date: "desc" },
@@ -181,7 +190,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         type: TransactionType.INCOME,
         ...transactionDateFilter,
       },
-      include: { category: true, account: true, verification: true },
+      include: { category: true, account: true, verification: true, tags: { select: { tagId: true } } },
       orderBy: { date: "desc" },
     }),
     prisma.transaction.aggregate({
@@ -269,6 +278,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         verification: true,
         investmentFlow: { select: { id: true } },
         transferPeer: { select: { id: true } },
+        tags: { select: { tagId: true } },
       },
       orderBy: { date: "desc" },
     }),
@@ -303,6 +313,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         suggestedCategoryId: true,
       },
     }),
+    listTags(prisma, user.id),
     // "Owed to you": everything still outstanding whatever the period, since a debt from
     // March is no less owed in May, and what was paid back lately so a slip can be undone.
     prisma.owedShare.findMany({
@@ -314,6 +325,18 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       orderBy: [{ transaction: { date: "desc" } }, { createdAt: "asc" }],
     }),
   ]);
+
+  // `?tag=`: the logs, their counts and Spending by category show only what carries the tag.
+  // Budgets, the spend chart and alerts stay whole — a budget is for all of a category.
+  const tagFilter = resolveTagFilter(sp.tag, tags);
+  const tagNameById = new Map(tags.map((tag) => [tag.id, tag.name]));
+  const tagNamesOf = (txn: { tags: { tagId: string }[] }) =>
+    txn.tags.flatMap(({ tagId }) => tagNameById.get(tagId) ?? []).sort((a, b) => a.localeCompare(b));
+  const passesTagFilter = (txn: { tags: { tagId: string }[] }) =>
+    !tagFilter || txn.tags.some(({ tagId }) => tagId === tagFilter.id);
+  const logExpenses = periodExpenses.filter(passesTagFilter);
+  const logIncomes = periodIncomes.filter(passesTagFilter);
+  const logTransfers = periodTransfers.filter(passesTagFilter);
 
   const expenseCategories = categories.filter((c) => c.kind === CategoryKind.EXPENSE);
   const incomeCategories = categories.filter((c) => c.kind === CategoryKind.INCOME);
@@ -345,6 +368,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const formRules = {
     rules: ruleContext.rules.filter((r) => r.enabled),
     categoryKinds: Object.fromEntries(categoryKindById),
+    tags,
   };
 
   const spendByCategory = computeSpendByCategory(periodExpenses);
@@ -517,7 +541,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     monthlyExpected,
   });
 
-  const categoryPieSlices = Array.from(spendByCategory.entries())
+  const categoryPieSlices = Array.from((tagFilter ? computeSpendByCategory(logExpenses) : spendByCategory).entries())
     .map(([categoryId, cents]) => {
       const cat = categories.find((c) => c.id === categoryId);
       return { name: cat?.name ?? "Unknown", cents };
@@ -635,7 +659,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     ];
   });
 
-  const expenseLogEntries = periodExpenses.map((txn) => ({
+  const expenseLogEntries = logExpenses.map((txn) => ({
     id: txn.id,
     amountCents: txn.amountCents,
     preCreditCents: txn.preCreditCents,
@@ -661,6 +685,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       amountCents: share.amountCents,
       paid: share.paidAt !== null,
     })),
+    tags: tagNamesOf(txn),
   }));
 
   const owedToYouItems: OwedToYouItem[] = owedShareRows.map((share) => ({
@@ -672,7 +697,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     paidDisplay: share.paidAt ? formatDateOnlyUtc(share.paidAt) : null,
   }));
 
-  const incomeLogEntries = periodIncomes.map((txn) => ({
+  const incomeLogEntries = logIncomes.map((txn) => ({
     id: txn.id,
     amountCents: txn.amountCents,
     dateYmd: ymdFromDateUtc(txn.date),
@@ -686,12 +711,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       ? `${txn.account.name} (${formatAccountTypeLabel(txn.account.type)})`
       : (txn.accountDescription ?? "Removed account"),
     verification: toVerificationInfo(txn.verification),
+    tags: tagNamesOf(txn),
   }));
 
   // A paired transfer is listed once, from the leg the money left. When only the arriving leg
   // falls in the period (paid on the 30th, arrived on the 1st), that leg stands for the pair.
-  const periodTransferIds = new Set(periodTransfers.map((txn) => txn.id));
-  const transferLogEntries: TransferLogEntry[] = periodTransfers
+  const periodTransferIds = new Set(logTransfers.map((txn) => txn.id));
+  const transferLogEntries: TransferLogEntry[] = logTransfers
     .filter((txn) => !(txn.transferPeerId && txn.amountCents < 0 && periodTransferIds.has(txn.transferPeerId)))
     .map((txn) => ({
       id: txn.id,
@@ -709,6 +735,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         : null,
       paired: txn.transferPeer !== null,
       verification: toVerificationInfo(txn.verification),
+      tags: tagNamesOf(txn),
     }));
 
   // A single month lists only the rules that fall in it: due there, or already posted there
@@ -787,8 +814,11 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         ? "YTD spend vs summed budgets"
         : "Lifetime spend vs summed budgets";
 
-  const incomeSumCents = incomeTotal._sum.amountCents ?? 0;
-  const showDashboardIncomeCard = periodIncomes.length > 0 || incomeSumCents > 0;
+  const incomeSumCents = tagFilter
+    ? logIncomes.reduce((sum, txn) => sum + txn.amountCents, 0)
+    : (incomeTotal._sum.amountCents ?? 0);
+  const showDashboardIncomeCard = periodIncomes.length > 0 || (incomeTotal._sum.amountCents ?? 0) > 0;
+  const tagFilterLabel = tagFilter ? ` · tagged “${tagFilter.name}”` : "";
 
   // Which cards this render can produce. The server decides what exists; reconciliation
   // decides where it goes.
@@ -919,7 +949,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     "spending-by-category": {
       body: (
         <SpendingByCategoryCardBody
-          periodDescription={periodDescription}
+          periodDescription={`${periodDescription}${tagFilterLabel}`}
           categoryPieSlices={categoryPieSlices}
           chartHeight={cardSettings["spending-by-category"]?.chartHeight}
           maxSlices={cardSettings["spending-by-category"]?.maxSlices}
@@ -941,7 +971,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       ),
     },
     "expense-log": {
-      subtitle: `${periodDescription} · ${periodExpenses.length} transaction${periodExpenses.length === 1 ? "" : "s"}`,
+      subtitle: `${periodDescription}${tagFilterLabel} · ${logExpenses.length} transaction${logExpenses.length === 1 ? "" : "s"}`,
       // Beside the card's settings button, so it is there whether or not the period has rows.
       // Hidden with no bank connected, when it would have nothing to check.
       headerActions: plaidItemCount > 0 ? <RefreshLinkedAccountsButton /> : undefined,
@@ -956,6 +986,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
             accounts={accountOptions}
             categories={expenseCategoryOptions}
             titleSuggestions={expenseTitleSuggestions}
+            tagFilter={{ tags, selectedId: tagFilter?.id ?? null }}
             density={cardSettings["expense-log"]?.density}
             maxHeight={cardSettings["expense-log"]?.maxHeight}
           />
@@ -1039,7 +1070,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           accounts={accountOptions}
           categories={incomeCategoryOptions}
           incomeSumCents={incomeSumCents}
-          depositCount={periodIncomes.length}
+          depositCount={logIncomes.length}
           density={cardSettings.income?.density}
           maxHeight={cardSettings.income?.maxHeight}
         />

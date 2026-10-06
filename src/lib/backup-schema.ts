@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { MAX_AMOUNT_CENTS } from "@/lib/money";
 import { YM_PATTERN } from "@/lib/period-month";
+import { MAX_TAG_NAME_LENGTH, MAX_TAGS_PER_TRANSACTION } from "@/lib/tags";
 
 const isoDate = z.iso.datetime();
 /** Money columns are 32-bit ints; bound every cents field so a bad file fails validation, not the DB write. */
@@ -96,6 +97,8 @@ export const userBackupSchema = z.object({
       /** Absent in files exported before transfers carried their other side. */
       transferAccountId: z.string().min(1).nullable().optional(),
       transferPeerId: z.string().min(1).nullable().optional(),
+      /** Exported `tags[].id`s. Optional: older backups predate tags. */
+      tagIds: z.array(z.string().min(1)).max(MAX_TAGS_PER_TRANSACTION).optional().default([]),
       createdAt: isoDate,
       updatedAt: isoDate,
       splitParts: z.array(
@@ -236,10 +239,22 @@ export const userBackupSchema = z.object({
         setAmountCents: nonNegativeCents.nullable(),
         setAccountId: z.string().min(1).nullable(),
         appendNote: z.string().max(250).nullable(),
+        addTagId: z.string().min(1).nullable().optional(),
         createdAt: isoDate,
       }),
     )
     .max(200)
+    .optional()
+    .default([]),
+  tags: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        name: z.string().min(1).max(MAX_TAG_NAME_LENGTH),
+        createdAt: isoDate,
+      }),
+    )
+    .max(5000)
     .optional()
     .default([]),
   hiddenTitleSuggestions: z

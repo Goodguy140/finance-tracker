@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, type FocusEvent } from "react";
+import { useId, useRef, type FocusEvent } from "react";
 import { ServerActionForm } from "@/components/server-action-form";
 import {
   selectClass,
@@ -15,7 +15,8 @@ import {
   getTodayIsoDate,
 } from "./shared";
 import { createIncomeAction } from "@/app/actions";
-import { RuleAutofillHint, useRuleAutofill } from "@/components/transaction-rules-context";
+import { RuleAutofillHint, useRuleAutofill, useTagOptions } from "@/components/transaction-rules-context";
+import { TagInput, type TagInputHandle } from "@/components/tag-input";
 
 export function IncomeForm({
   accounts,
@@ -32,11 +33,13 @@ export function IncomeForm({
   const fieldIds = useId();
 
   const rules = useRuleAutofill({ type: "INCOME", categoryOptions: incomeCategories });
+  const tagOptions = useTagOptions();
+  const tagInput = useRef<TagInputHandle>(null);
 
   /**
    * Every field here is uncontrolled, so rules write to the form directly. They run when the
    * title is left — the last thing entered in either layout — and only fill the amount and
-   * note while those are empty; account, source and title follow the rule.
+   * note while those are empty; account, source and title follow the rule, and its tags are added.
    */
   function applyRules(e: FocusEvent<HTMLTextAreaElement>) {
     const form = e.currentTarget.form;
@@ -64,6 +67,7 @@ export function IncomeForm({
     }
     const note = field<HTMLTextAreaElement>("note");
     if (outcome.appendNote && note && !note.value.trim()) note.value = outcome.appendNote;
+    tagInput.current?.add(tagOptions.namesFor(outcome.tagIds));
     if (outcome.title) e.currentTarget.value = outcome.title;
   }
 
@@ -121,6 +125,9 @@ export function IncomeForm({
       <LabeledField label="Note" hint="Optional (max 250 characters)." className={`${oNote} ${spanFullSm}`}>
         <textarea name="note" rows={4} maxLength={250} className={textAreaClass} placeholder="Additional details" />
       </LabeledField>
+      <div className={`${oNote} ${spanFullSm}`}>
+        <TagInput handleRef={tagInput} suggestions={tagOptions.names} />
+      </div>
       <button type="submit" className={`${oSubmit} ${spanFullSm} ${primaryBtnClass} py-2.5 sm:py-2`}>
         Add income
       </button>

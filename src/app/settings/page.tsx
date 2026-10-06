@@ -60,6 +60,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     ruleContext,
     allCategories,
     contributionRoom,
+    tags,
   ] = await Promise.all([
     prisma.account.findMany({ where: { userId: user.id }, orderBy: { name: "asc" } }),
     prisma.category.findMany({ where: { userId: user.id, kind: CategoryKind.EXPENSE }, orderBy: { name: "asc" } }),
@@ -108,6 +109,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     loadRuleContext(user.id),
     prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true } }),
     loadContributionRoomData(user.id),
+    prisma.tag.findMany({
+      where: { userId: user.id },
+      orderBy: { nameKey: "asc" },
+      select: { id: true, name: true, _count: { select: { transactions: true } } },
+    }),
   ]);
 
   const availableProviders = [
@@ -253,6 +259,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     orphanHiddenTitles: ruleContext.hiddenTitleKeys.filter((key) => !learnedKeys.has(key)),
     categories: allCategories.map((c) => ({ id: c.id, name: c.name, kind: c.kind as RuleTransactionType })),
     accounts: accounts.map((a) => ({ id: a.id, name: a.name, archived: a.archived })),
+    tags: tags.map((t) => ({ id: t.id, name: t.name, transactionCount: t._count.transactions })),
   };
 
   return (
