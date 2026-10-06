@@ -84,6 +84,14 @@ export type UserBackupPayload = {
       categoryId: string;
       amountCents: number;
     }>;
+    /** What others owe back on this expense; already taken out of `amountCents`. */
+    owedShares: Array<{
+      name: string;
+      amountCents: number;
+      paidAt: IsoString | null;
+      createdAt: IsoString;
+      updatedAt: IsoString;
+    }>;
   }>;
   budgets: Array<{
     categoryId: string;
@@ -234,7 +242,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       resetTokens: true,
       accounts: true,
       categories: true,
-      transactions: { include: { splitParts: true } },
+      transactions: { include: { splitParts: true, owedShares: { orderBy: { createdAt: "asc" } } } },
       budgets: true,
       recurringTransactions: {
         include: { subscriptionMembers: { include: { shareStatuses: true } } },
@@ -325,6 +333,13 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       splitParts: row.splitParts.map((part) => ({
         categoryId: part.categoryId,
         amountCents: part.amountCents,
+      })),
+      owedShares: row.owedShares.map((share) => ({
+        name: share.name,
+        amountCents: share.amountCents,
+        paidAt: toIso(share.paidAt),
+        createdAt: share.createdAt.toISOString(),
+        updatedAt: share.updatedAt.toISOString(),
       })),
     })),
     budgets: user.budgets.map((row) => ({

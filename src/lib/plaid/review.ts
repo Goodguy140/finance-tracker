@@ -1,4 +1,5 @@
 import { PlaidStagedStatus, TransactionType, type Prisma } from "@prisma/client";
+import { ownPartCents } from "@/lib/owed-shares";
 import { prisma } from "@/lib/prisma";
 import { makeStagedProposer, type StagedRuleProposal } from "@/lib/plaid/staged-rules";
 import type { RuleTransactionType } from "@/lib/transaction-rules";
@@ -271,13 +272,14 @@ export async function applyBankRevision(tx: Tx, input: { userId: string; stagedI
   if (!staged?.resolvedTransactionId) return false;
   const target = await tx.transaction.findFirst({
     where: { id: staged.resolvedTransactionId, userId: input.userId },
-    select: { id: true, type: true },
+    select: { id: true, type: true, owedShares: { select: { amountCents: true } } },
   });
   if (target) {
     await tx.transaction.update({
       where: { id: target.id },
       data: {
-        amountCents: convertAmountCents(staged.type, staged.amountCents, target.type),
+        // The bank's figure is what was paid; what others owe stays out of the user's part.
+        amountCents: ownPartCents(convertAmountCents(staged.type, staged.amountCents, target.type), target.owedShares),
         date: staged.date,
         postedDate: staged.postedDate,
       },

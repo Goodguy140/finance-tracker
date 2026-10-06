@@ -35,6 +35,7 @@ export {
   setSubscriptionShareStatusAction,
   skipRecurringOccurrenceAction,
 } from "./actions/subscriptions";
+export { setOwedSharePaidAction } from "./actions/owed-shares";
 export {
   createTransactionRuleAction,
   updateTransactionRuleAction,

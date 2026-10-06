@@ -237,6 +237,11 @@ export const setSubscriptionShareStatusSchema = z.object({
   value: z.enum(["true", "false"]),
 });
 
+export const setOwedSharePaidSchema = z.object({
+  shareId: z.string().min(1),
+  paid: z.enum(["true", "false"]),
+});
+
 export const investmentFlowSchema = z.object({
   accountId: z.string().min(1),
   direction: z.enum(["CONTRIBUTION", "WITHDRAWAL"]),

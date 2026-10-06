@@ -22,7 +22,7 @@ import { convertAmountCents, untransferredType } from "@/lib/transfer-type";
 
 type Tx = Prisma.TransactionClient;
 
-export type TransferMarkRefusal = "not-found" | "split" | "same-account";
+export type TransferMarkRefusal = "not-found" | "split" | "owed" | "same-account";
 
 export type TransferMarkOutcome =
   | { ok: true; type: TransactionType }
@@ -38,12 +38,14 @@ export async function markAsTransfer(
       userId: input.userId,
       type: { in: [TransactionType.EXPENSE, TransactionType.INCOME] },
     },
-    select: { id: true, type: true, amountCents: true, _count: { select: { splitParts: true } } },
+    select: { id: true, type: true, amountCents: true, _count: { select: { splitParts: true, owedShares: true } } },
   });
   if (!existing) return { ok: false, reason: "not-found" };
   // A split spreads one charge over several budget categories; a transfer has no budget, so
   // there is nothing for the parts to mean.
   if (existing._count.splitParts > 0) return { ok: false, reason: "split" };
+  // What others owe was taken out of the amount; a transfer moves the whole of it.
+  if (existing._count.owedShares > 0) return { ok: false, reason: "owed" };
 
   const categoryId = await ensureFallbackCategoryFor(tx, input.userId, CategoryKind.TRANSFER);
   await tx.transaction.update({

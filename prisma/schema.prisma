@@ -168,6 +168,7 @@ model User {
   auditLogs                 AuditLog[]
   subscriptionMembers       SubscriptionMember[]
   subscriptionShareStatuses SubscriptionShareStatus[]
+  owedShares                OwedShare[]
   budgetAlertNotifications  BudgetAlertNotification[]
   plaidItems                PlaidItem[]
   plaidAccounts             PlaidAccount[]
@@ -465,6 +466,8 @@ model Transaction {
   transferPeerOf  Transaction?             @relation("TransferPeer")
   category        Category                 @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   splitParts      SplitTransactionPart[]
+  /// The parts of this expense someone else owes back. `amountCents` already excludes them.
+  owedShares      OwedShare[]
   verification    TransactionVerification?
   /// Set when this transfer has been counted toward contribution room.
   investmentFlow  InvestmentFlow?
@@ -486,6 +489,38 @@ model SplitTransactionPart {
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   category    Category    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+}
+
+/**
+ * Part of a one-off expense that someone else owes the user: their half of a dinner, a
+ * friend's share of a trip. The one-off counterpart of SubscriptionMember.
+ *
+ * The share is taken out of the expense's `amountCents` as soon as it is marked, so every
+ * total (budgets, categories, insights, exports) counts only the user's own part without
+ * knowing this table exists. What the user actually paid is `amountCents` plus the shares.
+ * `paidAt` is bookkeeping only: being paid back changes no total, because the share was
+ * never counted as the user's spending. Its own table, so no REQUIRED_SCHEMA_COLUMNS /
+ * COLUMN_REPAIRS entry is needed.
+ */
+model OwedShare {
+  id            String    @id @default(cuid())
+  userId        String
+  transactionId String
+  /// Who owes it, as the user wrote it.
+  name          String
+  /// Always positive.
+  amountCents   Int
+  /// Null while outstanding.
+  paidAt        DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([transactionId])
+  /// The "Owed to you" list: everything outstanding, whatever period is on screen.
+  @@index([userId, paidAt])
 }
 
 model Budget {
