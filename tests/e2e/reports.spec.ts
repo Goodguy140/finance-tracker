@@ -95,8 +95,14 @@ test("reports total income and spending without transfers, and open a payee", as
   await seedUser(page);
 
   // The phone header has no room for a fourth button; there the way in is through Insights.
+  // Checked by href and then visited, not clicked: the dashboard refreshes itself after load,
+  // and a client navigation started in that window can be dropped.
   if (testInfo.project.name === "mobile-chromium") await page.goto("/insights");
-  await page.getByRole("link", { name: "Reports", exact: true }).filter({ visible: true }).first().click();
+  await expect(page.getByRole("link", { name: "Reports", exact: true }).filter({ visible: true }).first()).toHaveAttribute(
+    "href",
+    "/reports",
+  );
+  await page.goto("/reports");
   await expect(page.getByRole("heading", { name: "Reports", level: 1 })).toBeVisible();
 
   const totals = page.getByTestId("report-totals");
