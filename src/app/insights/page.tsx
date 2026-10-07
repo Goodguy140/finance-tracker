@@ -1,9 +1,11 @@
 import { CategoryKind } from "@prisma/client";
 import Link from "next/link";
 import { setHabitDetectionAction } from "@/app/actions";
+import { FinancialScoreCard } from "@/components/financial-score-card";
 import { InsightItem, type InsightFormOptions, type InsightItemView } from "@/components/insights/insight-item";
 import { ServerActionForm } from "@/components/server-action-form";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
+import { loadFinancialScore } from "@/lib/financial-score-data";
 import { loadInsights } from "@/lib/insights/load";
 import type { InsightSection } from "@/lib/insights/types";
 import { insightViews } from "@/lib/insights/view";
@@ -46,10 +48,11 @@ const linkBtn =
 
 export default async function InsightsPage() {
   const user = await requireUser();
-  const [loaded, accounts, categories] = await Promise.all([
+  const [loaded, accounts, categories, financial] = await Promise.all([
     loadInsights(user.id, user.countryCode),
     prisma.account.findMany({ where: { userId: user.id, archived: false }, orderBy: { createdAt: "asc" } }),
     prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true } }),
+    loadFinancialScore(user),
   ]);
   const { visible, dismissed } = insightViews(loaded);
   const options: InsightFormOptions = {
@@ -87,6 +90,8 @@ export default async function InsightsPage() {
           </Link>
         </div>
       </div>
+
+      <FinancialScoreCard score={financial.score} />
 
       {potentialAnnual > 0 ? (
         <p className="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3 text-sm text-slate-300" data-testid="insights-summary">

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { TagFilterSelect } from "@/components/expense-log";
+import { FinancialScoreCard } from "@/components/financial-score-card";
 import { CashFlowSankey, IncomeSpendingChart } from "@/components/reports/report-charts";
 import { getCountryConfig } from "@/lib/country-config";
+import { loadFinancialScore } from "@/lib/financial-score-data";
 import { formatCurrency } from "@/lib/money";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import {
@@ -54,10 +56,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   const currency = getCountryConfig(user.countryCode).defaultCurrency;
   const fmt = (cents: number) => formatCurrency(cents, currency);
 
-  const [loaded, activityYears, tags] = await Promise.all([
+  const [loaded, activityYears, tags, financial] = await Promise.all([
     loadReportTxs(user.id, previousYearWindow(period).start),
     loadActivityBounds(user.id),
     listTags(prisma, user.id),
+    loadFinancialScore(user),
   ]);
   // `?tag=`, as on the dashboard: every view on this page narrows to rows carrying the tag.
   const tagFilter = resolveTagFilter(sp.tag, tags);
@@ -93,6 +96,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
           </Link>
         </div>
       </div>
+
+      <FinancialScoreCard score={financial.score} note="It doesn't change with the period or tag below" />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <nav aria-label="Report period" className="flex flex-wrap gap-2">
