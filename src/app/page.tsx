@@ -55,7 +55,7 @@ import { catchAllCategoryId } from "@/lib/plaid/category-map";
 import { outflowCents, untransferredType } from "@/lib/transfer-type";
 import { assignTransferPairs, widenDateFilterForPairing } from "@/lib/plaid/transfer-pairing";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
-import { makeStagedProposer } from "@/lib/plaid/staged-rules";
+import { makeStagedProposer, proposeStagedRowAs, type StagedRuleProposal } from "@/lib/plaid/staged-rules";
 import { resolveDisplayName } from "@/lib/plaid/ingest";
 import { PLAID_ITEM_NEEDS_ATTENTION_WHERE } from "@/lib/plaid/attention";
 import {
@@ -568,6 +568,12 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     .map((c) => ({ id: c.id, name: c.name }));
 
   const propose = makeStagedProposer(ruleContext, categoryKindById);
+  const queueProposalView = (proposal: StagedRuleProposal) => ({
+    title: proposal.title,
+    note: proposal.note,
+    tagNames: proposal.tagIds.flatMap((id) => tagNameById.get(id) ?? []),
+    reason: proposal.reason,
+  });
   const transferPairs = assignTransferPairs(
     transferPairingPool.map((row) => ({ ...row, accountId: row.suggestedAccountId })),
   );
@@ -579,10 +585,11 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     // What the row becomes if the user unticks "transfer" (or never ticks it): its own type,
     // or for a transfer, spending if the money left and income if it arrived.
     const nonTransferType = isTransfer ? untransferredType(row.amountCents) : row.type;
-    const proposal = propose(row);
-    const nonTransferProposal = isTransfer
-      ? propose({ ...row, type: nonTransferType, suggestedCategoryId: null })
-      : proposal;
+    // Both ways the row can be booked, each exactly as the commit will write it, so ticking
+    // or unticking "transfer" shows what the rules do for that choice.
+    const transferProposal = proposeStagedRowAs(propose, row, TransactionType.TRANSFER);
+    const nonTransferProposal = proposeStagedRowAs(propose, row, nonTransferType);
+    const proposal = isTransfer ? transferProposal : nonTransferProposal;
     const nonTransferOptions =
       nonTransferType === TransactionType.INCOME ? incomeCategoryOptionsForQueue : expenseCategoryOptionsForQueue;
     const candidate = row.matchTransactionId ? matchCandidateById.get(row.matchTransactionId) : undefined;
@@ -591,6 +598,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       id: row.id,
       institutionName: row.plaidItem.institutionName ?? "Your bank",
       heading: proposal.title,
+      bankName: resolveDisplayName(row.name, row.merchantName),
+      asTransfer: queueProposalView(transferProposal),
+      asNonTransfer: queueProposalView(nonTransferProposal),
       amountCents: row.amountCents,
       isTransfer,
       dateDisplay: formatDateOnlyUtc(row.date),
@@ -600,7 +610,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         if (!peer) return null;
         return {
           stagedId: peer.id,
-          heading: propose(peer).title,
+          // Pairing books both legs as transfers, so the peer is named as one.
+          heading: proposeStagedRowAs(propose, peer, TransactionType.TRANSFER).title,
           accountLabel: stagedAccountLabel(peer.suggestedAccountId),
           dateDisplay: formatDateOnlyUtc(peer.date),
           // Which way the money went, from this row's side.
@@ -611,7 +622,6 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       categoryOptions: nonTransferOptions,
       suggestedCategoryId:
         nonTransferProposal.categoryId ?? catchAllCategoryId(nonTransferOptions) ?? nonTransferOptions[0]?.id ?? "",
-      proposalReason: proposal.reason,
       isPending: row.isPending,
       match:
         candidate && row.matchTier

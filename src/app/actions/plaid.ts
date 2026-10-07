@@ -30,6 +30,7 @@ import {
   type PlaidUpdateKind,
 } from "@/lib/plaid/connections";
 import { openAccessToken, requirePlaidClient } from "@/lib/plaid/service";
+import { proposeStagedRowAs } from "@/lib/plaid/staged-rules";
 import {
   describeHistoryWindow,
   historyWindowLabel,
@@ -589,12 +590,7 @@ export const resolveStagedTransactionAction = formAction(async (formData: FormDa
   } else if (decision === "add") {
     // The queue can book a row as a transfer or not, whatever the sync guessed.
     const type = parseCountAs(getFormValue(formData, "countAs")) ?? staged.type;
-    const proposal = (await loadStagedProposer(user.id))({
-      ...row,
-      type,
-      // The sync's suggestion is a category of the type it guessed.
-      suggestedCategoryId: type === staged.type ? row.suggestedCategoryId : null,
-    });
+    const proposal = proposeStagedRowAs(await loadStagedProposer(user.id), row, type);
     const resolvedCategoryId =
       type === TransactionType.TRANSFER
         ? await ensureFallbackCategoryFor(prisma, user.id, CategoryKind.TRANSFER)
@@ -641,11 +637,7 @@ export const pairStagedTransfersAction = formAction(async (formData: FormData) =
   const propose = await loadStagedProposer(user.id);
   const leg = (row: typeof a) => ({
     staged: toCommittable(row),
-    proposal: propose({
-      ...row,
-      type: TransactionType.TRANSFER,
-      suggestedCategoryId: row.type === TransactionType.TRANSFER ? row.suggestedCategoryId : null,
-    }),
+    proposal: proposeStagedRowAs(propose, row, TransactionType.TRANSFER),
   });
   const categoryId = await ensureFallbackCategoryFor(prisma, user.id, CategoryKind.TRANSFER);
   await prisma.$transaction(async (tx) =>

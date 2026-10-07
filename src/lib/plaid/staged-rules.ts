@@ -73,3 +73,21 @@ export function makeStagedProposer(
   const learned = { learned: context.learned, hiddenTitleKeys: context.hiddenTitleKeys };
   return (staged) => proposeForStagedRow(staged, context.rules, categoryKindById, learned);
 }
+
+/**
+ * The proposal for a staged row booked as `type`, which need not be the type the sync
+ * guessed: the queue lets a person tick or untick "transfer". The sync's category belongs to
+ * the type it guessed, so it is dropped when the type changes and the rules (or the
+ * category picker) fill it instead. The dashboard shows this and the commit writes it.
+ */
+export function proposeStagedRowAs(
+  propose: (staged: StagedRuleInput) => StagedRuleProposal,
+  staged: StagedRuleInput,
+  type: RuleTransactionType,
+): StagedRuleProposal {
+  return propose({
+    ...staged,
+    type,
+    suggestedCategoryId: type === staged.type ? staged.suggestedCategoryId : null,
+  });
+}

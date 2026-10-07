@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ServerActionForm } from "@/components/server-action-form";
-import { MetaChip } from "@/components/meta-chip";
+import { MetaChip, TagChips } from "@/components/meta-chip";
 import { inputClass, primaryBtnClass, secondaryBtnClass } from "@/components/forms/shared";
 import {
   applyBankRevisionAction,
@@ -20,10 +20,26 @@ export type ReviewCandidate = {
   dateDisplay: string;
 };
 
+/** What adding a row would write, as the user's rules shape it. */
+export type ReviewProposal = {
+  title: string;
+  note: string | null;
+  tagNames: string[];
+  /** Why the title/category differ from the bank's own: one of the user's rules, or a
+   * category learned from a past entry with the same title. */
+  reason: "rule" | "learned" | null;
+};
+
 export type ReviewRow = {
   id: string;
   institutionName: string;
+  /** The title as the sync typed the row, for labelling it. */
   heading: string;
+  /** The bank's own name for it, before any rule renamed it. */
+  bankName: string;
+  /** What adding it writes when booked as a transfer, and when not. */
+  asTransfer: ReviewProposal;
+  asNonTransfer: ReviewProposal;
   amountCents: number;
   /** The sync took it for money moving between the user's own accounts. */
   isTransfer: boolean;
@@ -33,9 +49,6 @@ export type ReviewRow = {
   nonTransferType: "EXPENSE" | "INCOME";
   categoryOptions: { id: string; name: string }[];
   suggestedCategoryId: string;
-  /** Why the title/category differ from the bank's own: one of the user's rules, or a
-   * category learned from a past entry with the same title. */
-  proposalReason: "rule" | "learned" | null;
   isPending: boolean;
   /** Proposed link, when the matcher found a plausible one. */
   match: { candidate: ReviewCandidate; tier: "high" | "low"; reasons: string[] } | null;
@@ -84,22 +97,41 @@ function ReviewRowCard({ row }: { row: ReviewRow }) {
     row.match?.tier === "high" ? "link" : row.transferPair ? "pair" : "add",
   );
   const [asTransfer, setAsTransfer] = useState(row.isTransfer);
+  // What the chosen decision would write. Linking keeps the entry the user already made and
+  // ignoring writes nothing, so rules only come into it when the row is added or paired.
+  const committed =
+    decision === "pair"
+      ? row.asTransfer
+      : decision === "add"
+        ? asTransfer
+          ? row.asTransfer
+          : row.asNonTransfer
+        : null;
+  const shown = committed ?? (row.isTransfer ? row.asTransfer : row.asNonTransfer);
+  const renamed = shown.title !== row.bankName;
 
   return (
     <li className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/50 p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-slate-100">{row.heading}</p>
+          <p className="truncate text-sm font-medium text-slate-100">{shown.title}</p>
           <p className="text-xs text-slate-500">
+            {renamed ? `${row.bankName} · ` : ""}
             {row.dateDisplay} · {row.accountLabel}
             {row.isTransfer ? " · transfer" : ""}
             {row.isPending ? " · pending" : ""}
-            {row.proposalReason === "rule"
+            {committed?.reason === "rule"
               ? " · filled in by your rules"
-              : row.proposalReason === "learned"
+              : committed?.reason === "learned"
                 ? " · category from a past entry"
                 : ""}
           </p>
+          {committed && (committed.note || committed.tagNames.length > 0) ? (
+            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-400" data-testid="review-rule-extras">
+              {committed.note ? <span>Note: {committed.note}</span> : null}
+              <TagChips tags={committed.tagNames} />
+            </p>
+          ) : null}
         </div>
         <p className="text-sm font-semibold">
           <AmountText cents={row.amountCents} />
