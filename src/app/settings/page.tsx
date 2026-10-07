@@ -68,6 +68,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     tags,
     suggestionContext,
     transactionCounts,
+    splitCounts,
+    recurringCounts,
   ] = await Promise.all([
     prisma.account.findMany({ where: { userId: user.id }, orderBy: { name: "asc" } }),
     prisma.category.findMany({ where: { userId: user.id, kind: CategoryKind.EXPENSE }, orderBy: { name: "asc" } }),
@@ -123,6 +125,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     }),
     loadCategorySuggestionContext(user.id, user.timezone),
     prisma.transaction.groupBy({ by: ["categoryId"], where: { userId: user.id }, _count: { _all: true } }),
+    prisma.splitTransactionPart.groupBy({ by: ["categoryId"], where: { userId: user.id }, _count: { _all: true } }),
+    prisma.recurringTransaction.groupBy({ by: ["categoryId"], where: { userId: user.id }, _count: { _all: true } }),
   ]);
 
   const availableProviders = [
@@ -271,7 +275,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     tags: tags.map((t) => ({ id: t.id, name: t.name, transactionCount: t._count.transactions })),
   };
 
-  const countByCategory = new Map(transactionCounts.map((row) => [row.categoryId, row._count._all]));
+  const countsBy = (rows: { categoryId: string; _count: { _all: number } }[]) =>
+    new Map(rows.map((row) => [row.categoryId, row._count._all]));
+  const countByCategory = countsBy(transactionCounts);
+  const splitsByCategory = countsBy(splitCounts);
+  const recurringByCategory = countsBy(recurringCounts);
   const activeBudgets = selectActiveBudgetsByCategory(budgets, currentYmInTimeZone(user.timezone));
   const categoriesPanel: CategoriesPanelProps = {
     categories: allCategories.flatMap((c) =>
@@ -283,6 +291,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
               name: c.name,
               kind: c.kind,
               transactionCount: countByCategory.get(c.id) ?? 0,
+              splitCount: splitsByCategory.get(c.id) ?? 0,
+              recurringCount: recurringByCategory.get(c.id) ?? 0,
               budgetLimitCents: activeBudgets.get(c.id)?.limitCents ?? null,
             },
           ],

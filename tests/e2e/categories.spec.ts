@@ -67,9 +67,10 @@ test("categories can be added with a budget, merged by renaming, and Plaid categ
   });
   await page.reload();
   await row.locator("summary").click();
-  page.once("dialog", (dialog) => void dialog.accept());
   await row.getByLabel(`New name for ${name}`).fill("Fun");
   await row.getByRole("button", { name: "Rename" }).click();
+  // The merge is confirmed in the page's own dialog, not the browser's.
+  await page.getByRole("dialog", { name: `Merge “${name}” into “Fun”?` }).getByRole("button", { name: "Merge" }).click();
   await expect(panel.getByTestId("category-row").filter({ hasText: name })).toHaveCount(0);
   // Deleting the category is the merge's last write.
   await expect.poll(async () => prisma.category.count({ where: { id: pets.id } })).toBe(0);
@@ -92,4 +93,46 @@ test("categories can be added with a budget, merged by renaming, and Plaid categ
     .toBe(groceries.id);
   await food.screenshot({ path: testInfo.outputPath("plaid-mapping.png") });
   await panel.screenshot({ path: testInfo.outputPath("categories-tab.png") });
+});
+
+test("deleting a category in use asks, in the page, where its transactions and rules go", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Settings flow is covered by the chromium project");
+  const { user, stamp } = await createUserAndLogin(page);
+  const account = await prisma.account.findFirstOrThrow({ where: { userId: user.id } });
+  const fun = await prisma.category.findFirstOrThrow({
+    where: { userId: user.id, name: "Fun", kind: CategoryKind.EXPENSE },
+  });
+  // Used only by a recurring rule: no transactions, but still not deletable outright.
+  const gym = await prisma.category.create({ data: { userId: user.id, name: `Gym ${stamp}`, kind: CategoryKind.EXPENSE } });
+  const rule = await prisma.recurringTransaction.create({
+    data: {
+      userId: user.id,
+      accountId: account.id,
+      categoryId: gym.id,
+      type: TransactionType.EXPENSE,
+      name: "Membership",
+      amountCents: 4000,
+      cadence: "MONTHLY",
+      nextExpectedDate: new Date(),
+    },
+  });
+
+  await page.goto("/settings#categories");
+  const panel = page.getByRole("tabpanel", { name: "Categories" });
+  const row = panel.getByTestId("category-row").filter({ hasText: gym.name });
+  await row.locator("summary").click();
+  await expect(row).toContainText("Used by 1 recurring rule.");
+  await row.getByRole("button", { name: `Delete ${gym.name}` }).click();
+
+  const dialog = page.getByRole("dialog", { name: `Delete “${gym.name}”?` });
+  await expect(dialog).toContainText("used by 1 recurring rule");
+  await dialog.getByLabel(`Move ${gym.name}'s transactions to`).selectOption({ label: "Fun" });
+  await dialog.screenshot({ path: testInfo.outputPath("delete-dialog.png") });
+  await dialog.getByRole("button", { name: "Move and delete" }).click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect(panel.getByTestId("category-row").filter({ hasText: gym.name })).toHaveCount(0);
+  // Deleting the category is the merge's last write.
+  await expect.poll(async () => prisma.category.count({ where: { id: gym.id } })).toBe(0);
+  expect((await prisma.recurringTransaction.findUniqueOrThrow({ where: { id: rule.id } })).categoryId).toBe(fun.id);
 });
