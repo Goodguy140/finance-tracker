@@ -3,6 +3,7 @@ import {
   resolveSuggestedCategoryId,
   type UserBudgetName,
   type UserCategory,
+  type UserPlaidMapping,
 } from "@/lib/plaid/category-map";
 import { normalizePlaidTransaction } from "@/lib/plaid/ingest";
 import { outflowCents } from "@/lib/transfer-type";
@@ -34,6 +35,8 @@ export type SyncItemContext = {
   categories: UserCategory[];
   /** Custom labels on the budgets active this period, matched as category aliases. */
   budgetNames: UserBudgetName[];
+  /** The user's own Plaid category → category choices. Absent means none. */
+  plaidMappings?: UserPlaidMapping[];
   itemDefaultCategoryId: string | null;
   fallbackCategoryId: Record<CategoryKind, string>;
 };
@@ -181,9 +184,11 @@ function buildUpsert(
       pfcDetailed: value.pfcDetailed,
       suggestedCategoryId: resolveSuggestedCategoryId({
         pfcPrimary: value.pfcPrimary,
+        pfcDetailed: value.pfcDetailed,
         kind,
         userCategories: context.categories,
         userBudgetNames: context.budgetNames,
+        userMappings: context.plaidMappings,
         itemDefaultCategoryId: context.itemDefaultCategoryId,
         fallbackCategoryId: context.fallbackCategoryId[kind],
       }),

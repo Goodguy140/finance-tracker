@@ -497,3 +497,28 @@ describe("keepChangedRevisions", () => {
     expect(kept.flagRevised).toHaveLength(1);
   });
 });
+
+describe("planPage: the user's Plaid category mappings", () => {
+  it("suggests the category the user mapped Plaid's detailed category to", () => {
+    const ctx = context({
+      categories: [
+        { id: "cat-dining", name: "Dining", kind: CategoryKind.EXPENSE },
+        { id: "cat-groceries", name: "Groceries", kind: CategoryKind.EXPENSE },
+      ],
+      plaidMappings: [{ plaidCategory: "FOOD_AND_DRINK_GROCERIES", categoryId: "cat-groceries" }],
+    });
+    const plan = planPage(
+      page({
+        added: [
+          txn({ transaction_id: "g", personal_finance_category: { primary: "FOOD_AND_DRINK", detailed: "FOOD_AND_DRINK_GROCERIES" } }),
+          txn({ transaction_id: "r", personal_finance_category: { primary: "FOOD_AND_DRINK", detailed: "FOOD_AND_DRINK_RESTAURANT" } }),
+        ],
+      }),
+      ctx,
+      new Map(),
+    );
+    const byId = new Map(plan.upserts.map((u) => [u.plaidTransactionId, u.suggestedCategoryId]));
+    expect(byId.get("g")).toBe("cat-groceries");
+    expect(byId.get("r")).toBe("cat-dining");
+  });
+});

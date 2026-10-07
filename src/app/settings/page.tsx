@@ -24,6 +24,11 @@ import { normalizeExpenseTitleKey } from "@/lib/expense-title-suggestions";
 import type { RuleTransactionType } from "@/lib/transaction-rules";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
 import { loadContributionRoomData } from "@/lib/contribution-room-data";
+import type { CategoriesPanelProps } from "@/components/categories-panel";
+import { selectActiveBudgetsByCategory } from "@/lib/budget-progress";
+import { currentYmInTimeZone } from "@/lib/period-month";
+import { loadCategorySuggestionContext } from "@/lib/plaid/category-suggestions";
+import { buildPlaidMappingView } from "@/lib/plaid/category-mapping-view";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +66,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     allCategories,
     contributionRoom,
     tags,
+    suggestionContext,
+    transactionCounts,
   ] = await Promise.all([
     prisma.account.findMany({ where: { userId: user.id }, orderBy: { name: "asc" } }),
     prisma.category.findMany({ where: { userId: user.id, kind: CategoryKind.EXPENSE }, orderBy: { name: "asc" } }),
@@ -114,6 +121,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
       orderBy: { nameKey: "asc" },
       select: { id: true, name: true, _count: { select: { transactions: true } } },
     }),
+    loadCategorySuggestionContext(user.id, user.timezone),
+    prisma.transaction.groupBy({ by: ["categoryId"], where: { userId: user.id }, _count: { _all: true } }),
   ]);
 
   const availableProviders = [
@@ -262,6 +271,30 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     tags: tags.map((t) => ({ id: t.id, name: t.name, transactionCount: t._count.transactions })),
   };
 
+  const countByCategory = new Map(transactionCounts.map((row) => [row.categoryId, row._count._all]));
+  const activeBudgets = selectActiveBudgetsByCategory(budgets, currentYmInTimeZone(user.timezone));
+  const categoriesPanel: CategoriesPanelProps = {
+    categories: allCategories.flatMap((c) =>
+      c.kind === CategoryKind.TRANSFER
+        ? []
+        : [
+            {
+              id: c.id,
+              name: c.name,
+              kind: c.kind,
+              transactionCount: countByCategory.get(c.id) ?? 0,
+              budgetLimitCents: activeBudgets.get(c.id)?.limitCents ?? null,
+            },
+          ],
+    ),
+    plaidGroups: buildPlaidMappingView({
+      categories: suggestionContext.categories,
+      budgetNames: suggestionContext.budgetNames,
+      mappings: suggestionContext.plaidMappings,
+    }),
+    hasLinkedBank: plaidItems.length > 0,
+  };
+
   return (
     <main className="mx-auto mb-4 mt-[max(1rem,env(safe-area-inset-top))] w-full max-w-4xl space-y-4 px-4 pb-8 pt-2 text-slate-100 sm:px-5 lg:my-6 lg:space-y-5 lg:px-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
@@ -309,6 +342,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
         plaid={plaid}
         transactionRules={transactionRules}
         contributionRoom={contributionRoom}
+        categories={categoriesPanel}
       />
     </main>
   );

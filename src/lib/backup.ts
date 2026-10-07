@@ -211,6 +211,12 @@ export type UserBackupPayload = {
   /** Yearly TFSA/RRSP/FHSA room figures copied from CRA. Optional: older backups predate them. */
   contributionRooms?: Array<{ accountType: "TFSA" | "RRSP" | "FHSA"; year: number; roomCents: number }>;
   /**
+   * Which category each Plaid category lands in, where the user changed it. `categoryId`
+   * references `categories[].id`. Carries no Plaid identifiers — the codes are Plaid's public
+   * taxonomy, the same for every deployment. Optional: older backups predate them.
+   */
+  plaidCategoryMappings?: Array<{ plaidCategory: string; categoryId: string }>;
+  /**
    * Not a field. Recording an omission so it does not read as an oversight: the desktop
    * dashboard layout (`DashboardLayout`) is deliberately outside this payload. It is a UI
    * preference rather than financial data, and import/clear are wipe-and-replace — carrying
@@ -268,6 +274,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       insightDismissals: true,
       insightPreference: true,
       contributionRooms: { orderBy: [{ accountType: "asc" }, { year: "asc" }] },
+      plaidCategoryMappings: { orderBy: { plaidCategory: "asc" } },
     },
   });
 
@@ -449,5 +456,9 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
         ? [{ accountType: row.accountType, year: row.year, roomCents: row.roomCents }]
         : [],
     ),
+    plaidCategoryMappings: user.plaidCategoryMappings.map((row) => ({
+      plaidCategory: row.plaidCategory,
+      categoryId: row.categoryId,
+    })),
   });
 }

@@ -50,6 +50,14 @@ export {
 export type { RulePreviewResult, RuleApplyResult } from "./actions/transaction-rules";
 export { renameTagAction, deleteTagAction } from "./actions/tags";
 export {
+  createCategoryAction,
+  renameCategoryAction,
+  mergeCategoryAction,
+  deleteCategoryAction,
+  setCategoryBudgetAction,
+  setPlaidCategoryMappingAction,
+} from "./actions/categories";
+export {
   createInvestmentFlowAction,
   createPortfolioSnapshotAction,
   updateInvestmentFlowAction,

@@ -10,6 +10,7 @@ import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { userBackupSchema } from "@/lib/backup-schema";
 import { assertBackupReferencesResolve, resolveBackupUserProfileFields } from "@/lib/backup-restore";
 import { normalizeTagName, tagNameKey } from "@/lib/tags";
+import { isMappablePlaidCategory } from "@/lib/plaid/category-taxonomy";
 import { revokePlaidItemsForUser } from "@/lib/plaid/unlink";
 import { tryMakePlaidItemRevoker } from "@/lib/plaid/service";
 import {
@@ -525,6 +526,20 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
         year: row.year,
         roomCents: row.roomCents,
       })),
+    });
+    // A code this version does not know (a hand-edited file, or a newer taxonomy) is dropped
+    // rather than refusing the whole restore; it would never match anything here anyway.
+    const mappingsByCode = new Map(
+      (parsed.plaidCategoryMappings ?? [])
+        .filter((row) => isMappablePlaidCategory(row.plaidCategory))
+        .map((row) => [row.plaidCategory, row]),
+    );
+    await tx.plaidCategoryMapping.createMany({
+      data: [...mappingsByCode.values()].map((row) => {
+        const categoryId = categoryIdMap.get(row.categoryId);
+        if (!categoryId) throw new Error("Backup references unknown category in a bank category mapping.");
+        return { userId: user.id, plaidCategory: row.plaidCategory, categoryId };
+      }),
     });
 
     // `parsed.authAccounts` is deliberately not restored, and the user's existing links are
