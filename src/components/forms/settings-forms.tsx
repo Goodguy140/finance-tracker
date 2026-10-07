@@ -48,6 +48,7 @@ import { ApiTokensPanel, type ApiTokenRow, type ApiTokensMfaState } from "@/comp
 import { PlaidConnectionsPanel, type PlaidConnectionsPanelProps } from "@/components/plaid-connections-panel";
 import { SecurityPanel, type SecurityPanelProps } from "@/components/security-panel";
 import { TransactionRulesPanel, type TransactionRulesPanelProps } from "@/components/transaction-rules-panel";
+import { CategoriesPanel, type CategoriesPanelProps } from "@/components/categories-panel";
 import { ContributionRoomPanel, overContributionMessage } from "@/components/contribution-room-panel";
 import {
   previewContribution,
@@ -266,7 +267,7 @@ export function InvestmentForms({
   );
 }
 
-type SettingsTabId = "profile" | "security" | "accounts" | "budgets" | "rules" | "subscriptions" | "advanced";
+type SettingsTabId = "profile" | "security" | "accounts" | "categories" | "budgets" | "rules" | "subscriptions" | "advanced";
 
 /** A nested card's own explanation, folded behind the same "?" the fields use. */
 function CardHeading({ title, hint }: { title: string; hint: string }) {
@@ -334,6 +335,12 @@ const SETTINGS_TAB_META: { id: SettingsTabId; label: string; labelCompact: strin
     hint: "Your accounts, connected banks, and CSV import",
   },
   {
+    id: "categories",
+    label: "Categories",
+    labelCompact: "Categories",
+    hint: "Add, rename, merge and delete categories, their budgets, and bank category mapping",
+  },
+  {
     id: "budgets",
     label: "Budgets",
     labelCompact: "Budgets",
@@ -379,6 +386,7 @@ export function SettingsForms({
   plaid,
   transactionRules,
   contributionRoom,
+  categories,
 }: {
   defaults: { displayName: string; countryCode: string; timezone: string };
   profileEmail: string;
@@ -398,6 +406,7 @@ export function SettingsForms({
   plaid: PlaidConnectionsPanelProps;
   transactionRules: TransactionRulesPanelProps;
   contributionRoom: ContributionRoomData;
+  categories: CategoriesPanelProps;
 }) {
   const [tab, setTab] = useState<SettingsTabId>("profile");
   const [editingAccount, setEditingAccount] = useState<{
@@ -421,6 +430,7 @@ export function SettingsForms({
       // Old anchors are kept pointing at wherever their section now lives, so existing
       // links and bookmarks do not quietly land on the wrong page.
       if (h === "#budgets") setTab("budgets");
+      else if (h === "#categories" || h === "#bank-categories") setTab("categories");
       else if (h === "#subscriptions" || h === "#subs") setTab("subscriptions");
       else if (h === "#accounts" || h === "#data" || h === "#import") setTab("accounts");
       else if (h === "#banks" || h === "#plaid") setTab("accounts");
@@ -1017,6 +1027,19 @@ export function SettingsForms({
               expenseCategories={expenseCategories}
               defaultExpenseAccountId={defaultExpenseAccountId}
             />
+          </div>
+        ) : null}
+
+        {tab === "categories" ? (
+          <div id="categories" className="scroll-mt-24 space-y-4" role="tabpanel" aria-label="Categories">
+            <header className="space-y-1.5 border-b border-slate-800/80 pb-3">
+              <h2 className="text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl">Categories</h2>
+              <p className="max-w-prose text-sm leading-relaxed text-slate-400">
+                The categories your transactions are filed under, the monthly budget on each, and which one a linked
+                bank&apos;s own categories are suggested as.
+              </p>
+            </header>
+            <CategoriesPanel {...categories} />
           </div>
         ) : null}
 

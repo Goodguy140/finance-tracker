@@ -6,6 +6,7 @@ import {
   resolveSuggestedCategoryId,
   type UserBudgetName,
   type UserCategory,
+  type UserPlaidMapping,
 } from "@/lib/plaid/category-map";
 
 const EXPENSE_CATEGORIES: UserCategory[] = countryConfigMap.CA.defaultExpenseCategories.map(
@@ -227,5 +228,55 @@ describe("resolveSuggestedCategoryId", () => {
         fallbackCategoryId: "fallback",
       }),
     ).toBe(other.id);
+  });
+});
+
+describe("user Plaid category mappings", () => {
+  const mapped = (
+    pfcPrimary: string,
+    pfcDetailed: string | null,
+    userMappings: UserPlaidMapping[],
+    kind: CategoryKind = CategoryKind.EXPENSE,
+    itemDefault: string | null = null,
+  ) =>
+    resolveSuggestedCategoryId({
+      pfcPrimary,
+      pfcDetailed,
+      kind,
+      userCategories: ALL,
+      userBudgetNames: [],
+      userMappings,
+      itemDefaultCategoryId: itemDefault,
+      fallbackCategoryId: "fallback",
+    });
+
+  it("leaves the built-in map in charge when the user has changed nothing", () => {
+    expect(mapped("FOOD_AND_DRINK", "FOOD_AND_DRINK_GROCERIES", [])).toBe(idOf("Dining"));
+  });
+
+  it("uses a detailed mapping ahead of its primary's, and the primary's for the rest", () => {
+    const mappings = [
+      { plaidCategory: "FOOD_AND_DRINK_GROCERIES", categoryId: idOf("Groceries") },
+      { plaidCategory: "FOOD_AND_DRINK", categoryId: idOf("Fun") },
+    ];
+    expect(mapped("FOOD_AND_DRINK", "FOOD_AND_DRINK_GROCERIES", mappings)).toBe(idOf("Groceries"));
+    expect(mapped("FOOD_AND_DRINK", "FOOD_AND_DRINK_COFFEE", mappings)).toBe(idOf("Fun"));
+    expect(mapped("FOOD_AND_DRINK", null, mappings)).toBe(idOf("Fun"));
+  });
+
+  it("reads a detailed code sent without its primary prefix the same way", () => {
+    const mappings = [{ plaidCategory: "FOOD_AND_DRINK_GROCERIES", categoryId: idOf("Groceries") }];
+    expect(mapped("FOOD_AND_DRINK", "GROCERIES", mappings)).toBe(idOf("Groceries"));
+  });
+
+  it("beats the per-item default, which only fills in where nothing more specific is known", () => {
+    const mappings = [{ plaidCategory: "GOVERNMENT_AND_NON_PROFIT", categoryId: idOf("Fun") }];
+    expect(mapped("GOVERNMENT_AND_NON_PROFIT", null, mappings, CategoryKind.EXPENSE, idOf("Health"))).toBe(idOf("Fun"));
+    expect(mapped("GOVERNMENT_AND_NON_PROFIT", null, [], CategoryKind.EXPENSE, idOf("Health"))).toBe(idOf("Health"));
+  });
+
+  it("passes over a mapping to a category of the other kind", () => {
+    const mappings = [{ plaidCategory: "INCOME", categoryId: idOf("Fun") }];
+    expect(mapped("INCOME", "INCOME_WAGES", mappings, CategoryKind.INCOME)).toBe(idOf("Salary"));
   });
 });

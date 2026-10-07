@@ -278,6 +278,11 @@ export const userBackupSchema = z.object({
     .max(1000)
     .optional()
     .default([]),
+  plaidCategoryMappings: z
+    .array(z.object({ plaidCategory: z.string().min(1).max(100), categoryId: z.string().min(1) }))
+    .max(500)
+    .optional()
+    .default([]),
 });
 
 export type ParsedUserBackup = z.infer<typeof userBackupSchema>;

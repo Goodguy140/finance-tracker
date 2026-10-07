@@ -5,6 +5,7 @@ Self-hosted personal finance app. Next.js, SQLite and Prisma, shipped as a singl
 ## Features
 
 - **Expense and income log** with categories, month / year-to-date / lifetime views, and CSV import
+- **Categories** you can add, rename, merge and delete, each with its own monthly budget
 - **Budgets** per category, with optional email alerts as a month approaches its limit
 - **Recurring rules** for bills and salary, posted by hand or automatically
 - **Upcoming bills** forecast for the next 30, 60 or 90 days
@@ -12,7 +13,7 @@ Self-hosted personal finance app. Next.js, SQLite and Prisma, shipped as a singl
 - **Tags** that cut across categories, added by hand or by transaction rules, with a dashboard filter
 - **Money owed to you**: mark part of an expense as owed by someone, keep it out of your spending, and track it until paid back
 - **Investments** with TFSA, RRSP and FHSA contribution room tracking
-- **Bank sync** through Plaid; synced transactions wait in a review queue and are never posted on their own
+- **Bank sync** through Plaid; synced transactions wait in a review queue and are never posted on their own; you choose which of your categories each Plaid category is suggested as
 - **Multi-user** with roles, Google or Authentik SSO, passkeys, and an admin audit log
 - **Backup and restore** of each user's data, plus a read-only API with personal access tokens
 

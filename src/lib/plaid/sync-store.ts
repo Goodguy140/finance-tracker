@@ -1,11 +1,9 @@
 import { CategoryKind, PlaidItemStatus, PlaidStagedStatus } from "@prisma/client";
 import { paidCentsOf } from "@/lib/owed-shares";
 import { LONG_TRANSACTION_OPTIONS, prisma } from "@/lib/prisma";
-import { selectActiveBudgetsByCategory } from "@/lib/budget-progress";
-import { currentYmInTimeZone } from "@/lib/period-month";
 import { ensureFallbackCategory } from "@/lib/fallback-categories";
 import { outflowCents } from "@/lib/transfer-type";
-import type { UserBudgetName } from "@/lib/plaid/category-map";
+import { loadCategorySuggestionContext } from "@/lib/plaid/category-suggestions";
 import {
   assignMatches,
   MATCH_DATE_TOLERANCE_DAYS,
@@ -39,33 +37,16 @@ async function loadSyncItemRecord(itemId: string): Promise<SyncItemRecord | null
   });
   if (!item) return null;
 
-  const [categories, budgets] = await Promise.all([
-    prisma.category.findMany({
-      where: { userId: item.userId },
-      select: { id: true, name: true, kind: true },
-    }),
-    prisma.budget.findMany({
-      where: { userId: item.userId },
-      select: { categoryId: true, name: true, periodMonth: true },
-    }),
-  ]);
+  const { categories, budgetNames, plaidMappings } = await loadCategorySuggestionContext(
+    item.userId,
+    item.user.timezone,
+  );
 
   const [fallbackExpense, fallbackIncome, transferCategory] = await Promise.all([
     ensureFallbackCategory(prisma, item.userId, CategoryKind.EXPENSE, categories),
     ensureFallbackCategory(prisma, item.userId, CategoryKind.INCOME, categories),
     ensureFallbackCategory(prisma, item.userId, CategoryKind.TRANSFER, categories),
   ]);
-
-  // Which budget is in force is decided first, then labels are taken from it — picking
-  // the labelled ones first would resurrect a name the user has since moved on from.
-  const budgetNames: UserBudgetName[] = [];
-  const activeBudgets = selectActiveBudgetsByCategory(
-    budgets,
-    currentYmInTimeZone(item.user.timezone),
-  );
-  for (const budget of activeBudgets.values()) {
-    if (budget.name) budgetNames.push({ categoryId: budget.categoryId, name: budget.name });
-  }
 
   return {
     id: item.id,
@@ -87,6 +68,7 @@ async function loadSyncItemRecord(itemId: string): Promise<SyncItemRecord | null
       ),
       categories,
       budgetNames,
+      plaidMappings,
       itemDefaultCategoryId: item.defaultCategoryId,
       fallbackCategoryId: {
         [CategoryKind.EXPENSE]: fallbackExpense,

@@ -170,6 +170,7 @@ model User {
   subscriptionShareStatuses SubscriptionShareStatus[]
   owedShares                OwedShare[]
   budgetAlertNotifications  BudgetAlertNotification[]
+  plaidCategoryMappings     PlaidCategoryMapping[]
   plaidItems                PlaidItem[]
   plaidAccounts             PlaidAccount[]
   plaidStagedTransactions   PlaidStagedTransaction[]
@@ -420,6 +421,7 @@ model Category {
   recurringTransactions RecurringTransaction[]
   plaidItemDefaults     PlaidItem[]
   transactionRules      TransactionRule[]
+  plaidCategoryMappings PlaidCategoryMapping[]
 
   @@unique([userId, name, kind])
 }
@@ -834,6 +836,27 @@ model PlaidStagedTransaction {
   /// this the query scans a range that only grows, to find a column that is almost always
   /// null.
   @@index([userId, revisedAfterResolveAt])
+}
+
+/// The user's own answer to "which of my categories does this Plaid category mean". Keyed by
+/// a Plaid personal_finance_category code, either a primary (FOOD_AND_DRINK) or a detailed
+/// one (FOOD_AND_DRINK_GROCERIES); a detailed row wins over its primary's. Only edits are
+/// stored: a code with no row falls back to the built-in name map in category-map.ts, so
+/// nothing changes for a user who never opens the setting.
+model PlaidCategoryMapping {
+  id            String   @id @default(cuid())
+  userId        String
+  plaidCategory String
+  categoryId    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Cascade: deleting a category returns its Plaid codes to the built-in default.
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, plaidCategory])
+  @@index([categoryId])
 }
 
 /// Marks a Transaction as confirmed against a bank record — what the Verified badge reads.

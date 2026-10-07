@@ -25,6 +25,7 @@ const mockPrisma = vi.hoisted(() => ({
   insightDismissal: { deleteMany: vi.fn(), createMany: vi.fn() },
   insightPreference: { deleteMany: vi.fn(), create: vi.fn() },
   contributionRoom: { deleteMany: vi.fn(), createMany: vi.fn() },
+  plaidCategoryMapping: { createMany: vi.fn() },
   $transaction: vi.fn(),
 }));
 
@@ -269,6 +270,11 @@ describe("importUserBackupAction", () => {
         { accountType: "TFSA", year: 2026, roomCents: 2_500_000 },
         { accountType: "RRSP", year: 2025, roomCents: 1_800_000 },
       ],
+      plaidCategoryMappings: [
+        { plaidCategory: "ENTERTAINMENT_TV_AND_MOVIES", categoryId: "cat-old" },
+        // A code this version does not know is dropped, not a failed restore.
+        { plaidCategory: "SOMETHING_NEW", categoryId: "cat-old" },
+      ],
     };
     const file = new File([JSON.stringify(backup)], "backup.json", { type: "application/json" });
     const formData = new FormData();
@@ -308,6 +314,9 @@ describe("importUserBackupAction", () => {
         { userId: "user-1", accountType: "TFSA", year: 2026, roomCents: 2_500_000 },
         { userId: "user-1", accountType: "RRSP", year: 2025, roomCents: 1_800_000 },
       ],
+    });
+    expect(mockPrisma.plaidCategoryMapping.createMany).toHaveBeenCalledWith({
+      data: [{ userId: "user-1", plaidCategory: "ENTERTAINMENT_TV_AND_MOVIES", categoryId: "cat-new" }],
     });
   });
 
