@@ -3,6 +3,7 @@ import { hash } from "bcryptjs";
 import { CategoryKind, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
+import { encryptSecret } from "../../src/lib/security";
 import { expectDashboardHome } from "./expect-dashboard-home";
 import { uniqueStamp } from "./helpers";
 
@@ -131,4 +132,100 @@ test("learned combos are listed with the rules and can be hidden", async ({ page
   expect(initial).not.toBe(category.id);
   await reloaded.getByPlaceholder("e.g. Weekly groceries, Shell fuel").fill(learnedTitle);
   await expect(categorySelect).toHaveValue(initial);
+});
+
+test("a rule added after a sync applies to the bank row already waiting in the queue", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Desktop queue flow is covered by the chromium project");
+  const { user, stamp, categories, accounts } = await createUserAndLogin(page, "queue");
+  const syncGuess = categories[0];
+  const ruleCategory = categories[categories.length - 1];
+  const account = accounts[0];
+  const tagName = `groc${stamp.replace(/[^a-z0-9]/gi, "").slice(-8)}`;
+
+  // A bank row staged before the rule exists, as a sync would have left it.
+  const item = await prisma.plaidItem.create({
+    data: {
+      userId: user.id,
+      itemId: `rules-item-${stamp}`,
+      accessTokenEnc: encryptSecret(`access-sandbox-rules-${stamp}`),
+      institutionName: "Test Credit Union",
+      requestedDays: 90,
+      historyCutoff: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+      lastSyncedAt: new Date(),
+    },
+  });
+  const plaidAccount = await prisma.plaidAccount.create({
+    data: {
+      userId: user.id,
+      plaidItemId: item.id,
+      plaidAccountId: `rules-chq-${stamp}`,
+      name: "Chequing",
+      plaidType: "depository",
+      accountId: account.id,
+    },
+  });
+  const staged = await prisma.plaidStagedTransaction.create({
+    data: {
+      userId: user.id,
+      plaidItemId: item.id,
+      plaidAccountRowId: plaidAccount.id,
+      plaidTransactionId: `rules-txn-${stamp}`,
+      name: "LOBLAWS #1234 TORONTO ON",
+      merchantName: "Loblaws",
+      amountCents: 8421,
+      type: TransactionType.EXPENSE,
+      date: new Date(),
+      suggestedAccountId: account.id,
+      suggestedCategoryId: syncGuess.id,
+    },
+  });
+
+  await page.goto("/settings#rules");
+  const panel = page.getByRole("tabpanel", { name: "Rules" });
+  await panel.getByRole("button", { name: "New rule" }).click();
+  const editor = panel.getByRole("region", { name: "New rule" });
+  await editor.locator('input[name="titlePattern"]').fill("loblaws");
+  await editor.locator('select[name="setCategoryId"]').selectOption(ruleCategory.id);
+  await editor.locator('input[name="setTitle"]').fill("Groceries run");
+  await editor.locator('input[name="appendNote"]').fill("weekly shop");
+  await editor.locator('input[name="addTag"]').fill(tagName);
+  await editor.getByRole("button", { name: "Create rule" }).click();
+  await expect(panel.getByTestId("transaction-rule")).toContainText("loblaws");
+
+  // The queue shows what the rule will write before anything is added.
+  await page.goto("/?range=lifetime");
+  const card = page
+    .locator("section")
+    .filter({ hasText: "From your bank" })
+    .first()
+    .locator("li")
+    .filter({ has: page.getByRole("group", { name: "What to do with Groceries run" }) });
+  await expect(card).toContainText("Groceries run");
+  await expect(card).toContainText("Loblaws ·");
+  await expect(card).toContainText("filled in by your rules");
+  await expect(card.getByTestId("review-rule-extras")).toContainText("weekly shop");
+  await expect(card.getByTestId("tag-chip")).toHaveText(`#${tagName}`);
+  await expect(card.locator('select[name="categoryId"]')).toHaveValue(ruleCategory.id);
+
+  await card.getByRole("button", { name: "Add it" }).click();
+
+  // The staged row's link to the transaction is the last thing adding it writes.
+  await expect
+    .poll(async () => (await prisma.plaidStagedTransaction.findUniqueOrThrow({ where: { id: staged.id } })).resolvedTransactionId, {
+      timeout: 15_000,
+    })
+    .not.toBeNull();
+  const resolved = await prisma.plaidStagedTransaction.findUniqueOrThrow({ where: { id: staged.id } });
+  const added = await prisma.transaction.findUniqueOrThrow({
+    where: { id: resolved.resolvedTransactionId! },
+    include: { tags: { include: { tag: true } } },
+  });
+  expect(added).toMatchObject({
+    title: "Groceries run",
+    categoryId: ruleCategory.id,
+    note: "weekly shop",
+    amountCents: 8421,
+    accountId: account.id,
+  });
+  expect(added.tags.map((t) => t.tag.name)).toEqual([tagName]);
 });

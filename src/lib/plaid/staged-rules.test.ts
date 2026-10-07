@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { proposeForStagedRow, type StagedRuleInput } from "./staged-rules";
+import { makeStagedProposer, proposeForStagedRow, proposeStagedRowAs, type StagedRuleInput } from "./staged-rules";
 import type { RuleTransactionType, TransactionRuleInput } from "@/lib/transaction-rules";
 
 const rule: TransactionRuleInput = {
@@ -89,5 +89,32 @@ describe("proposeForStagedRow", () => {
       note: null,
       reason: null,
     });
+  });
+});
+
+describe("proposeStagedRowAs", () => {
+  const transferKinds = new Map<string, RuleTransactionType>([...kinds, ["cat-xfer", "TRANSFER"]]);
+  const propose = makeStagedProposer({ rules: [{ ...rule, transactionType: "EXPENSE" }], ...noLearned }, transferKinds);
+  const transferRow: StagedRuleInput = { ...staged, type: "TRANSFER", suggestedCategoryId: "cat-xfer" };
+
+  it("applies an expenses-only rule when a transfer the sync guessed is booked as spending", () => {
+    // The sync's transfer category is not an expense category, so it must not survive.
+    expect(proposeStagedRowAs(propose, transferRow, "EXPENSE")).toMatchObject({
+      title: "Netflix",
+      categoryId: "cat-subs",
+      reason: "rule",
+    });
+  });
+
+  it("keeps the sync's category when the row is booked as the type the sync guessed", () => {
+    expect(proposeStagedRowAs(propose, transferRow, "TRANSFER")).toMatchObject({
+      title: "Netflix Com",
+      categoryId: "cat-xfer",
+      reason: null,
+    });
+  });
+
+  it("drops the sync's category for a spending row booked as a transfer", () => {
+    expect(proposeStagedRowAs(propose, staged, "TRANSFER").categoryId).toBeNull();
   });
 });

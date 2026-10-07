@@ -109,7 +109,8 @@ export function TransactionRulesPanel({
         <p className="max-w-prose text-xs leading-relaxed text-slate-400">
           Rules run top to bottom. Each field is filled by the first matching rule that sets it, so a broad rule and a
           narrower one can work together, except tags: every matching rule adds its tag. A rule always beats a learned combo below it. Rules never change an amount
-          your bank or statement reports — they only suggest one when you add an entry by hand.
+          your bank or statement reports — they only suggest one when you add an entry by hand. Bank rows waiting in
+          “From your bank” follow your rules as they stand, including rules added or changed after the sync.
         </p>
 
         {rules.length === 0 ? (
