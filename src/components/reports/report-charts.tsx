@@ -24,7 +24,8 @@ const NODE_COLORS: Record<CashFlowNode["kind"], string> = {
   shortfall: "#fbbf24",
   hub: "#94a3b8",
   expense: SPENDING_COLOR,
-  saved: "#a78bfa",
+  savings: "#a78bfa",
+  saved: "#c4b5fd",
 };
 
 const tooltipBox = "rounded-lg border border-slate-600 bg-slate-900/95 px-2.5 py-2 text-xs shadow-lg backdrop-blur";
@@ -54,8 +55,14 @@ export function IncomeSpendingChart({ data, currency }: { data: MonthFlow[]; cur
         <p className="tabular-nums text-slate-300">Income {formatCurrency(row.incomeCents, currency)}</p>
         <p className="tabular-nums text-slate-300">Spending {formatCurrency(row.spendingCents, currency)}</p>
         <p className={`mt-1 border-t border-slate-700 pt-1 tabular-nums ${row.netCents >= 0 ? "text-emerald-300" : "text-amber-300"}`}>
-          {row.netCents >= 0 ? "Saved" : "Overspent"} {formatCurrency(Math.abs(row.netCents), currency)}
+          {row.netCents >= 0 ? (row.toSavingsCents === null ? "Saved" : "Left over") : "Overspent"}{" "}
+          {formatCurrency(Math.abs(row.netCents), currency)}
         </p>
+        {row.toSavingsCents !== null ? (
+          <p className={`tabular-nums ${row.toSavingsCents >= 0 ? "text-violet-300" : "text-amber-300"}`}>
+            {row.toSavingsCents >= 0 ? "To savings" : "From savings"} {formatCurrency(Math.abs(row.toSavingsCents), currency)}
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -74,6 +81,9 @@ export function IncomeSpendingChart({ data, currency }: { data: MonthFlow[]; cur
           />
           <Bar dataKey="incomeCents" name="Income" fill={INCOME_COLOR} isAnimationActive={false} radius={[4, 4, 0, 0]} maxBarSize={18} />
           <Bar dataKey="spendingCents" name="Spending" fill={SPENDING_COLOR} isAnimationActive={false} radius={[4, 4, 0, 0]} maxBarSize={18} />
+          {data.some((m) => m.toSavingsCents !== null) ? (
+            <Bar dataKey="toSavingsCents" name="To savings" fill={NODE_COLORS.savings} isAnimationActive={false} radius={[4, 4, 0, 0]} maxBarSize={18} />
+          ) : null}
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -104,7 +114,7 @@ export function CashFlowSankey({ flow, currency }: { flow: CashFlow; currency: s
     return <p className="text-sm text-slate-400">No income or spending in this period.</p>;
   }
   const rows = Math.max(
-    flow.nodes.filter((n) => n.kind === "expense" || n.kind === "saved").length,
+    flow.nodes.filter((n) => n.kind === "expense" || n.kind === "savings" || n.kind === "saved").length,
     flow.nodes.filter((n) => n.kind === "income" || n.kind === "refunds" || n.kind === "shortfall").length,
   );
   const height = Math.max(240, rows * 48);

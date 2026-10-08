@@ -62,6 +62,8 @@ export const userBackupSchema = z.object({
       countryCode: z.string().min(1),
       provider: z.string().nullable(),
       archived: z.boolean(),
+      /** Absent from backups made before it existed; the type's default then applies. */
+      countsAsSavings: z.boolean().optional(),
       createdAt: isoDate,
       updatedAt: isoDate,
     }),

@@ -390,6 +390,11 @@ model Account {
    * Hidden from pickers on the dashboard and in import defaults; past data unchanged.
    */
   archived    Boolean     @default(false)
+  /**
+   * Money moved into this account by a transfer is counted as saved, and moved out as
+   * un-saved, in Reports and the financial score's savings rate.
+   */
+  countsAsSavings Boolean @default(false)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 

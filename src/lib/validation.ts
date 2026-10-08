@@ -337,6 +337,7 @@ export const accountSchema = z.object({
 
 export const updateAccountSchema = accountSchema.extend({
   accountId: z.string().min(1),
+  countsAsSavings: z.boolean(),
   currency: z
     .string()
     .trim()

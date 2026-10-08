@@ -46,6 +46,7 @@ export type UserBackupPayload = {
     countryCode: string;
     provider: string | null;
     archived: boolean;
+    countsAsSavings: boolean;
     createdAt: IsoString;
     updatedAt: IsoString;
   }>;
@@ -319,6 +320,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       countryCode: row.countryCode,
       provider: row.provider,
       archived: row.archived,
+      countsAsSavings: row.countsAsSavings,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     })),

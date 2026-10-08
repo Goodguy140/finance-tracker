@@ -168,6 +168,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     type: account.type,
     archived: account.archived,
     currency: account.currency,
+    countsAsSavings: account.countsAsSavings,
   }));
   const expenseCategoryOptions = categories.map((category) => ({ id: category.id, name: category.name }));
   const budgetItems = budgets.map((budget) => ({

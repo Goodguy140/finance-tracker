@@ -37,6 +37,21 @@ describe("computeFinancialScore", () => {
     expect(score({ txs: [expense("2026-09-02", 50_000)] }).status).toBe("insufficient");
   });
 
+  it("measures the savings rate by what moved into savings accounts when any are marked", () => {
+    const txs = steadyMonths(500_000, 300_000);
+    // Left over is 40% of income, but only 10% actually moved into savings.
+    const toSavingsByMonth = new Map(["2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"].map((ym) => [ym, 50_000]));
+    const marked = scored({ txs, toSavingsByMonth }).factors.find((f) => f.id === "savings")!;
+    expect(marked.detail).toBe("10% of income moved to savings");
+    expect(marked.score).toBe(65);
+    expect(scored({ txs, toSavingsByMonth }).suggestions).toContain(
+      "Moving about $500.00 more a month into savings would bring your savings rate to 20%.",
+    );
+
+    const unmarked = scored({ txs, toSavingsByMonth: null }).factors.find((f) => f.id === "savings")!;
+    expect(unmarked.detail).toBe("40% of income saved");
+  });
+
   it("scores a household saving 30% steadily as strong", () => {
     const result = scored({ txs: steadyMonths(500_000, 350_000) });
     expect(result.months).toEqual(["2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"]);

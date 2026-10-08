@@ -393,7 +393,7 @@ export function SettingsForms({
   hasPassword: boolean;
   joinedAt: string;
   accounts: Option[];
-  accountItems: Array<{ id: string; name: string; type: string; archived: boolean; currency: string }>;
+  accountItems: Array<{ id: string; name: string; type: string; archived: boolean; currency: string; countsAsSavings: boolean }>;
   expenseCategories: Option[];
   budgets: Array<{ id: string; periodMonth: string; name: string | null; categoryName: string; limitCents: number }>;
   subscriptions: SubscriptionView[];
@@ -415,6 +415,7 @@ export function SettingsForms({
     type: string;
     archived: boolean;
     currency: string;
+    countsAsSavings: boolean;
   } | null>(null);
   const profileInitials = getProfileInitials(defaults.displayName, profileEmail);
   const joinedLabel = new Date(joinedAt).toLocaleDateString(undefined, {
@@ -869,6 +870,11 @@ export function SettingsForms({
                               <span className="rounded-md border border-slate-700/80 bg-slate-900/60 px-2 py-0.5 text-[11px] font-medium tabular-nums text-slate-400">
                                 {account.currency}
                               </span>
+                              {account.countsAsSavings ? (
+                                <span className="rounded-md border border-violet-500/40 bg-violet-500/10 px-2 py-0.5 text-[11px] font-medium text-violet-200">
+                                  Counts as savings
+                                </span>
+                              ) : null}
                             </div>
                           </div>
                           <EditPencil />
@@ -964,6 +970,21 @@ export function SettingsForms({
                         <LabeledField label="Currency">
                           <input name="currency" defaultValue={editingAccount.currency} maxLength={3} className={inputClass} required />
                         </LabeledField>
+                        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-700/90 bg-slate-950/45 p-3 sm:col-span-2">
+                          <input
+                            type="checkbox"
+                            name="countsAsSavings"
+                            defaultChecked={editingAccount.countsAsSavings}
+                            className="mt-1 h-4 w-4 shrink-0 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-2 focus:ring-blue-500/30"
+                          />
+                          <span className="min-w-0 space-y-1">
+                            <span className="block text-sm font-medium text-slate-200">Counts as savings</span>
+                            <span className="block text-xs leading-relaxed text-slate-500">
+                              Transfers into this account count as saved in Reports and the financial score, and transfers
+                              out of it count against what you saved.
+                            </span>
+                          </span>
+                        </label>
                         <button type="submit" className={`${primaryBtnClass} sm:col-span-2`}>
                           Save account
                         </button>
