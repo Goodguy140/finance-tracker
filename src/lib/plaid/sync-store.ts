@@ -1,5 +1,8 @@
 import { CategoryKind, PlaidItemStatus, PlaidStagedStatus } from "@prisma/client";
 import { paidCentsOf } from "@/lib/owed-shares";
+import { BALANCE_SOURCE, upsertBalanceSnapshot } from "@/lib/account-balances";
+import { dateFromYmd } from "@/lib/date-only";
+import { currentYmdInTimeZone } from "@/lib/period-month";
 import { LONG_TRANSACTION_OPTIONS, prisma } from "@/lib/prisma";
 import { ensureFallbackCategory } from "@/lib/fallback-categories";
 import { outflowCents } from "@/lib/transfer-type";
@@ -259,6 +262,21 @@ export function createSyncStore(): SyncStore {
         });
         // Withdrawn and superseded rows past their grace period — see pruneSpentStagedRows.
         await pruneSpentStagedRows(prisma, input.itemId, input.now);
+      }
+    },
+
+    async recordBalances(item, readings, now) {
+      // Dated by the user's own calendar, like everything else they enter.
+      const user = await prisma.user.findUnique({ where: { id: item.userId }, select: { timezone: true } });
+      const date = dateFromYmd(currentYmdInTimeZone(user?.timezone, now));
+      for (const reading of readings) {
+        await upsertBalanceSnapshot(prisma, {
+          userId: item.userId,
+          accountId: reading.accountId,
+          date,
+          balanceCents: reading.balanceCents,
+          source: BALANCE_SOURCE.plaid,
+        });
       }
     },
 

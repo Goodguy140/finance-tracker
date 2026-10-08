@@ -238,6 +238,7 @@ export function createPlaidClient(config: PlaidConfig): PlaidClient {
         removed: page.removed ?? [],
         next_cursor: page.next_cursor ?? "",
         has_more: page.has_more ?? false,
+        accounts: page.accounts ?? [],
       };
     },
 

@@ -46,6 +46,7 @@ function fixture(): UserBackupPayload {
     recurringTransactions: [],
     investmentFlows: [],
     portfolioSnapshots: [],
+    accountBalances: [],
   };
 }
 

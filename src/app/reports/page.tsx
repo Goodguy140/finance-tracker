@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { TagFilterSelect } from "@/components/expense-log";
 import { FinancialScoreCard } from "@/components/financial-score-card";
-import { CashFlowSankey, IncomeSpendingChart } from "@/components/reports/report-charts";
+import { CashFlowSankey, IncomeSpendingChart, NetWorthChart } from "@/components/reports/report-charts";
+import { loadNetWorth } from "@/lib/net-worth-data";
 import { getCountryConfig } from "@/lib/country-config";
 import { loadFinancialScore } from "@/lib/financial-score-data";
 import { formatCurrency } from "@/lib/money";
@@ -57,12 +58,13 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   const currency = getCountryConfig(user.countryCode).defaultCurrency;
   const fmt = (cents: number) => formatCurrency(cents, currency);
 
-  const [loaded, savings, activityYears, tags, financial] = await Promise.all([
+  const [loaded, savings, activityYears, tags, financial, netWorth] = await Promise.all([
     loadReportTxs(user.id, previousYearWindow(period).start),
     loadSavingsTransfers(user.id, period.start),
     loadActivityBounds(user.id),
     listTags(prisma, user.id),
     loadFinancialScore(user),
+    loadNetWorth(user),
   ]);
   // `?tag=`, as on the dashboard: every view on this page narrows to rows carrying the tag.
   const tagFilter = resolveTagFilter(sp.tag, tags);
@@ -114,6 +116,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
       </div>
 
       <FinancialScoreCard score={financial.score} note="It doesn't change with the period or tag below" />
+
+      <NetWorthSection netWorth={netWorth} fmt={fmt} />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <nav aria-label="Report period" className="flex flex-wrap gap-2">
@@ -299,6 +303,73 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
         )}
       </section>
     </main>
+  );
+}
+
+function NetWorthSection({ netWorth, fmt }: { netWorth: Awaited<ReturnType<typeof loadNetWorth>>; fmt: (cents: number) => string }) {
+  const withBalance = netWorth.accounts.filter((a) => a.latest);
+  const missing = netWorth.accounts.length - withBalance.length;
+  const otherCurrency = withBalance.filter((a) => !a.counted);
+  return (
+    <section aria-labelledby="report-net-worth" className={card} data-testid="report-net-worth">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="report-net-worth" className="text-lg font-semibold">
+          Net worth
+        </h2>
+        <Link href="/settings#balances" className="text-sm text-sky-300 hover:text-sky-200">
+          Update balances
+        </Link>
+      </div>
+      {withBalance.length === 0 ? (
+        <p className="mt-1 text-sm text-slate-400">
+          No balances yet. Linked accounts record theirs with the next bank sync; enter the rest under Settings, Accounts,
+          Balances.
+        </p>
+      ) : (
+        <>
+          <p className="mb-3 mt-0.5 text-sm text-slate-400">
+            What your accounts hold less what you owe, at the end of each month. It doesn&apos;t change with the period or
+            tag below.
+          </p>
+          <div className="mb-3 grid grid-cols-3 gap-2 sm:gap-3">
+            {[
+              { label: "Assets", value: fmt(netWorth.assetsCents) },
+              { label: "Owed", value: fmt(netWorth.liabilitiesCents) },
+              { label: "Net worth", value: fmt(netWorth.netCents) },
+            ].map((tile) => (
+              <div key={tile.label} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                <p className="text-xs text-slate-400">{tile.label}</p>
+                <p className="mt-0.5 truncate text-base font-semibold tabular-nums sm:text-lg">{tile.value}</p>
+              </div>
+            ))}
+          </div>
+          {netWorth.points.length > 1 ? <NetWorthChart data={netWorth.points} currency={netWorth.currency} /> : null}
+          <details className="mt-3 text-sm">
+            <summary className="cursor-pointer select-none text-slate-400">By account</summary>
+            <ul className="mt-2 divide-y divide-slate-800">
+              {withBalance.map((a) => (
+                <li key={a.accountId} className="flex items-baseline justify-between gap-3 py-1.5">
+                  <span className="min-w-0 truncate text-slate-300">
+                    {a.name}
+                    {a.counted ? null : <span className="ml-2 text-xs text-slate-500">not in the total ({a.currency})</span>}
+                  </span>
+                  <span className={`shrink-0 tabular-nums ${a.liability ? "text-amber-300" : "text-slate-200"}`}>
+                    {a.liability ? "−" : ""}
+                    {formatCurrency(a.latest!.cents, a.currency)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {missing > 0 || otherCurrency.length > 0 ? (
+              <p className="mt-2 text-xs text-slate-500">
+                {missing > 0 ? `${missing} account${missing === 1 ? " has" : "s have"} no balance yet and ${missing === 1 ? "is" : "are"} left out. ` : ""}
+                {otherCurrency.length > 0 ? "Accounts in another currency are listed but not converted into the total." : ""}
+              </p>
+            ) : null}
+          </details>
+        </>
+      )}
+    </section>
   );
 }
 

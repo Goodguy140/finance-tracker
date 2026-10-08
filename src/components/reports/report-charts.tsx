@@ -6,12 +6,15 @@ import {
   BarChart,
   CartesianGrid,
   Legend,
+  Line,
+  LineChart,
   ResponsiveContainer,
   Sankey,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import type { NetWorthPoint } from "@/lib/net-worth";
 import type { CashFlow, CashFlowNode, MerchantMonth, MonthFlow } from "@/lib/reports";
 import { formatCurrency, fromCents } from "@/lib/money";
 
@@ -85,6 +88,45 @@ export function IncomeSpendingChart({ data, currency }: { data: MonthFlow[]; cur
             <Bar dataKey="toSavingsCents" name="To savings" fill={NODE_COLORS.savings} isAnimationActive={false} radius={[4, 4, 0, 0]} maxBarSize={18} />
           ) : null}
         </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+export function NetWorthChart({ data, currency }: { data: NetWorthPoint[]; currency: string }) {
+  function renderTooltip({ active, payload }: TooltipProps<number, string>) {
+    if (!active || !payload?.length) return null;
+    const row = payload[0]?.payload as NetWorthPoint;
+    return (
+      <div className={tooltipBox}>
+        <p className="font-medium text-slate-100">{row.label}</p>
+        <p className="tabular-nums text-slate-300">Assets {formatCurrency(row.assetsCents, currency)}</p>
+        <p className="tabular-nums text-slate-300">Owed {formatCurrency(row.liabilitiesCents, currency)}</p>
+        <p className={`mt-1 border-t border-slate-700 pt-1 tabular-nums ${row.netCents >= 0 ? "text-emerald-300" : "text-amber-300"}`}>
+          Net worth {formatCurrency(row.netCents, currency)}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full" style={{ minHeight: 220 }} data-testid="net-worth-chart">
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
+          <CartesianGrid stroke="#1e293b" vertical={false} />
+          <XAxis dataKey="label" {...axisProps} interval="preserveStartEnd" minTickGap={8} />
+          <YAxis {...axisProps} tickFormatter={formatAxisAmount} width={52} />
+          <Tooltip content={renderTooltip} cursor={{ stroke: "#475569" }} />
+          <Line
+            type="linear"
+            dataKey="netCents"
+            name="Net worth"
+            stroke={NODE_COLORS.savings}
+            strokeWidth={2}
+            dot={{ r: 3, fill: NODE_COLORS.savings }}
+            isAnimationActive={false}
+          />
+        </LineChart>
       </ResponsiveContainer>
     </div>
   );

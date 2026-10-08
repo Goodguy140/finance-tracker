@@ -27,6 +27,10 @@ enum AccountType {
   FHSA
   NON_REGISTERED
   CASH
+  /// A loan or mortgage. A liability: its balance is what is owed.
+  LOAN
+  /// A home, car or other thing of value with no bank feed. Balance entered by hand.
+  PROPERTY
 }
 
 enum CategoryKind {
@@ -164,6 +168,7 @@ model User {
   investmentFlows           InvestmentFlow[]
   contributionRooms         ContributionRoom[]
   portfolioSnapshots        PortfolioSnapshot[]
+  balanceSnapshots          AccountBalanceSnapshot[]
   updatedServerConfig       ServerSetting[]           @relation("ServerSettingUpdatedBy")
   auditLogs                 AuditLog[]
   subscriptionMembers       SubscriptionMember[]
@@ -379,35 +384,36 @@ model ServerSetting {
 }
 
 model Account {
-  id          String      @id @default(cuid())
-  userId      String
-  name        String
-  type        AccountType
-  currency    String      @default("CAD")
-  countryCode String      @default("CA")
-  provider    String?
+  id              String      @id @default(cuid())
+  userId          String
+  name            String
+  type            AccountType
+  currency        String      @default("CAD")
+  countryCode     String      @default("CA")
+  provider        String?
   /**
    * Hidden from pickers on the dashboard and in import defaults; past data unchanged.
    */
-  archived    Boolean     @default(false)
+  archived        Boolean     @default(false)
   /**
    * Money moved into this account by a transfer is counted as saved, and moved out as
    * un-saved, in Reports and the financial score's savings rate.
    */
-  countsAsSavings Boolean @default(false)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  countsAsSavings Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
-  user                   User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  defaultExpenseForUsers User[]                 @relation("UserDefaultExpenseAccount")
+  user                   User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultExpenseForUsers User[]                   @relation("UserDefaultExpenseAccount")
   transactions           Transaction[]
-  transfersFromOrTo      Transaction[]          @relation("TransactionTransferAccount")
+  transfersFromOrTo      Transaction[]            @relation("TransactionTransferAccount")
   recurringTransactions  RecurringTransaction[]
   investmentFlows        InvestmentFlow[]
   portfolioSnapshots     PortfolioSnapshot[]
+  balanceSnapshots       AccountBalanceSnapshot[]
   plaidAccounts          PlaidAccount[]
-  rulesMatchingAccount   TransactionRule[]      @relation("TransactionRuleMatchAccount")
-  rulesSettingAccount    TransactionRule[]      @relation("TransactionRuleSetAccount")
+  rulesMatchingAccount   TransactionRule[]        @relation("TransactionRuleMatchAccount")
+  rulesSettingAccount    TransactionRule[]        @relation("TransactionRuleSetAccount")
 }
 
 model Category {
@@ -672,6 +678,29 @@ model PortfolioSnapshot {
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+}
+
+/// An account's balance on one day, for net worth. Filled from the balances Plaid returns
+/// with every /transactions/sync (no billed /accounts/balance/get call) for mapped accounts,
+/// and by hand for everything else. One per account per day; a later write that day replaces
+/// it. Credit cards and loans store what is owed as a positive number.
+model AccountBalanceSnapshot {
+  id           String   @id @default(cuid())
+  userId       String
+  accountId    String
+  /// Date-only, midnight UTC, like Transaction.date.
+  date         DateTime
+  balanceCents Int
+  /// "PLAID" or "MANUAL".
+  source       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, date])
+  @@index([userId, date])
 }
 
 model RateLimitEntry {

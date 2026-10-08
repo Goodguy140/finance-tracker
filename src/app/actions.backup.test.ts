@@ -11,6 +11,7 @@ const mockPrisma = vi.hoisted(() => ({
   recurringTransaction: { deleteMany: vi.fn(), create: vi.fn() },
   investmentFlow: { deleteMany: vi.fn(), create: vi.fn(), createMany: vi.fn() },
   portfolioSnapshot: { deleteMany: vi.fn(), create: vi.fn(), createMany: vi.fn() },
+  accountBalanceSnapshot: { createMany: vi.fn() },
   transaction: { deleteMany: vi.fn(), create: vi.fn(), update: vi.fn() },
   account: { deleteMany: vi.fn(), create: vi.fn() },
   category: { deleteMany: vi.fn(), create: vi.fn() },
@@ -100,6 +101,7 @@ function minimalBackup(email: string) {
     recurringTransactions: [],
     investmentFlows: [],
     portfolioSnapshots: [],
+    accountBalances: [],
   };
 }
 

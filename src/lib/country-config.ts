@@ -25,6 +25,8 @@ export const countryConfigMap: Record<string, CountryConfig> = {
       AccountType.FHSA,
       AccountType.NON_REGISTERED,
       AccountType.CASH,
+      AccountType.LOAN,
+      AccountType.PROPERTY,
     ],
     defaultExpenseCategories: [
       "Groceries",
@@ -54,6 +56,8 @@ export const countryConfigMap: Record<string, CountryConfig> = {
       AccountType.FHSA,
       AccountType.NON_REGISTERED,
       AccountType.CASH,
+      AccountType.LOAN,
+      AccountType.PROPERTY,
     ],
     defaultExpenseCategories: [
       "食費",

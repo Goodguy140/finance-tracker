@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createPlaidClient, PlaidApiError } from "@/lib/plaid/client";
 import { PFC_TO_CATEGORY_NAMES } from "@/lib/plaid/category-map";
 import { mapPlaidAmount, normalizePlaidTransaction } from "@/lib/plaid/ingest";
-import type { PlaidApiTransaction } from "@/lib/plaid/types";
+import type { PlaidApiAccount, PlaidApiTransaction } from "@/lib/plaid/types";
+import { balanceReadings } from "@/lib/plaid/balances";
 
 /**
  * Checks this app's assumptions against the **real** Plaid sandbox.
@@ -79,6 +80,7 @@ describe.skipIf(!enabled)("Plaid sandbox contract", () => {
       const collected: PlaidApiTransaction[] = [];
       let cursor: string | null = null;
       let pages = 0;
+      let lastAccounts: PlaidApiAccount[] = [];
       const deadline = Date.now() + 90_000;
 
       for (;;) {
@@ -92,6 +94,7 @@ describe.skipIf(!enabled)("Plaid sandbox contract", () => {
 
         collected.push(...page.added);
         cursor = page.next_cursor;
+        lastAccounts = page.accounts;
 
         if (page.has_more && pages <= 20) continue;
         if (collected.length > 0) break;
@@ -110,6 +113,22 @@ describe.skipIf(!enabled)("Plaid sandbox contract", () => {
         collected.length,
         "sandbox returned no transactions within 90s — the assertions below would verify nothing",
       ).toBeGreaterThan(0);
+
+      {
+        // Net worth is built from the balances that come with the sync, never from the
+        // billed /accounts/balance/get. Each account the item holds must arrive on the
+        // walk's last page with a numeric `current`, which is the field recorded.
+        expect(lastAccounts.length, "/transactions/sync returned no accounts").toBeGreaterThan(0);
+        const readings = balanceReadings(
+          lastAccounts,
+          new Map(lastAccounts.map((a) => [a.account_id, { accountId: a.account_id, syncEnabled: true }])),
+        );
+        expect(readings.length, "no account carried a numeric balances.current").toBe(lastAccounts.length);
+        for (const account of lastAccounts) {
+          expect(accounts.map((a) => a.account_id)).toContain(account.account_id);
+        }
+        notes.push(`balances with the sync: ${readings.length} of ${lastAccounts.length} accounts`);
+      }
 
       {
         // Every field the ingest layer depends on.

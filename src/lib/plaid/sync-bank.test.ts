@@ -56,6 +56,7 @@ function store(locked = false): SyncStore {
     commitPage: vi.fn(async () => {}),
     finalize: vi.fn(async () => {}),
     matchPendingRows: vi.fn(async () => 0),
+    recordBalances: vi.fn(async () => {}),
   };
 }
 
@@ -63,7 +64,7 @@ function client(result: "ok" | Error): PlaidClient {
   return {
     transactionsSync: vi.fn(async () => {
       if (result instanceof Error) throw result;
-      return { added: [], modified: [], removed: [], next_cursor: "cursor-1", has_more: false };
+      return { added: [], modified: [], removed: [], next_cursor: "cursor-1", has_more: false, accounts: [] };
     }),
     updateItemWebhook: vi.fn(async () => {}),
   } as unknown as PlaidClient;

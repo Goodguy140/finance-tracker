@@ -55,6 +55,7 @@ function page(overrides: Partial<PlaidSyncPage> = {}): PlaidSyncPage {
     removed: [],
     next_cursor: "cursor-2",
     has_more: false,
+    accounts: [],
     ...overrides,
   };
 }

@@ -11,6 +11,7 @@ import {
 import { useId, useLayoutEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AccountTypePill } from "@/components/account-type-pill";
+import { AccountBalancesPanel, type AccountBalancesPanelRow } from "@/components/account-balances-panel";
 import { ServerActionForm } from "@/components/server-action-form";
 import { BudgetAlertPreferences } from "@/components/budget-alert-preferences";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
@@ -386,6 +387,7 @@ export function SettingsForms({
   plaid,
   transactionRules,
   contributionRoom,
+  balances,
   categories,
 }: {
   defaults: { displayName: string; countryCode: string; timezone: string };
@@ -406,6 +408,7 @@ export function SettingsForms({
   plaid: PlaidConnectionsPanelProps;
   transactionRules: TransactionRulesPanelProps;
   contributionRoom: ContributionRoomData;
+  balances: { rows: AccountBalancesPanelRow[]; todayYmd: string };
   categories: CategoriesPanelProps;
 }) {
   const [tab, setTab] = useState<SettingsTabId>("profile");
@@ -435,6 +438,7 @@ export function SettingsForms({
       else if (h === "#subscriptions" || h === "#subs") setTab("subscriptions");
       else if (h === "#accounts" || h === "#data" || h === "#import") setTab("accounts");
       else if (h === "#banks" || h === "#plaid") setTab("accounts");
+      else if (h === "#balances") setTab("accounts");
       else if (h === "#contribution-room" || h === "#tfsa" || h === "#rrsp" || h === "#fhsa") setTab("accounts");
       else if (h === "#integrations" || h === "#api" || h === "#tokens") setTab("advanced");
       else if (h === "#advanced") setTab("advanced");
@@ -925,6 +929,8 @@ export function SettingsForms({
                 </div>
               ) : null}
             </div>
+
+            <AccountBalancesPanel rows={balances.rows} todayYmd={balances.todayYmd} />
 
             <ContributionRoomPanel data={contributionRoom} />
 

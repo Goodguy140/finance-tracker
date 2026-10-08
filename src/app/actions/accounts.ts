@@ -8,14 +8,19 @@ import { requireUser } from "@/lib/session";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { formatAccountDetachedLabel } from "@/lib/account-type-labels";
 import { defaultCountsAsSavings } from "@/lib/savings-transfers";
+import { BALANCE_SOURCE, upsertBalanceSnapshot } from "@/lib/account-balances";
+import { dateFromYmd } from "@/lib/date-only";
+import { toCents } from "@/lib/money";
 import { mergeAccountDescriptionOnDetach } from "@/lib/transaction-account-detach";
 import {
+  accountBalanceSchema,
   accountSchema,
   setAccountArchivedSchema,
   updateAccountSchema,
   updateDefaultExpenseAccountSchema,
 } from "@/lib/validation";
 import {
+  assertUserOwnsAccount,
   getFormValue,
   formAction,
 } from "./_helpers";
@@ -211,3 +216,27 @@ export const setFinancialAccountArchivedAction = formAction(async (formData: For
   revalidatePath("/settings");
 });
 
+
+/**
+ * Records an account's balance on a day, by hand: for cash, a mortgage, a house, or any
+ * account with no bank feed. A second entry for the same day replaces the first, and so does
+ * a bank sync that day for a linked account.
+ */
+export const setAccountBalanceAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const payload = accountBalanceSchema.parse({
+    accountId: getFormValue(formData, "accountId"),
+    balance: getFormValue(formData, "balance"),
+    date: getFormValue(formData, "date"),
+  });
+  await assertUserOwnsAccount(user.id, payload.accountId);
+  await upsertBalanceSnapshot(prisma, {
+    userId: user.id,
+    accountId: payload.accountId,
+    date: dateFromYmd(payload.date),
+    balanceCents: toCents(payload.balance),
+    source: BALANCE_SOURCE.manual,
+  });
+  revalidatePath("/reports");
+  revalidatePath("/settings");
+});

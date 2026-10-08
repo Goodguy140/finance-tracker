@@ -137,6 +137,11 @@ test("syncing stages transactions for review, links exact matches, and only a re
     )
     .toBe("fake-txn-coffee");
 
+  // The balance that came with the sync was recorded for the mapped account, and only for
+  // it (the other fake accounts are unmapped). Written before matching, so already there.
+  const balances = await prisma.accountBalanceSnapshot.findMany({ where: { userId: user.id } });
+  expect(balances.map((b) => [b.accountId, b.balanceCents, b.source])).toEqual([[account.id, 123_456, "PLAID"]]);
+
   // The exact match was linked; the other four wait for the user.
   expect(
     await prisma.plaidStagedTransaction.count({

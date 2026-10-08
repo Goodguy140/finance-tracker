@@ -19,7 +19,7 @@ function txn(id: string, overrides: Partial<PlaidApiTransaction> = {}): PlaidApi
 }
 
 function pageOf(added: PlaidApiTransaction[], cursor: string, hasMore: boolean): PlaidSyncPage {
-  return { added, modified: [], removed: [], next_cursor: cursor, has_more: hasMore };
+  return { added, modified: [], removed: [], next_cursor: cursor, has_more: hasMore, accounts: [] };
 }
 
 function itemRecord(overrides: Partial<SyncItemRecord> = {}): SyncItemRecord {
@@ -58,6 +58,7 @@ function makeStore(item: SyncItemRecord | null, existing: ExistingStagedRow[] = 
     }),
     finalize: vi.fn(async () => {}),
     matchPendingRows: vi.fn(async () => 0),
+    recordBalances: vi.fn(async () => {}),
   };
   return { store, commits };
 }
@@ -289,6 +290,7 @@ describe("syncPlaidItem: bank revisions", () => {
     added: [],
     modified: [txn("a", { amount, name: "TEST RENAMED" })],
     removed: [],
+    accounts: [],
     next_cursor: "cursor-1",
     has_more: false,
   });
@@ -314,5 +316,36 @@ describe("syncPlaidItem: bank revisions", () => {
 
     expect(commits[0].plan.flagRevised).toEqual([{ plaidTransactionId: "a", transactionId: "txn-a" }]);
     expect(summary.revised).toBe(1);
+  });
+});
+
+describe("syncPlaidItem: balances", () => {
+  const account = (account_id: string, current: number | null) => ({
+    account_id,
+    name: "Acct",
+    type: "depository",
+    balances: { current, iso_currency_code: "CAD" },
+  });
+
+  it("records the last page's balances for mapped accounts once the walk completes", async () => {
+    const { client } = clientWithPages([
+      { ...pageOf([txn("a")], "cursor-1", true), accounts: [account("plaid-acct-1", 10)] },
+      { ...pageOf([txn("b")], "cursor-2", false), accounts: [account("plaid-acct-1", 12.34), account("unmapped", 99)] },
+    ]);
+    const { store } = makeStore(itemRecord());
+    await syncPlaidItem({ client, store }, "item-1");
+    expect(store.recordBalances).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(store.recordBalances).mock.calls[0][1]).toEqual([{ accountId: "app-1", balanceCents: 1234 }]);
+  });
+
+  it("records nothing when the walk fails", async () => {
+    const client = {
+      transactionsSync: vi.fn(async () => {
+        throw new Error("boom");
+      }),
+    } as unknown as PlaidClient;
+    const { store } = makeStore(itemRecord());
+    await expect(syncPlaidItem({ client, store }, "item-1")).rejects.toThrow("boom");
+    expect(store.recordBalances).not.toHaveBeenCalled();
   });
 });
