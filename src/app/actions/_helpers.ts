@@ -21,10 +21,19 @@ export type FormActionResult = ActionFailure | undefined;
 export function formAction(
   fn: (formData: FormData) => Promise<void>,
 ): (formData: FormData) => Promise<FormActionResult> {
+  return formActionWithResult(async (formData) => {
+    await fn(formData);
+    return undefined;
+  });
+}
+
+/** `formAction` for an action that reports back on success, e.g. an import's summary. */
+export function formActionWithResult<T>(
+  fn: (formData: FormData) => Promise<T>,
+): (formData: FormData) => Promise<T | ActionFailure> {
   return async (formData) => {
     try {
-      await fn(formData);
-      return undefined;
+      return await fn(formData);
     } catch (err) {
       unstable_rethrow(err);
       if (!isExpectedActionError(err)) console.error("[action] unexpected failure", err);

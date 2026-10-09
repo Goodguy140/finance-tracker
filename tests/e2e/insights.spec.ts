@@ -124,6 +124,36 @@ test("dismissing a suggestion hides it until it is restored", async ({ page }, t
   await expect(recurringSection.locator(`[data-insight-key="${key}"]`)).toHaveCount(1);
 });
 
+test("?tag= narrows insights to tagged entries, and Show all clears it", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+  const { user, addExpenses, login } = await seedUser(page, "tag");
+  const tagged = uniqueMerchant("Tripflix");
+  const plain = uniqueMerchant("Homeflix");
+  await addExpenses(tagged, 1299, [91, 61, 30, 1]);
+  await addExpenses(plain, 1899, [92, 62, 31, 2]);
+  const tag = await prisma.tag.create({ data: { userId: user.id, name: "Trip", nameKey: "trip" } });
+  const taggedRows = await prisma.transaction.findMany({ where: { userId: user.id, title: tagged }, select: { id: true } });
+  await prisma.transactionTag.createMany({ data: taggedRows.map((t) => ({ transactionId: t.id, tagId: tag.id })) });
+  const taggedKey = `recurring:EXPENSE:${normalizeMerchant(tagged)}`;
+  const plainKey = `recurring:EXPENSE:${normalizeMerchant(plain)}`;
+
+  await login();
+  await page.goto("/insights");
+  await expect(insightCard(page, taggedKey)).toHaveCount(1);
+  await expect(insightCard(page, plainKey)).toHaveCount(1);
+
+  await page.getByTestId("tag-filter").selectOption(tag.id);
+  await expect(page).toHaveURL(new RegExp(`[?&]tag=${tag.id}`));
+  await expect(page.getByTestId("insights-tag-note")).toContainText("#Trip");
+  await expect(insightCard(page, taggedKey)).toHaveCount(1);
+  await expect(insightCard(page, plainKey)).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Reports" })).toHaveAttribute("href", `/reports?tag=${tag.id}`);
+
+  await page.getByRole("link", { name: "Show all" }).click();
+  await expect(page).toHaveURL(/\/insights$/);
+  await expect(insightCard(page, plainKey)).toHaveCount(1);
+});
+
 test("habit spending is flagged, and turning it off stops the analysis", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
   const { user, addExpenses, login } = await seedUser(page, "habit");

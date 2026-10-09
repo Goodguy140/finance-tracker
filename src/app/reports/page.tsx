@@ -106,7 +106,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <Link href="/insights" className={linkBtn}>
+          <Link href={tagFilter ? `/insights?${tagQuery}` : "/insights"} className={linkBtn}>
             Insights
           </Link>
           <Link href="/" className={linkBtn}>
