@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ServerActionForm } from "@/components/server-action-form";
 import { MetaChip, TagChips } from "@/components/meta-chip";
 import { inputClass, primaryBtnClass, secondaryBtnClass } from "@/components/forms/shared";
@@ -73,7 +74,12 @@ export type RevisionRow = {
 };
 
 export type PlaidReviewQueueProps = {
+  /** The rows on screen: the newest page or pages of the queue. */
   rows: ReviewRow[];
+  /** Every row waiting for review in the period, shown or not. */
+  totalCount: number;
+  /** The `?queue=` value that shows the next page; null when every row is shown. */
+  nextLimit: number | null;
   revisions: RevisionRow[];
 };
 
@@ -261,8 +267,12 @@ function ReviewRowCard({ row }: { row: ReviewRow }) {
   );
 }
 
-export function PlaidReviewQueue({ rows, revisions }: PlaidReviewQueueProps) {
+export function PlaidReviewQueue({ rows, totalCount, nextLimit, revisions }: PlaidReviewQueueProps) {
   const [open, setOpen] = useState(true);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const hiddenCount = Math.max(0, totalCount - rows.length);
   const unmatchedIds = useMemo(
     // A suggested transfer pair is left out: adding both sides on their own would lose the pair.
     () => rows.filter((row) => !row.match && !row.transferPair).map((row) => row.id),
@@ -276,7 +286,7 @@ export function PlaidReviewQueue({ rows, revisions }: PlaidReviewQueueProps) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="font-semibold text-slate-100">From your bank</h2>
-          <MetaChip label="To review">{String(rows.length)}</MetaChip>
+          <MetaChip label="To review">{String(totalCount)}</MetaChip>
           {revisions.length > 0 ? <MetaChip label="Revised">{String(revisions.length)}</MetaChip> : null}
         </div>
         <button
@@ -344,16 +354,36 @@ export function PlaidReviewQueue({ rows, revisions }: PlaidReviewQueueProps) {
             <ServerActionForm action={bulkAddStagedTransactionsAction}>
               <input type="hidden" name="stagedIdsJson" value={JSON.stringify(unmatchedIds)} />
               <button className={primaryBtnClass} type="submit">
-                Add all {unmatchedIds.length} unmatched
+                Add all {unmatchedIds.length} unmatched{hiddenCount > 0 ? " shown" : ""}
               </button>
             </ServerActionForm>
           ) : null}
 
-          <ul className="space-y-2">
+          <ul className="space-y-2" data-testid="review-queue-rows">
             {rows.map((row) => (
               <ReviewRowCard key={row.id} row={row} />
             ))}
           </ul>
+
+          {nextLimit !== null ? (
+            <div className="flex flex-wrap items-center gap-2" data-testid="review-queue-more">
+              <p className="text-xs text-slate-400">
+                Showing the newest {rows.length} of {totalCount}. {hiddenCount} older{" "}
+                {hiddenCount === 1 ? "one is" : "ones are"} not shown yet.
+              </p>
+              <button
+                type="button"
+                className={secondaryBtnClass}
+                onClick={() => {
+                  const next = new URLSearchParams(searchParams.toString());
+                  next.set("queue", String(nextLimit));
+                  router.push(`${pathname}?${next.toString()}`, { scroll: false });
+                }}
+              >
+                Show {Math.min(hiddenCount, nextLimit - rows.length)} more
+              </button>
+            </div>
+          ) : null}
         </>
       ) : null}
     </section>
