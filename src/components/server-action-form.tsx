@@ -79,22 +79,36 @@ export function ServerActionForm<R>({ action, children, className, onSuccess, be
             setError(OFFLINE_WRITE_MESSAGE);
             return;
           }
-          startTransition(async () => {
-            try {
-              if (beforeSubmit && !(await beforeSubmit())) return;
-              const result = await action(formData);
-              if (isActionFailure(result)) {
-                setError(result.error);
-                return;
+          const submit = () =>
+            startTransition(async () => {
+              try {
+                const result = await action(formData);
+                if (isActionFailure(result)) {
+                  setError(result.error);
+                  return;
+                }
+                onSuccess?.(result as Exclude<R, ActionFailure>);
+                router.refresh();
+              } catch (e) {
+                const message =
+                  e instanceof Error ? e.message : "Something went wrong. Please try again.";
+                setError(message);
               }
-              onSuccess?.(result as Exclude<R, ActionFailure>);
-              router.refresh();
-            } catch (e) {
-              const message =
-                e instanceof Error ? e.message : "Something went wrong. Please try again.";
-              setError(message);
-            }
-          });
+            });
+          if (!beforeSubmit) {
+            submit();
+            return;
+          }
+          // Asked outside any transition: a confirm dialog opened by state set inside one
+          // would not render until the transition ended, and it waits on the dialog.
+          void Promise.resolve()
+            .then(beforeSubmit)
+            .then((ok) => {
+              if (ok) submit();
+            })
+            .catch((e: unknown) => {
+              setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+            });
         }}
       >
         {children}

@@ -83,7 +83,7 @@ test("categories can be added with a budget, merged by renaming, and Plaid categ
     where: { userId: user.id, name: "Groceries", kind: CategoryKind.EXPENSE },
   });
   // Folded by default: most people never change it.
-  await panel.getByText("Bank category mapping").click();
+  await panel.getByText("Bank category mapping", { exact: true }).click();
   const food = panel.getByTestId("plaid-mapping-row").filter({ hasText: "Food and drink" });
   await expect(food.getByLabel("Category for Food and drink")).toHaveValue("");
   await expect(food.getByLabel("Category for Food and drink").locator("option").first()).toHaveText("Default: Dining");

@@ -62,8 +62,11 @@ export async function logout(page: Page) {
 /**
  * Opens a Settings page by its old tab name ("security", "integrations"...), which now each
  * have their own URL. Same mapping the app uses to redirect old `/settings#...` links.
+ * Loads the dashboard first so its own `?month=` bootstrap navigation, which can still be
+ * pending right after a sign-in lands there, has finished and cannot interrupt this one.
  */
 export async function openSettingsTab(page: Page, tab: string) {
+  await page.goto("/");
   await page.goto(resolveLegacySettingsHash(`#${tab}`) ?? `/settings/${tab}`);
 }
 
