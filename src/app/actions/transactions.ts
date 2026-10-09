@@ -11,6 +11,7 @@ import { parseImportedDate } from "@/lib/import-dates";
 import { requireUser } from "@/lib/session";
 import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
 import { ownPartCents, parseOwedSharesFromForm, saveOwedShares } from "@/lib/owed-shares";
+import { assertSplitLinesMatch, parseSplitLinesFromForm, saveSplitLines } from "@/lib/split-lines";
 import { appendRuleNote, resolveRuleOutcome } from "@/lib/transaction-rules";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
 import { addTagsToTransaction, replaceTransactionTags, resolveTagIds } from "@/lib/tags-server";
@@ -99,6 +100,14 @@ export const updateExpenseAction = formAction(async (formData: FormData) => {
   ]);
 
   const owedRows = parseOwedSharesFromForm(formData);
+  const splitLines = parseSplitLinesFromForm(formData);
+  if (splitLines) {
+    await Promise.all(
+      [...new Set(splitLines.map((line) => line.categoryId))].map((id) =>
+        assertUserOwnsCategory(user.id, id, CategoryKind.EXPENSE),
+      ),
+    );
+  }
 
   await prisma.$transaction(async (tx) => {
     const existing = await tx.transaction.findFirst({
@@ -115,8 +124,14 @@ export const updateExpenseAction = formAction(async (formData: FormData) => {
       },
     });
     if (!existing) throw new Error("Expense not found.");
-    if (existing._count.splitParts > 0) {
-      throw new Error("Split expenses cannot be edited here.");
+    const isSplit = existing._count.splitParts > 0;
+    // Only an expense that is already split has lines to edit: new splits are not created.
+    if (splitLines && !isSplit) throw new Error("This expense is not split. Reload and try again.");
+    if (isSplit && !splitLines) throw new Error("The split lines are missing. Reload and try again.");
+    if (isSplit && owedRows && owedRows.length > 0) {
+      // Shares come out of `amountCents`, which the lines must add up to; both at once would
+      // leave the category figures counting what others owe.
+      throw new Error("A split expense cannot have amounts owed back. Remove the split first.");
     }
 
     // The form's amount is what the user paid; what others owe comes out of it. A form that
@@ -133,6 +148,7 @@ export const updateExpenseAction = formAction(async (formData: FormData) => {
       }
     }
     const amountCents = ownPartCents(amounts.amountCents, shares);
+    if (splitLines) assertSplitLinesMatch(splitLines, amountCents);
 
     await tx.transaction.update({
       where: { id: existing.id },
@@ -140,7 +156,9 @@ export const updateExpenseAction = formAction(async (formData: FormData) => {
         account: payload.accountId
           ? { connect: { id: payload.accountId } }
           : { disconnect: true },
-        category: { connect: { id: payload.categoryId } },
+        // A split's own category is only a label; its first line's keeps it meaningful, and
+        // is where the expense lands when one line is all that is left.
+        category: { connect: { id: splitLines ? splitLines[0].categoryId : payload.categoryId } },
         amountCents,
         preCreditCents: amounts.preCreditCents,
         creditCents: amounts.creditCents,
@@ -154,6 +172,7 @@ export const updateExpenseAction = formAction(async (formData: FormData) => {
     if (owedRows) {
       await saveOwedShares(tx, { userId: user.id, transactionId: existing.id, rows: owedRows });
     }
+    if (splitLines) await saveSplitLines(tx, { userId: user.id, transactionId: existing.id, lines: splitLines });
     if (tagNames) await replaceTransactionTags(tx, existing.id, await resolveTagIds(tx, user.id, tagNames));
   });
   scheduleBudgetAlertEmails(user.id);
