@@ -2,6 +2,8 @@
 
 import { useEffect, useId, useImperativeHandle, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { ServerActionForm } from "@/components/server-action-form";
+import { CsvImportSummaryDialog } from "./csv-import-summary-dialog";
+import { isCsvImportSummary, type CsvImportSummary } from "@/lib/csv-import";
 import { ExpenseTitleAutocomplete } from "@/components/expense-title-autocomplete";
 import { parseImportedDate } from "@/lib/import-dates";
 import { parseStatementAmount } from "@/lib/money";
@@ -214,6 +216,7 @@ export function ExpenseCsvImportForm({
   const [manualAccountName, setManualAccountName] = useState("");
   const [manualCategoryName, setManualCategoryName] = useState("");
   const [previewRowLimit, setPreviewRowLimit] = useState<string>("8");
+  const [importSummary, setImportSummary] = useState<CsvImportSummary | null>(null);
 
   const selectedColumns = {
     amount: headers.find((header) => mapping[header] === "amount") ?? "",
@@ -236,6 +239,10 @@ export function ExpenseCsvImportForm({
     const amountParsed = amountRaw ? parseStatementAmount(amountRaw) : null;
     const dateRawFromCsv = selectedColumns.date ? (row[selectedColumns.date] ?? "").trim() : "";
     const dateRaw = dateRawFromCsv || manualDate;
+    // With a date column or manual date in play, a row without a readable date is skipped
+    // (the import says which); only a file with no date source at all is booked today.
+    const hasDateSource = Boolean(selectedColumns.date || manualDate);
+    const dateMissing = hasDateSource && !dateRaw;
     const dateValid = !dateRaw || parseImportedDate(dateRaw) !== null;
     const postedDateRawFromCsv = selectedColumns.postedDate
       ? (row[selectedColumns.postedDate] ?? "").trim()
@@ -258,13 +265,14 @@ export function ExpenseCsvImportForm({
     let status = "Ready";
     if (!hasAmount) status = "Skipped: missing amount";
     else if (!validAmount) status = "Skipped: invalid amount";
+    else if (dateMissing) status = "Skipped: missing date";
     else if (!dateValid) status = "Skipped: invalid date";
     else if (!postedDateValid) status = "Skipped: invalid posted date";
 
     return {
       key: `preview-row-${index}`,
       amount: hasAmount && amountParsed !== null ? amountParsed.toFixed(2) : amountRaw || "-",
-      date: dateRaw || "Today",
+      date: dateRaw || (hasDateSource ? "-" : "Today"),
       postedDate,
       account,
       category,
@@ -277,7 +285,16 @@ export function ExpenseCsvImportForm({
   const previewSkippedCount = previewRows.length - previewValidCount;
 
   return (
-    <ServerActionForm action={importExpensesCsvAction} className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+    <ServerActionForm
+      action={importExpensesCsvAction}
+      onSuccess={(result) => {
+        if (isCsvImportSummary(result)) setImportSummary(result);
+      }}
+      className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-4"
+    >
+      {importSummary ? (
+        <CsvImportSummaryDialog summary={importSummary} onClose={() => setImportSummary(null)} />
+      ) : null}
       <div>
         <h3 className="font-semibold text-slate-100">Import expenses from CSV</h3>
         <p className="text-xs text-slate-400">
