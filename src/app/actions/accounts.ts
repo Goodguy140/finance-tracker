@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { formatAccountDetachedLabel } from "@/lib/account-type-labels";
+import { defaultCountsAsSavings } from "@/lib/savings-transfers";
 import { mergeAccountDescriptionOnDetach } from "@/lib/transaction-account-detach";
 import {
   accountSchema,
@@ -30,6 +31,7 @@ export const createFinancialAccountAction = formAction(async (formData: FormData
       userId: user.id,
       name: payload.name,
       type: payload.type as AccountType,
+      countsAsSavings: defaultCountsAsSavings(payload.type),
       countryCode: user.countryCode,
       archived: false,
     },
@@ -54,6 +56,7 @@ export const updateFinancialAccountAction = formAction(async (formData: FormData
     name: getFormValue(formData, "name"),
     type: getFormValue(formData, "type"),
     currency: getFormValue(formData, "currency"),
+    countsAsSavings: formData.get("countsAsSavings") === "on",
   });
 
   const result = await prisma.account.updateMany({
@@ -62,6 +65,7 @@ export const updateFinancialAccountAction = formAction(async (formData: FormData
       name: payload.name,
       type: payload.type as AccountType,
       currency: payload.currency,
+      countsAsSavings: payload.countsAsSavings,
     },
   });
   if (result.count === 0) throw new Error("Account not found.");

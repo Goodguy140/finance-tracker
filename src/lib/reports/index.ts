@@ -120,12 +120,24 @@ export type MonthFlow = {
   label: string;
   incomeCents: number;
   spendingCents: number;
-  /** Income less spending: positive saved, negative overspent. */
+  /** Income less spending: positive left over, negative overspent. */
   netCents: number;
+  /**
+   * Moved into savings accounts by transfer, less moved out (`savings-transfers.ts`); null when
+   * no account counts as savings, and saved is then `netCents`.
+   */
+  toSavingsCents: number | null;
 };
 
-/** Income and spending for each month of the period, including months with neither. */
-export function incomeVsSpendingByMonth(txs: readonly ReportTx[], months: readonly string[]): MonthFlow[] {
+/**
+ * Income and spending for each month of the period, including months with neither.
+ * `toSavingsByMonth` is what `savedByTransferByMonth` gave, when any account counts as savings.
+ */
+export function incomeVsSpendingByMonth(
+  txs: readonly ReportTx[],
+  months: readonly string[],
+  toSavingsByMonth: ReadonlyMap<string, number> | null = null,
+): MonthFlow[] {
   const byMonth = new Map(months.map((ym) => [ym, { income: 0, spending: 0 }]));
   for (const tx of txs) {
     const bucket = byMonth.get(ymOf(tx.date));
@@ -142,13 +154,14 @@ export function incomeVsSpendingByMonth(txs: readonly ReportTx[], months: readon
       incomeCents: income,
       spendingCents: spending,
       netCents: income - spending,
+      toSavingsCents: toSavingsByMonth ? (toSavingsByMonth.get(ym) ?? 0) : null,
     };
   });
 }
 
 export type CashFlowNode = {
   name: string;
-  kind: "income" | "refunds" | "shortfall" | "hub" | "expense" | "saved";
+  kind: "income" | "refunds" | "shortfall" | "hub" | "expense" | "savings" | "saved";
   cents: number;
 };
 
@@ -174,8 +187,16 @@ const HUB_NAME = "Income";
  *
  * Spending beyond `maxExpenseNodes - 1` categories is folded into one "Everything else" band:
  * a Sankey with thirty thin ribbons is unreadable on a phone.
+ *
+ * When accounts count as savings, `toSavingsCents` (net moved into them by transfer) gets its
+ * own "To savings" band, or a "From savings accounts" source when more came out than went in,
+ * and the leftover is what stayed in the other accounts.
  */
-export function cashFlow(txs: readonly ReportTx[], options: { maxExpenseNodes?: number } = {}): CashFlow {
+export function cashFlow(
+  txs: readonly ReportTx[],
+  options: { maxExpenseNodes?: number; toSavingsCents?: number | null } = {},
+): CashFlow {
+  const toSavings = options.toSavingsCents ?? null;
   const maxExpenseNodes = Math.max(2, options.maxExpenseNodes ?? 8);
   const incomeByCat = new Map<string, number>();
   const spendByCat = new Map<string, number>();
@@ -208,26 +229,32 @@ export function cashFlow(txs: readonly ReportTx[], options: { maxExpenseNodes?: 
 
   const grossIn = incomeIn.reduce((s, [, c]) => s + c, 0) + refunds;
   const grossOut = expenses.reduce((s, [, c]) => s + c, 0) + incomeOut;
-  const leftover = grossIn - grossOut;
+  const moved = toSavings ?? 0;
+  const leftover = grossIn - grossOut - moved;
 
   const nodes: CashFlowNode[] = [];
   const links: CashFlowLink[] = [];
-  if (grossIn === 0 && grossOut === 0) return { incomeCents, spendingCents, nodes, links };
+  if (grossIn === 0 && grossOut === 0 && moved === 0) return { incomeCents, spendingCents, nodes, links };
 
+  const tracked = toSavings !== null;
   const sources: CashFlowNode[] = [
     ...incomeIn.map(([name, cents]) => ({ name, kind: "income" as const, cents })),
     ...(refunds > 0 ? [{ name: "Refunds", kind: "refunds" as const, cents: refunds }] : []),
-    ...(leftover < 0 ? [{ name: "From savings", kind: "shortfall" as const, cents: -leftover }] : []),
+    ...(moved < 0 ? [{ name: "From savings accounts", kind: "shortfall" as const, cents: -moved }] : []),
+    ...(leftover < 0
+      ? [{ name: tracked ? "From account balances" : "From savings", kind: "shortfall" as const, cents: -leftover }]
+      : []),
   ];
   const sinks: CashFlowNode[] = [
     ...expenses.map(([name, cents]) => ({ name, kind: "expense" as const, cents })),
     ...(incomeOut > 0 ? [{ name: "Income reversed", kind: "expense" as const, cents: incomeOut }] : []),
-    ...(leftover > 0 ? [{ name: "Saved", kind: "saved" as const, cents: leftover }] : []),
+    ...(moved > 0 ? [{ name: "To savings", kind: "savings" as const, cents: moved }] : []),
+    ...(leftover > 0 ? [{ name: tracked ? "Left in accounts" : "Saved", kind: "saved" as const, cents: leftover }] : []),
   ];
 
   nodes.push(...sources);
   const hub = nodes.length;
-  nodes.push({ name: HUB_NAME, kind: "hub", cents: Math.max(grossIn, grossOut) });
+  nodes.push({ name: HUB_NAME, kind: "hub", cents: sources.reduce((sum, n) => sum + n.cents, 0) });
   for (let i = 0; i < sources.length; i++) links.push({ source: i, target: hub, value: sources[i].cents });
   for (const sink of sinks) {
     links.push({ source: hub, target: nodes.length, value: sink.cents });

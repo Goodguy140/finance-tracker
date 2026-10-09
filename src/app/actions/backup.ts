@@ -13,6 +13,7 @@ import { normalizeTagName, tagNameKey } from "@/lib/tags";
 import { isMappablePlaidCategory } from "@/lib/plaid/category-taxonomy";
 import { revokePlaidItemsForUser } from "@/lib/plaid/unlink";
 import { tryMakePlaidItemRevoker } from "@/lib/plaid/service";
+import { defaultCountsAsSavings } from "@/lib/savings-transfers";
 import {
   getFormValue,
   LONG_TRANSACTION_OPTIONS,
@@ -153,6 +154,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
           countryCode: account.countryCode,
           provider: account.provider,
           archived: account.archived,
+          countsAsSavings: account.countsAsSavings ?? defaultCountsAsSavings(account.type),
           createdAt: new Date(account.createdAt),
           updatedAt: new Date(account.updatedAt),
         },

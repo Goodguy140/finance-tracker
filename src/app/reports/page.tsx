@@ -17,7 +17,8 @@ import {
   yearOverYearByCategory,
   yearsWithActivity,
 } from "@/lib/reports";
-import { loadActivityBounds, loadReportTxs } from "@/lib/reports/load";
+import { loadActivityBounds, loadReportTxs, loadSavingsTransfers } from "@/lib/reports/load";
+import { savedByTransferByMonth, totalSavedByTransfer } from "@/lib/savings-transfers";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { resolveTagFilter } from "@/lib/tags";
@@ -56,8 +57,9 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   const currency = getCountryConfig(user.countryCode).defaultCurrency;
   const fmt = (cents: number) => formatCurrency(cents, currency);
 
-  const [loaded, activityYears, tags, financial] = await Promise.all([
+  const [loaded, savings, activityYears, tags, financial] = await Promise.all([
     loadReportTxs(user.id, previousYearWindow(period).start),
+    loadSavingsTransfers(user.id, period.start),
     loadActivityBounds(user.id),
     listTags(prisma, user.id),
     loadFinancialScore(user),
@@ -67,8 +69,18 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   const txs = filterByTag(loaded, tagFilter?.id ?? null);
   const tagQuery = tagFilter ? `tag=${encodeURIComponent(tagFilter.id)}` : "";
   const inPeriod = withinWindow(txs, period);
-  const months = incomeVsSpendingByMonth(inPeriod, period.months);
-  const flow = cashFlow(inPeriod);
+  // With any account marked "Counts as savings", saved is what moved into those accounts.
+  const tracksSavings = savings.savingsAccountIds.size > 0;
+  const savingsTxs = savings.txs.filter(
+    (tx) => tx.date >= period.start && tx.date < period.end && (!tagFilter || tx.tagIds?.includes(tagFilter.id)),
+  );
+  const toSavingsCents = tracksSavings ? totalSavedByTransfer(savingsTxs, savings.savingsAccountIds) : null;
+  const months = incomeVsSpendingByMonth(
+    inPeriod,
+    period.months,
+    tracksSavings ? savedByTransferByMonth(savingsTxs, savings.savingsAccountIds, period.months) : null,
+  );
+  const flow = cashFlow(inPeriod, { toSavingsCents });
   const yoy = yearOverYearByCategory(txs, period);
   const merchants = merchantSummaries(inPeriod);
   const periodOptions = [
@@ -85,7 +97,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Reports</h1>
-          <p className="mt-1 text-sm text-slate-400">Income and spending only. Transfers between your accounts are left out.</p>
+          <p className="mt-1 text-sm text-slate-400">
+            {tracksSavings
+              ? "Transfers between your accounts are left out, except money moved into accounts that count as savings."
+              : "Income and spending only. Transfers between your accounts are left out."}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <Link href="/insights" className={linkBtn}>
@@ -129,11 +145,20 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
         </p>
       ) : null}
 
-      <section aria-label="Totals" className="grid grid-cols-3 gap-2 sm:gap-3" data-testid="report-totals">
+      <section
+        aria-label="Totals"
+        className={`grid gap-2 sm:gap-3 ${toSavingsCents === null ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-4"}`}
+        data-testid="report-totals"
+      >
         {[
           { label: "Income", value: fmt(flow.incomeCents) },
           { label: "Spending", value: fmt(flow.spendingCents) },
-          { label: netCents >= 0 ? "Saved" : "Overspent", value: fmt(Math.abs(netCents)) },
+          ...(toSavingsCents === null
+            ? [{ label: netCents >= 0 ? "Saved" : "Overspent", value: fmt(Math.abs(netCents)) }]
+            : [
+                { label: netCents >= 0 ? "Left over" : "Overspent", value: fmt(Math.abs(netCents)) },
+                { label: toSavingsCents >= 0 ? "Saved" : "Taken from savings", value: fmt(Math.abs(toSavingsCents)) },
+              ]),
         ].map((tile) => (
           <div key={tile.label} className="rounded-2xl border border-slate-800 bg-slate-900/70 px-3 py-2.5 sm:px-4 sm:py-3">
             <p className="text-xs text-slate-400 sm:text-sm">{tile.label}</p>
@@ -159,6 +184,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
                 <th className="py-1 text-right font-normal">Income</th>
                 <th className="py-1 text-right font-normal">Spending</th>
                 <th className="py-1 text-right font-normal">Net</th>
+                {tracksSavings ? <th className="py-1 text-right font-normal">To savings</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -168,6 +194,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
                   <td className="py-1 text-right">{fmt(m.incomeCents)}</td>
                   <td className="py-1 text-right">{fmt(m.spendingCents)}</td>
                   <td className={`py-1 text-right ${m.netCents < 0 ? "text-amber-300" : "text-slate-200"}`}>{fmt(m.netCents)}</td>
+                  {m.toSavingsCents !== null ? (
+                    <td className={`py-1 text-right ${m.toSavingsCents < 0 ? "text-amber-300" : "text-slate-200"}`}>
+                      {fmt(m.toSavingsCents)}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

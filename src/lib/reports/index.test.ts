@@ -114,6 +114,36 @@ describe("cashFlow", () => {
     expect(flow.links.every((l) => l.value > 0)).toBe(true);
   });
 
+  it("splits what moved into savings accounts out of the leftover", () => {
+    const txs = [income("2026-08-01", "Pay", 300_000), expense("2026-08-03", "Rent", 200_000, "Housing")];
+    const flow = cashFlow(txs, { toSavingsCents: 60_000 });
+    expect(flow.nodes.map((n) => [n.name, n.kind, n.cents])).toEqual([
+      ["Salary", "income", 300_000],
+      ["Income", "hub", 300_000],
+      ["Housing", "expense", 200_000],
+      ["To savings", "savings", 60_000],
+      ["Left in accounts", "saved", 40_000],
+    ]);
+
+    // More moved to savings than was left over: the rest came out of account balances.
+    const over = cashFlow(txs, { toSavingsCents: 130_000 });
+    expect(over.nodes.map((n) => [n.name, n.cents])).toContainEqual(["From account balances", 30_000]);
+    expect(over.nodes.some((n) => n.kind === "saved")).toBe(false);
+
+    // Money taken out of savings is a source, not a negative band.
+    const withdrawn = cashFlow(txs, { toSavingsCents: -50_000 });
+    expect(withdrawn.nodes.map((n) => [n.name, n.cents])).toContainEqual(["From savings accounts", 50_000]);
+    expect(withdrawn.nodes.map((n) => [n.name, n.cents])).toContainEqual(["Left in accounts", 150_000]);
+
+    for (const f of [flow, over, withdrawn]) {
+      const hub = f.nodes.findIndex((n) => n.kind === "hub");
+      const into = f.links.filter((l) => l.target === hub).reduce((s, l) => s + l.value, 0);
+      const out = f.links.filter((l) => l.source === hub).reduce((s, l) => s + l.value, 0);
+      expect(into).toBe(out);
+      expect(f.nodes[hub].cents).toBe(into);
+    }
+  });
+
   it("attributes split expenses to their parts and folds the tail into one band", () => {
     const split = expense("2026-08-03", "Costco", 10_000, "Groceries");
     split.splits = [

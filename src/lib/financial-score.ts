@@ -17,6 +17,9 @@ import type { ReportTx } from "@/lib/reports";
  *
  * Account balances are not tracked, so nothing here can speak to savings on hand, debt or
  * an emergency fund.
+ *
+ * When any account counts as savings, the savings rate is what moved into those accounts by
+ * transfer as a share of income (`savings-transfers.ts`), not income less spending.
  */
 
 export const SCORE_LOOKBACK_MONTHS = 6;
@@ -79,6 +82,11 @@ export type FinancialScoreInput = {
   todayYmd: string;
   /** Formats cents for suggestion text. */
   formatCents: (cents: number) => string;
+  /**
+   * Net cents moved into savings accounts per `YYYY-MM`; null when no account counts as
+   * savings, and the savings rate is then income less spending.
+   */
+  toSavingsByMonth?: ReadonlyMap<string, number> | null;
 };
 
 const BASE_WEIGHTS: Record<FinancialScoreFactorId, number> = {
@@ -186,8 +194,13 @@ export function computeFinancialScore(input: FinancialScoreInput): FinancialScor
   const factors: Array<Omit<FinancialScoreFactor, "weight">> = [];
   const left: FinancialScoreOmission[] = [];
 
-  // Savings rate: what share of income was left after spending.
-  const savingsRate = (totalIncome - totalSpending) / totalIncome;
+  // Savings rate: what share of income was moved into savings accounts or, with none marked,
+  // left after spending.
+  const toSavings = input.toSavingsByMonth ?? null;
+  const savedCents = toSavings
+    ? months.reduce((s, ym) => s + (toSavings.get(ym) ?? 0), 0)
+    : totalIncome - totalSpending;
+  const savingsRate = savedCents / totalIncome;
   const savingsScore = piecewise(savingsRate, [
     [-0.1, 0],
     [0, 35],
@@ -195,15 +208,23 @@ export function computeFinancialScore(input: FinancialScoreInput): FinancialScor
     [0.2, 90],
     [0.3, 100],
   ]);
-  const toTwenty = Math.ceil(Math.max(0, 0.2 * avgIncome - (avgIncome - totalSpending / months.length)));
+  const toTwenty = Math.ceil(Math.max(0, 0.2 * avgIncome - savedCents / months.length));
   factors.push({
     id: "savings",
     label: "Savings rate",
     score: savingsScore,
-    detail: savingsRate >= 0 ? `${pct(savingsRate)} of income saved` : `Spent ${pct(-savingsRate)} more than earned`,
+    detail: toSavings
+      ? savingsRate >= 0
+        ? `${pct(savingsRate)} of income moved to savings`
+        : `${pct(-savingsRate)} of income taken out of savings`
+      : savingsRate >= 0
+        ? `${pct(savingsRate)} of income saved`
+        : `Spent ${pct(-savingsRate)} more than earned`,
     suggestion:
       savingsRate < 0.2
-        ? `Spending about ${fmt(toTwenty)} less a month would bring your savings rate to 20%.`
+        ? toSavings
+          ? `Moving about ${fmt(toTwenty)} more a month into savings would bring your savings rate to 20%.`
+          : `Spending about ${fmt(toTwenty)} less a month would bring your savings rate to 20%.`
         : null,
   });
 

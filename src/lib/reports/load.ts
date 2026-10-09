@@ -1,5 +1,6 @@
 import { TransactionType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import type { SavingsTransfers } from "@/lib/savings-transfers";
 import type { ReportTx } from "./index";
 
 /**
@@ -65,4 +66,48 @@ export async function loadActivityBounds(userId: string): Promise<Date[]> {
   const out: Date[] = [];
   for (let y = first.date.getUTCFullYear(); y <= last.date.getUTCFullYear(); y++) out.push(new Date(Date.UTC(y, 0, 1)));
   return out;
+}
+
+/**
+ * The accounts marked "Counts as savings" and the transfers from `since` on (all of them when
+ * null) that could touch one, for `savingsCentsFor`. Nothing is loaded when no account is
+ * marked: saved then stays income less spending.
+ */
+export async function loadSavingsTransfers(userId: string, since: Date | null): Promise<SavingsTransfers> {
+  const accounts = await prisma.account.findMany({
+    where: { userId, countsAsSavings: true },
+    select: { id: true },
+  });
+  const savingsAccountIds = new Set(accounts.map((a) => a.id));
+  if (savingsAccountIds.size === 0) return { savingsAccountIds, txs: [] };
+  const ids = [...savingsAccountIds];
+  const rows = await prisma.transaction.findMany({
+    where: {
+      userId,
+      type: TransactionType.TRANSFER,
+      OR: [{ accountId: { in: ids } }, { transferAccountId: { in: ids } }],
+      ...(since ? { date: { gte: since } } : {}),
+    },
+    select: {
+      date: true,
+      amountCents: true,
+      accountId: true,
+      transferAccountId: true,
+      transferPeerId: true,
+      transferPeerOf: { select: { id: true } },
+      tags: { select: { tagId: true } },
+    },
+    orderBy: { date: "asc" },
+  });
+  return {
+    savingsAccountIds,
+    txs: rows.map((t) => ({
+      date: t.date,
+      amountCents: t.amountCents,
+      accountId: t.accountId,
+      transferAccountId: t.transferAccountId,
+      paired: t.transferPeerId !== null || t.transferPeerOf !== null,
+      tagIds: t.tags.map((tag) => tag.tagId),
+    })),
+  };
 }
