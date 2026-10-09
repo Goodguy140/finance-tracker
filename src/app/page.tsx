@@ -48,6 +48,7 @@ import { dateFromYmd, formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only"
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
 import type { VerificationInfo } from "@/components/verified-badge";
 import { PlaidReviewQueue } from "@/components/plaid-review-queue";
+import { nextReviewQueueLimit, parseReviewQueueLimit } from "@/lib/plaid/review-queue-page";
 import { TransferLog, type TransferLogEntry } from "@/components/transfer-log";
 import { TransactionRulesProvider } from "@/components/transaction-rules-context";
 import { visibleLearnedSuggestions, type RuleTransactionType } from "@/lib/transaction-rules";
@@ -92,6 +93,8 @@ type SearchParams = Promise<{
   preset?: string | string[];
   /** A tag id: narrows the logs and Spending by category to transactions carrying it. */
   tag?: string | string[];
+  /** How many bank review queue rows to show; grows a page at a time. */
+  queue?: string | string[];
 }>;
 
 export const dynamic = "force-dynamic";
@@ -142,7 +145,10 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const categoryUsageCutoff = new Date(now);
   categoryUsageCutoff.setMonth(categoryUsageCutoff.getMonth() - 3);
 
-  const [accounts, categories, budgets, recurringTransactions, stagedRows, revisedRows, periodExpenses, periodIncomes, incomeTotal, ruleContext, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount, plaidAttentionCount, contributionRoom, periodTransfers, periodInvestmentFlows, periodPortfolioSnapshots, transferPairingPool, tags, owedShareRows] =
+  const reviewQueueWhere = { userId: user.id, status: PlaidStagedStatus.NEEDS_REVIEW, ...transactionDateFilter };
+  const reviewQueueLimit = parseReviewQueueLimit(sp.queue);
+
+  const [accounts, categories, budgets, recurringTransactions, stagedRows, reviewQueueTotal, revisedRows, periodExpenses, periodIncomes, incomeTotal, ruleContext, pastIncomeTransactions, pastExpenseTransactions, recentUnlinkedExpenses, recentUnlinkedIncomes, recentExpenseCategoryUsage, recentSplitCategoryUsage, plaidItemCount, plaidAttentionCount, contributionRoom, periodTransfers, periodInvestmentFlows, periodPortfolioSnapshots, transferPairingPool, tags, owedShareRows] =
     await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id, archived: false },
@@ -156,12 +162,14 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       orderBy: [{ enabled: "desc" }, { nextExpectedDate: "asc" }],
     }),
     // The queue follows the period on screen, like the log it sits above.
+    // A page at a time (`?queue=` asks for more), with the full count so none goes unseen.
     prisma.plaidStagedTransaction.findMany({
-      where: { userId: user.id, status: PlaidStagedStatus.NEEDS_REVIEW, ...transactionDateFilter },
+      where: reviewQueueWhere,
       include: { plaidItem: { select: { institutionName: true } } },
-      orderBy: [{ date: "desc" }, { name: "asc" }],
-      take: 200,
+      orderBy: [{ date: "desc" }, { name: "asc" }, { id: "asc" }],
+      take: reviewQueueLimit,
     }),
+    prisma.plaidStagedTransaction.count({ where: reviewQueueWhere }),
     prisma.plaidStagedTransaction.findMany({
       where: { userId: user.id, revisedAfterResolveAt: { not: null }, ...transactionDateFilter },
       include: { plaidItem: { select: { institutionName: true } } },
@@ -988,7 +996,12 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       body: (
         <>
           {cardSettings["expense-log"]?.showReviewQueue === false ? null : (
-            <PlaidReviewQueue rows={reviewRows} revisions={revisionRows} />
+            <PlaidReviewQueue
+              rows={reviewRows}
+              totalCount={reviewQueueTotal}
+              nextLimit={nextReviewQueueLimit(reviewRows.length, reviewQueueTotal)}
+              revisions={revisionRows}
+            />
           )}
           <OwedToYouList items={owedToYouItems} />
           <ExpenseLogPanel
