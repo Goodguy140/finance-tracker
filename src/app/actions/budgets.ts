@@ -77,7 +77,7 @@ export const upsertBudgetAction = formAction(async (formData: FormData) => {
     },
   });
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 export const updateBudgetAction = formAction(async (formData: FormData) => {
@@ -106,7 +106,7 @@ export const updateBudgetAction = formAction(async (formData: FormData) => {
     },
   });
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 export const deleteBudgetAction = formAction(async (formData: FormData) => {
@@ -125,7 +125,7 @@ export const deleteBudgetAction = formAction(async (formData: FormData) => {
     where: { id: existing.id },
   });
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 /**
@@ -202,6 +202,6 @@ export const reallocateBudgetAction = formAction(async (formData: FormData) => {
   );
 
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 

@@ -5,18 +5,17 @@ import { useEffect, useId, useMemo, useRef, useState, useTransition, type ReactN
 import {
   applyTransactionRuleAction,
   createTransactionRuleAction,
-  deleteTagAction,
   deleteTransactionRuleAction,
   hideLearnedTitleAction,
   moveTransactionRuleAction,
   previewTransactionRuleAction,
-  renameTagAction,
   setTransactionRuleEnabledAction,
   unhideLearnedTitleAction,
   updateTransactionRuleAction,
   type RulePreviewResult,
 } from "@/app/actions";
 import { ServerActionForm } from "@/components/server-action-form";
+import { useConfirm } from "@/components/settings/dialog";
 import { MetaChip } from "@/components/meta-chip";
 import { inputClass, primaryBtnClass, secondaryBtnClass, selectClass } from "@/components/forms/shared";
 import { formatCurrency } from "@/lib/money";
@@ -41,8 +40,7 @@ export type TransactionRulesPanelProps = {
   tags: (TagOption & { transactionCount: number })[];
 };
 
-const sectionClass =
-  "space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-4 shadow-lg sm:p-5";
+const sectionClass = "space-y-4 rounded-xl border border-slate-800 bg-slate-900/50 p-4 sm:p-5";
 const smallBtnClass =
   "touch-manipulation rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40";
 const labelTextClass = "text-sm font-medium text-slate-200";
@@ -63,6 +61,7 @@ export function TransactionRulesPanel({
   tags,
 }: TransactionRulesPanelProps) {
   const [draft, setDraft] = useState<Draft | null>(null);
+  const confirm = useConfirm();
   const [previewRuleId, setPreviewRuleId] = useState<string | null>(null);
   const editorRef = useRef<HTMLElement>(null);
 
@@ -94,6 +93,7 @@ export function TransactionRulesPanel({
 
   return (
     <div className="space-y-5">
+      {confirm.dialog}
       <section className={sectionClass} aria-labelledby="rules-list-heading">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -176,7 +176,14 @@ export function TransactionRulesPanel({
                   <RuleButtonForm
                     action={deleteTransactionRuleAction}
                     ruleId={rule.id}
-                    beforeSubmit={async () => window.confirm("Delete this rule? Past transactions are not changed.")}
+                    beforeSubmit={() =>
+                      confirm.ask({
+                        title: "Delete this rule?",
+                        body: "Past transactions are not changed.",
+                        confirmLabel: "Delete rule",
+                        danger: true,
+                      })
+                    }
                   >
                     <button type="submit" className={`${smallBtnClass} text-red-200`}>
                       Delete
@@ -220,13 +227,16 @@ export function TransactionRulesPanel({
         tagName={tagName}
       />
 
-      <section className={sectionClass} aria-labelledby="learned-heading">
-        <div className="flex flex-wrap items-center gap-2">
+      <details className={`group ${sectionClass}`} aria-labelledby="learned-heading">
+        <summary className="flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+          <span aria-hidden className="text-slate-500 transition group-open:rotate-90">
+            ›
+          </span>
           <h3 id="learned-heading" className="text-base font-semibold text-slate-100">
             Learned from history
           </h3>
           <MetaChip label="Learned">{String(visibleLearned.length)}</MetaChip>
-        </div>
+        </summary>
         <p className="max-w-prose text-xs leading-relaxed text-slate-400">
           When an expense title matches one you have used before, its category is filled in from the most recent entry
           with that title. These combos come from your last few hundred expenses and update as you log more. Hide one
@@ -264,95 +274,8 @@ export function TransactionRulesPanel({
             </ul>
           </details>
         ) : null}
-      </section>
-
-      <TagList tags={tags} />
+      </details>
     </div>
-  );
-}
-
-function TagList({ tags }: { tags: TransactionRulesPanelProps["tags"] }) {
-  const ids = useId();
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  return (
-    <section className={sectionClass} aria-labelledby={`${ids}-tags-heading`} data-testid="tag-list">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 id={`${ids}-tags-heading`} className="text-base font-semibold text-slate-100">
-          Tags
-        </h3>
-        <MetaChip label="Tags">{String(tags.length)}</MetaChip>
-      </div>
-      <p className="max-w-prose text-xs leading-relaxed text-slate-400">
-        Labels that cut across categories, like a trip or “reimbursable”. Type one on any entry to create it; filter the
-        dashboard by one from the expense log. Renaming a tag to the name of another merges the two.
-      </p>
-      {tags.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-slate-700 px-3 py-4 text-sm text-slate-400">
-          No tags yet.
-        </p>
-      ) : (
-        <ul className="divide-y divide-slate-800/80 rounded-xl border border-slate-800 bg-slate-950/40">
-          {tags.map((tag) => (
-            <li key={tag.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-              {renamingId === tag.id ? (
-                <ServerActionForm
-                  action={renameTagAction}
-                  onSuccess={() => setRenamingId(null)}
-                  className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5"
-                >
-                  <input type="hidden" name="tagId" value={tag.id} />
-                  <input
-                    name="name"
-                    aria-label={`New name for ${tag.name}`}
-                    className={`${inputClass} min-w-0 flex-1`}
-                    defaultValue={tag.name}
-                    maxLength={MAX_TAG_NAME_LENGTH}
-                    required
-                    autoFocus
-                  />
-                  <button type="submit" className={smallBtnClass}>
-                    Save
-                  </button>
-                  <button type="button" className={smallBtnClass} onClick={() => setRenamingId(null)}>
-                    Cancel
-                  </button>
-                </ServerActionForm>
-              ) : (
-                <>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm text-slate-100">{tag.name}</p>
-                    <p className="text-xs text-slate-400">
-                      {tag.transactionCount} transaction{tag.transactionCount === 1 ? "" : "s"}
-                    </p>
-                  </div>
-                  <div className="flex gap-1.5">
-                    <button
-                      type="button"
-                      className={smallBtnClass}
-                      onClick={() => setRenamingId(tag.id)}
-                      aria-label={`Rename ${tag.name}`}
-                    >
-                      Rename
-                    </button>
-                    <ServerActionForm
-                      action={deleteTagAction}
-                      beforeSubmit={async () =>
-                        window.confirm(`Delete the tag “${tag.name}”? The transactions themselves are kept.`)
-                      }
-                    >
-                      <input type="hidden" name="tagId" value={tag.id} />
-                      <button type="submit" className={`${smallBtnClass} text-red-200`} aria-label={`Delete ${tag.name}`}>
-                        Delete
-                      </button>
-                    </ServerActionForm>
-                  </div>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
   );
 }
 

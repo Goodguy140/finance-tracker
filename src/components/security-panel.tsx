@@ -8,6 +8,7 @@ import { inputClass, primaryBtnClass, secondaryBtnClass, LabeledField } from "@/
 import { removePasskeyAction, renamePasskeyAction, unlinkSsoProviderAction } from "@/app/actions";
 import { beginSsoLinkAction, regenerateRecoveryCodesAction } from "@/app/actions/mfa";
 import { registerPasskey, usePasskeyStepUp } from "@/components/mfa/passkey-client";
+import { useConfirm } from "@/components/settings/dialog";
 
 export type PasskeyRow = {
   id: string;
@@ -105,10 +106,10 @@ function RecoveryCodesReveal({ codes, onClose }: { codes: string[]; onClose: () 
 
 function Card({ title, description, children }: { title: string; description: ReactNode; children: ReactNode }) {
   return (
-    <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-4 shadow-lg sm:p-5">
-      <div className="space-y-1 border-b border-slate-800/90 pb-4">
+    <section aria-label={title} className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/50 p-4 sm:p-5">
+      <div>
         <h3 className="text-base font-semibold text-slate-100">{title}</h3>
-        <p className="max-w-prose text-sm text-slate-400">{description}</p>
+        <p className="mt-0.5 max-w-prose text-sm text-slate-400">{description}</p>
       </div>
       {children}
     </section>
@@ -138,6 +139,7 @@ export function SecurityPanel({
   availableProviders,
   linkedJustNow,
 }: SecurityPanelProps) {
+  const confirm = useConfirm();
   const router = useRouter();
   const enrolled = passkeys.length > 0;
   const stepUp = usePasskeyStepUp(freshUntil, enrolled);
@@ -211,7 +213,7 @@ export function SecurityPanel({
       form.action = `/api/auth/signin/${provider}`;
       for (const [name, value] of [
         ["csrfToken", csrfToken],
-        ["callbackUrl", `${window.location.origin}/settings`],
+        ["callbackUrl", `${window.location.origin}/settings/security`],
       ]) {
         const input = document.createElement("input");
         input.type = "hidden";
@@ -228,6 +230,7 @@ export function SecurityPanel({
 
   return (
     <div id="security" className="space-y-6">
+      {confirm.dialog}
       {revealCodes ? (
         <RecoveryCodesReveal
           codes={revealCodes}
@@ -289,7 +292,15 @@ export function SecurityPanel({
                   <ServerActionForm
                     action={removePasskeyAction}
                     beforeSubmit={async () => {
-                      if (!window.confirm(`Remove passkey “${pk.name}”?`)) return false;
+                      if (
+                        !(await confirm.ask({
+                          title: `Remove passkey “${pk.name}”?`,
+                          body: "You will no longer be able to sign in with it.",
+                          confirmLabel: "Remove passkey",
+                          danger: true,
+                        }))
+                      )
+                        return false;
                       return gate();
                     }}
                   >

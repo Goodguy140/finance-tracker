@@ -89,7 +89,7 @@ async function afterCategoryChange(user: { id: string; timezone: string }) {
   // should propose what the settings now say.
   await resuggestStagedCategories(user.id, user.timezone);
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 }
 
 /** Adds a category, with an optional monthly budget from this month on. */
@@ -120,7 +120,7 @@ export const createCategoryAction = formAction(async (formData: FormData) => {
     }
   });
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 /**
@@ -223,7 +223,7 @@ export const setCategoryBudgetAction = formAction(async (formData: FormData) => 
     });
   }
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 /**

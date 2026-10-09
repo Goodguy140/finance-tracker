@@ -80,7 +80,7 @@ test("transfers into a savings account count as saved until it is unmarked", asy
     await page.screenshot({ path: `${SCREENSHOT_DIR}/reports-${testInfo.project.name}.png`, fullPage: true });
   }
 
-  await page.goto("/settings#accounts");
+  await page.goto("/settings/accounts");
   await page.getByRole("button", { name: "Edit High-interest savings" }).click();
   const box = page.getByRole("checkbox", { name: /Counts as savings/ });
   await expect(box).toBeChecked();

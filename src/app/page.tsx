@@ -1245,7 +1245,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
                 ? "A bank connection needs your attention."
                 : `${plaidAttentionCount} bank connections need your attention.`}
             </span>
-            <Link href="/settings#banks" className="font-medium underline underline-offset-4">
+            <Link href="/settings/banks" className="font-medium underline underline-offset-4">
               Review in Settings
             </Link>
           </div>

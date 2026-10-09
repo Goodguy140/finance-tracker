@@ -18,7 +18,7 @@ async function findOwnedTag(userId: string, tagId: string) {
 
 function revalidateTags() {
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 }
 
 /**

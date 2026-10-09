@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useId, useRef, useState } from "react";
+import { Plus } from "lucide-react";
 import {
   createCategoryAction,
   deleteCategoryAction,
@@ -10,6 +10,7 @@ import {
   setPlaidCategoryMappingAction,
 } from "@/app/actions";
 import { ServerActionForm } from "@/components/server-action-form";
+import { ConfirmDialog, dangerBtnClass, FormDialog, ModalShell } from "@/components/settings/dialog";
 import { inputClass, primaryBtnClass, secondaryBtnClass, selectClass } from "@/components/forms/shared";
 import { formatCurrency } from "@/lib/money";
 
@@ -25,6 +26,8 @@ export type CategoryRow = {
   recurringCount: number;
   /** The budget in force this month, if any. */
   budgetLimitCents: number | null;
+  /** Spent this month, for budgeted expense categories; null when there is no budget. */
+  spentCents: number | null;
 };
 
 export type PlaidMappingRow = {
@@ -48,83 +51,101 @@ export type CategoriesPanelProps = {
   hasLinkedBank: boolean;
 };
 
-const sectionClass =
-  "space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-4 shadow-lg sm:p-5";
 const smallBtnClass =
   "touch-manipulation rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40";
 
-const dangerBtnClass =
-  "touch-manipulation rounded-xl border border-red-500/50 bg-red-900/60 px-4 py-2 text-sm font-medium text-red-50 transition hover:bg-red-900/85";
-
 const KIND_HEADINGS: Record<Kind, string> = { EXPENSE: "Expense categories", INCOME: "Income categories" };
+const KIND_TABS: Record<Kind, string> = { EXPENSE: "Expenses", INCOME: "Income" };
 
 export function CategoriesPanel({ categories, plaidGroups, hasLinkedBank }: CategoriesPanelProps) {
+  const [kind, setKind] = useState<Kind>("EXPENSE");
+  const [adding, setAdding] = useState(false);
+  const mappedCount = plaidGroups.reduce(
+    (n, g) => n + (g.mappedCategoryId ? 1 : 0) + g.detailed.filter((d) => d.mappedCategoryId).length,
+    0,
+  );
   return (
     <div className="space-y-4">
-      <AddCategorySection />
-      {(["EXPENSE", "INCOME"] as const).map((kind) => (
-        <CategoryListSection
-          key={kind}
-          kind={kind}
-          categories={categories.filter((c) => c.kind === kind)}
-          sameKind={categories.filter((c) => c.kind === kind)}
-        />
-      ))}
-      <PlaidMappingSection groups={plaidGroups} categories={categories} hasLinkedBank={hasLinkedBank} />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div role="group" aria-label="Category type" className="inline-flex overflow-hidden rounded-lg border border-slate-700">
+          {(["EXPENSE", "INCOME"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              aria-pressed={kind === k}
+              onClick={() => setKind(k)}
+              className={`px-3 py-1.5 text-sm transition ${
+                kind === k ? "bg-slate-800 text-slate-50" : "text-slate-400 hover:text-slate-100"
+              }`}
+            >
+              {KIND_TABS[k]} <span className="text-xs text-slate-500">{categories.filter((c) => c.kind === k).length}</span>
+            </button>
+          ))}
+        </div>
+        <button type="button" className={primaryBtnClass} onClick={() => setAdding(true)}>
+          <Plus className="mr-1 h-4 w-4" aria-hidden />
+          New category
+        </button>
+      </div>
+      <CategoryListSection
+        key={kind}
+        kind={kind}
+        categories={categories.filter((c) => c.kind === kind)}
+        sameKind={categories.filter((c) => c.kind === kind)}
+      />
+      <details className="group rounded-xl border border-slate-800 bg-slate-900/30">
+        <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl px-4 py-3 text-sm transition hover:bg-slate-900/60 [&::-webkit-details-marker]:hidden">
+          <span aria-hidden className="text-slate-500 transition group-open:rotate-90">
+            ›
+          </span>
+          <span className="font-medium text-slate-200">Bank category mapping</span>
+          <span className="text-xs text-slate-500">
+            {mappedCount > 0 ? `${mappedCount} changed from the default` : "All on the default"}
+          </span>
+        </summary>
+        <div className="border-t border-slate-800 p-4">
+          <PlaidMappingSection groups={plaidGroups} categories={categories} hasLinkedBank={hasLinkedBank} />
+        </div>
+      </details>
+      {adding ? <AddCategoryDialog initialKind={kind} onClose={() => setAdding(false)} /> : null}
     </div>
   );
 }
 
-function AddCategorySection() {
-  const [kind, setKind] = useState<Kind>("EXPENSE");
-  const [formKey, setFormKey] = useState(0);
+function AddCategoryDialog({ initialKind, onClose }: { initialKind: Kind; onClose: () => void }) {
+  const [kind, setKind] = useState<Kind>(initialKind);
   return (
-    <section className={sectionClass} aria-labelledby="add-category-heading">
-      <div className="space-y-1">
-        <h3 id="add-category-heading" className="text-base font-semibold text-slate-100">
-          Add a category
-        </h3>
-        <p className="text-sm text-slate-400">
-          Give an expense category a monthly limit here to budget it from this month on, or leave it blank.
-        </p>
-      </div>
-      <ServerActionForm
-        key={formKey}
-        action={createCategoryAction}
-        onSuccess={() => setFormKey((k) => k + 1)}
-        className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9rem_10rem_auto] sm:items-end"
-      >
-        <label className="space-y-1">
-          <span className="text-xs font-medium text-slate-400">Name</span>
-          <input name="name" className={inputClass} placeholder="e.g. Pets" maxLength={80} required />
+    <FormDialog title="New category" onClose={onClose}>
+      <ServerActionForm action={createCategoryAction} onSuccess={onClose} className="space-y-4">
+        <label className="block space-y-1.5">
+          <span className="text-sm font-medium text-slate-300">Name</span>
+          <input name="name" className={inputClass} placeholder="e.g. Pets" maxLength={80} required autoFocus />
         </label>
-        <label className="space-y-1">
-          <span className="text-xs font-medium text-slate-400">Type</span>
-          <select
-            name="kind"
-            className={selectClass}
-            value={kind}
-            onChange={(e) => setKind(e.target.value as Kind)}
-          >
-            <option value="EXPENSE">Expense</option>
-            <option value="INCOME">Income</option>
-          </select>
-        </label>
-        <label className="space-y-1">
-          <span className="text-xs font-medium text-slate-400">Monthly budget</span>
-          <input
-            name="limit"
-            inputMode="decimal"
-            className={inputClass}
-            placeholder={kind === "EXPENSE" ? "Optional" : "Expenses only"}
-            disabled={kind !== "EXPENSE"}
-          />
-        </label>
-        <button type="submit" className={`${primaryBtnClass} px-4 py-2.5`}>
-          Add
-        </button>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium text-slate-300">Type</span>
+            <select name="kind" className={selectClass} value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
+              <option value="EXPENSE">Expense</option>
+              <option value="INCOME">Income</option>
+            </select>
+          </label>
+          {kind === "EXPENSE" ? (
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium text-slate-300">Monthly budget</span>
+              <input name="limit" inputMode="decimal" className={inputClass} placeholder="Optional" />
+            </label>
+          ) : null}
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" className={secondaryBtnClass} onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className={primaryBtnClass}>
+            Add category
+          </button>
+        </div>
       </ServerActionForm>
-    </section>
+    </FormDialog>
   );
 }
 
@@ -138,18 +159,11 @@ function CategoryListSection({
   sameKind: CategoryRow[];
 }) {
   return (
-    <section className={sectionClass} aria-label={KIND_HEADINGS[kind]}>
-      <div className="space-y-1">
-        <h3 className="text-base font-semibold text-slate-100">{KIND_HEADINGS[kind]}</h3>
-        <p className="text-sm text-slate-400">
-          Renaming one to the name of another merges them: every transaction, budget, rule and bank mapping moves
-          across.
-        </p>
-      </div>
+    <section aria-label={KIND_HEADINGS[kind]}>
       {categories.length === 0 ? (
-        <p className="text-sm text-slate-500">None yet.</p>
+        <p className="rounded-xl border border-dashed border-slate-700 px-4 py-6 text-center text-sm text-slate-500">None yet.</p>
       ) : (
-        <ul className="divide-y divide-slate-800/80 rounded-xl border border-slate-800 bg-slate-950/40">
+        <ul className="divide-y divide-slate-800 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
           {categories.map((category) => (
             <CategoryItem key={category.id} category={category} others={sameKind.filter((c) => c.id !== category.id)} />
           ))}
@@ -183,17 +197,20 @@ function CategoryItem({ category, others }: { category: CategoryRow; others: Cat
   return (
     <li data-testid="category-row">
       <details className="group">
-        <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-2.5 transition hover:bg-slate-900/50 [&::-webkit-details-marker]:hidden">
+        <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 transition hover:bg-slate-900 [&::-webkit-details-marker]:hidden">
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium text-slate-100">{category.name}</span>
             <span className="block text-xs text-slate-500">
               {category.transactionCount} transaction{category.transactionCount === 1 ? "" : "s"}
             </span>
           </span>
+          {category.kind === "EXPENSE" && category.budgetLimitCents !== null ? (
+            <BudgetMeter spentCents={category.spentCents ?? 0} limitCents={category.budgetLimitCents} />
+          ) : null}
           {category.kind === "EXPENSE" ? (
             <span
-              className={`shrink-0 text-xs font-medium tabular-nums ${
-                category.budgetLimitCents === null ? "text-slate-500" : "text-emerald-300"
+              className={`w-24 shrink-0 text-right text-xs font-medium tabular-nums ${
+                category.budgetLimitCents === null ? "text-slate-500" : "text-slate-200"
               }`}
             >
               {category.budgetLimitCents === null ? "No budget" : `${formatCurrency(category.budgetLimitCents)}/mo`}
@@ -204,7 +221,7 @@ function CategoryItem({ category, others }: { category: CategoryRow; others: Cat
           </span>
         </summary>
 
-        <div className="space-y-3 border-t border-slate-800/80 px-3 pb-3 pt-3">
+        <div className="space-y-3 border-t border-slate-800/80 px-4 pb-4 pt-3">
           <ServerActionForm action={renameCategoryAction} className="flex flex-wrap items-end gap-2">
             <input type="hidden" name="categoryId" value={category.id} />
             <label className="min-w-0 flex-1 space-y-1">
@@ -234,6 +251,7 @@ function CategoryItem({ category, others }: { category: CategoryRow; others: Cat
             >
               Rename
             </button>
+            <p className="w-full text-xs text-slate-500">Renaming it to another category&apos;s name merges the two.</p>
           </ServerActionForm>
 
           {category.kind === "EXPENSE" ? (
@@ -345,76 +363,17 @@ function CategoryItem({ category, others }: { category: CategoryRow; others: Cat
   );
 }
 
-/** A modal in the page itself, so it looks like the app rather than the browser. */
-function ModalShell({
-  titleId,
-  onClose,
-  children,
-}: {
-  titleId: string;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  if (typeof document === "undefined") return null;
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[250] flex items-end justify-center bg-slate-950/80 p-4 sm:items-center"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="w-full max-w-md space-y-4 rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"
-      >
-        {children}
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
-function ConfirmDialog({
-  title,
-  body,
-  confirmLabel,
-  danger,
-  onConfirm,
-  onCancel,
-}: {
-  title: string;
-  body: string;
-  confirmLabel: string;
-  danger?: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const titleId = useId();
+/** This month's spend against the budget, as a bar; amber from 80%, red past the limit. */
+function BudgetMeter({ spentCents, limitCents }: { spentCents: number; limitCents: number }) {
+  const ratio = limitCents > 0 ? spentCents / limitCents : 0;
+  const tone = ratio > 1 ? "bg-red-400" : ratio >= 0.8 ? "bg-amber-400" : "bg-emerald-400";
   return (
-    <ModalShell titleId={titleId} onClose={onCancel}>
-      <h2 id={titleId} className="text-base font-semibold text-slate-100">
-        {title}
-      </h2>
-      <p className="text-sm text-slate-300">{body}</p>
-      <div className="flex flex-wrap justify-end gap-2">
-        <button type="button" className={secondaryBtnClass} onClick={onCancel} autoFocus>
-          Cancel
-        </button>
-        <button type="button" className={danger ? dangerBtnClass : primaryBtnClass} onClick={onConfirm}>
-          {confirmLabel}
-        </button>
-      </div>
-    </ModalShell>
+    <span className="hidden w-36 shrink-0 items-center gap-2 sm:flex" title={`${formatCurrency(spentCents)} spent this month`}>
+      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-800" aria-hidden>
+        <span className={`block h-full ${tone}`} style={{ width: `${Math.min(100, Math.round(ratio * 100))}%` }} />
+      </span>
+      <span className="w-14 text-right text-xs tabular-nums text-slate-400">{formatCurrency(spentCents)}</span>
+    </span>
   );
 }
 
@@ -493,18 +452,12 @@ function PlaidMappingSection({
   hasLinkedBank: boolean;
 }) {
   return (
-    <section className={sectionClass} aria-labelledby="plaid-mapping-heading">
-      <div className="space-y-1">
-        <h3 id="plaid-mapping-heading" className="text-base font-semibold text-slate-100">
-          Bank categories
-        </h3>
-        <p className="text-sm text-slate-400">
-          Which of your categories a linked bank&apos;s transactions are suggested under in the review queue. Each starts
-          on the built-in default; pick one of yours to change it. Open a row to set more specific ones, like groceries
-          apart from restaurants.
-          {hasLinkedBank ? " Rows waiting for review update straight away." : ""}
-        </p>
-      </div>
+    <section className="space-y-3" aria-label="Bank categories">
+      <p className="text-sm text-slate-400">
+        Which of your categories a linked bank&apos;s transactions are suggested under in the review queue. Open a row
+        to set more specific ones, like groceries apart from restaurants.
+        {hasLinkedBank ? " Rows waiting for review update straight away." : ""}
+      </p>
       <ul className="divide-y divide-slate-800/80 rounded-xl border border-slate-800 bg-slate-950/40">
         {groups.map((group) => {
           const options = categories.filter((c) => c.kind === group.kind);

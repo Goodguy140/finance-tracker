@@ -93,7 +93,7 @@ export async function createApiTokenAction(
     headers: await headers(),
   });
 
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
   return { ok: true, token: raw, name: parsed.data.name, prefix };
 }
 
@@ -121,5 +121,5 @@ export const revokeApiTokenAction = formAction(async (formData: FormData) => {
     headers: await headers(),
   });
 
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });

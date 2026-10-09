@@ -3,6 +3,7 @@ import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { uniqueStamp } from "./helpers";
+import { resolveLegacySettingsHash } from "../../src/lib/settings-sections";
 
 /**
  * Chromium's virtual authenticator (via CDP): a resident, user-verifying "internal"
@@ -59,20 +60,17 @@ export async function logout(page: Page) {
 }
 
 /**
- * Deep-links a settings tab via its hash from a fresh document load. A hash-only change on
- * an already-open /settings is a same-document navigation that does not reliably re-run
- * the tab sync, and clicking tabs is fragile on the scrolling mobile tab strip.
+ * Opens a Settings page by its old tab name ("security", "integrations"...), which now each
+ * have their own URL. Same mapping the app uses to redirect old `/settings#...` links.
  */
-export async function openSettingsTab(page: Page, hash: string) {
-  await page.goto("/");
-  await page.goto(`/settings#${hash}`);
+export async function openSettingsTab(page: Page, tab: string) {
+  await page.goto(resolveLegacySettingsHash(`#${tab}`) ?? `/settings/${tab}`);
 }
 
 /** Enrols the first passkey through the Settings UI and returns the recovery codes shown once. */
 export async function enrolFirstPasskey(page: Page, password: string, name = "E2E virtual passkey") {
   await openSettingsTab(page, "security");
-  // Security is its own tab now, rather than a section at the bottom of Profile.
-  const security = page.getByRole("tabpanel", { name: "Security" }).locator("#security");
+  const security = page.locator("#security");
   await security.getByPlaceholder("MacBook Touch ID").fill(name);
   // LabeledField renders a <span>, not a <label>; the only password field inside #security
   // is the "turn passkeys on" confirmation.

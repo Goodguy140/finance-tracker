@@ -37,11 +37,10 @@ async function login(page: Page, email: string, password: string) {
 }
 
 async function openSubscriptionsTab(page: Page) {
+  // Reached through the Settings home, the way a phone gets there with no sidebar.
   await page.goto("/settings");
-  // The compact mobile label is "Subs"; the desktop label is "Subscriptions". A leading-anchored
-  // regex matches both so the same click exercises the (now compact) tab strip on either viewport.
-  await page.getByRole("tab", { name: /^Subs/ }).click();
-  await expect(page.getByRole("tabpanel", { name: "Subscriptions" })).toBeVisible();
+  await page.getByRole("region", { name: "Money" }).getByRole("link", { name: /^Subscriptions/ }).click();
+  await expect(page.getByRole("region", { name: "Subscriptions", exact: true })).toBeVisible();
 }
 
 test("settings: create a shared subscription and toggle paid / bill-sent", async ({ page }) => {
@@ -51,20 +50,22 @@ test("settings: create a shared subscription and toggle paid / bill-sent", async
   await login(page, email, password);
   await openSubscriptionsTab(page);
 
-  const panel = page.getByRole("tabpanel", { name: "Subscriptions" });
+  const panel = page.getByRole("region", { name: "Subscriptions", exact: true });
   const name = `Netflix ${stamp}`;
 
-  // Happy path: fill the "Add a subscription" form and submit.
-  await panel.getByPlaceholder("e.g. Netflix, internet, gym").fill(name);
-  await panel.locator('input[name="amount"]').fill("20.00");
-  await panel.locator('input[name="nextExpectedDate"]').fill(todayYmd());
-  await panel.getByRole("button", { name: "Add subscription" }).click();
+  // Happy path: open "New subscription", fill the form and submit.
+  await panel.getByRole("button", { name: "New subscription" }).click();
+  const dialog = page.getByRole("dialog", { name: "New subscription" });
+  await dialog.getByPlaceholder("e.g. Netflix, internet, gym").fill(name);
+  await dialog.locator('input[name="amount"]').fill("20.00");
+  await dialog.locator('input[name="nextExpectedDate"]').fill(todayYmd());
+  await dialog.getByRole("button", { name: "Add subscription" }).click();
+  await expect(dialog).toBeHidden();
 
   // The new card appears in "Your subscriptions".
   await expect(panel.getByText(name, { exact: true })).toBeVisible({ timeout: 15_000 });
 
-  // Split it with one person. The member form's name field uses the "Name" placeholder, which is
-  // distinct from the create form above, so it uniquely targets the card's add-person input.
+  // Split it with one person, from the card's add-person form.
   await panel.getByPlaceholder("Name").fill("Alex");
   const shareInput = panel.locator('input[name="share"]');
   await shareInput.fill("5.00");

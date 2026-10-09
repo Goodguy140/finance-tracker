@@ -62,21 +62,23 @@ test("net worth charts balances less what is owed, and a balance can be entered 
   await expect(page.getByTestId("net-worth-chart")).toBeVisible();
 
   // Enter the mortgage by hand.
-  await page.goto("/settings#balances");
-  const balances = page.getByTestId("account-balances");
-  await balances.getByRole("button", { name: "Update balance for Mortgage" }).click();
-  const dialog = page.getByRole("dialog", { name: "Balance for Mortgage" });
-  await dialog.getByLabel(/Amount owed/).fill("300000");
-  await dialog.getByRole("button", { name: "Save balance" }).click();
+  // Balances live on each account, in the drawer the account row opens.
+  await page.goto("/settings/accounts");
+  const accounts = page.getByTestId("account-list");
+  await accounts.getByRole("button", { name: "Edit Mortgage" }).click();
+  const dialog = page.getByRole("dialog", { name: "Mortgage" });
+  const balance = dialog.getByTestId("account-balance");
+  await balance.getByLabel("Amount owed").fill("300000");
+  if (SCREENSHOT_DIR) {
+    mkdirSync(SCREENSHOT_DIR, { recursive: true });
+    await dialog.screenshot({ path: `${SCREENSHOT_DIR}/balances-${testInfo.project.name}.png` });
+  }
+  await balance.getByRole("button", { name: "Save balance" }).click();
   await expect(dialog).toBeHidden();
   await expect
     .poll(async () => (await prisma.accountBalanceSnapshot.findFirst({ where: { accountId: mortgage.id } }))?.balanceCents ?? null)
     .toBe(30_000_000);
-  await expect(balances).toContainText("Owes $300,000.00");
-  if (SCREENSHOT_DIR) {
-    mkdirSync(SCREENSHOT_DIR, { recursive: true });
-    await page.locator("#balances").screenshot({ path: `${SCREENSHOT_DIR}/balances-${testInfo.project.name}.png` });
-  }
+  await expect(accounts.getByRole("button", { name: "Edit Mortgage" })).toContainText("Owes $300,000.00");
 
   await page.goto("/reports");
   await expect(section).toContainText("-$275,800.00");

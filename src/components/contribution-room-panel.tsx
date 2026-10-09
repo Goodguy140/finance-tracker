@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { ServerActionForm } from "@/components/server-action-form";
 import { deleteContributionRoomAction, upsertContributionRoomAction } from "@/app/actions";
 import {
@@ -48,7 +49,7 @@ export function overContributionMessage(accountType: RegisteredAccountType, over
   return `${over} over your ${roomYear} ${accountType} room. CRA charges 1% a month on the excess until it is withdrawn.`;
 }
 
-function RoomCard({ room }: { room: RoomYear }) {
+export function RoomCard({ room }: { room: RoomYear }) {
   const { accountType, year } = room;
   return (
     <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/55 p-3">
@@ -111,31 +112,43 @@ export function ContributionRoomPanel({ data }: { data: ContributionRoomData }) 
   const types = REGISTERED_ACCOUNT_TYPES.filter((t) => heldTypes.has(t));
   const rooms = types.map((t) => computeRoomYear(t, roomYearFor(t, today), data.entries, flows));
 
+  // Open on arrival while a type still has no figure for this year: that is the moment it is
+  // needed. Held in state so saving a figure does not snap the form shut under the person.
+  const [openOnArrival] = useState(() => rooms.some((room) => room.remainingCents === null));
+
+  // Nothing to say to someone with no TFSA, RRSP or FHSA and no room on file.
+  if (types.length === 0) return null;
+
   return (
     <section
       id="contribution-room"
-      className="scroll-mt-24 space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/85 to-slate-900/55 p-3.5 shadow-lg lg:p-4"
+      aria-label="Contribution room"
+      className="scroll-mt-24 space-y-4 rounded-xl border border-slate-800 bg-slate-900/50 p-4 sm:p-5"
     >
-      <div className="space-y-1 border-b border-slate-800/80 pb-3">
-        <h3 className="text-lg font-semibold tracking-tight text-slate-100 lg:text-xl">Contribution room</h3>
-        <p className="max-w-prose text-sm leading-relaxed text-slate-400">
-          Copy each year&apos;s room from CRA. Contributions you record against TFSA, RRSP and FHSA accounts are
-          subtracted, and the investments form warns you before you go over.
+      <div>
+        <h3 className="text-base font-semibold text-slate-100">Contribution room</h3>
+        <p className="mt-0.5 max-w-prose text-sm text-slate-400">
+          Copy each year&apos;s room from CRA; contributions you record are subtracted, and you are warned before going over.
         </p>
       </div>
 
-      {rooms.length > 0 ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {rooms.map((room) => (
-            <RoomCard key={room.accountType} room={room} />
-          ))}
-        </div>
-      ) : (
-        <p className="rounded-xl border border-dashed border-slate-700 bg-slate-950/40 px-3 py-5 text-center text-sm text-slate-500">
-          No TFSA, RRSP or FHSA accounts yet. Add one above, or enter a room figure below.
-        </p>
-      )}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {rooms.map((room) => (
+          <RoomCard key={room.accountType} room={room} />
+        ))}
+      </div>
 
+      <details open={openOnArrival} className="group rounded-xl border border-slate-800 bg-slate-950/30">
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm font-medium text-slate-200 [&::-webkit-details-marker]:hidden">
+          <span aria-hidden className="text-slate-500 transition group-open:rotate-90">
+            ›
+          </span>
+          Enter room from CRA
+          {data.entries.length > 0 ? (
+            <span className="text-xs font-normal text-slate-500">{data.entries.length} entered</span>
+          ) : null}
+        </summary>
+        <div className="space-y-4 border-t border-slate-800 p-3">
       <ServerActionForm action={upsertContributionRoomAction} className={formGridResponsive}>
         <LabeledField label="Account type" hint="CRA gives one figure per person, however many accounts you hold.">
           <select name="accountType" className={selectClass} defaultValue={types[0] ?? "TFSA"}>
@@ -198,6 +211,8 @@ export function ContributionRoomPanel({ data }: { data: ContributionRoomData }) 
           </ul>
         </div>
       ) : null}
+        </div>
+      </details>
     </section>
   );
 }

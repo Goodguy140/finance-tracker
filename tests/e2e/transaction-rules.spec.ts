@@ -50,8 +50,8 @@ test("a rule fills category and account on the add-expense form", async ({ page 
   expect(accounts.length).toBeGreaterThan(1);
   const pattern = `rulematch${stamp.replace(/[^a-z0-9]/gi, "")}`;
 
-  await page.goto("/settings#rules");
-  const panel = page.getByRole("tabpanel", { name: "Rules" });
+  await page.goto("/settings/rules");
+  const panel = page.getByRole("region", { name: "Rules", exact: true });
   await expect(panel).toBeVisible();
   await panel.getByRole("button", { name: "New rule" }).click();
   const editor = panel.getByRole("region", { name: "New rule" });
@@ -111,8 +111,10 @@ test("learned combos are listed with the rules and can be hidden", async ({ page
   await card.getByPlaceholder("e.g. Weekly groceries, Shell fuel").fill(learnedTitle);
   await expect(card.locator('select[name="categoryId"]')).toHaveValue(category.id);
 
-  await page.goto("/settings#rules");
-  const panel = page.getByRole("tabpanel", { name: "Rules" });
+  await page.goto("/settings/rules");
+  const panel = page.getByRole("region", { name: "Rules", exact: true });
+  // Folded by default: most visits to Rules are about the rules themselves.
+  await panel.getByRole("heading", { name: "Learned from history" }).click();
   const combo = panel.getByTestId("learned-combo").filter({ hasText: learnedTitle });
   await expect(combo).toContainText(category.name);
   await combo.getByRole("button", { name: `Hide ${learnedTitle}` }).click();
@@ -180,8 +182,8 @@ test("a rule added after a sync applies to the bank row already waiting in the q
     },
   });
 
-  await page.goto("/settings#rules");
-  const panel = page.getByRole("tabpanel", { name: "Rules" });
+  await page.goto("/settings/rules");
+  const panel = page.getByRole("region", { name: "Rules", exact: true });
   await panel.getByRole("button", { name: "New rule" }).click();
   const editor = panel.getByRole("region", { name: "New rule" });
   await editor.locator('input[name="titlePattern"]').fill("loblaws");

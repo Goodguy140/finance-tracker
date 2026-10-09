@@ -37,14 +37,16 @@ test("categories can be added with a budget, merged by renaming, and Plaid categ
   const { user, stamp } = await createUserAndLogin(page);
   const name = `Pets ${stamp}`;
 
-  await page.goto("/settings#categories");
-  const panel = page.getByRole("tabpanel", { name: "Categories" });
+  await page.goto("/settings/categories");
+  const panel = page.getByRole("region", { name: "Categories & budgets" });
 
   // Add, with a budget.
-  const add = panel.getByRole("region", { name: "Add a category" });
+  await panel.getByRole("button", { name: "New category" }).click();
+  const add = page.getByRole("dialog", { name: "New category" });
   await add.getByPlaceholder("e.g. Pets").fill(name);
   await add.getByPlaceholder("Optional").fill("80");
-  await add.getByRole("button", { name: "Add" }).click();
+  await add.getByRole("button", { name: "Add category" }).click();
+  await expect(add).toBeHidden();
   const row = panel.getByTestId("category-row").filter({ hasText: name });
   await expect(row).toContainText("$80.00/mo");
   const pets = await prisma.category.findFirstOrThrow({ where: { userId: user.id, name } });
@@ -80,6 +82,8 @@ test("categories can be added with a budget, merged by renaming, and Plaid categ
   const groceries = await prisma.category.findFirstOrThrow({
     where: { userId: user.id, name: "Groceries", kind: CategoryKind.EXPENSE },
   });
+  // Folded by default: most people never change it.
+  await panel.getByText("Bank category mapping").click();
   const food = panel.getByTestId("plaid-mapping-row").filter({ hasText: "Food and drink" });
   await expect(food.getByLabel("Category for Food and drink")).toHaveValue("");
   await expect(food.getByLabel("Category for Food and drink").locator("option").first()).toHaveText("Default: Dining");
@@ -117,8 +121,8 @@ test("deleting a category in use asks, in the page, where its transactions and r
     },
   });
 
-  await page.goto("/settings#categories");
-  const panel = page.getByRole("tabpanel", { name: "Categories" });
+  await page.goto("/settings/categories");
+  const panel = page.getByRole("region", { name: "Categories & budgets" });
   const row = panel.getByTestId("category-row").filter({ hasText: gym.name });
   await row.locator("summary").click();
   await expect(row).toContainText("Used by 1 recurring rule.");

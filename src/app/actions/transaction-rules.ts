@@ -100,7 +100,7 @@ async function readRuleForm(userId: string, formData: FormData) {
 
 function revalidateRules() {
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 }
 
 async function findOwnedRule(userId: string, ruleId: string) {

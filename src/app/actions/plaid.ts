@@ -247,7 +247,7 @@ export async function exchangePlaidPublicTokenAction(
       headers: await headers(),
     });
 
-    revalidatePath(SETTINGS_PATH);
+    revalidatePath(SETTINGS_PATH, "layout");
     return {
       ok: true,
       institutionName: outcome.institutionName ?? "Your bank",
@@ -302,7 +302,7 @@ export async function completePlaidUpdateAction(
       metadata: { updateKind, institution: item.institutionName, accounts: accountCount },
       headers: await headers(),
     });
-    revalidatePath(SETTINGS_PATH);
+    revalidatePath(SETTINGS_PATH, "layout");
     revalidatePath("/");
     return {
       ok: true,
@@ -331,7 +331,7 @@ export const mapPlaidAccountAction = formAction(async (formData: FormData) => {
       where: { id: plaidAccount.id },
       data: { accountId: null },
     });
-    revalidatePath(SETTINGS_PATH);
+    revalidatePath(SETTINGS_PATH, "layout");
     return;
   }
 
@@ -356,7 +356,7 @@ export const mapPlaidAccountAction = formAction(async (formData: FormData) => {
     metadata: { plaidAccount: plaidAccount.name, account: account.name },
     headers: await headers(),
   });
-  revalidatePath(SETTINGS_PATH);
+  revalidatePath(SETTINGS_PATH, "layout");
 });
 
 export type PlaidUnlinkState =
@@ -415,7 +415,7 @@ export async function unlinkPlaidItemAction(
     headers: await headers(),
   });
 
-  revalidatePath(SETTINGS_PATH);
+  revalidatePath(SETTINGS_PATH, "layout");
   revalidatePath("/");
   return { ok: true, institutionName: item.institutionName ?? "Your bank" };
 }
@@ -468,7 +468,7 @@ export const syncPlaidItemAction = formAction(async (formData: FormData) => {
   }
 
   revalidatePath("/");
-  revalidatePath(SETTINGS_PATH);
+  revalidatePath(SETTINGS_PATH, "layout");
 });
 
 /**
@@ -494,7 +494,7 @@ export const syncAllPlaidItemsAction = formAction(async (formData: FormData) => 
   }
 
   revalidatePath("/");
-  revalidatePath(SETTINGS_PATH);
+  revalidatePath(SETTINGS_PATH, "layout");
 });
 
 /**
@@ -525,7 +525,7 @@ export async function refreshLinkedAccountsAction(): Promise<LogRefreshResult | 
       headers: await headers(),
     });
     revalidatePath("/");
-    revalidatePath(SETTINGS_PATH);
+    revalidatePath(SETTINGS_PATH, "layout");
   }
 
   return describeLogRefresh(summary);

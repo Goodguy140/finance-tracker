@@ -106,6 +106,7 @@ export function PlaidConnectionsPanel({
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [confirmUnlinkId, setConfirmUnlinkId] = useState<string | null>(null);
+  const [showConnect, setShowConnect] = useState(false);
 
   const handleSuccess = useCallback(
     (publicToken: string, _institutionName: string | null) => {
@@ -202,20 +203,10 @@ export function PlaidConnectionsPanel({
     (unlinkState.ok === false ? unlinkState.error : null);
 
   return (
-    <section
-      aria-labelledby="connected-banks-heading"
-      className="space-y-3.5 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/85 to-slate-900/55 p-3.5 shadow-lg lg:space-y-4 lg:p-4"
-    >
-      <header className="space-y-2">
-        <h3 id="connected-banks-heading" className="text-lg font-semibold tracking-tight text-slate-100 lg:text-xl">
-          Connected banks
-        </h3>
-        <p className="max-w-prose text-sm leading-relaxed text-slate-400">
-          Connect a bank to pull in transactions and confirm the ones you have already
-          entered. Nothing is added to your log automatically — every synced transaction
-          waits for you to review it.
-        </p>
-      </header>
+    <div className="space-y-3.5 lg:space-y-4">
+      <p className="max-w-prose text-sm text-slate-400">
+        Nothing is added to your log automatically: every synced transaction waits for you to review it.
+      </p>
 
       {!configured ? (
         <div className="rounded-2xl border border-slate-700 bg-slate-900/70 p-4 text-sm text-slate-300">
@@ -237,7 +228,7 @@ export function PlaidConnectionsPanel({
       {!mfa.enrolled && configured ? (
         <div className="rounded-2xl border border-amber-800/80 bg-amber-950/40 p-4 text-sm text-amber-100">
           Connecting a bank requires a passkey.{" "}
-          <Link href="/settings#profile" className="font-medium underline underline-offset-4">
+          <Link href="/settings/security" className="font-medium underline underline-offset-4">
             Add one in Security
           </Link>{" "}
           first.
@@ -288,8 +279,15 @@ export function PlaidConnectionsPanel({
         </div>
       ) : null}
 
-      {configured ? (
-        <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
+      {configured && items.length > 0 && !showConnect ? (
+        <button type="button" className={secondaryBtnClass} onClick={() => setShowConnect(true)} disabled={busy}>
+          Connect another bank
+        </button>
+      ) : null}
+
+      {/* With no bank yet, connecting is the only thing to do here, so the form is open. */}
+      {configured && (items.length === 0 || showConnect) ? (
+        <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/50 p-4">
           <h3 className="font-semibold text-slate-100">Connect a bank</h3>
           <label className="block space-y-1.5">
             <span className="text-sm font-medium text-slate-300">How far back to fetch</span>
@@ -340,7 +338,7 @@ export function PlaidConnectionsPanel({
       ) : (
         <ul className="space-y-4">
           {items.map((item) => (
-            <li key={item.id} className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-3">
+            <li key={item.id} className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <h3 className="truncate font-semibold text-slate-100">{item.institutionName}</h3>
@@ -479,6 +477,6 @@ export function PlaidConnectionsPanel({
           ))}
         </ul>
       )}
-    </section>
+    </div>
   );
 }

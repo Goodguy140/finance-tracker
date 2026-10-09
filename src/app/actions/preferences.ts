@@ -15,7 +15,7 @@ export const setBudgetAlertEmailAction = formAction(async (formData: FormData) =
     throw new Error("Email alerts need SMTP configured on the server first.");
   }
   await prisma.user.update({ where: { id: user.id }, data: { budgetAlertEmailEnabled: enabled } });
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 /** How much text the dashboard keeps readable before merging a column away. */
@@ -35,6 +35,6 @@ export const updateDashboardReadabilityAction = formAction(async (formData: Form
     where: { id: user.id },
     data: { dashboardTextVisiblePct, dashboardBudgetNameVisiblePct },
   });
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
   revalidatePath("/");
 });

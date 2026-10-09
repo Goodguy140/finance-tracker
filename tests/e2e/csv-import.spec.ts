@@ -37,7 +37,7 @@ const CSV = [
 ].join("\n");
 
 async function importCsv(page: Page) {
-  await page.goto("/settings#accounts");
+  await page.goto("/settings/import");
   const form = page.locator("form").filter({ hasText: "Import expenses from CSV" });
   await form.locator('input[type="file"]').setInputFiles({
     name: "statement.csv",

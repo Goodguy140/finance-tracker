@@ -404,7 +404,7 @@ export const importExpensesCsvAction = formActionWithResult(async (formData: For
 
   scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
   return summary;
 });
 

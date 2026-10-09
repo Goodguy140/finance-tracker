@@ -176,7 +176,7 @@ function unbudgetedCategories({ txs, budgets, now, fmt }: ImprovementsInput): In
         `for it. A limit of around ${fmt(suggested)} would flag the months that run over.`,
       monthlyCents: Math.round(avg),
       evidenceTxIds: [],
-      action: { kind: "link", href: "/settings#budgets", label: "Set a budget" },
+      action: { kind: "link", href: "/settings/categories", label: "Set a budget" },
     });
   }
   return out.sort((a, b) => (b.monthlyCents ?? 0) - (a.monthlyCents ?? 0)).slice(0, 3);
@@ -205,7 +205,7 @@ function dataHygiene({ txs, now }: ImprovementsInput): Insight[] {
         `expenses are filed under a catch-all, which hides them from category budgets and from these insights. ` +
         `A few transaction rules would file the regulars automatically.`,
       evidenceTxIds: evidenceIds(uncategorized),
-      action: { kind: "link", href: "/settings#rules", label: "Create rules" },
+      action: { kind: "link", href: "/settings/rules", label: "Create rules" },
     });
   }
 

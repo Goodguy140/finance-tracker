@@ -44,12 +44,10 @@ export async function expectExpenseInLog(page: Page, title: string) {
     .toBe(true);
 }
 
+/** Backup, restore and the danger zone, which used to be the Advanced tab. */
 export async function openSettingsAdvancedTab(page: Page) {
-  // Deep-link via hash (supported by the settings tab sync) rather than clicking the tab:
-  // robust against the horizontally scrolling mobile tab strip where the last tab can sit
-  // off the viewport edge.
-  await page.goto("/settings#advanced");
-  await expect(page.getByRole("tabpanel", { name: "Advanced" })).toBeVisible();
+  await page.goto("/settings/backup");
+  await expect(page.getByRole("region", { name: "Backup & export" })).toBeVisible();
 }
 
 export async function addExpenseOnDashboard(

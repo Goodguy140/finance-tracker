@@ -51,7 +51,7 @@ export const createFinancialAccountAction = formAction(async (formData: FormData
     headers: h,
   });
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 export const updateFinancialAccountAction = formAction(async (formData: FormData) => {
@@ -76,7 +76,7 @@ export const updateFinancialAccountAction = formAction(async (formData: FormData
   if (result.count === 0) throw new Error("Account not found.");
 
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 export const updateDefaultExpenseAccountAction = formAction(async (formData: FormData) => {
@@ -109,7 +109,7 @@ export const updateDefaultExpenseAccountAction = formAction(async (formData: For
   }
 
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 export const deleteFinancialAccountAction = formAction(async (formData: FormData) => {
@@ -165,7 +165,7 @@ export const deleteFinancialAccountAction = formAction(async (formData: FormData
   });
 
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 export const setFinancialAccountArchivedAction = formAction(async (formData: FormData) => {
@@ -213,7 +213,7 @@ export const setFinancialAccountArchivedAction = formAction(async (formData: For
   });
 
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 
@@ -238,5 +238,5 @@ export const setAccountBalanceAction = formAction(async (formData: FormData) => 
     source: BALANCE_SOURCE.manual,
   });
   revalidatePath("/reports");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
