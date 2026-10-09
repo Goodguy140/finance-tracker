@@ -1,6 +1,6 @@
 import { TransactionType } from "@prisma/client";
 import { cache } from "react";
-import { getCountryConfig } from "@/lib/country-config";
+import { homeCurrencyOf, inCurrencyWhere } from "@/lib/home-currency";
 import { prisma } from "@/lib/prisma";
 import { buildInsights, type BuiltInsights } from "./index";
 import type { InsightTx } from "./types";
@@ -27,11 +27,12 @@ export type LoadedInsights = BuiltInsights & {
 export const loadInsights = cache(async (userId: string, countryCode: string): Promise<LoadedInsights> => {
   const now = new Date();
   const since = daysAgo(now, INSIGHT_HISTORY_DAYS);
+  const currency = homeCurrencyOf(countryCode);
   const [transactions, staged, rules, budgets, preference, dismissals] = await Promise.all([
     prisma.transaction.findMany({
       // Transfers are neither spending nor income: no habit, saving or recurring charge
-      // should be read off a card payment.
-      where: { userId, date: { gte: since }, type: { not: TransactionType.TRANSFER } },
+      // should be read off a card payment. Nor is anything in another currency added in.
+      where: { userId, date: { gte: since }, type: { not: TransactionType.TRANSFER }, ...inCurrencyWhere(currency) },
       select: {
         id: true,
         type: true,
@@ -54,7 +55,7 @@ export const loadInsights = cache(async (userId: string, countryCode: string): P
       select: { resolvedTransactionId: true, merchantName: true, pfcPrimary: true, pfcDetailed: true },
     }),
     prisma.recurringTransaction.findMany({
-      where: { userId },
+      where: { userId, account: { currency } },
       select: { id: true, name: true, type: true, amountCents: true, cadence: true, enabled: true, categoryId: true },
     }),
     prisma.budget.findMany({ where: { userId }, select: { categoryId: true, periodMonth: true } }),
@@ -83,7 +84,6 @@ export const loadInsights = cache(async (userId: string, countryCode: string): P
     };
   });
 
-  const currency = getCountryConfig(countryCode).defaultCurrency;
   const habitsEnabled = preference?.habitDetectionEnabled ?? true;
   const built = buildInsights({
     txs,

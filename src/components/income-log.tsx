@@ -43,6 +43,8 @@ export type IncomeLogEntry = {
   verification: VerificationInfo | null;
   /** Tag names, sorted. */
   tags: string[];
+  /** The account's currency when it is not the home one: shown in it, and left out of totals. */
+  currency?: string | null;
 };
 
 type UpdateState = { ok: true } | { ok: false; error: string | null };
@@ -52,7 +54,15 @@ type DeleteState = { ok: true } | { ok: false; error: string | null };
 type IncomeLogDensity = "expanded" | "compact";
 
 
-function ReceivedPill({ cents, size = "default" }: { cents: number; size?: "default" | "compact" }) {
+function ReceivedPill({
+  cents,
+  size = "default",
+  currency,
+}: {
+  cents: number;
+  size?: "default" | "compact";
+  currency?: string | null;
+}) {
   const sizeClass =
     size === "compact"
       ? "px-2 py-0.5 text-xs font-semibold tabular-nums"
@@ -61,7 +71,7 @@ function ReceivedPill({ cents, size = "default" }: { cents: number; size?: "defa
     <span
       className={`shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/15 text-emerald-100 shadow-sm ring-1 ring-emerald-500/15 ${sizeClass}`}
     >
-      Received {formatCurrency(cents)}
+      Received {formatCurrency(cents, currency ?? undefined)}
     </span>
   );
 }
@@ -113,7 +123,7 @@ function IncomeLogMobileCard({
             <span className="mt-1 block text-sm leading-snug text-slate-300">{entry.title}</span>
           ) : null}
         </div>
-        <ReceivedPill cents={entry.amountCents} size={pillSize} />
+        <ReceivedPill cents={entry.amountCents} size={pillSize} currency={entry.currency} />
       </div>
       <div className="flex flex-wrap gap-1.5">
         <MetaChip label="Account">{entry.accountLabel}</MetaChip>
@@ -437,7 +447,7 @@ export function IncomeLogPanel({
                     ) : null}
                     <IncomeLogMeta entry={entry} density={density} />
                   </div>
-                  <ReceivedPill cents={entry.amountCents} size={pillSize} />
+                  <ReceivedPill cents={entry.amountCents} size={pillSize} currency={entry.currency} />
                 </div>
               </div>
             </button>

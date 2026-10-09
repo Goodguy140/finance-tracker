@@ -63,6 +63,8 @@ export type ExpenseLogEntry = {
   tags: string[];
   /** What others owe back on this expense; already taken out of `amountCents`. */
   owedShares: ExpenseOwedShare[];
+  /** The account's currency when it is not the home one: shown in it, and left out of totals. */
+  currency?: string | null;
 };
 
 export type ExpenseOwedShare = { id: string; name: string; amountCents: number; paid: boolean };
@@ -85,29 +87,30 @@ function showReceiptBreakdown(txn: ExpenseLogEntry) {
 function ExpenseAmountBlock({ txn, size }: { txn: ExpenseLogEntry; size: "default" | "compact" }) {
   const meta = showReceiptBreakdown(txn);
   const owedCents = owedTotalCents(txn.owedShares);
+  const currency = txn.currency ?? undefined;
   const textClass =
     size === "compact" ? "text-[10px] leading-tight" : "text-xs leading-snug";
   return (
     <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-      <AmountPill cents={txn.amountCents} size={size} label={owedCents > 0 ? "Yours" : "Paid"} />
+      <AmountPill cents={txn.amountCents} size={size} label={owedCents > 0 ? "Yours" : "Paid"} currency={currency} />
       {owedCents > 0 ? (
         <div className={`max-w-[16rem] space-y-0.5 ${textClass}`} data-testid="expense-owed-breakdown">
           <p className="tabular-nums text-slate-400">
-            Paid <span className="font-medium text-slate-300">{formatCurrency(txn.amountCents + owedCents)}</span>
+            Paid <span className="font-medium text-slate-300">{formatCurrency(txn.amountCents + owedCents, currency)}</span>
           </p>
           <p className="tabular-nums text-amber-300/95">
-            Owed to you <span className="font-medium">{formatCurrency(-owedCents)}</span>
+            Owed to you <span className="font-medium">{formatCurrency(-owedCents, currency)}</span>
           </p>
         </div>
       ) : null}
       {meta ? (
         <div className={`max-w-[16rem] space-y-0.5 ${textClass}`}>
           <p className="tabular-nums text-slate-400">
-            Total <span className="font-medium text-slate-300">{formatCurrency(txn.preCreditCents!)}</span>
+            Total <span className="font-medium text-slate-300">{formatCurrency(txn.preCreditCents!, currency)}</span>
           </p>
           {(txn.creditCents ?? 0) > 0 ? (
             <p className="tabular-nums text-emerald-400/95">
-              Credits <span className="font-medium">{formatCurrency(-(txn.creditCents ?? 0))}</span>
+              Credits <span className="font-medium">{formatCurrency(-(txn.creditCents ?? 0), currency)}</span>
             </p>
           ) : null}
         </div>
@@ -125,10 +128,12 @@ function AmountPill({
   cents,
   size = "default",
   label = "Paid",
+  currency,
 }: {
   cents: number;
   size?: "default" | "compact";
   label?: string;
+  currency?: string;
 }) {
   const credit = cents < 0;
   const sizeClass =
@@ -143,7 +148,7 @@ function AmountPill({
           : `shrink-0 rounded-full border border-violet-500/35 bg-violet-500/15 text-violet-100 ${sizeClass}`
       }
     >
-      {credit ? formatCurrency(cents) : <>{label} {formatCurrency(cents)}</>}
+      {credit ? formatCurrency(cents, currency) : <>{label} {formatCurrency(cents, currency)}</>}
     </span>
   );
 }
@@ -828,23 +833,26 @@ function showGroupReceiptBreakdown(summary: ExpenseGroupSummary) {
 function ExpenseGroupAmountBlock({
   summary,
   size,
+  currency,
 }: {
   summary: ExpenseGroupSummary;
   size: "default" | "compact";
+  /** A group is one account's, so one currency. */
+  currency?: string;
 }) {
   const meta = showGroupReceiptBreakdown(summary);
   const textClass = size === "compact" ? "text-[10px] leading-tight" : "text-xs leading-snug";
   return (
     <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-      <AmountPill cents={summary.amountCents} size={size} />
+      <AmountPill cents={summary.amountCents} size={size} currency={currency} />
       {meta ? (
         <div className={`max-w-[16rem] space-y-0.5 ${textClass}`}>
           <p className="tabular-nums text-slate-400">
-            Total <span className="font-medium text-slate-300">{formatCurrency(summary.preCreditCents!)}</span>
+            Total <span className="font-medium text-slate-300">{formatCurrency(summary.preCreditCents!, currency)}</span>
           </p>
           {summary.creditCents > 0 ? (
             <p className="tabular-nums text-emerald-400/95">
-              Credits <span className="font-medium">{formatCurrency(-summary.creditCents)}</span>
+              Credits <span className="font-medium">{formatCurrency(-summary.creditCents, currency)}</span>
             </p>
           ) : null}
         </div>
@@ -907,7 +915,7 @@ function ExpenseLogGroupHeader({
               <span className="min-w-0 truncate">{heading}</span>
             </p>
           </div>
-          <ExpenseGroupAmountBlock summary={summary} size={pillSize} />
+          <ExpenseGroupAmountBlock summary={summary} size={pillSize} currency={first.currency ?? undefined} />
         </div>
         <div className="flex flex-wrap gap-1.5">
           <CountChip count={summary.count} />
@@ -945,7 +953,7 @@ function ExpenseLogGroupHeader({
               </div>
             )}
           </div>
-          <ExpenseGroupAmountBlock summary={summary} size={pillSize} />
+          <ExpenseGroupAmountBlock summary={summary} size={pillSize} currency={first.currency ?? undefined} />
         </div>
       </div>
     </button>

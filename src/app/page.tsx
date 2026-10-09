@@ -72,6 +72,13 @@ import { prisma } from "@/lib/prisma";
 import { resolveTagFilter } from "@/lib/tags";
 import { listTags } from "@/lib/tags-server";
 import { autoPostDueRecurringTransactions } from "@/lib/recurring-post";
+import {
+  describeOtherCurrencies,
+  foreignCurrencyOf,
+  homeCurrencyOf,
+  inCurrencyWhere,
+  sumOtherCurrencies,
+} from "@/lib/home-currency";
 import { DEFAULT_BILLS_FORECAST_DAYS, forecastRecurringOccurrences, groupForecastByDay } from "@/lib/bills-forecast";
 import { requireUser } from "@/lib/session";
 import { paidCentsOf } from "@/lib/owed-shares";
@@ -131,6 +138,10 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     return null;
   });
   const anchorYm = currentYmInTimeZone(user.timezone, now);
+  // Every total is in this currency. Entries on accounts in another one are still listed, at
+  // their own currency, but kept out of the sums: there is no conversion to add them with.
+  const homeCurrency = homeCurrencyOf(user.countryCode);
+  const homeOnly = inCurrencyWhere(homeCurrency);
   const period = parseDashboardSearchParams(sp, now, user.timezone);
   const periodDescription = describeDashboardPeriod(period);
   const transactionDateFilter = period.transactionDateFilter;
@@ -198,6 +209,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         userId: user.id,
         type: TransactionType.INCOME,
         ...transactionDateFilter,
+        ...homeOnly,
       },
       _sum: { amountCents: true },
     }),
@@ -210,6 +222,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           gte: startOfMonthYm(pastThreeMonthYms[0]),
           lt: endExclusiveOfMonthYm(recurringIncomeAnchorYm),
         },
+        ...homeOnly,
       },
       select: { amountCents: true, date: true },
     }),
@@ -221,6 +234,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           gte: startOfMonthYm(pastThreeMonthYms[0]),
           lt: endExclusiveOfMonthYm(recurringIncomeAnchorYm),
         },
+        ...homeOnly,
       },
       select: { amountCents: true, date: true },
     }),
@@ -337,6 +351,15 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const logExpenses = periodExpenses.filter(passesTagFilter);
   const logIncomes = periodIncomes.filter(passesTagFilter);
   const logTransfers = periodTransfers.filter(passesTagFilter);
+  const inHomeCurrency = (txn: { account: { currency: string } | null }) => !foreignCurrencyOf(txn.account, homeCurrency);
+  const homeExpenses = periodExpenses.filter(inHomeCurrency);
+  const homeRecurringRules = recurringTransactions.filter((rule) => rule.account.currency === homeCurrency);
+  const otherCurrencyRows = (rows: { type: string; amountCents: number; account: { currency: string } | null }[]) =>
+    sumOtherCurrencies(rows.map((txn) => ({ ...txn, currency: foreignCurrencyOf(txn.account, homeCurrency) })));
+  // Budgets are for all of a category whatever the tag, so their note is too; the income
+  // total follows the tag, so its note does.
+  const otherCurrencySpending = describeOtherCurrencies(otherCurrencyRows(periodExpenses), "expense");
+  const otherCurrencyIncome = describeOtherCurrencies(otherCurrencyRows(tagFilter ? logIncomes : periodIncomes), "income");
 
   const expenseCategories = categories.filter((c) => c.kind === CategoryKind.EXPENSE);
   const incomeCategories = categories.filter((c) => c.kind === CategoryKind.INCOME);
@@ -371,7 +394,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     tags,
   };
 
-  const spendByCategory = computeSpendByCategory(periodExpenses);
+  const spendByCategory = computeSpendByCategory(homeExpenses);
 
   const categoryName = (categoryId: string) =>
     categories.find((c) => c.id === categoryId)?.name ?? budgets.find((b) => b.categoryId === categoryId)?.category.name ?? "Unknown";
@@ -470,6 +493,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           gte: startOfMonthYm(priorYm),
           lt: endExclusiveOfMonthYm(priorYm),
         },
+        ...homeOnly,
       },
       include: { splitParts: true },
     });
@@ -516,7 +540,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     });
   }
 
-  const currentSpendCents = periodExpenses.reduce((sum, row) => sum + row.amountCents, 0);
+  const currentSpendCents = homeExpenses.reduce((sum, row) => sum + row.amountCents, 0);
 
   const cumulativeSpendGranularity = period.range === "month" ? ("day" as const) : ("month" as const);
   // One month's worth of budget, whatever the selected range: the YTD and lifetime totals
@@ -534,14 +558,14 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     budgetedMonthlyCents,
     pastThreeMonthYms.map((ym) => spendByPastYm.get(ym) ?? 0),
   );
-  const cumulativeSpendPoints = buildCumulativeSpendSeries(periodExpenses, {
+  const cumulativeSpendPoints = buildCumulativeSpendSeries(homeExpenses, {
     range: period.range,
     ym: period.ym,
     todayYmd: currentYmdInTimeZone(user.timezone, now),
     monthlyExpected,
   });
 
-  const categoryPieSlices = Array.from((tagFilter ? computeSpendByCategory(logExpenses) : spendByCategory).entries())
+  const categoryPieSlices = Array.from((tagFilter ? computeSpendByCategory(logExpenses.filter(inHomeCurrency)) : spendByCategory).entries())
     .map(([categoryId, cents]) => {
       const cat = categories.find((c) => c.id === categoryId);
       return { name: cat?.name ?? "Unknown", cents };
@@ -687,6 +711,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       ? `${txn.account.name} (${formatAccountTypeLabel(txn.account.type)})`
       : (txn.accountDescription ?? "Removed account"),
     categoryLabel: txn.category.name,
+    currency: foreignCurrencyOf(txn.account, homeCurrency),
     isSplit: txn.splitParts.length > 0,
     verification: toVerificationInfo(txn.verification),
     owedShares: txn.owedShares.map((share) => ({
@@ -717,6 +742,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     accountId: txn.accountId,
     categoryId: txn.categoryId,
     sourceLabel: txn.category.name,
+    currency: foreignCurrencyOf(txn.account, homeCurrency),
     accountLabel: txn.account
       ? `${txn.account.name} (${formatAccountTypeLabel(txn.account.type)})`
       : (txn.accountDescription ?? "Removed account"),
@@ -813,7 +839,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     pastThreeMonthYms,
     bucketIncomeCentsByYm(pastIncomeTransactions),
   );
-  const recurringCashFlow = computeRecurringCashFlowSummary(recurringTransactions, recurringForecastPeriod, {
+  const recurringCashFlow = computeRecurringCashFlowSummary(homeRecurringRules, recurringForecastPeriod, {
     expectedIncomeCents,
   });
 
@@ -825,7 +851,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         : "Lifetime spend vs summed budgets";
 
   const incomeSumCents = tagFilter
-    ? logIncomes.reduce((sum, txn) => sum + txn.amountCents, 0)
+    ? logIncomes.filter(inHomeCurrency).reduce((sum, txn) => sum + txn.amountCents, 0)
     : (incomeTotal._sum.amountCents ?? 0);
   const showDashboardIncomeCard = periodIncomes.length > 0 || (incomeTotal._sum.amountCents ?? 0) > 0;
   const tagFilterLabel = tagFilter ? ` · tagged “${tagFilter.name}”` : "";
@@ -858,7 +884,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const tomorrowDate = dateFromYmd(todayYmd);
   tomorrowDate.setUTCDate(tomorrowDate.getUTCDate() + 1);
   const tomorrowYmd = ymdFromDateUtc(tomorrowDate);
-  const billsForecast = forecastRecurringOccurrences(recurringTransactions, {
+  const billsForecast = forecastRecurringOccurrences(homeRecurringRules, {
     todayYmd,
     currentYm: anchorYm,
     days: billsForecastDays,
@@ -949,6 +975,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           spendVsBudgetLabel={spendVsBudgetLabel}
           currentSpendCents={currentSpendCents}
           totalBudgetCents={totalBudgetCents}
+          otherCurrencySpending={otherCurrencySpending}
           budgetProgressItems={budgetProgressItems}
           perRow={cardSettings.budgets?.perRow}
           hideZeroSpend={cardSettings.budgets?.hideZeroSpend}
@@ -1080,6 +1107,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           accounts={accountOptions}
           categories={incomeCategoryOptions}
           incomeSumCents={incomeSumCents}
+          otherCurrencyIncome={otherCurrencyIncome}
           depositCount={logIncomes.length}
           density={cardSettings.income?.density}
           maxHeight={cardSettings.income?.maxHeight}

@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { TransactionType } from "@prisma/client";
 import { endExclusiveOfMonthYm, startOfMonthYm } from "@/lib/dashboard-period";
 import { percentUsed } from "@/lib/budget-alerts";
+import { homeCurrencyOf, inCurrencyWhere } from "@/lib/home-currency";
 import { prisma } from "@/lib/prisma";
 
 /** One budgeted category for a month: its limit and actual spend. */
@@ -102,7 +103,11 @@ export async function buildMonthlyBudgetProgress(
   ym: string,
   client: PrismaClient = prisma,
 ): Promise<MonthlyBudgetProgress> {
-  const [budgets, periodExpenses, firstAccount] = await Promise.all([
+  // Budgets are in the user's home currency; spending on an account in another one can't be
+  // added to them without a conversion this app doesn't do.
+  const user = await client.user.findUnique({ where: { id: userId }, select: { countryCode: true } });
+  const currency = homeCurrencyOf(user?.countryCode);
+  const [budgets, periodExpenses] = await Promise.all([
     client.budget.findMany({
       where: { userId },
       include: { category: true },
@@ -113,17 +118,13 @@ export async function buildMonthlyBudgetProgress(
         userId,
         type: TransactionType.EXPENSE,
         date: { gte: startOfMonthYm(ym), lt: endExclusiveOfMonthYm(ym) },
+        ...inCurrencyWhere(currency),
       },
       select: {
         categoryId: true,
         amountCents: true,
         splitParts: { select: { categoryId: true, amountCents: true } },
       },
-    }),
-    client.account.findFirst({
-      where: { userId },
-      select: { currency: true },
-      orderBy: { createdAt: "asc" },
     }),
   ]);
 
@@ -133,7 +134,7 @@ export async function buildMonthlyBudgetProgress(
 
   return {
     periodMonth: ym,
-    currency: firstAccount?.currency ?? "CAD",
+    currency,
     budgets: rows,
     totalLimitCents: rows.reduce((sum, row) => sum + row.limitCents, 0),
     totalSpentCents: rows.reduce((sum, row) => sum + row.spentCents, 0),
