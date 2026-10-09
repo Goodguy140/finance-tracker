@@ -9,6 +9,8 @@ const typeTone: Record<string, string> = {
   FHSA: "border-amber-500/35 bg-amber-500/10 text-amber-100",
   NON_REGISTERED: "border-slate-500/40 bg-slate-500/10 text-slate-200",
   CASH: "border-lime-500/35 bg-lime-500/10 text-lime-100",
+  LOAN: "border-rose-500/35 bg-rose-500/10 text-rose-100",
+  PROPERTY: "border-teal-500/35 bg-teal-500/10 text-teal-100",
 };
 
 const defaultTone = "border-slate-600 bg-slate-800/70 text-slate-200";

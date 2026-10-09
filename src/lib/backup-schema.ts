@@ -57,7 +57,7 @@ export const userBackupSchema = z.object({
     z.object({
       id: z.string().min(1),
       name: z.string().min(1).max(80),
-      type: z.enum(["CHEQUING", "SAVINGS", "CREDIT_CARD", "TFSA", "RRSP", "FHSA", "NON_REGISTERED", "CASH"]),
+      type: z.enum(["CHEQUING", "SAVINGS", "CREDIT_CARD", "TFSA", "RRSP", "FHSA", "NON_REGISTERED", "CASH", "LOAN", "PROPERTY"]),
       currency: z.string().min(1),
       countryCode: z.string().min(1),
       provider: z.string().nullable(),
@@ -211,6 +211,19 @@ export const userBackupSchema = z.object({
       createdAt: isoDate,
     }),
   ),
+  // Optional with a default: backups written before balances were tracked have none.
+  accountBalances: z
+    .array(
+      z.object({
+        accountId: z.string().min(1),
+        date: isoDate,
+        balanceCents: z.number().int().min(-1_000_000_000_000).max(1_000_000_000_000),
+        source: z.enum(["PLAID", "MANUAL"]),
+        createdAt: isoDate,
+      }),
+    )
+    .optional()
+    .default([]),
   // Optional with a default so every backup written before Plaid sync existed still
   // validates, the same way earlier additions were handled.
   transactionVerifications: z

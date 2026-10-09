@@ -74,6 +74,7 @@ export {
   updateDefaultExpenseAccountAction,
   deleteFinancialAccountAction,
   setFinancialAccountArchivedAction,
+  setAccountBalanceAction,
 } from "./actions/accounts";
 export { clearUserFinancialDataAction, importUserBackupAction } from "./actions/backup";
 export {

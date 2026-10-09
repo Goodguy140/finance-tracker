@@ -137,7 +137,7 @@ export const FAKE_ACCOUNTS = [
     mask: "4321",
     type: "depository",
     subtype: "checking",
-    balances: { iso_currency_code: "CAD" },
+    balances: { current: 1234.56, available: 1200.0, iso_currency_code: "CAD" },
   },
   {
     account_id: "fake-acct-usd-card",
@@ -146,7 +146,7 @@ export const FAKE_ACCOUNTS = [
     mask: "9911",
     type: "credit",
     subtype: "credit card",
-    balances: { iso_currency_code: "USD" },
+    balances: { current: 250.0, available: null, iso_currency_code: "USD" },
   },
   {
     account_id: "fake-acct-unknown-ccy",
@@ -155,7 +155,7 @@ export const FAKE_ACCOUNTS = [
     mask: "1002",
     type: "depository",
     subtype: "savings",
-    balances: { iso_currency_code: null },
+    balances: { current: 5000.0, available: 5000.0, iso_currency_code: null },
   },
 ] as const;
 
@@ -270,6 +270,7 @@ export function createFakePlaidClient(): PlaidClient {
           removed: [],
           next_cursor: cursor,
           has_more: false,
+          accounts: [...FAKE_ACCOUNTS],
         };
       }
       return {
@@ -278,6 +279,7 @@ export function createFakePlaidClient(): PlaidClient {
         removed: [],
         next_cursor: "fake-cursor-1",
         has_more: false,
+        accounts: [...FAKE_ACCOUNTS],
       };
     },
 

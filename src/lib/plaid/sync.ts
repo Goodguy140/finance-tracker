@@ -1,4 +1,6 @@
 import { PlaidApiError, PLAID_SYNC_PAGE_SIZE, type PlaidClient } from "@/lib/plaid/client";
+import type { PlaidSyncPage } from "@/lib/plaid/types";
+import { balanceReadings, type BalanceReading } from "@/lib/plaid/balances";
 import {
   emptySkips,
   keepChangedRevisions,
@@ -82,6 +84,8 @@ export type SyncStore = {
   }): Promise<void>;
   /** Scores unreviewed rows against the user's own transactions, and links the exact ones. */
   matchPendingRows(item: SyncItemRecord): Promise<number>;
+  /** Stores today's balance for each account, replacing one already stored today. */
+  recordBalances(item: SyncItemRecord, readings: BalanceReading[], now: Date): Promise<void>;
 };
 
 export type SyncDeps = {
@@ -129,6 +133,8 @@ export async function syncPlaidItem(deps: SyncDeps, itemId: string): Promise<Syn
   // page rather than from wherever the failed walk had reached.
   let committedCursor = item.cursor;
   let restarts = 0;
+  // The account list of the walk's last page: the freshest balances Plaid had cached.
+  let lastAccounts: PlaidSyncPage["accounts"] = [];
 
   try {
     walk: for (;;) {
@@ -182,11 +188,15 @@ export async function syncPlaidItem(deps: SyncDeps, itemId: string): Promise<Syn
 
         committedCursor = plan.nextCursor;
         cursor = plan.nextCursor;
+        if (page.accounts.length > 0) lastAccounts = page.accounts;
         if (!page.has_more) break walk;
       }
       // Ran past MAX_PAGES without has_more going false.
       break walk;
     }
+
+    const readings = balanceReadings(lastAccounts, item.context.accounts);
+    if (readings.length > 0) await deps.store.recordBalances(item, readings, now());
 
     await deps.store.finalize({
       itemId: item.id,

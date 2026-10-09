@@ -26,7 +26,9 @@ import { loadRuleContext } from "@/lib/transaction-rules-server";
 import { loadContributionRoomData } from "@/lib/contribution-room-data";
 import type { CategoriesPanelProps } from "@/components/categories-panel";
 import { selectActiveBudgetsByCategory } from "@/lib/budget-progress";
-import { currentYmInTimeZone } from "@/lib/period-month";
+import { currentYmdInTimeZone, currentYmInTimeZone } from "@/lib/period-month";
+import { loadNetWorth } from "@/lib/net-worth-data";
+import type { AccountBalancesPanelRow } from "@/components/account-balances-panel";
 import { loadCategorySuggestionContext } from "@/lib/plaid/category-suggestions";
 import { buildPlaidMappingView } from "@/lib/plaid/category-mapping-view";
 
@@ -65,6 +67,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     ruleContext,
     allCategories,
     contributionRoom,
+    netWorth,
     tags,
     suggestionContext,
     transactionCounts,
@@ -118,6 +121,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     loadRuleContext(user.id),
     prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true } }),
     loadContributionRoomData(user.id),
+    loadNetWorth(user),
     prisma.tag.findMany({
       where: { userId: user.id },
       orderBy: { nameKey: "asc" },
@@ -161,6 +165,18 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
   }));
 
   const activeAccounts = accounts.filter((a) => !a.archived);
+  const linkedAccountIds = new Set(
+    plaidItems.flatMap((item) => item.plaidAccounts.filter((a) => a.syncEnabled).map((a) => a.accountId)),
+  );
+  const balanceRows: AccountBalancesPanelRow[] = netWorth.accounts.map((row) => ({
+    accountId: row.accountId,
+    name: row.name,
+    type: row.type,
+    currency: row.currency,
+    liability: row.liability,
+    linked: linkedAccountIds.has(row.accountId),
+    latest: row.latest ? { cents: row.latest.cents, dateYmd: ymdFromDateUtc(row.latest.date), source: row.latest.source } : null,
+  }));
   const accountOptions = activeAccounts.map((account) => ({ id: account.id, name: account.name }));
   const accountItems = accounts.map((account) => ({
     id: account.id,
@@ -353,6 +369,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
         plaid={plaid}
         transactionRules={transactionRules}
         contributionRoom={contributionRoom}
+        balances={{ rows: balanceRows, todayYmd: currentYmdInTimeZone(user.timezone) }}
         categories={categoriesPanel}
       />
     </main>

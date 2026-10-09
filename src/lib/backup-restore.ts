@@ -107,6 +107,11 @@ export function assertBackupReferencesResolve(parsed: ParsedUserBackup): void {
       throw new Error("Backup references unknown snapshot account.");
     }
   }
+  for (const row of parsed.accountBalances ?? []) {
+    if (!accountIds.has(row.accountId)) {
+      throw new Error("Backup references unknown balance account.");
+    }
+  }
   for (const row of parsed.transactionRules ?? []) {
     if (
       (row.setCategoryId && !categoryIds.has(row.setCategoryId)) ||

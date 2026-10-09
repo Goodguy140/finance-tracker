@@ -154,6 +154,14 @@ export type UserBackupPayload = {
     note: string | null;
     createdAt: IsoString;
   }>;
+  /** Balance history for net worth. Plaid-sourced rows carry no Plaid id. */
+  accountBalances: Array<{
+    accountId: string;
+    date: IsoString;
+    balanceCents: number;
+    source: string;
+    createdAt: IsoString;
+  }>;
   /**
    * Which transactions were confirmed against a bank record, keyed by the exported
    * `transactions[].id` (remapped on import like every other cross-reference).
@@ -268,6 +276,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       },
       investmentFlows: true,
       portfolioSnapshots: true,
+      balanceSnapshots: true,
       transactionVerifications: true,
       transactionRules: { orderBy: [{ priority: "asc" }, { id: "asc" }] },
       hiddenTitleSuggestions: true,
@@ -418,6 +427,13 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       date: row.date.toISOString(),
       totalValueCents: row.totalValueCents,
       note: row.note,
+      createdAt: row.createdAt.toISOString(),
+    })),
+    accountBalances: user.balanceSnapshots.map((row) => ({
+      accountId: row.accountId,
+      date: row.date.toISOString(),
+      balanceCents: row.balanceCents,
+      source: row.source,
       createdAt: row.createdAt.toISOString(),
     })),
     transactionVerifications: user.transactionVerifications.map((row) => ({

@@ -7,7 +7,9 @@ import { PlaidStagedStatus, type Prisma, type PrismaClient } from "@prisma/clien
  * user's records, not Plaid's) and the *fact* that one was verified, with the institution
  * name for the badge. What does not survive is anything that only made sense while the
  * connection was live — the Plaid ids on those verifications, the review queue, the
- * account metadata, the credential.
+ * account metadata, the credential. Balance history (`AccountBalanceSnapshot`) also stays:
+ * it hangs off the user's own accounts, carries no Plaid id, and is their net-worth record
+ * the same way a committed transaction is their spending record.
  *
  * None of this revokes anything at Plaid. Every caller must have ended the connection there
  * first (`/item/remove`), or the item keeps billing with nothing left pointing at it.

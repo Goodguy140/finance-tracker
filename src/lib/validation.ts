@@ -276,6 +276,13 @@ export const portfolioSnapshotSchema = z.object({
   note: z.string().max(250).optional(),
 });
 
+/** A balance entered by hand. Negative is allowed: an overdrawn account, a card in credit. */
+export const accountBalanceSchema = z.object({
+  accountId: z.string().min(1),
+  balance: z.coerce.number().min(-MAX_AMOUNT, amountTooLarge).max(MAX_AMOUNT, amountTooLarge),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { message: "Pick a date." }),
+});
+
 export const passwordChangeSchema = z
   .object({
     currentPassword: z.string().min(8),
@@ -332,7 +339,7 @@ export const expenseCsvImportSchema = z.object({
 
 export const accountSchema = z.object({
   name: z.string().trim().min(2).max(80),
-  type: z.enum(["CHEQUING", "SAVINGS", "CREDIT_CARD", "TFSA", "RRSP", "FHSA", "NON_REGISTERED", "CASH"]),
+  type: z.enum(["CHEQUING", "SAVINGS", "CREDIT_CARD", "TFSA", "RRSP", "FHSA", "NON_REGISTERED", "CASH", "LOAN", "PROPERTY"]),
 });
 
 export const updateAccountSchema = accountSchema.extend({

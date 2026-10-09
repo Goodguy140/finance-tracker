@@ -90,6 +90,11 @@ export type PlaidSyncPage = {
   removed: Array<{ transaction_id: string }>;
   next_cursor: string;
   has_more: boolean;
+  /**
+   * The item's accounts with the balances Plaid last cached for them. Comes free with every
+   * page, unlike the billed /accounts/balance/get, and is what net worth is built from.
+   */
+  accounts: PlaidApiAccount[];
 };
 
 export type CreateLinkTokenInput = {

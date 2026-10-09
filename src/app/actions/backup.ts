@@ -472,6 +472,23 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
       }),
     });
 
+    await tx.accountBalanceSnapshot.createMany({
+      data: parsed.accountBalances.map((row) => {
+        const mappedAccountId = accountIdMap.get(row.accountId);
+        if (!mappedAccountId) {
+          throw new Error("Backup references unknown balance account.");
+        }
+        return {
+          userId: user.id,
+          accountId: mappedAccountId,
+          date: new Date(row.date),
+          balanceCents: row.balanceCents,
+          source: row.source,
+          createdAt: new Date(row.createdAt),
+        };
+      }),
+    });
+
     await tx.transactionRule.createMany({
       data: (parsed.transactionRules ?? []).map((row) => {
         const mapped = (map: Map<string, string>, id: string | null) => {
