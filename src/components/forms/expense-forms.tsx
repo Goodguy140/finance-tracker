@@ -45,6 +45,7 @@ export function ExpenseTitleAndCategoryFields({
   amountCents = null,
   onRuleFill,
   reevaluateRef,
+  hideCategory = false,
 }: {
   expenseCategories: Option[];
   titleSuggestions: ExpenseTitleSuggestion[];
@@ -62,6 +63,8 @@ export function ExpenseTitleAndCategoryFields({
   onRuleFill?: (outcome: RuleOutcome) => void;
   /** Lets the parent re-run the rules when a field it owns (the amount) changes. */
   reevaluateRef?: RefObject<(() => void) | null>;
+  /** A split expense's category comes from its lines, edited by the parent. */
+  hideCategory?: boolean;
 }) {
   const initialCategoryId =
     defaultCategoryId && expenseCategories.some((c) => c.id === defaultCategoryId)
@@ -109,7 +112,7 @@ export function ExpenseTitleAndCategoryFields({
     return rules.peek({ texts: [title], amountCents, accountId: accountId || null }).title;
   }
 
-  const categoryField = (
+  const categoryField = hideCategory ? null : (
     <LabeledField label="Category" hint="Expense category for budgeting and reports.">
       <select
         key={resetNonce}
@@ -178,13 +181,14 @@ export function ExpenseTitleAndCategoryFields({
         />
         <RuleAutofillHint outcome={rules.outcome} />
       </LabeledField>
-      {accountField ? (
+      {hideCategory ? <input type="hidden" name="categoryId" value={categoryId} /> : null}
+      {accountField && categoryField ? (
         <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3">
           {categoryField}
           {accountField}
         </div>
       ) : (
-        categoryField
+        (categoryField ?? accountField)
       )}
     </>
   );

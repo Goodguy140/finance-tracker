@@ -27,6 +27,7 @@ import {
   inputClass,
   primaryBtnClass,
   secondaryBtnClass,
+  selectClass,
   spanFullSm,
   textAreaClass,
 } from "@/components/forms";
@@ -34,6 +35,7 @@ import { expenseLogMatchesQuery } from "@/lib/expense-title-suggestions";
 import { MOBILE_OVERLAY_ROOT_Z_CLASS } from "@/lib/mobile-z-index";
 import { formatCurrency } from "@/lib/money";
 import { OWED_SHARE_NAME_MAX, OWED_SHARES_FIELD, owedTotalCents } from "@/lib/owed-shares";
+import { SPLIT_LINES_FIELD } from "@/lib/split-lines";
 
 type Option = { id: string; name: string };
 
@@ -57,6 +59,8 @@ export type ExpenseLogEntry = {
   accountLabel: string;
   categoryLabel: string;
   isSplit: boolean;
+  /** A split expense's lines, one per category; empty for any other expense. */
+  splitLines: ExpenseSplitLine[];
   /** Set once the transaction has been confirmed against a bank record. */
   verification: VerificationInfo | null;
   /** Tag names, sorted. */
@@ -68,6 +72,10 @@ export type ExpenseLogEntry = {
 };
 
 export type ExpenseOwedShare = { id: string; name: string; amountCents: number; paid: boolean };
+
+export type ExpenseSplitLine = { id: string; categoryId: string; categoryLabel: string; amountCents: number };
+
+type SplitLineDraft = { key: string; categoryId: string; amount: string };
 
 type OwedRowDraft = { key: string; id: string | null; name: string; amount: string; paid: boolean };
 
@@ -157,10 +165,18 @@ function expenseLogHeading(txn: ExpenseLogEntry) {
   return txn.title?.trim() || txn.categoryLabel;
 }
 
+function splitLinesSummary(txn: ExpenseLogEntry) {
+  return txn.splitLines.map((line) => `${line.categoryLabel} ${formatCurrency(line.amountCents)}`).join(" · ");
+}
+
 function ExpenseChipRow({ txn }: { txn: ExpenseLogEntry }) {
   return (
     <div className="mt-1 flex flex-wrap gap-1.5">
-      <MetaChip label="Category">{txn.categoryLabel}</MetaChip>
+      {txn.isSplit ? (
+        <MetaChip label="Split">{splitLinesSummary(txn)}</MetaChip>
+      ) : (
+        <MetaChip label="Category">{txn.categoryLabel}</MetaChip>
+      )}
       <MetaChip label="Account">{txn.accountLabel}</MetaChip>
       <MetaChip label="Transaction">{txn.dateDisplay}</MetaChip>
       {txn.postedDateDisplay ? <MetaChip label="Posted">{txn.postedDateDisplay}</MetaChip> : null}
@@ -188,7 +204,7 @@ function ExpenseLogMeta({
     // `title` never fires on touch, so the verification detail is spelled out here
     // rather than living only in the badge tooltip.
     const fullTitle = [
-      isSplit ? "Split (view only)" : null,
+      isSplit ? `Split: ${splitLinesSummary(txn)}` : null,
       line,
       txn.verification ? verificationTooltip(txn.verification) : null,
     ].filter(Boolean).join(" · ");
@@ -205,18 +221,7 @@ function ExpenseLogMeta({
     );
   }
 
-  return (
-    <>
-      {isSplit ? (
-        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          <span className="inline-flex items-center rounded-full border border-amber-500/35 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-100 sm:text-xs">
-            Split — view only
-          </span>
-        </div>
-      ) : null}
-      <ExpenseChipRow txn={txn} />
-    </>
-  );
+  return <ExpenseChipRow txn={txn} />;
 }
 
 function ExpenseLogMobileCard({
@@ -238,12 +243,11 @@ function ExpenseLogMobileCard({
         <ExpenseAmountBlock txn={txn} size={pillSize} />
       </div>
       <div className="flex flex-wrap gap-1.5">
-        <MetaChip label="Category">{txn.categoryLabel}</MetaChip>
         {isSplit ? (
-          <span className="inline-flex items-center rounded-full border border-amber-500/35 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-100">
-            Split — view only
-          </span>
-        ) : null}
+          <MetaChip label="Split">{splitLinesSummary(txn)}</MetaChip>
+        ) : (
+          <MetaChip label="Category">{txn.categoryLabel}</MetaChip>
+        )}
         <TagChips tags={txn.tags} />
       </div>
       <p className="text-xs leading-snug text-slate-500">
@@ -300,8 +304,10 @@ function EditExpenseModal({
 
   const router = useRouter();
   const fieldIds = useId();
+  const isSplit = entry.isSplit;
+  // A split's lines add up to one plain amount, so it is edited without a receipt breakdown.
   const [receiptBreakdown, setReceiptBreakdown] = useState(
-    entry.preCreditCents != null && entry.preCreditCents > 0,
+    !isSplit && entry.preCreditCents != null && entry.preCreditCents > 0,
   );
   const [showPostedDate, setShowPostedDate] = useState(entry.postedDateYmd != null);
   const [showNote, setShowNote] = useState(Boolean(entry.note));
@@ -380,11 +386,43 @@ function EditExpenseModal({
   function addOwedRow() {
     setOwedRows((rows) => [...rows, { key: `new-${Date.now()}-${rows.length}`, id: null, name: "", amount: "", paid: false }]);
   }
+  const [splitRows, setSplitRows] = useState<SplitLineDraft[]>(() =>
+    entry.splitLines.map((line) => ({
+      key: line.id,
+      categoryId: line.categoryId,
+      amount: (line.amountCents / 100).toFixed(2),
+    })),
+  );
+  // A line's category may be one the pickers no longer offer; keep it choosable.
+  const splitCategoryOptions = [
+    ...categories,
+    ...entry.splitLines
+      .filter((line) => !categories.some((c) => c.id === line.categoryId))
+      .map((line) => ({ id: line.categoryId, name: line.categoryLabel })),
+  ].filter((c, i, all) => all.findIndex((o) => o.id === c.id) === i);
+  function updateSplitRow(key: string, patch: Partial<SplitLineDraft>) {
+    setSplitRows((rows) => rows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+  }
+  function addSplitRow() {
+    setSplitRows((rows) => [
+      ...rows,
+      { key: `new-${Date.now()}-${rows.length}`, categoryId: categories[0]?.id ?? "", amount: "" },
+    ]);
+  }
+
   const preDollarsDefault =
     entry.preCreditCents != null ? (entry.preCreditCents / 100).toFixed(2) : amountDollars;
   const creditDollarsDefault =
     entry.creditCents != null ? (entry.creditCents / 100).toFixed(2) : "";
   const [amountValue, setAmountValue] = useState(amountDollars);
+  // Compared in cents, so float error never reads as a mismatch.
+  const splitSumCents = splitRows.reduce((sum, row) => {
+    const n = Number(row.amount);
+    return Number.isFinite(n) ? sum + Math.round(n * 100) : sum;
+  }, 0);
+  const amountNumber = Number(amountValue);
+  const splitLeftCents =
+    amountValue.trim() !== "" && Number.isFinite(amountNumber) ? Math.round(amountNumber * 100) - splitSumCents : null;
   const [preCreditValue, setPreCreditValue] = useState(preDollarsDefault);
   const [creditRows, setCreditRows] = useState<string[]>(
     parseCreditRowsFromJson(entry.creditBreakdownJson, creditDollarsDefault),
@@ -453,6 +491,7 @@ function EditExpenseModal({
             accounts={accounts}
             accountSelectDefault={entry.accountId ?? ""}
             accountRemovedFallback={!entry.accountId}
+            hideCategory={isSplit}
           />
 
           <div className={`${spanFullSm} flex flex-wrap gap-2`}>
@@ -489,6 +528,8 @@ function EditExpenseModal({
             >
               Tags
             </button>
+            {isSplit ? null : (
+              <>
             <button
               type="button"
               onClick={toggleReceiptBreakdown}
@@ -511,6 +552,8 @@ function EditExpenseModal({
             >
               {owedRows.length > 0 ? "Someone else owes too" : "Someone owes me"}
             </button>
+              </>
+            )}
           </div>
 
           {!receiptBreakdown ? (
@@ -662,6 +705,84 @@ function EditExpenseModal({
             </div>
           ) : null}
 
+          {isSplit ? (
+            <div
+              className={`${spanFullSm} space-y-3 rounded-xl border border-amber-500/20 bg-slate-950/60 p-4`}
+              data-testid="split-lines-editor"
+            >
+              <input type="hidden" name={SPLIT_LINES_FIELD} value="1" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-slate-100">Split across categories</p>
+                <p className="text-xs leading-relaxed text-slate-500">
+                  The lines must add up to the amount. Leave one line and this becomes a regular expense in
+                  that category.
+                </p>
+              </div>
+              {splitRows.map((row, idx) => (
+                <div key={row.key} className="flex flex-wrap items-end gap-2">
+                  <label className="min-w-[8rem] flex-1 space-y-1">
+                    <span className="text-xs font-medium text-slate-400">Category</span>
+                    <select
+                      name="splitCategoryId"
+                      value={row.categoryId}
+                      onChange={(e) => updateSplitRow(row.key, { categoryId: e.target.value })}
+                      className={selectClass}
+                      aria-label={`Split line ${idx + 1} category`}
+                      required
+                    >
+                      {splitCategoryOptions.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="w-36">
+                    <CurrencyAmountInput
+                      name="splitAmount"
+                      label="Amount"
+                      placeholder="0.00"
+                      value={row.amount}
+                      onChange={(e) => updateSplitRow(row.key, { amount: e.target.value })}
+                      required
+                    />
+                  </div>
+                  {splitRows.length > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => setSplitRows((rows) => rows.filter((r) => r.key !== row.key))}
+                      className="mb-0.5 shrink-0 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+                      aria-label={`Remove split line ${idx + 1}`}
+                    >
+                      Remove
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={addSplitRow}
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-200 transition hover:bg-slate-800"
+                >
+                  Add line
+                </button>
+                <p
+                  className={`text-xs tabular-nums ${splitLeftCents === 0 ? "text-emerald-300" : "text-amber-300"}`}
+                  data-testid="split-left-to-assign"
+                >
+                  {splitLeftCents === null
+                    ? "Enter the amount first"
+                    : splitLeftCents === 0
+                      ? "Lines match the amount"
+                      : splitLeftCents > 0
+                        ? `${formatCurrency(splitLeftCents)} left to assign`
+                        : `${formatCurrency(-splitLeftCents)} over the amount`}
+                </p>
+              </div>
+            </div>
+          ) : null}
+
           <DateField
             name="date"
             label="Transaction date"
@@ -804,14 +925,6 @@ function ExpenseLogRow({
       </div>
     </>
   );
-
-  if (txn.isSplit) {
-    return (
-      <div className={`rounded-xl border border-slate-800 bg-slate-950/50 text-sm opacity-90 ${cardPad}`}>
-        {body}
-      </div>
-    );
-  }
 
   return (
     <button
