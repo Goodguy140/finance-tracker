@@ -31,7 +31,7 @@ export default async function MerchantReportPage({ searchParams }: { searchParam
 
   const currency = getCountryConfig(user.countryCode).defaultCurrency;
   const fmt = (cents: number) => formatCurrency(cents, currency);
-  const activity = merchantActivity(await loadReportTxs(user.id, null), key);
+  const activity = merchantActivity(await loadReportTxs(user.id, null, currency), key);
   if (!activity) notFound();
 
   const expenseCount = activity.transactions.filter((t) => t.type === "EXPENSE").length;

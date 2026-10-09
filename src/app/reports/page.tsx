@@ -18,7 +18,8 @@ import {
   yearOverYearByCategory,
   yearsWithActivity,
 } from "@/lib/reports";
-import { loadActivityBounds, loadReportTxs, loadSavingsTransfers } from "@/lib/reports/load";
+import { loadActivityBounds, loadOtherCurrencyTotals, loadReportTxs, loadSavingsTransfers } from "@/lib/reports/load";
+import { describeOtherCurrencies } from "@/lib/home-currency";
 import { savedByTransferByMonth, totalSavedByTransfer } from "@/lib/savings-transfers";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
@@ -59,8 +60,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   const fmt = (cents: number) => formatCurrency(cents, currency);
 
   const [loaded, savings, activityYears, tags, financial, netWorth] = await Promise.all([
-    loadReportTxs(user.id, previousYearWindow(period).start),
-    loadSavingsTransfers(user.id, period.start),
+    loadReportTxs(user.id, previousYearWindow(period).start, currency),
+    loadSavingsTransfers(user.id, period.start, currency),
     loadActivityBounds(user.id),
     listTags(prisma, user.id),
     loadFinancialScore(user),
@@ -68,6 +69,19 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   ]);
   // `?tag=`, as on the dashboard: every view on this page narrows to rows carrying the tag.
   const tagFilter = resolveTagFilter(sp.tag, tags);
+  // Entries on accounts in another currency are in none of the figures below; say what they come to.
+  const otherCurrency = await loadOtherCurrencyTotals(user.id, currency, {
+    start: period.start,
+    end: period.end,
+    tagId: tagFilter?.id ?? null,
+  });
+  const otherCurrencyNote = [
+    ["income", describeOtherCurrencies(otherCurrency, "income")],
+    ["spending", describeOtherCurrencies(otherCurrency, "expense")],
+  ]
+    .filter(([, text]) => text)
+    .map(([label, text]) => `${label} ${text}`)
+    .join("; ");
   const txs = filterByTag(loaded, tagFilter?.id ?? null);
   const tagQuery = tagFilter ? `tag=${encodeURIComponent(tagFilter.id)}` : "";
   const inPeriod = withinWindow(txs, period);
@@ -170,6 +184,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
           </div>
         ))}
       </section>
+      {otherCurrencyNote ? (
+        <p className="text-sm text-slate-400" data-testid="report-other-currency">
+          Accounts in another currency are left out of these figures: {otherCurrencyNote}.
+        </p>
+      ) : null}
 
       <section aria-labelledby="report-months" className={card}>
         <h2 id="report-months" className="text-lg font-semibold">

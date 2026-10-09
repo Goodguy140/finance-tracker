@@ -27,8 +27,8 @@ export async function loadFinancialScore(user: {
   const since = startOfMonthYm(shiftYm(todayYmd.slice(0, 7), -SCORE_LOOKBACK_MONTHS));
   const currency = getCountryConfig(user.countryCode).defaultCurrency;
   const [txs, savings, budgets, recurring] = await Promise.all([
-    loadReportTxs(user.id, since),
-    loadSavingsTransfers(user.id, since),
+    loadReportTxs(user.id, since, currency),
+    loadSavingsTransfers(user.id, since, currency),
     prisma.budget.findMany({
       where: { userId: user.id },
       select: { categoryId: true, periodMonth: true, limitCents: true, category: { select: { name: true } } },

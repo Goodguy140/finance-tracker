@@ -15,6 +15,8 @@ export type BudgetsCardBodyProps = {
   spendVsBudgetLabel: string;
   currentSpendCents: number;
   totalBudgetCents: number;
+  /** Spending on accounts in another currency, left out of every figure here; null when none. */
+  otherCurrencySpending?: string | null;
   budgetProgressItems: DashboardBudgetProgressItem[];
   perRow?: 1 | 2 | 3;
   hideZeroSpend?: boolean;
@@ -56,6 +58,7 @@ export function BudgetsCardBody({
   spendVsBudgetLabel,
   currentSpendCents,
   totalBudgetCents,
+  otherCurrencySpending = null,
   budgetProgressItems,
   perRow = 1,
   hideZeroSpend = false,
@@ -73,6 +76,11 @@ export function BudgetsCardBody({
         <p className="text-base font-semibold">
           {formatCurrency(currentSpendCents)} / {formatCurrency(totalBudgetCents)}
         </p>
+        {otherCurrencySpending ? (
+          <p className="mt-0.5 text-xs text-slate-400" data-testid="budgets-other-currency">
+            Not included: {otherCurrencySpending}
+          </p>
+        ) : null}
       </div>
       {items.length === 0 ? (
         <p className="mt-3 text-sm text-slate-400">

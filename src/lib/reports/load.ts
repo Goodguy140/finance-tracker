@@ -1,20 +1,27 @@
 import { TransactionType } from "@prisma/client";
+import { inCurrencyWhere, sumOtherCurrencies, type OtherCurrencyTotal } from "@/lib/home-currency";
 import { prisma } from "@/lib/prisma";
 import type { SavingsTransfers } from "@/lib/savings-transfers";
 import type { ReportTx } from "./index";
 
 /**
  * A user's expense and income rows from `since` on (all of them when null), shaped for the
- * report functions. Transfers are excluded here as well as in every total.
+ * report functions. Transfers are excluded here as well as in every total, and so is anything on
+ * an account in another currency than `homeCurrency`: there is no conversion to add it with.
  *
  * Plaid's merchant name lives on the staged row, not the Transaction, so it is joined back on
  * the way the insights loader does it: a synced row groups under the bank's merchant name.
  */
-export async function loadReportTxs(userId: string, since: Date | null): Promise<ReportTx[]> {
+export async function loadReportTxs(userId: string, since: Date | null, homeCurrency: string): Promise<ReportTx[]> {
   const dateFilter = since ? { date: { gte: since } } : {};
   const [transactions, staged] = await Promise.all([
     prisma.transaction.findMany({
-      where: { userId, type: { in: [TransactionType.EXPENSE, TransactionType.INCOME] }, ...dateFilter },
+      where: {
+        userId,
+        type: { in: [TransactionType.EXPENSE, TransactionType.INCOME] },
+        ...dateFilter,
+        ...inCurrencyWhere(homeCurrency),
+      },
       select: {
         id: true,
         type: true,
@@ -71,11 +78,16 @@ export async function loadActivityBounds(userId: string): Promise<Date[]> {
 /**
  * The accounts marked "Counts as savings" and the transfers from `since` on (all of them when
  * null) that could touch one, for `savingsCentsFor`. Nothing is loaded when no account is
- * marked: saved then stays income less spending.
+ * marked: saved then stays income less spending. Only home-currency accounts count, and only
+ * transfer rows booked on one: a row's amount is in its own account's currency.
  */
-export async function loadSavingsTransfers(userId: string, since: Date | null): Promise<SavingsTransfers> {
+export async function loadSavingsTransfers(
+  userId: string,
+  since: Date | null,
+  homeCurrency: string,
+): Promise<SavingsTransfers> {
   const accounts = await prisma.account.findMany({
-    where: { userId, countsAsSavings: true },
+    where: { userId, countsAsSavings: true, currency: homeCurrency },
     select: { id: true },
   });
   const savingsAccountIds = new Set(accounts.map((a) => a.id));
@@ -85,7 +97,10 @@ export async function loadSavingsTransfers(userId: string, since: Date | null): 
     where: {
       userId,
       type: TransactionType.TRANSFER,
-      OR: [{ accountId: { in: ids } }, { transferAccountId: { in: ids } }],
+      AND: [
+        { OR: [{ accountId: { in: ids } }, { transferAccountId: { in: ids } }] },
+        inCurrencyWhere(homeCurrency),
+      ],
       ...(since ? { date: { gte: since } } : {}),
     },
     select: {
@@ -110,4 +125,28 @@ export async function loadSavingsTransfers(userId: string, since: Date | null): 
       tagIds: t.tags.map((tag) => tag.tagId),
     })),
   };
+}
+
+/**
+ * Spending and income on accounts in other currencies than `homeCurrency` within
+ * [`start`, `end`), summed per currency: what the home-currency totals leave out.
+ */
+export async function loadOtherCurrencyTotals(
+  userId: string,
+  homeCurrency: string,
+  window: { start: Date | null; end: Date | null; tagId?: string | null },
+): Promise<OtherCurrencyTotal[]> {
+  const rows = await prisma.transaction.findMany({
+    where: {
+      userId,
+      type: { in: [TransactionType.EXPENSE, TransactionType.INCOME] },
+      account: { currency: { not: homeCurrency } },
+      ...(window.start || window.end
+        ? { date: { ...(window.start ? { gte: window.start } : {}), ...(window.end ? { lt: window.end } : {}) } }
+        : {}),
+      ...(window.tagId ? { tags: { some: { tagId: window.tagId } } } : {}),
+    },
+    select: { type: true, amountCents: true, account: { select: { currency: true } } },
+  });
+  return sumOtherCurrencies(rows.map((r) => ({ type: r.type, amountCents: r.amountCents, currency: r.account?.currency ?? null })));
 }

@@ -9,6 +9,7 @@ export function IncomeCardBody({
   accounts,
   categories,
   incomeSumCents,
+  otherCurrencyIncome = null,
   depositCount,
   density,
   maxHeight,
@@ -17,6 +18,8 @@ export function IncomeCardBody({
   accounts: Option[];
   categories: Option[];
   incomeSumCents: number;
+  /** Income on accounts in another currency, left out of the total; null when none. */
+  otherCurrencyIncome?: string | null;
   depositCount: number;
   density?: CardDensity;
   maxHeight?: ListHeight;
@@ -32,9 +35,14 @@ export function IncomeCardBody({
         <p className="min-w-0 text-xs tabular-nums text-slate-500">
           {depositCount} deposit{depositCount === 1 ? "" : "s"}
         </p>
-        <p className="shrink-0 text-2xl font-bold tabular-nums text-emerald-200 @sm:text-right">
-          {formatCurrency(incomeSumCents)}
-        </p>
+        <div className="shrink-0 @sm:text-right">
+          <p className="text-2xl font-bold tabular-nums text-emerald-200">{formatCurrency(incomeSumCents)}</p>
+          {otherCurrencyIncome ? (
+            <p className="text-xs text-slate-400" data-testid="income-other-currency">
+              Not included: {otherCurrencyIncome}
+            </p>
+          ) : null}
+        </div>
       </div>
       <div className="pt-4">
         <IncomeLogPanel
