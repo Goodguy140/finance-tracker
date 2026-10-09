@@ -185,7 +185,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       include: {
         category: true,
         account: true,
-        splitParts: { include: { category: true } },
+        splitParts: { include: { category: true }, orderBy: { id: "asc" } },
         verification: true,
         tags: { select: { tagId: true } },
         owedShares: { orderBy: { createdAt: "asc" } },
@@ -694,8 +694,18 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     accountLabel: txn.account
       ? `${txn.account.name} (${formatAccountTypeLabel(txn.account.type)})`
       : (txn.accountDescription ?? "Removed account"),
-    categoryLabel: txn.category.name,
+    // A split's own category is only a label; the lines are where its spending counts.
+    categoryLabel:
+      txn.splitParts.length > 0
+        ? [...new Set(txn.splitParts.map((part) => part.category.name))].join(", ")
+        : txn.category.name,
     isSplit: txn.splitParts.length > 0,
+    splitLines: txn.splitParts.map((part) => ({
+      id: part.id,
+      categoryId: part.categoryId,
+      categoryLabel: part.category.name,
+      amountCents: part.amountCents,
+    })),
     verification: toVerificationInfo(txn.verification),
     owedShares: txn.owedShares.map((share) => ({
       id: share.id,
