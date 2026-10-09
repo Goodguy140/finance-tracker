@@ -1,6 +1,7 @@
 import { CategoryKind } from "@prisma/client";
 import Link from "next/link";
 import { setHabitDetectionAction } from "@/app/actions";
+import { TagFilterSelect } from "@/components/expense-log";
 import { FinancialScoreCard } from "@/components/financial-score-card";
 import { InsightItem, type InsightFormOptions, type InsightItemView } from "@/components/insights/insight-item";
 import { ServerActionForm } from "@/components/server-action-form";
@@ -12,8 +13,12 @@ import { insightViews } from "@/lib/insights/view";
 import { formatCurrency } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { resolveTagFilter } from "@/lib/tags";
+import { listTags } from "@/lib/tags-server";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 const SECTIONS: Array<{ id: InsightSection; title: string; description: string; empty: string }> = [
   {
@@ -46,10 +51,15 @@ const SECTIONS: Array<{ id: InsightSection; title: string; description: string; 
 const linkBtn =
   "inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 transition hover:bg-slate-800";
 
-export default async function InsightsPage() {
+export default async function InsightsPage({ searchParams }: { searchParams: SearchParams }) {
   const user = await requireUser();
+  const sp = await searchParams;
+  const tags = await listTags(prisma, user.id);
+  // `?tag=`, as on the dashboard and Reports: every insight is worked out from tagged rows only.
+  const tagFilter = resolveTagFilter(sp.tag, tags);
+  const tagQuery = tagFilter ? `?tag=${encodeURIComponent(tagFilter.id)}` : "";
   const [loaded, accounts, categories, financial] = await Promise.all([
-    loadInsights(user.id, user.countryCode),
+    loadInsights(user.id, user.countryCode, tagFilter?.id ?? null),
     prisma.account.findMany({ where: { userId: user.id, archived: false }, orderBy: { createdAt: "asc" } }),
     prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true } }),
     loadFinancialScore(user),
@@ -79,7 +89,7 @@ export default async function InsightsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <Link href="/reports" className={linkBtn}>
+          <Link href={`/reports${tagQuery}`} className={linkBtn}>
             Reports
           </Link>
           <Link href="/settings" className={linkBtn}>
@@ -91,7 +101,25 @@ export default async function InsightsPage() {
         </div>
       </div>
 
-      <FinancialScoreCard score={financial.score} />
+      <FinancialScoreCard score={financial.score} note={tags.length ? "It doesn't change with the tag below" : undefined} />
+
+      {tags.length ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-slate-400" data-testid="insights-tag-note">
+            {tagFilter ? (
+              <>
+                Showing only entries tagged <span className="text-slate-200">#{tagFilter.name}</span>.{" "}
+                <Link href="/insights" className="text-sky-300 underline-offset-2 hover:underline">
+                  Show all
+                </Link>
+              </>
+            ) : (
+              "Pick a tag to see insights for just those entries."
+            )}
+          </p>
+          <TagFilterSelect tags={tags} selectedId={tagFilter?.id ?? null} className="block w-40 shrink-0" />
+        </div>
+      ) : null}
 
       {potentialAnnual > 0 ? (
         <p className="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3 text-sm text-slate-300" data-testid="insights-summary">
