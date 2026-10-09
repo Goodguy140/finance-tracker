@@ -23,8 +23,11 @@ export type LoadedInsights = BuiltInsights & {
  * Loads a user's history and derives their insights. Cached per request, so the dashboard
  * card and anything else on the same render share one pass — which is also why `now` is
  * taken here rather than passed in: `cache` keys on argument identity.
+ *
+ * With `tagId`, everything is worked out from the transactions carrying that tag alone, as if
+ * they were the whole history: the Insights page's `?tag=` filter.
  */
-export const loadInsights = cache(async (userId: string, countryCode: string): Promise<LoadedInsights> => {
+export const loadInsights = cache(async (userId: string, countryCode: string, tagId: string | null = null): Promise<LoadedInsights> => {
   const now = new Date();
   const since = daysAgo(now, INSIGHT_HISTORY_DAYS);
   const currency = homeCurrencyOf(countryCode);
@@ -32,7 +35,13 @@ export const loadInsights = cache(async (userId: string, countryCode: string): P
     prisma.transaction.findMany({
       // Transfers are neither spending nor income: no habit, saving or recurring charge
       // should be read off a card payment. Nor is anything in another currency added in.
-      where: { userId, date: { gte: since }, type: { not: TransactionType.TRANSFER }, ...inCurrencyWhere(currency) },
+      where: {
+        userId,
+        date: { gte: since },
+        type: { not: TransactionType.TRANSFER },
+        ...inCurrencyWhere(currency),
+        ...(tagId ? { tags: { some: { tagId } } } : {}),
+      },
       select: {
         id: true,
         type: true,

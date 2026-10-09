@@ -8,6 +8,7 @@ import { MAX_AMOUNT, parseStatementAmount, toCents } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { dateFromYmd } from "@/lib/date-only";
 import { parseImportedDate } from "@/lib/import-dates";
+import { DuplicateMatcher, utcYmd, type CsvImportSummary } from "@/lib/csv-import";
 import { requireUser } from "@/lib/session";
 import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
 import { ownPartCents, parseOwedSharesFromForm, saveOwedShares } from "@/lib/owed-shares";
@@ -36,6 +37,7 @@ import {
   assertUserOwnsAccount,
   assertUserOwnsCategory,
   formAction,
+  formActionWithResult,
   getOptionalMappedValue,
   parseJsonField,
 } from "./_helpers";
@@ -179,7 +181,7 @@ export const deleteExpenseTransactionAction = formAction(async (formData: FormDa
   revalidatePath("/");
 });
 
-export const importExpensesCsvAction = formAction(async (formData: FormData) => {
+export const importExpensesCsvAction = formActionWithResult(async (formData: FormData): Promise<CsvImportSummary> => {
   const user = await requireUser();
   const rowsJson = getFormValue(formData, "rowsJson");
   const fieldSelectionsJson = getFormValue(formData, "fieldSelections");
@@ -239,6 +241,64 @@ export const importExpensesCsvAction = formAction(async (formData: FormData) => 
   const expenseCategoryKinds = new Map(categories.map((category) => [category.id, "EXPENSE" as const]));
   const activeAccountIds = new Set(accounts.map((account) => account.id));
 
+  const summary: CsvImportSummary = { ok: true, imported: 0, unreadableDates: [], duplicates: [], unreadableAmounts: 0 };
+
+  // A date that cannot be read leaves the row out rather than booking it today, which filed
+  // it in the wrong month. Only a file that names no date anywhere (no date column, no
+  // manual date) is booked today, as the preview says.
+  const datedRows: Array<{
+    rowNumber: number;
+    row: Record<string, string>;
+    amount: number;
+    transactionDate: Date;
+    postedDate: Date | null;
+    statementTitle: string | undefined;
+  }> = [];
+  const hasDateSource = Boolean(payload.mapping.date || payload.manualValues.date);
+  payload.rows.forEach((row, index) => {
+    const rowNumber = index + 1;
+    const amountRaw = row[payload.mapping.amount]?.trim();
+    const amount = amountRaw ? parseStatementAmount(amountRaw) : null;
+    if (amount === null || Math.abs(amount) > MAX_AMOUNT) {
+      summary.unreadableAmounts += 1;
+      return;
+    }
+    const statementTitle = getOptionalMappedValue(row, payload.mapping.title) ?? payload.manualValues.title;
+
+    const dateRaw = getOptionalMappedValue(row, payload.mapping.date) ?? payload.manualValues.date;
+    const transactionDate = hasDateSource ? parseImportedDate(dateRaw) : new Date();
+    if (!transactionDate) {
+      summary.unreadableDates.push({ row: rowNumber, title: statementTitle ?? null, value: dateRaw ?? "", field: "date" });
+      return;
+    }
+    const postedDateRaw = getOptionalMappedValue(row, payload.mapping.postedDate) ?? payload.manualValues.postedDate;
+    const postedDate = parseImportedDate(postedDateRaw);
+    if (postedDateRaw && !postedDate) {
+      summary.unreadableDates.push({ row: rowNumber, title: statementTitle ?? null, value: postedDateRaw, field: "postedDate" });
+      return;
+    }
+    datedRows.push({ rowNumber, row, amount, transactionDate, postedDate, statementTitle });
+  });
+
+  // Expenses already in the log over the file's span, so a statement imported twice (or
+  // two overlapping statements) does not book the same spend twice.
+  const times = datedRows.map((entry) => entry.transactionDate.getTime());
+  const existing =
+    times.length > 0
+      ? await prisma.transaction.findMany({
+          where: {
+            userId: user.id,
+            type: TransactionType.EXPENSE,
+            date: {
+              gte: new Date(Date.UTC(...ymdParts(new Date(Math.min(...times))))),
+              lt: new Date(Date.UTC(...ymdParts(new Date(Math.max(...times)))) + 86_400_000),
+            },
+          },
+          select: { date: true, amountCents: true, title: true },
+        })
+      : [];
+  const duplicates = new DuplicateMatcher(existing);
+
   // Rows are resolved first (creating any missing categories as we go) and written with a
   // single createMany: one round trip per row used to push large statements past the
   // transaction timeout and roll the whole import back.
@@ -247,19 +307,7 @@ export const importExpensesCsvAction = formAction(async (formData: FormData) => 
     // Tags the rules add. A tagged row gets its id here so its tags can name it in the same
     // batch; createMany returns no ids.
     const pendingTags: Prisma.TransactionTagCreateManyInput[] = [];
-    for (const row of payload.rows) {
-      const amountRaw = row[payload.mapping.amount]?.trim();
-      if (!amountRaw) continue;
-
-      const amount = parseStatementAmount(amountRaw);
-      if (amount === null || Math.abs(amount) > MAX_AMOUNT) continue;
-
-      const dateRaw = getOptionalMappedValue(row, payload.mapping.date) ?? payload.manualValues.date;
-      const transactionDate = parseImportedDate(dateRaw) ?? new Date();
-
-      const postedDateRaw = getOptionalMappedValue(row, payload.mapping.postedDate) ?? payload.manualValues.postedDate;
-      const postedDate = parseImportedDate(postedDateRaw);
-      const statementTitle = getOptionalMappedValue(row, payload.mapping.title) ?? payload.manualValues.title;
+    for (const { rowNumber, row, amount, transactionDate, postedDate, statementTitle } of datedRows) {
       const statementNote = getOptionalMappedValue(row, payload.mapping.note) ?? payload.manualValues.note;
       const accountName = getOptionalMappedValue(row, payload.mapping.accountName) ?? payload.manualValues.accountName;
       const categoryName = getOptionalMappedValue(row, payload.mapping.categoryName) ?? payload.manualValues.categoryName;
@@ -278,6 +326,17 @@ export const importExpensesCsvAction = formAction(async (formData: FormData) => 
         { learned: ruleContext.learned, hiddenTitleKeys: ruleContext.hiddenTitleKeys },
       );
       const title = rule.title ?? statementTitle;
+      // Compared on the title as it would be saved, so a rule's rename matches its own
+      // earlier import.
+      if (duplicates.claim(transactionDate, toCents(amount), title)) {
+        summary.duplicates.push({
+          row: rowNumber,
+          title: title ?? null,
+          date: utcYmd(transactionDate),
+          amountCents: toCents(amount),
+        });
+        continue;
+      }
       const note = appendRuleNote(statementNote, rule.appendNote) ?? undefined;
       const ruleAccountId = rule.accountId && activeAccountIds.has(rule.accountId) ? rule.accountId : undefined;
       const resolvedAccountId = accountName
@@ -321,12 +380,18 @@ export const importExpensesCsvAction = formAction(async (formData: FormData) => 
     }
     if (pending.length > 0) await tx.transaction.createMany({ data: pending });
     if (pendingTags.length > 0) await tx.transactionTag.createMany({ data: pendingTags });
+    summary.imported = pending.length;
   }, LONG_TRANSACTION_OPTIONS);
 
   scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
   revalidatePath("/settings");
+  return summary;
 });
+
+function ymdParts(date: Date): [number, number, number] {
+  return [date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()];
+}
 
 export const createIncomeAction = formAction(async (formData: FormData) => {
   const user = await requireUser();

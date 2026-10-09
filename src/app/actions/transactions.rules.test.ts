@@ -5,7 +5,7 @@ import type { TransactionRuleInput } from "@/lib/transaction-rules";
 const mockPrisma = vi.hoisted(() => ({
   account: { findFirst: vi.fn(), findMany: vi.fn() },
   category: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
-  transaction: { createMany: vi.fn() },
+  transaction: { createMany: vi.fn(), findMany: vi.fn() },
   transactionTag: { createMany: vi.fn() },
   $transaction: vi.fn(),
 }));
@@ -58,6 +58,7 @@ function writtenRows() {
 describe("importExpensesCsvAction with rules", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPrisma.transaction.findMany.mockResolvedValue([]);
     mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<void>) => fn(mockPrisma));
     mockPrisma.account.findFirst.mockResolvedValue({ id: "acc-default" });
     mockPrisma.category.findFirst.mockResolvedValue({ id: "cat-default" });
@@ -82,7 +83,7 @@ describe("importExpensesCsvAction with rules", () => {
       await importExpensesCsvAction(
         csvForm([{ Amount: "15.99", Desc: "NETFLIX.COM 866" }], { amount: "Amount", title: "Desc" }),
       ),
-    ).toBeUndefined();
+    ).toMatchObject({ ok: true, imported: 1 });
     expect(writtenRows()).toEqual([
       expect.objectContaining({
         title: "Netflix",
@@ -141,5 +142,94 @@ describe("importExpensesCsvAction with rules", () => {
     ruleContext.current = { ...ruleContext.current!, rules: [{ ...baseRule, setAccountId: "acc-archived" }] };
     await importExpensesCsvAction(csvForm([{ Amount: "15.99", Desc: "NETFLIX" }], { amount: "Amount", title: "Desc" }));
     expect(writtenRows()[0]).toMatchObject({ accountId: "acc-default" });
+  });
+});
+
+describe("importExpensesCsvAction dates and duplicates", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<void>) => fn(mockPrisma));
+    mockPrisma.account.findFirst.mockResolvedValue({ id: "acc-default" });
+    mockPrisma.category.findFirst.mockResolvedValue({ id: "cat-default" });
+    mockPrisma.account.findMany.mockResolvedValue([{ id: "acc-default", name: "Chequing" }]);
+    mockPrisma.category.findMany.mockResolvedValue([{ id: "cat-default", name: "Other" }]);
+    mockPrisma.transaction.findMany.mockResolvedValue([]);
+    ruleContext.current = { rules: [], learned: [], hiddenTitleKeys: [] };
+  });
+
+  const mapping = { amount: "Amount", date: "Date", title: "Desc" };
+
+  it("leaves out a row whose date cannot be read, instead of booking it today", async () => {
+    const result = await importExpensesCsvAction(
+      csvForm(
+        [
+          { Amount: "4.50", Date: "2026-03-02", Desc: "Coffee" },
+          { Amount: "9.00", Date: "31/31/2026", Desc: "Lunch" },
+          { Amount: "3.00", Date: "", Desc: "Snack" },
+        ],
+        mapping,
+      ),
+    );
+    expect(writtenRows()).toEqual([expect.objectContaining({ title: "Coffee", date: new Date("2026-03-02T00:00:00Z") })]);
+    expect(result).toMatchObject({
+      ok: true,
+      imported: 1,
+      unreadableDates: [
+        { row: 2, title: "Lunch", value: "31/31/2026", field: "date" },
+        { row: 3, title: "Snack", value: "", field: "date" },
+      ],
+    });
+  });
+
+  it("leaves out a row whose posted date cannot be read", async () => {
+    const result = await importExpensesCsvAction(
+      csvForm([{ Amount: "4.50", Date: "2026-03-02", Posted: "soon", Desc: "Coffee" }], { ...mapping, postedDate: "Posted" }),
+    );
+    expect(mockPrisma.transaction.createMany).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ imported: 0, unreadableDates: [{ row: 1, field: "postedDate", value: "soon" }] });
+  });
+
+  it("still books today when the file names no date at all", async () => {
+    const before = Date.now();
+    await importExpensesCsvAction(csvForm([{ Amount: "4.50", Desc: "Coffee" }], { amount: "Amount", title: "Desc" }));
+    expect((writtenRows()[0].date as Date).getTime()).toBeGreaterThanOrEqual(before);
+  });
+
+  it("skips a row matching an existing expense's date, amount and title, once per existing expense", async () => {
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      { date: new Date("2026-03-02T00:00:00Z"), amountCents: 450, title: "coffee" },
+    ]);
+    const result = await importExpensesCsvAction(
+      csvForm(
+        [
+          { Amount: "4.50", Date: "2026-03-02", Desc: "Coffee" },
+          { Amount: "4.50", Date: "2026-03-02", Desc: "Coffee" },
+          { Amount: "4.50", Date: "2026-03-03", Desc: "Coffee" },
+          { Amount: "5.00", Date: "2026-03-02", Desc: "Coffee" },
+        ],
+        mapping,
+      ),
+    );
+    expect(writtenRows()).toHaveLength(3);
+    expect(result).toMatchObject({
+      imported: 3,
+      duplicates: [{ row: 1, title: "Coffee", date: "2026-03-02", amountCents: 450 }],
+    });
+    expect(mockPrisma.transaction.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: "user-1",
+          type: "EXPENSE",
+          date: { gte: new Date("2026-03-02T00:00:00Z"), lt: new Date("2026-03-04T00:00:00Z") },
+        }),
+      }),
+    );
+  });
+
+  it("counts rows with no readable amount", async () => {
+    const result = await importExpensesCsvAction(
+      csvForm([{ Amount: "", Date: "2026-03-02", Desc: "x" }, { Amount: "abc", Date: "2026-03-02", Desc: "y" }], mapping),
+    );
+    expect(result).toMatchObject({ imported: 0, unreadableAmounts: 2 });
   });
 });

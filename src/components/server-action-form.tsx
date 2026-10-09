@@ -3,16 +3,17 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { isActionFailure } from "@/lib/action-result";
+import { isActionFailure, type ActionFailure } from "@/lib/action-result";
 import { canReachServer } from "@/lib/use-online-status";
 
 export const OFFLINE_WRITE_MESSAGE = "You're offline, so this wasn't saved. Reconnect and reload the page to make changes.";
 
-type ServerActionFormProps = {
-  action: (formData: FormData) => Promise<unknown>;
+type ServerActionFormProps<R> = {
+  action: (formData: FormData) => Promise<R>;
   children: ReactNode;
   className?: string;
-  onSuccess?: () => void;
+  /** Receives what the action returned, for actions that report back (an import summary). */
+  onSuccess?: (result: Exclude<R, ActionFailure>) => void;
   /**
    * Runs before the action; return false to abort silently (e.g. the user dismissed a
    * passkey prompt). Lets step-up-gated forms verify first without a second toast path.
@@ -20,7 +21,7 @@ type ServerActionFormProps = {
   beforeSubmit?: () => Promise<boolean>;
 };
 
-export function ServerActionForm({ action, children, className, onSuccess, beforeSubmit }: ServerActionFormProps) {
+export function ServerActionForm<R>({ action, children, className, onSuccess, beforeSubmit }: ServerActionFormProps<R>) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -83,7 +84,7 @@ export function ServerActionForm({ action, children, className, onSuccess, befor
                 setError(result.error);
                 return;
               }
-              onSuccess?.();
+              onSuccess?.(result as Exclude<R, ActionFailure>);
               router.refresh();
             } catch (e) {
               const message =
