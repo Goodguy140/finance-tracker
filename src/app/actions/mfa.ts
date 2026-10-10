@@ -170,7 +170,7 @@ export async function finishPasskeyRegistrationAction(input: {
         headers: h,
       });
     }
-    revalidatePath("/settings");
+    revalidatePath("/settings", "layout");
     return { ok: true, passkeyId: credential.id, recoveryCodes };
   } catch (err) {
     return failure(err, "Passkey could not be registered.");
@@ -291,7 +291,7 @@ export const renamePasskeyAction = formAction(async (formData: FormData) => {
     metadata: { name: parsed.name },
     headers: await headers(),
   });
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 /** Removing the last passkey switches MFA off again (and burns the recovery codes with it). */
@@ -332,7 +332,7 @@ export const removePasskeyAction = formAction(async (formData: FormData) => {
   if (last) {
     await recordAuditLog(prisma, { userId: user.id, action: AUDIT_ACTIONS.mfa_disabled, headers: h });
   }
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 export async function regenerateRecoveryCodesAction(): Promise<RecoveryCodesResult> {
@@ -345,7 +345,7 @@ export async function regenerateRecoveryCodesAction(): Promise<RecoveryCodesResu
       metadata: { count: codes.length, reason: "regenerated" },
       headers: await headers(),
     });
-    revalidatePath("/settings");
+    revalidatePath("/settings", "layout");
     return { ok: true, codes };
   } catch (err) {
     return failure(err, "Could not generate recovery codes.");
@@ -416,5 +416,5 @@ export const unlinkSsoProviderAction = formAction(async (formData: FormData) => 
     metadata: { provider },
     headers: await headers(),
   });
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });

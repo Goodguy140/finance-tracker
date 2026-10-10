@@ -125,7 +125,7 @@ function RoomSummary({ data, todayYmd }: { data: ContributionRoomData; todayYmd:
     <section aria-label="Room left" className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold text-slate-100">Room left</h3>
-        <Link href="/settings#contribution-room" className="text-xs text-slate-400 underline underline-offset-2 hover:text-slate-200">
+        <Link href="/settings/accounts#contribution-room" className="text-xs text-slate-400 underline underline-offset-2 hover:text-slate-200">
           Manage in Settings
         </Link>
       </div>

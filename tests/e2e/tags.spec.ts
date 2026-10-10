@@ -63,15 +63,16 @@ test("a rule adds its tag on the add-expense form, and the log filters by it", a
     },
   });
 
-  await page.goto("/settings#rules");
-  const panel = page.getByRole("tabpanel", { name: "Rules" });
+  await page.goto("/settings/rules");
+  const panel = page.getByRole("region", { name: "Rules", exact: true });
   await panel.getByRole("button", { name: "New rule" }).click();
   const editor = panel.getByRole("region", { name: "New rule" });
   await editor.locator('input[name="titlePattern"]').fill(pattern);
   await editor.locator('input[name="addTag"]').fill(tagName);
   await editor.getByRole("button", { name: "Create rule" }).click();
   await expect(panel.getByTestId("transaction-rule")).toContainText(`tag + ${tagName}`);
-  await expect(panel.getByTestId("tag-list")).toContainText(tagName);
+  await page.goto("/settings/tags");
+  await expect(page.getByTestId("tag-list")).toContainText(tagName);
 
   await page.goto("/");
   const card = page.getByRole("region", { name: "Add", exact: true });

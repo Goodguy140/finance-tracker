@@ -34,7 +34,9 @@ test("room entered from CRA is reduced by contributions, and going over is flagg
   await page.getByRole("button", { name: "Login" }).click();
   await expectDashboardHome(page);
 
+  // The old anchor still lands on the right page.
   await page.goto("/settings#contribution-room");
+  await expect(page).toHaveURL(/\/settings\/accounts/);
   const panel = page.locator("#contribution-room");
   await expect(panel.getByText("Add your")).toBeVisible();
   await panel.locator('select[name="accountType"]').selectOption("TFSA");
@@ -63,7 +65,7 @@ test("room entered from CRA is reduced by contributions, and going over is flagg
     .poll(() => prisma.investmentFlow.count({ where: { userId: user.id, accountId: tfsa.id } }))
     .toBe(1);
 
-  await page.goto("/settings#contribution-room");
+  await page.goto("/settings/accounts");
   await expect(panel.getByRole("alert")).toContainText(`$500.00 over your ${year} TFSA room`);
   await expect(panel.getByText("-$500.00")).toBeVisible();
 });

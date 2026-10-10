@@ -39,16 +39,16 @@ function isActive(pathname: string, href: string): boolean {
 }
 
 /**
- * Vertical list beside the content on wide screens, a horizontally scrolling strip of
- * pills above it on narrow ones. A dot marks a section with something needing attention;
- * the Overview page says what.
+ * A strip of links above the admin page: scrolling sideways on phones, wrapping on wide
+ * screens, where the Settings sidebar already takes the left column. A dot marks a section
+ * with something needing attention; the Overview page says what.
  */
 export function AdminNav({ badges }: { badges: AdminNavBadges }) {
   const pathname = usePathname() ?? "/settings/admin";
 
   return (
-    <nav aria-label="Admin sections" className="lg:sticky lg:top-4">
-      <ul className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0 lg:pb-0">
+    <nav aria-label="Admin sections" className="border-b border-slate-800 pb-2">
+      <ul className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
         {ADMIN_NAV_ITEMS.map((item) => {
           const active = isActive(pathname, item.href);
           const badge = item.badgeKey ? badges[item.badgeKey] : null;

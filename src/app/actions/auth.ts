@@ -149,7 +149,7 @@ export const updateProfileAction = formAction(async (formData: FormData) => {
     where: { id: user.id },
     data: payload,
   });
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 

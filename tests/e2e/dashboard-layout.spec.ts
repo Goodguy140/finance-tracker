@@ -365,10 +365,10 @@ test("a column is dropped rather than show less than 90% of a budget name", asyn
 
   // The floor is the user's to set. Lowered far enough in Settings, the cut-off name is
   // acceptable and all four columns stay.
-  await page.goto("/settings");
-  // 10% is the lowest the setting allows; the input's own `min` would block the submit otherwise.
+  await page.goto("/settings/appearance");
+  // 10% is the lowest the setting allows.
   await page.locator('input[name="budgetNameVisiblePct"]').fill("10");
-  await page.getByRole("button", { name: "Save dashboard settings" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect
     .poll(async () => (await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).dashboardBudgetNameVisiblePct)
     .toBe(10);

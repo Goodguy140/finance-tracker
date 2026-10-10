@@ -1,377 +1,112 @@
-import { CategoryKind, RecurringCadence, TransactionType } from "@prisma/client";
 import Link from "next/link";
-import { SettingsForms } from "@/components/forms";
-import type { SubscriptionView } from "@/components/subscriptions-panel";
-import { isBudgetAlertEmailConfigured } from "@/lib/budget-alert-email";
-import { formatAccountTypeLabel } from "@/lib/account-type-labels";
-import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
-import { MFA_STEP_UP_MAX_AGE_MS } from "@/lib/auth-constants";
-import { getAuthentikProvider, getGoogleProvider } from "@/lib/oauth-provider-config";
-import { prisma } from "@/lib/prisma";
+import { ChevronRight } from "lucide-react";
+import { LegacyHashRedirect } from "@/components/settings/legacy-hash-redirect";
+import { getAdminAttention } from "@/lib/admin-attention-facts";
 import { requireLoadedUser } from "@/lib/session";
-import { getPlaidConfig } from "@/lib/plaid/config";
-import { describePlaidItemAttention } from "@/lib/plaid/attention";
-import { describePlaidCostWarning } from "@/lib/plaid/cost";
-import { plaidFakeClientEnabled } from "@/lib/plaid/service";
-import {
-  describeHistorySetting,
-  describeShortfall,
-  HISTORY_WINDOWS,
-} from "@/lib/plaid/window";
-import type { PlaidConnectionsPanelProps } from "@/components/plaid-connections-panel";
-import type { TransactionRulesPanelProps } from "@/components/transaction-rules-panel";
-import { normalizeExpenseTitleKey } from "@/lib/expense-title-suggestions";
-import type { RuleTransactionType } from "@/lib/transaction-rules";
-import { loadRuleContext } from "@/lib/transaction-rules-server";
-import { loadContributionRoomData } from "@/lib/contribution-room-data";
-import type { CategoriesPanelProps } from "@/components/categories-panel";
-import { selectActiveBudgetsByCategory } from "@/lib/budget-progress";
-import { currentYmdInTimeZone, currentYmInTimeZone } from "@/lib/period-month";
-import { loadNetWorth } from "@/lib/net-worth-data";
-import type { AccountBalancesPanelRow } from "@/components/account-balances-panel";
-import { loadCategorySuggestionContext } from "@/lib/plaid/category-suggestions";
-import { buildPlaidMappingView } from "@/lib/plaid/category-mapping-view";
+import { loadSettingsAttention } from "@/lib/settings-attention";
+import { SETTINGS_GROUPS, SETTINGS_SECTIONS, settingsHref } from "@/lib/settings-sections";
 
 export const dynamic = "force-dynamic";
 
-const cadenceLabels: Record<RecurringCadence, string> = {
-  WEEKLY: "Weekly",
-  BIWEEKLY: "Biweekly",
-  MONTHLY: "Monthly",
-  QUARTERLY: "Quarterly",
-  YEARLY: "Yearly",
-  BIENNIAL: "Every 2 years",
-};
-
-type SearchParams = Promise<{ linked?: string | string[] }>;
-
-export default async function SettingsPage({ searchParams }: { searchParams: SearchParams }) {
-  const loaded = await requireLoadedUser();
-  const { user, mfa } = loaded;
-  const sp = await searchParams;
-  const linkedRaw = Array.isArray(sp.linked) ? sp.linked[0] : sp.linked;
-  const [
-    accounts,
-    categories,
-    budgets,
-    subscriptionRules,
-    apiTokenRecords,
-    passkeyRecords,
-    recoveryCodesRemaining,
-    authAccounts,
-    googleProvider,
-    authentikProvider,
-    plaidItems,
-    plaidConfig,
-    plaidFakeLink,
-    ruleContext,
-    allCategories,
-    contributionRoom,
-    netWorth,
-    tags,
-    suggestionContext,
-    transactionCounts,
-    splitCounts,
-    recurringCounts,
-  ] = await Promise.all([
-    prisma.account.findMany({ where: { userId: user.id }, orderBy: { name: "asc" } }),
-    prisma.category.findMany({ where: { userId: user.id, kind: CategoryKind.EXPENSE }, orderBy: { name: "asc" } }),
-    prisma.budget.findMany({ where: { userId: user.id }, include: { category: true }, orderBy: [{ periodMonth: "desc" }, { category: { name: "asc" } }] }),
-    prisma.recurringTransaction.findMany({
-      where: { userId: user.id, type: TransactionType.EXPENSE },
-      include: {
-        account: true,
-        category: true,
-        subscriptionMembers: {
-          orderBy: { createdAt: "asc" },
-          include: { shareStatuses: { select: { expectedDate: true, billSent: true, paid: true } } },
-        },
-      },
-      orderBy: [{ enabled: "desc" }, { nextExpectedDate: "asc" }],
-    }),
-    prisma.personalAccessToken.findMany({
-      where: { userId: user.id, revokedAt: null },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        tokenPrefix: true,
-        scopes: true,
-        createdAt: true,
-        lastUsedAt: true,
-        expiresAt: true,
-      },
-    }),
-    prisma.webAuthnCredential.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "asc" },
-      select: { id: true, name: true, createdAt: true, lastUsedAt: true, backedUp: true },
-    }),
-    prisma.recoveryCode.count({ where: { userId: user.id, usedAt: null } }),
-    prisma.authAccount.findMany({ where: { userId: user.id }, select: { provider: true } }),
-    getGoogleProvider(),
-    getAuthentikProvider(),
-    prisma.plaidItem.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "asc" },
-      include: { plaidAccounts: { orderBy: { name: "asc" } } },
-    }),
-    getPlaidConfig(),
-    plaidFakeClientEnabled(),
-    loadRuleContext(user.id),
-    prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true } }),
-    loadContributionRoomData(user.id),
-    loadNetWorth(user),
-    prisma.tag.findMany({
-      where: { userId: user.id },
-      orderBy: { nameKey: "asc" },
-      select: { id: true, name: true, _count: { select: { transactions: true } } },
-    }),
-    loadCategorySuggestionContext(user.id, user.timezone),
-    prisma.transaction.groupBy({ by: ["categoryId"], where: { userId: user.id }, _count: { _all: true } }),
-    prisma.splitTransactionPart.groupBy({ by: ["categoryId"], where: { userId: user.id }, _count: { _all: true } }),
-    prisma.recurringTransaction.groupBy({ by: ["categoryId"], where: { userId: user.id }, _count: { _all: true } }),
+/**
+ * The Settings home: what needs attention first, then every section. On a phone this list
+ * is the navigation; on a wide screen it sits beside the same list in the sidebar, as an
+ * index with one line about each page.
+ */
+export default async function SettingsHomePage() {
+  const { user } = await requireLoadedUser();
+  const isAdmin = user.role === "SERVER_ADMIN";
+  const [attention, admin] = await Promise.all([
+    loadSettingsAttention(user.id),
+    isAdmin ? getAdminAttention() : Promise.resolve(null),
   ]);
-
-  const availableProviders = [
-    ...(googleProvider ? ["google"] : []),
-    ...(authentikProvider ? ["authentik"] : []),
-  ];
-  const linkedProviders = [...new Set(authAccounts.map((a) => a.provider))];
-  const security = {
-    hasPassword: user.passwordHash != null,
-    passkeys: passkeyRecords.map((pk) => ({
-      id: pk.id,
-      name: pk.name,
-      createdAt: pk.createdAt.toISOString(),
-      lastUsedAt: pk.lastUsedAt ? pk.lastUsedAt.toISOString() : null,
-      backedUp: pk.backedUp,
-    })),
-    recoveryCodesRemaining,
-    freshUntil: mfa.verified && mfa.verifiedAt != null ? mfa.verifiedAt + MFA_STEP_UP_MAX_AGE_MS : null,
-    linkedProviders,
-    availableProviders,
-    linkedJustNow: linkedRaw && linkedProviders.includes(linkedRaw) ? linkedRaw : null,
-  };
-
-  const apiTokens = apiTokenRecords.map((token) => ({
-    id: token.id,
-    name: token.name,
-    tokenPrefix: token.tokenPrefix,
-    scopes: token.scopes,
-    createdAt: token.createdAt.toISOString(),
-    lastUsedAt: token.lastUsedAt ? token.lastUsedAt.toISOString() : null,
-    expiresAt: token.expiresAt ? token.expiresAt.toISOString() : null,
-  }));
-
-  const activeAccounts = accounts.filter((a) => !a.archived);
-  const linkedAccountIds = new Set(
-    plaidItems.flatMap((item) => item.plaidAccounts.filter((a) => a.syncEnabled).map((a) => a.accountId)),
-  );
-  const balanceRows: AccountBalancesPanelRow[] = netWorth.accounts.map((row) => ({
-    accountId: row.accountId,
-    name: row.name,
-    type: row.type,
-    currency: row.currency,
-    liability: row.liability,
-    linked: linkedAccountIds.has(row.accountId),
-    latest: row.latest ? { cents: row.latest.cents, dateYmd: ymdFromDateUtc(row.latest.date), source: row.latest.source } : null,
-  }));
-  const accountOptions = activeAccounts.map((account) => ({ id: account.id, name: account.name }));
-  const accountItems = accounts.map((account) => ({
-    id: account.id,
-    name: account.name,
-    type: account.type,
-    archived: account.archived,
-    currency: account.currency,
-    countsAsSavings: account.countsAsSavings,
-  }));
-  const expenseCategoryOptions = categories.map((category) => ({ id: category.id, name: category.name }));
-  const budgetItems = budgets.map((budget) => ({
-    id: budget.id,
-    periodMonth: budget.periodMonth,
-    name: budget.name,
-    categoryName: budget.category.name,
-    limitCents: budget.limitCents,
-  }));
-
-  const subscriptions: SubscriptionView[] = subscriptionRules.map((rule) => {
-    const nextYmd = ymdFromDateUtc(rule.nextExpectedDate);
-    return {
-      id: rule.id,
-      name: rule.name,
-      amountCents: rule.amountCents,
-      accountId: rule.accountId,
-      accountLabel: `${rule.account.name} (${formatAccountTypeLabel(rule.account.type)})`,
-      categoryId: rule.categoryId,
-      categoryLabel: rule.category.name,
-      cadence: rule.cadence,
-      cadenceLabel: cadenceLabels[rule.cadence],
-      nextExpectedDateYmd: nextYmd,
-      nextExpectedDateDisplay: formatDateOnlyUtc(rule.nextExpectedDate),
-      endDateYmd: rule.endDate ? ymdFromDateUtc(rule.endDate) : null,
-      note: rule.note,
-      enabled: rule.enabled,
-      postMode: rule.postMode,
-      members: rule.subscriptionMembers.map((member) => {
-        const status = member.shareStatuses.find((s) => ymdFromDateUtc(s.expectedDate) === nextYmd);
-        return {
-          id: member.id,
-          name: member.name,
-          shareCents: member.shareCents,
-          billSent: status?.billSent ?? false,
-          paid: status?.paid ?? false,
-        };
-      }),
-    };
-  });
-
-  const plaid: PlaidConnectionsPanelProps = {
-    configured: plaidConfig !== null,
-    fakeLink: plaidFakeLink,
-    environment: plaidConfig?.environment ?? null,
-    historyWindows: HISTORY_WINDOWS.map((w) => ({ days: w.days, label: w.label })),
-    accountOptions: activeAccounts.map((account) => ({
-      id: account.id,
-      name: account.name,
-      currency: account.currency,
-    })),
-    mfa: { enrolled: passkeyRecords.length > 0, freshUntil: security.freshUntil },
-    items: plaidItems.map((item) => ({
-      id: item.id,
-      institutionName: item.institutionName ?? "Your bank",
-      status: item.status,
-      errorMessage: item.errorMessage,
-      // Read from the stored cutoff rather than recomputed, so what the user was promised
-      // when they linked cannot drift as days pass.
-      historyLine: describeHistorySetting(item.requestedDays, item.historyCutoff),
-      shortfallLine: describeShortfall({
-        institutionName: item.institutionName,
-        requestedDays: item.requestedDays,
-        requestedCutoff: item.historyCutoff,
-        earliestObserved: item.initialSyncDoneAt ? item.earliestObservedAt : null,
-      }),
-      // Plaid bills per connected item per month, whether or not it works. A connection
-      // that cannot sync is money leaving with nothing coming back, so say so plainly
-      // rather than leaving a quietly broken row in the list.
-      costWarning: describePlaidCostWarning({
-        status: item.status,
-        consentExpiresAt: item.consentExpiresAt,
-        hasMappedAccount: item.plaidAccounts.some((a) => a.accountId !== null && a.syncEnabled),
-      }),
-      // Raised by Plaid's ITEM webhooks (or a failed sync) and cleared by update mode.
-      attention: describePlaidItemAttention(item),
-      lastSyncedLabel: item.lastSyncedAt ? formatDateOnlyUtc(item.lastSyncedAt) : null,
-      consentExpiresLabel: item.consentExpiresAt ? formatDateOnlyUtc(item.consentExpiresAt) : null,
-      accounts: item.plaidAccounts.map((account) => ({
-        id: account.id,
-        name: account.name,
-        officialName: account.officialName,
-        mask: account.mask,
-        typeLabel: account.plaidSubtype
-          ? `${account.plaidType} · ${account.plaidSubtype}`
-          : account.plaidType,
-        currency: account.currency,
-        accountId: account.accountId,
-        syncEnabled: account.syncEnabled,
-      })),
-    })),
-  };
-
-  const hiddenTitleKeys = new Set(ruleContext.hiddenTitleKeys);
-  const learnedKeys = new Set(ruleContext.learned.map((l) => normalizeExpenseTitleKey(l.title)));
-  const transactionRules: TransactionRulesPanelProps = {
-    rules: ruleContext.rules,
-    learned: ruleContext.learned.map((l) => ({
-      ...l,
-      hidden: hiddenTitleKeys.has(normalizeExpenseTitleKey(l.title)),
-    })),
-    orphanHiddenTitles: ruleContext.hiddenTitleKeys.filter((key) => !learnedKeys.has(key)),
-    categories: allCategories.map((c) => ({ id: c.id, name: c.name, kind: c.kind as RuleTransactionType })),
-    accounts: accounts.map((a) => ({ id: a.id, name: a.name, archived: a.archived })),
-    tags: tags.map((t) => ({ id: t.id, name: t.name, transactionCount: t._count.transactions })),
-  };
-
-  const countsBy = (rows: { categoryId: string; _count: { _all: number } }[]) =>
-    new Map(rows.map((row) => [row.categoryId, row._count._all]));
-  const countByCategory = countsBy(transactionCounts);
-  const splitsByCategory = countsBy(splitCounts);
-  const recurringByCategory = countsBy(recurringCounts);
-  const activeBudgets = selectActiveBudgetsByCategory(budgets, currentYmInTimeZone(user.timezone));
-  const categoriesPanel: CategoriesPanelProps = {
-    categories: allCategories.flatMap((c) =>
-      c.kind === CategoryKind.TRANSFER
-        ? []
-        : [
-            {
-              id: c.id,
-              name: c.name,
-              kind: c.kind,
-              transactionCount: countByCategory.get(c.id) ?? 0,
-              splitCount: splitsByCategory.get(c.id) ?? 0,
-              recurringCount: recurringByCategory.get(c.id) ?? 0,
-              budgetLimitCents: activeBudgets.get(c.id)?.limitCents ?? null,
-            },
-          ],
-    ),
-    plaidGroups: buildPlaidMappingView({
-      categories: suggestionContext.categories,
-      budgetNames: suggestionContext.budgetNames,
-      mappings: suggestionContext.plaidMappings,
-    }),
-    hasLinkedBank: plaidItems.length > 0,
-  };
+  const hideBanks = !attention.plaidConfigured && !attention.hasBankConnections && !isAdmin;
+  const sections = SETTINGS_SECTIONS.filter((s) => !(hideBanks && s.id === "banks"));
 
   return (
-    <main className="mx-auto mb-4 mt-[max(1rem,env(safe-area-inset-top))] w-full max-w-4xl space-y-4 px-4 pb-8 pt-2 text-slate-100 sm:px-5 lg:my-6 lg:space-y-5 lg:px-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Settings</h1>
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          {user.role === "SERVER_ADMIN" ? (
-            <Link
-              href="/settings/admin"
-              className="inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 transition hover:bg-slate-800"
-            >
-              Server admin
-            </Link>
-          ) : null}
+    <div className="space-y-6">
+      <LegacyHashRedirect />
+
+      {attention.items.length > 0 ? (
+        <section aria-label="Needs attention" className="space-y-2">
+          <h2 className="text-xs font-medium uppercase tracking-wider text-slate-500">Needs attention</h2>
+          <ul className="space-y-2">
+            {attention.items.map((item, i) => (
+              <li key={`${item.section}-${i}`}>
+                <Link
+                  href={settingsHref(item.section)}
+                  className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition ${
+                    item.tone === "bad"
+                      ? "border-red-500/35 bg-red-950/25 hover:bg-red-950/40"
+                      : "border-amber-500/30 bg-amber-950/20 hover:bg-amber-950/35"
+                  }`}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-slate-100">{item.title}</span>
+                    <span className="block text-sm text-slate-400">{item.message}</span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" aria-hidden />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {SETTINGS_GROUPS.map((group) => (
+        <section key={group.id} aria-label={group.label} className="space-y-2">
+          <h2 className="text-xs font-medium uppercase tracking-wider text-slate-500">{group.label}</h2>
+          <ul className="divide-y divide-slate-800 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
+            {sections
+              .filter((s) => s.group === group.id)
+              .map((section) => {
+                const dot = attention.dots[section.id];
+                return (
+                  <li key={section.id}>
+                    <Link
+                      href={settingsHref(section.id)}
+                      className="flex items-center gap-3 px-4 py-3 transition hover:bg-slate-900"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-slate-100">{section.label}</span>
+                        <span className="block truncate text-xs text-slate-500">{section.summary}</span>
+                      </span>
+                      {dot ? (
+                        <span
+                          className={`h-2 w-2 shrink-0 rounded-full ${dot === "bad" ? "bg-red-400" : "bg-amber-400"}`}
+                          aria-label={dot === "bad" ? "Needs attention" : "Has warnings"}
+                        />
+                      ) : null}
+                      <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" aria-hidden />
+                    </Link>
+                  </li>
+                );
+              })}
+          </ul>
+        </section>
+      ))}
+
+      {admin ? (
+        <section aria-label="Server" className="space-y-2">
+          <h2 className="text-xs font-medium uppercase tracking-wider text-slate-500">Server</h2>
           <Link
-            href="/"
-            className="inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 transition hover:bg-slate-800"
+            href="/settings/admin"
+            className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/50 px-4 py-3 transition hover:bg-slate-900"
           >
-            Back to dashboard
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-slate-100">Server admin</span>
+              <span className="block truncate text-xs text-slate-500">Users, sign-in, integrations and system health.</span>
+            </span>
+            {admin.badges.overview ? (
+              <span
+                className={`h-2 w-2 shrink-0 rounded-full ${admin.badges.overview === "bad" ? "bg-red-400" : "bg-amber-400"}`}
+                aria-label="Needs attention"
+              />
+            ) : null}
+            <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" aria-hidden />
           </Link>
-        </div>
-      </div>
-      <SettingsForms
-        defaults={{
-          displayName: user.displayName,
-          countryCode: user.countryCode,
-          timezone: user.timezone,
-        }}
-        profileEmail={user.email}
-        hasPassword={user.passwordHash != null}
-        joinedAt={user.createdAt.toISOString()}
-        accounts={accountOptions}
-        accountItems={accountItems}
-        expenseCategories={expenseCategoryOptions}
-        budgets={budgetItems}
-        subscriptions={subscriptions}
-        defaultExpenseAccountId={user.defaultExpenseAccountId}
-        budgetAlertEmailConfigured={isBudgetAlertEmailConfigured()}
-        budgetAlertEmailEnabled={user.budgetAlertEmailEnabled}
-        dashboardReadability={{
-          textVisiblePct: user.dashboardTextVisiblePct,
-          budgetNameVisiblePct: user.dashboardBudgetNameVisiblePct,
-        }}
-        apiTokens={apiTokens}
-        security={security}
-        plaid={plaid}
-        transactionRules={transactionRules}
-        contributionRoom={contributionRoom}
-        balances={{ rows: balanceRows, todayYmd: currentYmdInTimeZone(user.timezone) }}
-        categories={categoriesPanel}
-      />
-    </main>
+        </section>
+      ) : null}
+    </div>
   );
 }

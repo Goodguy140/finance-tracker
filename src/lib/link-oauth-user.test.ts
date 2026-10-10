@@ -102,7 +102,7 @@ describe("linkOAuthUser", () => {
     );
 
     const result = await linkOAuthUser({ user: profile(), account, defaultDisplayName: "x" });
-    expect(result).toBe(`${ORIGIN}/settings?linked=google`);
+    expect(result).toBe(`${ORIGIN}/settings/security?linked=google`);
     expect(consumeChallenge).toHaveBeenCalledWith("c1", "sso-link", "u-intent");
     expect(db.authAccount.create).toHaveBeenCalledWith({
       data: { provider: "google", providerAccountId: "google-sub-123", userId: "u-intent", expiresAt: account.expires_at },

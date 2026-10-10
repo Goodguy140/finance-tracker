@@ -105,7 +105,7 @@ export const updateInvestmentFlowAction = formAction(async (formData: FormData) 
   });
   if (count === 0) throw new Error("That contribution or withdrawal was not found.");
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 /** Deleting a flow counted from a transfer makes that transfer countable again. */
@@ -115,7 +115,7 @@ export const deleteInvestmentFlowAction = formAction(async (formData: FormData) 
   const { count } = await prisma.investmentFlow.deleteMany({ where: { id, userId: user.id } });
   if (count === 0) throw new Error("That contribution or withdrawal was not found.");
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 export const updatePortfolioSnapshotAction = formAction(async (formData: FormData) => {
@@ -185,7 +185,7 @@ export const countTransferTowardRoomAction = formAction(async (formData: FormDat
     throw error;
   }
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 /** Saves one year's room for one account type, replacing any figure already entered. */
@@ -203,7 +203,7 @@ export const upsertContributionRoomAction = formAction(async (formData: FormData
     update: { roomCents },
   });
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 export const deleteContributionRoomAction = formAction(async (formData: FormData) => {
@@ -212,5 +212,5 @@ export const deleteContributionRoomAction = formAction(async (formData: FormData
   const { count } = await prisma.contributionRoom.deleteMany({ where: { id, userId: user.id } });
   if (count === 0) throw new Error("That room figure was not found.");
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });

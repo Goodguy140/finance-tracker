@@ -105,7 +105,7 @@ export function ApiTokensPanel({ tokens, mfa }: { tokens: ApiTokenRow[]; mfa: Ap
       {needsPasskey ? (
         <div className="rounded-2xl border border-amber-800/80 bg-amber-950/40 p-4 text-sm text-amber-100">
           Creating a token requires a passkey.{" "}
-          <Link href="/settings#security" className="font-medium underline underline-offset-4">
+          <Link href="/settings/security" className="font-medium underline underline-offset-4">
             Add one in Security
           </Link>{" "}
           first.

@@ -335,7 +335,7 @@ function NetWorthSection({ netWorth, fmt }: { netWorth: Awaited<ReturnType<typeo
         <h2 id="report-net-worth" className="text-lg font-semibold">
           Net worth
         </h2>
-        <Link href="/settings#balances" className="text-sm text-sky-300 hover:text-sky-200">
+        <Link href="/settings/accounts" className="text-sm text-sky-300 hover:text-sky-200">
           Update balances
         </Link>
       </div>

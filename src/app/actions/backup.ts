@@ -63,7 +63,7 @@ export const clearUserFinancialDataAction = formAction(async (formData: FormData
   await ensureDefaultDataForUser(freshUser);
 
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 
 export const importUserBackupAction = formAction(async (formData: FormData) => {
@@ -587,6 +587,6 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
   });
 
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });
 

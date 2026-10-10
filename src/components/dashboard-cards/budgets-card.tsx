@@ -45,7 +45,7 @@ function BudgetPeriodNote({ periodRange }: { periodRange: DashboardRange }) {
 export function BudgetsCardActions() {
   return (
     <Link
-      href="/settings#budgets"
+      href="/settings/categories"
       className="shrink-0 text-sm font-medium text-blue-300 underline-offset-4 transition hover:text-blue-200 hover:underline"
     >
       Manage budgets

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState, useTransition, type ReactNode } from "react";
+import { useCallback, useEffect, useState, useTransition, type ReactNode, type Ref } from "react";
 import { createPortal } from "react-dom";
 import { isActionFailure, type ActionFailure } from "@/lib/action-result";
 import { canReachServer } from "@/lib/use-online-status";
@@ -19,9 +19,11 @@ type ServerActionFormProps<R> = {
    * passkey prompt). Lets step-up-gated forms verify first without a second toast path.
    */
   beforeSubmit?: () => Promise<boolean>;
+  /** For submitting from outside the form, e.g. once an in-page confirm dialog says yes. */
+  ref?: Ref<HTMLFormElement>;
 };
 
-export function ServerActionForm<R>({ action, children, className, onSuccess, beforeSubmit }: ServerActionFormProps<R>) {
+export function ServerActionForm<R>({ action, children, className, onSuccess, beforeSubmit, ref }: ServerActionFormProps<R>) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -67,6 +69,7 @@ export function ServerActionForm<R>({ action, children, className, onSuccess, be
     <>
       {typeof document !== "undefined" && error !== null ? createPortal(toast, document.body) : null}
       <form
+        ref={ref}
         className={formClass}
         action={(formData) => {
           setError(null);
@@ -76,22 +79,36 @@ export function ServerActionForm<R>({ action, children, className, onSuccess, be
             setError(OFFLINE_WRITE_MESSAGE);
             return;
           }
-          startTransition(async () => {
-            try {
-              if (beforeSubmit && !(await beforeSubmit())) return;
-              const result = await action(formData);
-              if (isActionFailure(result)) {
-                setError(result.error);
-                return;
+          const submit = () =>
+            startTransition(async () => {
+              try {
+                const result = await action(formData);
+                if (isActionFailure(result)) {
+                  setError(result.error);
+                  return;
+                }
+                onSuccess?.(result as Exclude<R, ActionFailure>);
+                router.refresh();
+              } catch (e) {
+                const message =
+                  e instanceof Error ? e.message : "Something went wrong. Please try again.";
+                setError(message);
               }
-              onSuccess?.(result as Exclude<R, ActionFailure>);
-              router.refresh();
-            } catch (e) {
-              const message =
-                e instanceof Error ? e.message : "Something went wrong. Please try again.";
-              setError(message);
-            }
-          });
+            });
+          if (!beforeSubmit) {
+            submit();
+            return;
+          }
+          // Asked outside any transition: a confirm dialog opened by state set inside one
+          // would not render until the transition ended, and it waits on the dialog.
+          void Promise.resolve()
+            .then(beforeSubmit)
+            .then((ok) => {
+              if (ok) submit();
+            })
+            .catch((e: unknown) => {
+              setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+            });
         }}
       >
         {children}

@@ -103,7 +103,7 @@ export function RuleAutofillHint({ outcome }: { outcome: RuleOutcome | null }) {
   return (
     <p className="text-xs text-blue-200/80" data-testid="rule-autofill-hint">
       {byRule ? "Filled in by your rules." : "Category from a past entry with this title."}{" "}
-      <Link href="/settings#rules" className="underline underline-offset-2 hover:text-blue-100">
+      <Link href="/settings/rules" className="underline underline-offset-2 hover:text-blue-100">
         Manage rules
       </Link>
     </p>

@@ -47,7 +47,7 @@ test("connecting a bank records the item, maps accounts, refuses a currency mism
   // token — so the account needs one before the button does anything.
   await enrolFirstPasskey(page, PASSWORD);
 
-  await openSettingsTab(page, "accounts");
+  await openSettingsTab(page, "banks");
   const panel = page.getByRole("region", { name: "Connected banks" });
   await expect(panel).toBeVisible();
 
@@ -116,7 +116,7 @@ test("connecting a bank records the item, maps accounts, refuses a currency mism
 
   // --- unlinking revokes at Plaid and clears local rows ---
   await page.reload();
-  await openSettingsTab(page, "accounts");
+  await openSettingsTab(page, "banks");
   const panelAfter = page.getByRole("region", { name: "Connected banks" });
   await panelAfter.getByRole("button", { name: "Disconnect" }).click();
   await panelAfter.getByRole("button", { name: "Yes, disconnect" }).click();

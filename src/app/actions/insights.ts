@@ -112,5 +112,5 @@ export const trackHabitSeparatelyAction = formAction(async (formData: FormData) 
     });
   });
   revalidateInsights();
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 });

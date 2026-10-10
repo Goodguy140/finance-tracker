@@ -32,7 +32,7 @@ test.describe("passkey MFA", () => {
 
     await page.getByRole("button", { name: "Use passkey" }).click();
     await page.waitForURL(/\/settings/);
-    await expect(page.getByRole("tabpanel", { name: "Profile" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "You" })).toBeVisible();
     expect((await page.request.get("/api/backup/export/me")).status()).toBe(200);
   });
 
@@ -73,8 +73,9 @@ test.describe("passkey MFA", () => {
     // Recovery counts as step-up for a few minutes: the lost passkey can be removed.
     await openSettingsTab(page, "security");
     await expect(page.getByText("7 unused codes remaining.")).toBeVisible();
-    page.once("dialog", (d) => d.accept());
     await page.getByRole("button", { name: "Remove" }).click();
+    // Confirmed in the page's own dialog, not the browser's.
+    await page.getByRole("dialog", { name: /Remove passkey/ }).getByRole("button", { name: "Remove passkey" }).click();
     await expect(page.getByText("No passkeys yet.")).toBeVisible();
 
     // The used code is spent.

@@ -98,7 +98,7 @@ test("syncing stages transactions for review, links exact matches, and only a re
   await enrolFirstPasskey(page, PASSWORD);
 
   // --- connect and map ---
-  await openSettingsTab(page, "accounts");
+  await openSettingsTab(page, "banks");
   const panel = page.getByRole("region", { name: "Connected banks" });
   await panel.getByLabel("How far back to fetch").selectOption("90");
   await panel.getByRole("button", { name: "Connect a bank" }).click();
@@ -118,7 +118,7 @@ test("syncing stages transactions for review, links exact matches, and only a re
 
   // --- sync ---
   await page.reload();
-  await openSettingsTab(page, "accounts");
+  await openSettingsTab(page, "banks");
   await page.getByRole("region", { name: "Connected banks" }).getByRole("button", { name: "Sync now" }).click();
 
   // Polled on the auto-link, the last thing the sync writes. Matching runs after the whole
@@ -260,7 +260,7 @@ test("syncing stages transactions for review, links exact matches, and only a re
   expect(added.verification?.source).toBe("IMPORTED");
 
   // --- a second sync is a no-op: nothing is re-proposed ---
-  await openSettingsTab(page, "accounts");
+  await openSettingsTab(page, "banks");
   await page.getByRole("region", { name: "Connected banks" }).getByRole("button", { name: "Sync now" }).click();
   await page.waitForTimeout(2_000);
   expect(

@@ -161,11 +161,11 @@ function HabitActions({ insight, options }: { insight: InsightItemView; options:
     return (
       <p className="text-xs text-slate-400">
         Tracked in <span className="font-medium text-slate-200">{categoryName}</span>.{" "}
-        <Link href="/settings#budgets" className="text-blue-300 underline underline-offset-4">
+        <Link href="/settings/categories" className="text-blue-300 underline underline-offset-4">
           Set a budget
         </Link>{" "}
         ·{" "}
-        <Link href="/settings#rules" className="text-blue-300 underline underline-offset-4">
+        <Link href="/settings/rules" className="text-blue-300 underline underline-offset-4">
           Apply rules to past purchases
         </Link>
       </p>

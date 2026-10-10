@@ -89,7 +89,7 @@ function InstallCard({ children }: { children: React.ReactNode }) {
   return (
     <section
       data-testid="install-app-card"
-      className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/40 p-4 sm:p-5"
+      className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/50 p-4 sm:p-5"
     >
       <h3 className="flex items-center gap-2 text-base font-semibold text-slate-100">
         <Smartphone className="size-4 text-blue-300" aria-hidden />

@@ -29,7 +29,7 @@ const ALREADY_LOGGED_MATCH_WINDOW_DAYS = 15;
 
 function revalidateSubscriptionViews() {
   revalidatePath("/");
-  revalidatePath("/settings");
+  revalidatePath("/settings", "layout");
 }
 
 async function getOwnedRecurringRule(userId: string, recurringTransactionId: string) {

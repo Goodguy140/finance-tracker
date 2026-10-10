@@ -89,7 +89,7 @@ export async function linkOAuthUser(params: {
         targetType: "auth_account",
         metadata: { provider },
       });
-      return absoluteRedirect(`/settings?linked=${encodeURIComponent(provider)}`);
+      return absoluteRedirect(`/settings/security?linked=${encodeURIComponent(provider)}`);
     }
   }
 

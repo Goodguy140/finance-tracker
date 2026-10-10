@@ -14,6 +14,8 @@ import { MetaChip } from "@/components/meta-chip";
 import { formatCurrency } from "@/lib/money";
 import { MOBILE_OVERLAY_ROOT_Z_CLASS } from "@/lib/mobile-z-index";
 import { RecurringRuleForm } from "@/components/recurring-rule-form";
+import { FormDialog } from "@/components/settings/dialog";
+import { Plus } from "lucide-react";
 import {
   inputClass,
   primaryBtnClass,
@@ -257,18 +259,43 @@ export function SubscriptionsPanel({
   defaultExpenseAccountId: string | null;
 }) {
   const [editing, setEditing] = useState<SubscriptionView | null>(null);
+  const [adding, setAdding] = useState(false);
   const canCreate = accounts.length > 0 && expenseCategories.length > 0;
 
   return (
     <div className="space-y-6">
-      <section className="space-y-4 rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/90 to-slate-950/80 p-4 shadow-lg sm:p-5">
-        <div className="border-b border-slate-800/90 pb-4">
-          <h3 className="text-base font-semibold text-slate-100">Add a subscription</h3>
-          <p className="mt-2 max-w-prose text-sm text-slate-400">
-            Subscriptions are recurring expenses. Add people below each one to split the cost and track who has paid.
+      <section className="space-y-3" aria-label="Your subscriptions">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="max-w-prose text-sm text-slate-400">
+            Add people to a subscription to split its cost and track who has paid. Post or skip each charge from the
+            dashboard.
           </p>
+          <button
+            type="button"
+            className={primaryBtnClass}
+            onClick={() => setAdding(true)}
+            disabled={!canCreate}
+            title={canCreate ? undefined : "Add an account and an expense category first."}
+          >
+            <Plus className="mr-1 h-4 w-4" aria-hidden />
+            New subscription
+          </button>
         </div>
-        {canCreate ? (
+        {subscriptions.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-700 px-4 py-6 text-center text-sm text-slate-500">
+            No subscriptions yet.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {subscriptions.map((subscription) => (
+              <SubscriptionCard key={subscription.id} subscription={subscription} onEdit={setEditing} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {adding ? (
+        <FormDialog title="New subscription" onClose={() => setAdding(false)} wide>
           <RecurringRuleForm
             accounts={accounts}
             expenseCategories={expenseCategories}
@@ -278,27 +305,11 @@ export function SubscriptionsPanel({
             namePlaceholder="e.g. Netflix, internet, gym"
             dateLabel="Next charge date"
             submitLabel="Add subscription"
+            onSuccess={() => setAdding(false)}
+            onCancel={() => setAdding(false)}
           />
-        ) : (
-          <p className="text-sm text-slate-400">
-            Add at least one account and one expense category first (in Import &amp; accounts and Budgets) before creating a
-            subscription.
-          </p>
-        )}
-      </section>
-
-      <section className="space-y-3">
-        <h3 className="text-base font-semibold text-slate-100">Your subscriptions</h3>
-        {subscriptions.length === 0 ? (
-          <p className="text-sm text-slate-400">No subscriptions yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {subscriptions.map((subscription) => (
-              <SubscriptionCard key={subscription.id} subscription={subscription} onEdit={setEditing} />
-            ))}
-          </div>
-        )}
-      </section>
+        </FormDialog>
+      ) : null}
 
       {editing ? (
         <div className={`fixed inset-0 ${MOBILE_OVERLAY_ROOT_Z_CLASS} flex items-center justify-center bg-black/60 p-3`}>

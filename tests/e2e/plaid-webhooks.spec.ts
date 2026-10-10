@@ -68,7 +68,7 @@ test("Plaid item webhooks raise prompts, and update mode or LOGIN_REPAIRED clear
   await expectDashboardHome(page);
   await enrolFirstPasskey(page, PASSWORD);
 
-  await openSettingsTab(page, "accounts");
+  await openSettingsTab(page, "banks");
   let panel = page.getByRole("region", { name: "Connected banks" });
   await panel.getByRole("button", { name: "Connect a bank" }).click();
   await expect(panel.getByText(/Connected to Test Credit Union/i)).toBeVisible({ timeout: 15_000 });
@@ -157,7 +157,7 @@ test("Consent revoked at Plaid deletes what was synced under it, and keeps the u
   await expectDashboardHome(page);
   await enrolFirstPasskey(page, PASSWORD);
 
-  await openSettingsTab(page, "accounts");
+  await openSettingsTab(page, "banks");
   const panel = page.getByRole("region", { name: "Connected banks" });
   await panel.getByRole("button", { name: "Connect a bank" }).click();
   await expect(panel.getByText(/Connected to Test Credit Union/i)).toBeVisible({ timeout: 15_000 });
