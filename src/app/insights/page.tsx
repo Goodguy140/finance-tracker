@@ -3,6 +3,7 @@ import Link from "next/link";
 import { setHabitDetectionAction } from "@/app/actions";
 import { TagFilterSelect } from "@/components/expense-log";
 import { FinancialScoreCard } from "@/components/financial-score-card";
+import { SavingsGoalsCard } from "@/components/savings-goals-card";
 import { InsightItem, type InsightFormOptions, type InsightItemView } from "@/components/insights/insight-item";
 import { ServerActionForm } from "@/components/server-action-form";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
@@ -12,6 +13,7 @@ import type { InsightSection } from "@/lib/insights/types";
 import { insightViews } from "@/lib/insights/view";
 import { formatCurrency } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
+import { loadSavingsGoals } from "@/lib/savings-goals-data";
 import { requireUser } from "@/lib/session";
 import { resolveTagFilter } from "@/lib/tags";
 import { listTags } from "@/lib/tags-server";
@@ -58,11 +60,12 @@ export default async function InsightsPage({ searchParams }: { searchParams: Sea
   // `?tag=`, as on the dashboard and Reports: every insight is worked out from tagged rows only.
   const tagFilter = resolveTagFilter(sp.tag, tags);
   const tagQuery = tagFilter ? `?tag=${encodeURIComponent(tagFilter.id)}` : "";
-  const [loaded, accounts, categories, financial] = await Promise.all([
+  const [loaded, accounts, categories, financial, savingsGoals] = await Promise.all([
     loadInsights(user.id, user.countryCode, tagFilter?.id ?? null),
     prisma.account.findMany({ where: { userId: user.id, archived: false }, orderBy: { createdAt: "asc" } }),
     prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true } }),
     loadFinancialScore(user),
+    loadSavingsGoals(user),
   ]);
   const { visible, dismissed } = insightViews(loaded);
   const options: InsightFormOptions = {
@@ -102,6 +105,8 @@ export default async function InsightsPage({ searchParams }: { searchParams: Sea
       </div>
 
       <FinancialScoreCard score={financial.score} note={tags.length ? "It doesn't change with the tag below" : undefined} />
+
+      <SavingsGoalsCard goals={savingsGoals.goals} />
 
       {tags.length ? (
         <div className="flex flex-wrap items-center justify-between gap-2">

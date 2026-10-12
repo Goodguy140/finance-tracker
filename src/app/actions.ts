@@ -50,6 +50,12 @@ export {
 export type { RulePreviewResult, RuleApplyResult } from "./actions/transaction-rules";
 export { renameTagAction, deleteTagAction } from "./actions/tags";
 export {
+  createSavingsGoalAction,
+  updateSavingsGoalAction,
+  deleteSavingsGoalAction,
+  contributeToSavingsGoalAction,
+} from "./actions/savings-goals";
+export {
   createCategoryAction,
   renameCategoryAction,
   mergeCategoryAction,
