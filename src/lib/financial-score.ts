@@ -1,3 +1,4 @@
+import { AccountType } from "@prisma/client";
 import { shiftYm } from "@/lib/dashboard-period";
 import { ymOf } from "@/lib/insights/util";
 import type { ReportTx } from "@/lib/reports";
@@ -15,8 +16,9 @@ import type { ReportTx } from "@/lib/reports";
  * A factor with nothing to go on (no budgets set, no earlier months to compare) is left out
  * and the others are reweighted, rather than scored as zero.
  *
- * Account balances are not tracked, so nothing here can speak to savings on hand, debt or
- * an emergency fund.
+ * The emergency fund is the latest balance of the accounts money could be drawn from at short
+ * notice (`isEmergencyFundAccount`), measured in months of average spending. Debt is not
+ * part of the score.
  *
  * When any account counts as savings, the savings rate is what moved into those accounts by
  * transfer as a share of income (`savings-transfers.ts`), not income less spending.
@@ -28,7 +30,10 @@ const TREND_HALF = 3;
 /** Budget adherence looks at this many of the latest full months. */
 const BUDGET_MONTHS = 3;
 
-export type FinancialScoreFactorId = "savings" | "bills" | "budgets" | "trend" | "consistency";
+/** Months of average spending the emergency fund aims to cover. */
+export const EMERGENCY_FUND_TARGET_MONTHS = 3;
+
+export type FinancialScoreFactorId = "savings" | "emergency" | "bills" | "budgets" | "trend" | "consistency";
 
 export type FinancialScoreFactor = {
   id: FinancialScoreFactorId;
@@ -87,10 +92,54 @@ export type FinancialScoreInput = {
    * savings, and the savings rate is then income less spending.
    */
   toSavingsByMonth?: ReadonlyMap<string, number> | null;
+  /**
+   * Latest total balance of the emergency-fund accounts (`emergencyFundCents`); null when none
+   * of them has a balance yet, and the factor is then left out.
+   */
+  emergencyFundCents?: number | null;
 };
+
+/** Never part of the emergency fund: retirement savings, things owned, and what is owed. */
+const NOT_EMERGENCY_FUND: ReadonlySet<string> = new Set<AccountType>([
+  AccountType.RRSP,
+  AccountType.PROPERTY,
+  AccountType.CREDIT_CARD,
+  AccountType.LOAN,
+]);
+/** Always part of it: money that is already spendable. */
+const EMERGENCY_FUND_TYPES: ReadonlySet<string> = new Set<AccountType>([AccountType.CHEQUING, AccountType.SAVINGS, AccountType.CASH]);
+
+/**
+ * Whether an account's balance counts toward the emergency fund: chequing, savings and cash,
+ * plus any other account marked "Counts as savings" (a TFSA kept as a cushion, say) except
+ * an RRSP, which cannot be drawn on without tax.
+ */
+export function isEmergencyFundAccount(account: { type: AccountType | string; countsAsSavings: boolean }): boolean {
+  if (NOT_EMERGENCY_FUND.has(account.type)) return false;
+  return EMERGENCY_FUND_TYPES.has(account.type) || account.countsAsSavings;
+}
+
+/**
+ * The emergency fund's total from each account's latest balance, or null when no
+ * emergency-fund account has one. Archived accounts and those in another currency than the
+ * score's are left out, as net worth leaves them out.
+ */
+export function emergencyFundCents(
+  accounts: ReadonlyArray<{ type: AccountType | string; countsAsSavings: boolean; archived: boolean; currency: string; latestCents: number | null }>,
+  currency: string,
+): number | null {
+  let total: number | null = null;
+  for (const a of accounts) {
+    if (a.archived || a.latestCents === null || a.currency.toUpperCase() !== currency.toUpperCase()) continue;
+    if (!isEmergencyFundAccount(a)) continue;
+    total = (total ?? 0) + a.latestCents;
+  }
+  return total;
+}
 
 const BASE_WEIGHTS: Record<FinancialScoreFactorId, number> = {
   savings: 35,
+  emergency: 20,
   bills: 20,
   budgets: 20,
   trend: 15,
@@ -227,6 +276,37 @@ export function computeFinancialScore(input: FinancialScoreInput): FinancialScor
           : `Spending about ${fmt(toTwenty)} less a month would bring your savings rate to 20%.`
         : null,
   });
+
+  // Emergency fund: what chequing and savings hold, in months of average spending.
+  const fund = input.emergencyFundCents ?? null;
+  const avgSpending = totalSpending / months.length;
+  if (fund === null) left.push({ label: "Emergency fund", reason: "no chequing or savings balances yet" });
+  else {
+    const covered = avgSpending > 0 ? fund / avgSpending : fund > 0 ? Infinity : 0;
+    const shortfall = Math.ceil(EMERGENCY_FUND_TARGET_MONTHS * avgSpending - fund);
+    const monthsText = (n: number) => `${n.toFixed(1)} month${n.toFixed(1) === "1.0" ? "" : "s"}`;
+    factors.push({
+      id: "emergency",
+      label: "Emergency fund",
+      score: piecewise(covered, [
+        [0, 0],
+        [1, 40],
+        [2, 70],
+        [EMERGENCY_FUND_TARGET_MONTHS, 90],
+        [6, 100],
+      ]),
+      detail:
+        fund < 0
+          ? "Chequing and savings are overdrawn"
+          : avgSpending > 0
+            ? `${monthsText(covered)} of spending in chequing and savings`
+            : "No spending to measure it against",
+      suggestion:
+        shortfall > 0
+          ? `${fund > 0 ? `Chequing and savings cover ${monthsText(covered)} of spending.` : "Chequing and savings hold nothing to fall back on."} Setting aside about ${fmt(shortfall)} would build a ${EMERGENCY_FUND_TARGET_MONTHS}-month emergency fund.`
+          : null,
+    });
+  }
 
   // Fixed bills: recurring expenses on a monthly footing, as a share of average income.
   const bills = monthlyRecurringCents(input.recurring, "EXPENSE", input.todayYmd);
