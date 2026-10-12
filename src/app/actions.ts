@@ -81,6 +81,7 @@ export {
   deleteFinancialAccountAction,
   setFinancialAccountArchivedAction,
   setAccountBalanceAction,
+  deleteAccountBalanceAction,
 } from "./actions/accounts";
 export { clearUserFinancialDataAction, importUserBackupAction } from "./actions/backup";
 export {
