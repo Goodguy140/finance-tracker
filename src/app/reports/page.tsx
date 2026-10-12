@@ -2,9 +2,11 @@ import Link from "next/link";
 import { TagFilterSelect } from "@/components/expense-log";
 import { FinancialScoreCard } from "@/components/financial-score-card";
 import { CashFlowSankey, IncomeSpendingChart, NetWorthChart } from "@/components/reports/report-charts";
-import { loadNetWorth } from "@/lib/net-worth-data";
+import { loadNetWorth, loadProjectionRules } from "@/lib/net-worth-data";
+import { PROJECTION_DAYS, projectBalances, type ProjectedBalances } from "@/lib/projected-balances";
 import { getCountryConfig } from "@/lib/country-config";
 import { loadFinancialScore } from "@/lib/financial-score-data";
+import { ymdFromDateUtc } from "@/lib/date-only";
 import { formatCurrency } from "@/lib/money";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import {
@@ -59,14 +61,21 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   const currency = getCountryConfig(user.countryCode).defaultCurrency;
   const fmt = (cents: number) => formatCurrency(cents, currency);
 
-  const [loaded, savings, activityYears, tags, financial, netWorth] = await Promise.all([
+  const [loaded, savings, activityYears, tags, financial, netWorth, projectionRules] = await Promise.all([
     loadReportTxs(user.id, previousYearWindow(period).start, currency),
     loadSavingsTransfers(user.id, period.start, currency),
     loadActivityBounds(user.id),
     listTags(prisma, user.id),
     loadFinancialScore(user),
     loadNetWorth(user),
+    loadProjectionRules(user.id),
   ]);
+  const projection = projectBalances({
+    accounts: netWorth.accounts,
+    rules: projectionRules,
+    todayYmd,
+    currentYm: todayYmd.slice(0, 7),
+  });
   // `?tag=`, as on the dashboard: every view on this page narrows to rows carrying the tag.
   const tagFilter = resolveTagFilter(sp.tag, tags);
   // Entries on accounts in another currency are in none of the figures below; say what they come to.
@@ -132,6 +141,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
       <FinancialScoreCard score={financial.score} note="It doesn't change with the period or tag below" />
 
       <NetWorthSection netWorth={netWorth} fmt={fmt} />
+
+      {projection.accounts.length > 0 ? <ProjectedBalancesSection projection={projection} todayYmd={todayYmd} fmt={fmt} /> : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <nav aria-label="Report period" className="flex flex-wrap gap-2">
@@ -388,6 +399,113 @@ function NetWorthSection({ netWorth, fmt }: { netWorth: Awaited<ReturnType<typeo
           </details>
         </>
       )}
+    </section>
+  );
+}
+
+/** "Oct 15", or "Oct 15, 2025" when it is not this year. */
+function shortDate(date: Date, todayYmd: string): string {
+  const sameYear = String(date.getUTCFullYear()) === todayYmd.slice(0, 4);
+  return date.toLocaleDateString(undefined, { timeZone: "UTC", month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
+}
+
+function ProjectedBalancesSection({
+  projection,
+  todayYmd,
+  fmt,
+}: {
+  projection: ProjectedBalances;
+  todayYmd: string;
+  fmt: (cents: number) => string;
+}) {
+  const columns = ["Today", ...PROJECTION_DAYS.map((days) => `${days} days`)];
+  const signed = (cents: number, liability: boolean) => (liability && cents !== 0 ? `−${fmt(cents)}` : fmt(cents));
+  const monthStartYmd = `${todayYmd.slice(0, 7)}-01`;
+  const dips = projection.accounts.filter((a) => a.belowZero);
+  return (
+    <section aria-labelledby="report-projected-balances" className={card} data-testid="report-projected-balances">
+      <h2 id="report-projected-balances" className="text-lg font-semibold">
+        Projected balances
+      </h2>
+      <p className="mb-3 mt-0.5 text-sm text-slate-400">
+        Your latest balances with the upcoming recurring bills and income applied to the account each one books to.
+        Transfers between your accounts don&apos;t change the total and are left out.
+      </p>
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3" data-testid="projected-net-worth">
+        {columns.map((label, i) => {
+          const cents = projection.netCents[i];
+          const change = i === 0 ? null : cents - projection.netCents[0];
+          return (
+            <div key={label} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+              <p className="text-xs text-slate-400">{i === 0 ? "Net worth today" : `In ${label}`}</p>
+              <p className="mt-0.5 truncate text-base font-semibold tabular-nums sm:text-lg">{fmt(cents)}</p>
+              {change !== null ? (
+                <p className={`text-xs tabular-nums ${change >= 0 ? "text-emerald-300" : "text-amber-300"}`}>
+                  {change >= 0 ? "+" : "−"}
+                  {fmt(Math.abs(change))}
+                </p>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      {dips.length > 0 ? (
+        <ul className="mb-3 space-y-1 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200" data-testid="projected-below-zero">
+          {dips.map((a) => (
+            <li key={a.accountId}>
+              {a.name} goes below zero on {shortDate(a.belowZero!.date, todayYmd)} and reaches {fmt(a.belowZero!.lowestCents)}.
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <details className="text-sm">
+        <summary className="cursor-pointer select-none text-slate-400">By account</summary>
+        <div className="-mx-1 mt-2 overflow-x-auto">
+          <table className="w-full text-right text-xs tabular-nums sm:text-sm" data-testid="projected-accounts">
+            <thead className="text-xs text-slate-500">
+              <tr>
+                <th scope="col" className="px-1 py-1 text-left font-normal">
+                  Account
+                </th>
+                {columns.map((label) => (
+                  <th key={label} scope="col" className="px-1 py-1 font-normal">
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800">
+              {projection.accounts.map((a) => {
+                const asOfYmd = ymdFromDateUtc(a.asOf);
+                return (
+                  <tr key={a.accountId}>
+                    <th scope="row" className="px-1 py-1.5 text-left font-normal text-slate-300">
+                      {a.name}
+                      {asOfYmd < monthStartYmd ? (
+                        <span className="block text-xs text-slate-500">balance from {shortDate(a.asOf, todayYmd)}</span>
+                      ) : null}
+                    </th>
+                    {[a.currentCents, ...a.projectedCents].map((cents, i) => (
+                      <td
+                        key={columns[i]}
+                        className={`px-1 py-1.5 ${a.liability ? "text-amber-300" : cents < 0 ? "text-red-300" : "text-slate-200"}`}
+                      >
+                        {signed(cents, a.liability)}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {projection.rulesLeftOut > 0 ? (
+          <p className="mt-2 text-xs text-slate-500">
+            {projection.rulesLeftOut} recurring rule{projection.rulesLeftOut === 1 ? " is" : "s are"} on an account with no
+            balance or in another currency and {projection.rulesLeftOut === 1 ? "is" : "are"} left out.
+          </p>
+        ) : null}
+      </details>
     </section>
   );
 }
