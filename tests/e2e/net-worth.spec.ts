@@ -15,7 +15,7 @@ function midMonthsAgo(monthsBack: number) {
 
 const SCREENSHOT_DIR = process.env.E2E_SCREENSHOT_DIR;
 
-test("net worth charts balances less what is owed, and a balance can be entered by hand", async ({ page }, testInfo) => {
+test("net worth charts balances less what is owed, and a balance can be entered by hand and deleted", async ({ page }, testInfo) => {
   const email = `e2e-net-worth-${uniqueStamp()}@example.com`;
   const password = "e2e-password-123";
   const user = await prisma.user.create({
@@ -86,4 +86,27 @@ test("net worth charts balances less what is owed, and a balance can be entered 
     await section.getByText("By account").click();
     await section.screenshot({ path: `${SCREENSHOT_DIR}/reports-${testInfo.project.name}.png` });
   }
+
+  // A balance entered by hand can be deleted again, after an in-page confirm.
+  await page.goto("/settings/accounts");
+  await accounts.getByRole("button", { name: "Edit Mortgage" }).click();
+  const entries = dialog.getByTestId("manual-balances");
+  await expect(entries.getByRole("listitem")).toHaveCount(1);
+  await entries.getByRole("button", { name: /^Delete balance from / }).click();
+  const confirm = page.getByRole("dialog", { name: "Delete this balance?" });
+  await expect(confirm).toContainText("$300,000.00");
+  if (SCREENSHOT_DIR) {
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/delete-balance-${testInfo.project.name}.png` });
+  }
+  await confirm.getByRole("button", { name: "Delete balance" }).click();
+  await expect.poll(() => prisma.accountBalanceSnapshot.count({ where: { accountId: mortgage.id } })).toBe(0);
+  await expect(entries).toBeHidden();
+  // Bank-synced balances are not listed, so they cannot be deleted.
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await accounts.getByRole("button", { name: "Edit Main Chequing" }).click();
+  await expect(page.getByRole("dialog").getByTestId("account-balance")).toBeVisible();
+  await expect(page.getByTestId("manual-balances")).toHaveCount(0);
+
+  await page.goto("/reports");
+  await expect(section).toContainText("$24,200.00");
 });

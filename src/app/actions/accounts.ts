@@ -240,3 +240,18 @@ export const setAccountBalanceAction = formAction(async (formData: FormData) => 
   revalidatePath("/reports");
   revalidatePath("/settings", "layout");
 });
+
+/**
+ * Removes a balance the user entered by hand. Only manual entries go: a bank's balance is
+ * recorded again on the next sync, so deleting one would only hide it until then.
+ */
+export const deleteAccountBalanceAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const id = getFormValue(formData, "id");
+  const { count } = await prisma.accountBalanceSnapshot.deleteMany({
+    where: { id, userId: user.id, source: BALANCE_SOURCE.manual },
+  });
+  if (count === 0) throw new Error("That balance entry was not found.");
+  revalidatePath("/reports");
+  revalidatePath("/settings", "layout");
+});
