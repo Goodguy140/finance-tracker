@@ -3,6 +3,7 @@ import { ContributionRoomPanel } from "@/components/contribution-room-panel";
 import { AccountsManager, type ManagedAccount } from "@/components/settings/accounts-manager";
 import { SettingsPage } from "@/components/settings/ui";
 import { loadContributionRoomData } from "@/lib/contribution-room-data";
+import { BALANCE_SOURCE } from "@/lib/account-balances";
 import { ymdFromDateUtc } from "@/lib/date-only";
 import { loadNetWorth } from "@/lib/net-worth-data";
 import { currentYmdInTimeZone } from "@/lib/period-month";
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AccountsSettingsPage() {
   const { user } = await requireLoadedUser();
-  const [accounts, plaidAccounts, contributionRoom, netWorth] = await Promise.all([
+  const [accounts, plaidAccounts, contributionRoom, netWorth, manualBalances] = await Promise.all([
     prisma.account.findMany({ where: { userId: user.id }, orderBy: { name: "asc" } }),
     prisma.plaidAccount.findMany({
       where: { userId: user.id, syncEnabled: true, accountId: { not: null } },
@@ -21,6 +22,11 @@ export default async function AccountsSettingsPage() {
     }),
     loadContributionRoomData(user.id),
     loadNetWorth(user),
+    prisma.accountBalanceSnapshot.findMany({
+      where: { userId: user.id, source: BALANCE_SOURCE.manual },
+      orderBy: { date: "desc" },
+      select: { id: true, accountId: true, date: true, balanceCents: true },
+    }),
   ]);
 
   const bankByAccount = new Map<string, string>();
@@ -30,6 +36,12 @@ export default async function AccountsSettingsPage() {
     }
   }
   const balanceByAccount = new Map(netWorth.accounts.map((row) => [row.accountId, row]));
+  const manualByAccount = new Map<string, ManagedAccount["manualBalances"]>();
+  for (const entry of manualBalances) {
+    const list = manualByAccount.get(entry.accountId) ?? [];
+    list.push({ id: entry.id, cents: entry.balanceCents, dateYmd: ymdFromDateUtc(entry.date) });
+    manualByAccount.set(entry.accountId, list);
+  }
   const managed: ManagedAccount[] = accounts.map((account) => {
     const balance = balanceByAccount.get(account.id);
     return {
@@ -44,6 +56,7 @@ export default async function AccountsSettingsPage() {
       latest: balance?.latest
         ? { cents: balance.latest.cents, dateYmd: ymdFromDateUtc(balance.latest.date), source: balance.latest.source }
         : null,
+      manualBalances: manualByAccount.get(account.id) ?? [],
     };
   });
 
