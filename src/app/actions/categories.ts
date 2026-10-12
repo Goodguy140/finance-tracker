@@ -212,7 +212,11 @@ export const setCategoryBudgetAction = formAction(async (formData: FormData) => 
   const category = await findManagedCategory(prisma, user.id, getFormValue(formData, "categoryId"));
   if (category.kind !== CategoryKind.EXPENSE) throw new Error("Budgets apply to expense categories only.");
   if (getFormValue(formData, "intent") === "remove") {
-    await prisma.budget.deleteMany({ where: { userId: user.id, categoryId: category.id } });
+    // Rollover goes with the budget: one added later starts with nothing carried.
+    await prisma.$transaction([
+      prisma.budget.deleteMany({ where: { userId: user.id, categoryId: category.id } }),
+      prisma.category.update({ where: { id: category.id }, data: { rolloverSinceMonth: null } }),
+    ]);
   } else {
     const limitCents = parseLimit(getFormValue(formData, "limit").trim());
     const periodMonth = currentYmInTimeZone(user.timezone);
@@ -221,6 +225,33 @@ export const setCategoryBudgetAction = formAction(async (formData: FormData) => 
       update: { limitCents },
       create: { userId: user.id, categoryId: category.id, periodMonth, limitCents },
     });
+  }
+  revalidatePath("/");
+  revalidatePath("/settings", "layout");
+});
+
+/**
+ * Turns budget rollover on or off for an expense category (`enabled=true|false`).
+ *
+ * On, it counts from the current month: this month's leftover (or overspend) is the first to
+ * carry into the next. Turning it on again while on keeps the original month, so a double
+ * submit does not throw away what has built up. Off forgets it; turned on again later, it
+ * starts afresh from that month.
+ */
+export const setCategoryRolloverAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const category = await findManagedCategory(prisma, user.id, getFormValue(formData, "categoryId"));
+  if (category.kind !== CategoryKind.EXPENSE) throw new Error("Budgets apply to expense categories only.");
+  const enabled = getFormValue(formData, "enabled") === "true";
+  if (enabled) {
+    const hasBudget = await prisma.budget.count({ where: { userId: user.id, categoryId: category.id } });
+    if (hasBudget === 0) throw new Error("Set a monthly budget before turning on rollover.");
+    await prisma.category.updateMany({
+      where: { id: category.id, rolloverSinceMonth: null },
+      data: { rolloverSinceMonth: currentYmInTimeZone(user.timezone) },
+    });
+  } else {
+    await prisma.category.update({ where: { id: category.id }, data: { rolloverSinceMonth: null } });
   }
   revalidatePath("/");
   revalidatePath("/settings", "layout");

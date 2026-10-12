@@ -6,7 +6,7 @@ Self-hosted personal finance app. Next.js, SQLite and Prisma, shipped as a singl
 
 - **Expense and income log** with categories, month / year-to-date / lifetime views, and CSV import
 - **Categories** you can add, rename, merge and delete, each with its own monthly budget
-- **Budgets** per category, with optional email alerts as a month approaches its limit
+- **Budgets** per category, with optional rollover of what is left (or overspent) into the next month and email alerts as a month approaches its limit
 - **Recurring rules** for bills and salary, posted by hand or automatically
 - **Upcoming bills** forecast for the next 30, 60 or 90 days
 - **Transfers** between accounts, kept out of income and spending

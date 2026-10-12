@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { loadRolloverCarries } from "@/lib/budget-rollover";
 import { getCountryConfig } from "@/lib/country-config";
 import { shiftYm, startOfMonthYm } from "@/lib/dashboard-period";
 import { computeFinancialScore, SCORE_LOOKBACK_MONTHS, type FinancialScore } from "@/lib/financial-score";
@@ -38,9 +39,14 @@ export async function loadFinancialScore(user: {
       select: { name: true, type: true, amountCents: true, cadence: true, enabled: true, endDate: true },
     }),
   ]);
+  const scoreBudgets = budgets.map((b) => ({ categoryId: b.categoryId, categoryName: b.category.name, periodMonth: b.periodMonth, limitCents: b.limitCents }));
+  // Rollover carries into the full months the score looks back over.
+  const scoredMonths = Array.from({ length: SCORE_LOOKBACK_MONTHS }, (_, i) => shiftYm(todayYmd.slice(0, 7), -(i + 1)));
+  const rolloverCarries = await loadRolloverCarries(prisma, user.id, currency, scoredMonths, scoreBudgets);
   const score = computeFinancialScore({
     txs,
-    budgets: budgets.map((b) => ({ categoryId: b.categoryId, categoryName: b.category.name, periodMonth: b.periodMonth, limitCents: b.limitCents })),
+    budgets: scoreBudgets,
+    rolloverCarries,
     recurring,
     todayYmd,
     formatCents: (cents) => formatCurrency(cents, currency),

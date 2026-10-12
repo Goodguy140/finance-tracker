@@ -87,6 +87,11 @@ export type FinancialScoreInput = {
    * savings, and the savings rate is then income less spending.
    */
   toSavingsByMonth?: ReadonlyMap<string, number> | null;
+  /**
+   * Budget rollover carried into a month, per `YYYY-MM|categoryId` (`loadRolloverCarries`). A
+   * month's budget is kept when spend stays within its limit plus this carry.
+   */
+  rolloverCarries?: ReadonlyMap<string, number>;
 };
 
 const BASE_WEIGHTS: Record<FinancialScoreFactorId, number> = {
@@ -264,10 +269,11 @@ export function computeFinancialScore(input: FinancialScoreInput): FinancialScor
     }
     for (const budget of active.values()) {
       const spent = spendByMonthCategory.get(`${ym}|${budget.categoryId}`) ?? 0;
+      const limit = budget.limitCents + (input.rolloverCarries?.get(`${ym}|${budget.categoryId}`) ?? 0);
       checks++;
-      if (spent <= budget.limitCents) credit += 1;
+      if (spent <= limit) credit += 1;
       else {
-        if (spent <= budget.limitCents * 1.1) credit += 0.5;
+        if (limit > 0 && spent <= limit * 1.1) credit += 0.5;
         overByCategory.set(budget.categoryName, (overByCategory.get(budget.categoryName) ?? 0) + 1);
       }
     }

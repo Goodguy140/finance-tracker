@@ -90,6 +90,13 @@ async function createMinimalSchema(prisma: PrismaClient) {
       "addTagId" TEXT
     )
   `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "Category" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "rolloverSinceMonth" TEXT
+    )
+  `);
 }
 
 describe("migration-health", () => {

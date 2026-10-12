@@ -136,6 +136,21 @@ describe("computeFinancialScore", () => {
     expect(budgets.suggestion).toContain("Groceries went over budget in 2 of the last 3 months");
   });
 
+  it("judges a rollover month against its limit plus what was carried in", () => {
+    const txs = [...steadyMonths(500_000, 0), expense("2026-09-10", 60_000, "Groceries")];
+    const budgets = [{ categoryId: "cat-Groceries", categoryName: "Groceries", periodMonth: "2026-01", limitCents: 50_000 }];
+    expect(scored({ txs, budgets }).factors.find((f) => f.id === "budgets")!.detail).toBe(
+      "2 of 3 monthly budgets kept in the last 3 months",
+    );
+    // August left 500 unspent; September's 600 is within 500 + 500.
+    const rolloverCarries = new Map([["2026-09|cat-Groceries", 50_000]]);
+    expect(scored({ txs, budgets, rolloverCarries }).factors.find((f) => f.id === "budgets")!.score).toBe(100);
+    // An overspend paid back from a limit at or below zero gets no part credit.
+    const owing = new Map([["2026-09|cat-Groceries", -50_000]]);
+    expect(scored({ txs: [...txs.slice(0, -1), expense("2026-09-10", 1, "Groceries")], budgets, rolloverCarries: owing })
+      .factors.find((f) => f.id === "budgets")!.detail).toBe("2 of 3 monthly budgets kept in the last 3 months");
+  });
+
   it("uses the budget in force each month", () => {
     const txs = [...steadyMonths(500_000, 0), expense("2026-09-10", 60_000, "Groceries")];
     const result = scored({

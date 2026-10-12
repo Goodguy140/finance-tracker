@@ -55,6 +55,8 @@ export type UserBackupPayload = {
     name: string;
     kind: "EXPENSE" | "INCOME" | "TRANSFER";
     isDefault: boolean;
+    /** Budget rollover's first month (`YYYY-MM`), or null when it is off. */
+    rolloverSinceMonth: string | null;
     createdAt: IsoString;
     updatedAt: IsoString;
   }>;
@@ -338,6 +340,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       name: row.name,
       kind: row.kind,
       isDefault: row.isDefault,
+      rolloverSinceMonth: row.rolloverSinceMonth,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     })),
