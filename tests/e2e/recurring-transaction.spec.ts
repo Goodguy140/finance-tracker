@@ -117,9 +117,13 @@ test("an overdue rule from an earlier month can be posted for the current month"
   await expect(recurringPanel.getByText(name, { exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(recurringPanel.getByText("Unposted since")).toBeVisible();
 
-  // Upcoming bills lists it once, at this month's date, carried past the missed one.
+  // Upcoming bills lists it once this month, carried past the missed ones. Next month's
+  // occurrence also falls inside the 30-day window once this month's day has passed.
   const upcoming = page.getByRole("region", { name: "Upcoming bills" });
-  await expect(upcoming.getByText(name, { exact: true })).toHaveCount(1);
+  const listedIn = (ym: string) => upcoming.locator(`[data-forecast-day^="${ym}-"]`).getByText(name, { exact: true });
+  await expect(listedIn(currentYm)).toHaveCount(1);
+  await expect(listedIn(shiftYm(currentYm, -1))).toHaveCount(0);
+  await expect(listedIn(shiftYm(currentYm, -2))).toHaveCount(0);
   await expect(upcoming.getByText(/Unposted since/)).toBeVisible();
   await recurringPanel.getByRole("button", { name: "Post transaction" }).click();
 
