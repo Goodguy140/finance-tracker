@@ -3,6 +3,7 @@ import { getCountryConfig } from "@/lib/country-config";
 import { shiftYm } from "@/lib/dashboard-period";
 import { computeNetWorth, type BalanceReading, type BalanceReadingSource, type NetWorth, type NetWorthAccount } from "@/lib/net-worth";
 import { currentYmdInTimeZone } from "@/lib/period-month";
+import type { ProjectableRule } from "@/lib/projected-balances";
 
 /** Months the net-worth chart covers, ending with the current one. */
 export const NET_WORTH_MONTHS = 12;
@@ -56,4 +57,21 @@ export async function loadNetWorth(user: {
   const thisYm = todayYmd.slice(0, 7);
   const months = Array.from({ length: NET_WORTH_MONTHS }, (_, i) => shiftYm(thisYm, i - NET_WORTH_MONTHS + 1));
   return computeNetWorth({ accounts, readings, months, todayYmd, currency });
+}
+
+/** The recurring rules a balance projection applies; `projectBalances` picks the ones it can. */
+export async function loadProjectionRules(userId: string): Promise<ProjectableRule[]> {
+  return prisma.recurringTransaction.findMany({
+    where: { userId, enabled: true, type: { in: ["EXPENSE", "INCOME"] } },
+    select: {
+      accountId: true,
+      type: true,
+      amountCents: true,
+      cadence: true,
+      nextExpectedDate: true,
+      anchorDay: true,
+      endDate: true,
+      enabled: true,
+    },
+  });
 }
