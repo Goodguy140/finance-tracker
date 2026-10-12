@@ -46,6 +46,7 @@ export const clearUserFinancialDataAction = formAction(async (formData: FormData
     await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
     await tx.contributionRoom.deleteMany({ where: { userId: user.id } });
     await tx.portfolioSnapshot.deleteMany({ where: { userId: user.id } });
+    await tx.savingsGoal.deleteMany({ where: { userId: user.id } });
     // Plaid rows reference Transaction and Account, so they go before both. Staged rows and
     // items are dropped outright rather than kept: a bank connection is not financial
     // history, and leaving stale cursors behind would make a later re-link re-propose
@@ -119,6 +120,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
     await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
     await tx.contributionRoom.deleteMany({ where: { userId: user.id } });
     await tx.portfolioSnapshot.deleteMany({ where: { userId: user.id } });
+    await tx.savingsGoal.deleteMany({ where: { userId: user.id } });
     // Plaid rows reference Transaction and Account, so they go before both. Staged rows and
     // items are dropped outright rather than kept: a bank connection is not financial
     // history, and leaving stale cursors behind would make a later re-link re-propose
@@ -484,6 +486,24 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
           date: new Date(row.date),
           balanceCents: row.balanceCents,
           source: row.source,
+          createdAt: new Date(row.createdAt),
+        };
+      }),
+    });
+
+    await tx.savingsGoal.createMany({
+      data: (parsed.savingsGoals ?? []).map((row) => {
+        const mappedAccountId = row.accountId ? accountIdMap.get(row.accountId) : null;
+        if (row.accountId && !mappedAccountId) {
+          throw new Error("Backup references unknown savings goal account.");
+        }
+        return {
+          userId: user.id,
+          name: row.name,
+          targetCents: row.targetCents,
+          targetDate: row.targetDate ? new Date(row.targetDate) : null,
+          accountId: mappedAccountId ?? null,
+          savedCents: row.savedCents,
           createdAt: new Date(row.createdAt),
         };
       }),
