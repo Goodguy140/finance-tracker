@@ -87,7 +87,9 @@ async function createMinimalSchema(prisma: PrismaClient) {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE "TransactionRule" (
       "id" TEXT NOT NULL PRIMARY KEY,
-      "addTagId" TEXT
+      "addTagId" TEXT,
+      "markAsTransfer" BOOLEAN NOT NULL DEFAULT false,
+      "setTransferAccountId" TEXT
     )
   `);
 }

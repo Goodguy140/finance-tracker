@@ -1,10 +1,12 @@
 "use client";
 
 import { type ComponentProps, useEffect, useState } from "react";
-import { ExpenseForm, IncomeForm } from "@/components/forms";
+import { ExpenseForm, IncomeForm, TransferForm } from "@/components/forms";
 
 type Option = { id: string; name: string };
-type EntryKind = "expense" | "income";
+type EntryKind = "expense" | "income" | "transfer";
+const ENTRY_KINDS: EntryKind[] = ["expense", "income", "transfer"];
+const KIND_LABEL: Record<EntryKind, string> = { expense: "Expense", income: "Income", transfer: "Transfer" };
 
 /** Which side was used last, per browser. A convenience, not a setting, so it is not synced. */
 const KIND_STORAGE_KEY = "dashboard.add-card.kind";
@@ -13,6 +15,7 @@ const KIND_STORAGE_KEY = "dashboard.add-card.kind";
  * The Add card: logging an expense or an income from the same place. Income used to sit behind
  * the header's Add menu, a click and a tab away from the expense form beside it; the phone has
  * long had both side by side as its two quick-add buttons, and this is the desktop's version.
+ * Transfers sit beside them: money moved between the user's own accounts, counted as neither.
  */
 export function AddEntryCardBody({
   expense,
@@ -26,8 +29,9 @@ export function AddEntryCardBody({
   // Read after mount: the server renders the expense side, and storage can be unavailable.
   useEffect(() => {
     try {
+      const stored = window.localStorage.getItem(KIND_STORAGE_KEY);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- one-off restore after hydration
-      if (window.localStorage.getItem(KIND_STORAGE_KEY) === "income") setKind("income");
+      if (stored === "income" || stored === "transfer") setKind(stored);
     } catch {
       // Private windows and blocked storage just start on Expense.
     }
@@ -45,7 +49,7 @@ export function AddEntryCardBody({
   return (
     <>
       <div role="radiogroup" aria-label="What to add" className="mb-3 inline-flex rounded-lg border border-slate-700 bg-slate-950/60 p-0.5">
-        {(["expense", "income"] as const).map((option) => (
+        {ENTRY_KINDS.map((option) => (
           <button
             key={option}
             type="button"
@@ -56,14 +60,16 @@ export function AddEntryCardBody({
               kind === option ? "bg-blue-500 text-white" : "text-slate-300 hover:bg-slate-800"
             }`}
           >
-            {option === "expense" ? "Expense" : "Income"}
+            {KIND_LABEL[option]}
           </button>
         ))}
       </div>
       {kind === "expense" ? (
         <ExpenseForm {...expense} />
-      ) : (
+      ) : kind === "income" ? (
         <IncomeForm accounts={expense.accounts} incomeCategories={incomeCategories} />
+      ) : (
+        <TransferForm accounts={expense.accounts} />
       )}
     </>
   );

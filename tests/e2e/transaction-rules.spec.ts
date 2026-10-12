@@ -231,3 +231,90 @@ test("a rule added after a sync applies to the bank row already waiting in the q
   });
   expect(added.tags.map((t) => t.tag.name)).toEqual([tagName]);
 });
+
+test("a rule that marks transfers ticks “transfer” for a queued bank row and names the other account", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Desktop queue flow is covered by the chromium project");
+  const { user, stamp, accounts } = await createUserAndLogin(page, "queue-transfer");
+  const chequing = accounts[0];
+  const visa = await prisma.account.create({
+    data: { userId: user.id, name: `Visa ${stamp}`, type: "CREDIT_CARD" },
+  });
+
+  const item = await prisma.plaidItem.create({
+    data: {
+      userId: user.id,
+      itemId: `rules-xfer-item-${stamp}`,
+      accessTokenEnc: encryptSecret(`access-sandbox-rules-xfer-${stamp}`),
+      institutionName: "Test Credit Union",
+      requestedDays: 90,
+      historyCutoff: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+      lastSyncedAt: new Date(),
+    },
+  });
+  const plaidAccount = await prisma.plaidAccount.create({
+    data: {
+      userId: user.id,
+      plaidItemId: item.id,
+      plaidAccountId: `rules-xfer-chq-${stamp}`,
+      name: "Chequing",
+      plaidType: "depository",
+      accountId: chequing.id,
+    },
+  });
+  // Filed by the bank as an ordinary purchase, so only the rule can make it a transfer.
+  const staged = await prisma.plaidStagedTransaction.create({
+    data: {
+      userId: user.id,
+      plaidItemId: item.id,
+      plaidAccountRowId: plaidAccount.id,
+      plaidTransactionId: `rules-xfer-txn-${stamp}`,
+      name: "VISA PAYMENT THANK YOU",
+      amountCents: 52000,
+      type: TransactionType.EXPENSE,
+      date: new Date(),
+      suggestedAccountId: chequing.id,
+    },
+  });
+
+  await page.goto("/settings/rules");
+  const panel = page.getByRole("region", { name: "Rules", exact: true });
+  await panel.getByRole("button", { name: "New rule" }).click();
+  const editor = panel.getByRole("region", { name: "New rule" });
+  await editor.locator('input[name="titlePattern"]').fill("visa payment");
+  await editor.locator('input[name="setTitle"]').fill("Visa card payment");
+  await editor.getByRole("checkbox", { name: /Mark as transfer/ }).check();
+  await editor.locator('select[name="setTransferAccountId"]').selectOption(visa.id);
+  await editor.getByRole("button", { name: "Create rule" }).click();
+  await expect(panel.getByTestId("transaction-rule")).toContainText(`transfer ↔ Visa ${stamp}`);
+
+  await page.goto("/?range=lifetime");
+  const card = page
+    .locator("section")
+    .filter({ hasText: "From your bank" })
+    .first()
+    .locator("li")
+    .filter({ has: page.getByRole("group", { name: "What to do with Visa card payment" }) });
+  await expect(card).toContainText("· transfer");
+  await expect(card.getByRole("checkbox", { name: /Transfer between my accounts/ })).toBeChecked();
+  await card.getByRole("button", { name: "Add it" }).click();
+
+  // The staged row's link to the transaction is the last thing adding it writes.
+  await expect
+    .poll(async () => (await prisma.plaidStagedTransaction.findUniqueOrThrow({ where: { id: staged.id } })).resolvedTransactionId, {
+      timeout: 15_000,
+    })
+    .not.toBeNull();
+  const resolved = await prisma.plaidStagedTransaction.findUniqueOrThrow({ where: { id: staged.id } });
+  const added = await prisma.transaction.findUniqueOrThrow({
+    where: { id: resolved.resolvedTransactionId! },
+    include: { category: true },
+  });
+  expect(added).toMatchObject({
+    type: TransactionType.TRANSFER,
+    title: "Visa card payment",
+    amountCents: 52000,
+    accountId: chequing.id,
+    transferAccountId: visa.id,
+  });
+  expect(added.category.kind).toBe(CategoryKind.TRANSFER);
+});

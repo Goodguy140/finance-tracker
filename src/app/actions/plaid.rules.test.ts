@@ -19,6 +19,9 @@ vi.mock("@/lib/audit-log", () => ({ AUDIT_ACTIONS: {}, recordAuditLog: vi.fn() }
 vi.mock("@/lib/plaid/service", () => ({}));
 vi.mock("@/lib/plaid/sync", () => ({}));
 vi.mock("@/lib/plaid-sync-scheduler", () => ({}));
+vi.mock("@/lib/fallback-categories", () => ({
+  ensureFallbackCategoryFor: vi.fn(async (_client: unknown, _userId: string, kind: string) => `cat-${kind.toLowerCase()}`),
+}));
 vi.mock("@/lib/transaction-rules-server", () => ({
   loadRuleContext: vi.fn(async () => ruleContext.current),
 }));
@@ -72,6 +75,8 @@ describe("bulkAddStagedTransactionsAction with rules", () => {
           setAccountId: "acc-rule",
           appendNote: "streaming",
           addTagId: null,
+          markAsTransfer: false,
+          setTransferAccountId: null,
         },
       ],
       learned: [],
@@ -107,5 +112,29 @@ describe("bulkAddStagedTransactionsAction with rules", () => {
     expect(mockPrisma.transaction.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ categoryId: "cat-subs" }) }),
     );
+  });
+
+  it("books a row a marking rule matches as a transfer, with the rule's other account", async () => {
+    const rule = ruleContext.current!.rules[0];
+    ruleContext.current = {
+      ...ruleContext.current!,
+      rules: [{ ...rule, setCategoryId: null, appendNote: null, markAsTransfer: true, setTransferAccountId: "acc-visa" }],
+    };
+    mockPrisma.plaidStagedTransaction.findMany.mockResolvedValue([staged({ suggestedCategoryId: null })]);
+    const data = new FormData();
+    data.set("stagedIdsJson", JSON.stringify(["s1"]));
+
+    expect(await bulkAddStagedTransactionsAction(data)).toBeUndefined();
+    expect(mockPrisma.transaction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: "TRANSFER",
+        categoryId: "cat-transfer",
+        transferAccountId: "acc-visa",
+        accountId: "acc-bank",
+        amountCents: 1599,
+        title: "Netflix",
+      }),
+      select: { id: true },
+    });
   });
 });

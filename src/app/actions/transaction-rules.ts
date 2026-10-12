@@ -16,6 +16,7 @@ import { planRuleApplication, type RuleChange, type RuleTransactionType } from "
 import { toTransactionRuleInput } from "@/lib/transaction-rules-server";
 import { normalizeTagName } from "@/lib/tags";
 import { addTagsToTransaction, resolveTagIds } from "@/lib/tags-server";
+import { markAsTransfer } from "@/lib/transfer-marking";
 import {
   learnedTitleSchema,
   moveTransactionRuleSchema,
@@ -53,6 +54,8 @@ async function readRuleForm(userId: string, formData: FormData) {
     setAccountId: optional(formData, "setAccountId"),
     appendNote: optional(formData, "appendNote"),
     addTag: optional(formData, "addTag"),
+    markAsTransfer: getFormValue(formData, "markAsTransfer") === "on" || undefined,
+    setTransferAccountId: optional(formData, "setTransferAccountId"),
   });
 
   let transactionType = (payload.transactionType as TransactionType | undefined) ?? null;
@@ -77,6 +80,7 @@ async function readRuleForm(userId: string, formData: FormData) {
   await Promise.all([
     payload.matchAccountId ? assertUserOwnsAccount(userId, payload.matchAccountId) : undefined,
     payload.setAccountId ? assertUserOwnsActiveAccount(userId, payload.setAccountId) : undefined,
+    payload.setTransferAccountId ? assertUserOwnsAccount(userId, payload.setTransferAccountId) : undefined,
   ]);
   const tagName = payload.addTag ? normalizeTagName(payload.addTag) : "";
   if (payload.addTag && !tagName) throw new Error("Enter a tag name for the rule to add.");
@@ -95,6 +99,8 @@ async function readRuleForm(userId: string, formData: FormData) {
     setAccountId: payload.setAccountId ?? null,
     appendNote: payload.appendNote || null,
     addTagId,
+    markAsTransfer: payload.markAsTransfer ?? false,
+    setTransferAccountId: payload.setTransferAccountId ?? null,
   } satisfies Omit<Prisma.TransactionRuleUncheckedCreateInput, "userId" | "priority">;
 }
 
@@ -227,6 +233,7 @@ async function planForRule(userId: string, ruleId: string) {
         categoryId: true,
         note: true,
         tags: { select: { tagId: true } },
+        _count: { select: { owedShares: true } },
       },
       orderBy: { date: "desc" },
     }),
@@ -235,7 +242,11 @@ async function planForRule(userId: string, ruleId: string) {
   const kinds = new Map(categories.map((c) => [c.id, c.kind as RuleTransactionType]));
   return planRuleApplication(
     rule,
-    rows.map(({ tags, ...row }) => ({ ...row, tagIds: tags.map((t) => t.tagId) })),
+    rows.map(({ tags, _count, ...row }) => ({
+      ...row,
+      tagIds: tags.map((t) => t.tagId),
+      hasOwedShares: _count.owedShares > 0,
+    })),
     kinds,
   );
 }
@@ -258,7 +269,8 @@ export type RuleApplyResult = { ok: true; updated: number } | ActionFailure;
 /**
  * Rewrites past transactions the rule matches. Re-plans on the server rather than trusting
  * the preview the client saw, so a stale preview can never write values the rule no longer
- * produces. Title, category, account, note and tag only — never the amount.
+ * produces. Title, category, account, note, tag and transfer only — never the amount (a
+ * transfer converts it to the transfer sign, the same money counted differently).
  */
 export async function applyTransactionRuleAction(ruleId: string): Promise<RuleApplyResult> {
   try {
@@ -277,6 +289,16 @@ export async function applyTransactionRuleAction(ruleId: string): Promise<RuleAp
             },
           });
           if (change.addTagId) await addTagsToTransaction(tx, change.id, [change.addTagId]);
+          if (change.markAsTransfer) {
+            const marked = await markAsTransfer(tx, { userId: user.id, transactionId: change.id });
+            if (!marked.ok) throw new Error("A transaction changed while the rule was applied. Try again.");
+            if (change.transferAccountId) {
+              await tx.transaction.update({
+                where: { id: change.id },
+                data: { transferAccountId: change.transferAccountId },
+              });
+            }
+          }
         }
       }, LONG_TRANSACTION_OPTIONS);
       await recordAuditLog(prisma, {

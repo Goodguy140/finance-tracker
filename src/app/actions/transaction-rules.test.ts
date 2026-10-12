@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mockPrisma = vi.hoisted(() => ({
   account: { findFirst: vi.fn() },
   category: { findFirst: vi.fn(), findMany: vi.fn() },
-  transaction: { findMany: vi.fn(), update: vi.fn() },
+  transaction: { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
   transactionRule: {
     count: vi.fn(),
     create: vi.fn(),
@@ -60,6 +60,8 @@ function ruleRow(overrides: Record<string, unknown> = {}) {
     setAccountId: null,
     appendNote: null,
     addTagId: null,
+    markAsTransfer: false,
+    setTransferAccountId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -185,9 +187,9 @@ describe("transaction rule actions", () => {
         { id: "cat-other", kind: "EXPENSE" },
       ]);
       mockPrisma.transaction.findMany.mockResolvedValue([
-        { id: "t1", title: "NETFLIX.COM", type: "EXPENSE", amountCents: 1299, accountId: "a", categoryId: "cat-other", note: null, tags: [] },
-        { id: "t2", title: "Netflix", type: "EXPENSE", amountCents: 1599, accountId: "a", categoryId: "cat-subs", note: null, tags: [] },
-        { id: "t3", title: "Groceries", type: "EXPENSE", amountCents: 5000, accountId: "a", categoryId: "cat-other", note: null, tags: [] },
+        { id: "t1", title: "NETFLIX.COM", type: "EXPENSE", amountCents: 1299, accountId: "a", categoryId: "cat-other", note: null, tags: [], _count: { owedShares: 0 } },
+        { id: "t2", title: "Netflix", type: "EXPENSE", amountCents: 1599, accountId: "a", categoryId: "cat-subs", note: null, tags: [], _count: { owedShares: 0 } },
+        { id: "t3", title: "Groceries", type: "EXPENSE", amountCents: 5000, accountId: "a", categoryId: "cat-other", note: null, tags: [], _count: { owedShares: 0 } },
       ]);
     });
 
@@ -220,14 +222,46 @@ describe("transaction rule actions", () => {
         ruleRow({ setCategoryId: null, setTitle: null, setAmountCents: null, addTagId: "tag-subs" }),
       );
       mockPrisma.transaction.findMany.mockResolvedValue([
-        { id: "t1", title: "NETFLIX.COM", type: "EXPENSE", amountCents: 1299, accountId: "a", categoryId: "c", note: null, tags: [] },
-        { id: "t2", title: "Netflix", type: "EXPENSE", amountCents: 1599, accountId: "a", categoryId: "c", note: null, tags: [{ tagId: "tag-subs" }] },
+        { id: "t1", title: "NETFLIX.COM", type: "EXPENSE", amountCents: 1299, accountId: "a", categoryId: "c", note: null, tags: [], _count: { owedShares: 0 } },
+        { id: "t2", title: "Netflix", type: "EXPENSE", amountCents: 1599, accountId: "a", categoryId: "c", note: null, tags: [{ tagId: "tag-subs" }], _count: { owedShares: 0 } },
       ]);
       mockPrisma.transactionTag.findMany.mockResolvedValue([]);
 
       expect(await applyTransactionRuleAction("rule-1")).toEqual({ ok: true, updated: 1 });
       expect(mockPrisma.transactionTag.createMany).toHaveBeenCalledTimes(1);
       expect(mockPrisma.transactionTag.createMany).toHaveBeenCalledWith({ data: [{ transactionId: "t1", tagId: "tag-subs" }] });
+    });
+
+    it("marks matching rows as transfers with the rule's other account, skipping ones with owed shares", async () => {
+      mockPrisma.transactionRule.findFirst.mockResolvedValue(
+        ruleRow({
+          setCategoryId: null,
+          setTitle: null,
+          setAmountCents: null,
+          markAsTransfer: true,
+          setTransferAccountId: "acc-visa",
+        }),
+      );
+      mockPrisma.transaction.findMany.mockResolvedValue([
+        { id: "t1", title: "NETFLIX.COM", type: "EXPENSE", amountCents: 1299, accountId: "a", categoryId: "c", note: null, tags: [], _count: { owedShares: 0 } },
+        { id: "t2", title: "Netflix", type: "EXPENSE", amountCents: 1599, accountId: "a", categoryId: "c", note: null, tags: [], _count: { owedShares: 1 } },
+      ]);
+      mockPrisma.transaction.findFirst.mockResolvedValue({
+        id: "t1",
+        type: "EXPENSE",
+        amountCents: 1299,
+        _count: { splitParts: 0, owedShares: 0 },
+      });
+      mockPrisma.category.findMany.mockResolvedValue([{ id: "cat-xfer", name: "Transfers", kind: "TRANSFER" }]);
+
+      expect(await applyTransactionRuleAction("rule-1")).toEqual({ ok: true, updated: 1 });
+      const updates = mockPrisma.transaction.update.mock.calls.map(([arg]) => arg);
+      expect(updates).toContainEqual({
+        where: { id: "t1" },
+        data: { type: "TRANSFER", categoryId: "cat-xfer", amountCents: 1299 },
+      });
+      expect(updates).toContainEqual({ where: { id: "t1" }, data: { transferAccountId: "acc-visa" } });
+      expect(updates.some((u) => u.where.id === "t2")).toBe(false);
     });
 
     it("refuses a rule the user does not own", async () => {

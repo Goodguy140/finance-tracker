@@ -513,6 +513,8 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
           setAccountId: mapped(accountIdMap, row.setAccountId),
           appendNote: row.appendNote,
           addTagId: row.addTagId ? mappedTagId(row.addTagId) : null,
+          markAsTransfer: row.markAsTransfer ?? false,
+          setTransferAccountId: mapped(accountIdMap, row.setTransferAccountId ?? null),
           createdAt: new Date(row.createdAt),
         };
       }),

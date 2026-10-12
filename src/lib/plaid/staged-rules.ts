@@ -21,6 +21,10 @@ export type StagedRuleProposal = {
   note: string | null;
   /** Tags the rules add. */
   tagIds: string[];
+  /** A rule says this is a transfer: the queue ticks "transfer" for it, and bulk add books it so. */
+  markAsTransfer: boolean;
+  /** The other side a rule names, written when the row is booked as a transfer. */
+  transferAccountId: string | null;
   /** Why the proposal differs from the sync's own suggestion, for the queue to say so. */
   reason: "rule" | "learned" | null;
 };
@@ -32,7 +36,8 @@ export type StagedRuleProposal = {
  * the staged row, so a rule added after a sync applies to rows already waiting. Rules and
  * learned combos replace the sync's category mapping and the display name; the account and
  * amount are the bank's and are never touched. Nothing here commits anything — the row still
- * waits for a person, as every synced row does.
+ * waits for a person, as every synced row does. A rule that marks transfers only changes what
+ * the queue offers by default; the person can still untick it.
  */
 export function proposeForStagedRow(
   staged: StagedRuleInput,
@@ -52,12 +57,19 @@ export function proposeForStagedRow(
     categoryKindById,
     learned,
   );
-  const changed = outcome.title !== undefined || outcome.appendNote !== undefined || outcome.tagIds.length > 0;
+  const changed =
+    outcome.title !== undefined ||
+    outcome.appendNote !== undefined ||
+    outcome.tagIds.length > 0 ||
+    // Only when booked as a transfer: unticked, the rule's mark is not what gets written.
+    (staged.type === "TRANSFER" && outcome.markAsTransfer !== undefined);
   return {
     title: outcome.title ?? displayName,
     categoryId: outcome.categoryId ?? staged.suggestedCategoryId,
     note: outcome.appendNote ?? null,
     tagIds: outcome.tagIds,
+    markAsTransfer: outcome.markAsTransfer === true,
+    transferAccountId: outcome.transferAccountId ?? null,
     reason: outcome.categoryFrom ?? (changed ? "rule" : null),
   };
 }
@@ -90,4 +102,16 @@ export function proposeStagedRowAs(
     type,
     suggestedCategoryId: type === staged.type ? staged.suggestedCategoryId : null,
   });
+}
+
+/**
+ * The type the queue offers a staged row as: a transfer if the sync filed it as one or a rule
+ * marks it, otherwise the sync's own type. Rules are asked about the row as the sync typed it.
+ */
+export function defaultStagedType(
+  propose: (staged: StagedRuleInput) => StagedRuleProposal,
+  staged: StagedRuleInput,
+): RuleTransactionType {
+  if (staged.type === "TRANSFER") return "TRANSFER";
+  return propose(staged).markAsTransfer ? "TRANSFER" : staged.type;
 }

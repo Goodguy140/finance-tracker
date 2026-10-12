@@ -78,6 +78,21 @@ export const incomeSchema = incomeBaseSchema.extend({
   postedDate: z.string().optional(),
 });
 
+/** A transfer entered by hand: money leaving one of the user's accounts for another. */
+export const transferSchema = z
+  .object({
+    fromAccountId: z.string().min(1, "Choose the account the money left."),
+    toAccountId: z.string().min(1, "Choose the account the money went to."),
+    amount: positiveAmount,
+    date: z.string().min(1),
+    title: z.string().trim().max(120).optional(),
+    note: z.string().max(250).optional(),
+  })
+  .refine((t) => t.fromAccountId !== t.toAccountId, {
+    message: "Choose two different accounts.",
+    path: ["toAccountId"],
+  });
+
 export const updateIncomeBaseSchema = incomeBaseSchema.extend({
   transactionId: z.string().min(1),
 });
@@ -192,6 +207,8 @@ export const transactionRuleSchema = z
     appendNote: z.string().trim().max(250).optional(),
     /** A tag name; the action creates the tag if the user does not have it yet. */
     addTag: z.string().trim().max(MAX_TAG_NAME_LENGTH + 10).optional(),
+    markAsTransfer: z.boolean().optional(),
+    setTransferAccountId: z.string().min(1).optional(),
   })
   .refine((r) => r.minAmount === undefined || r.maxAmount === undefined || r.minAmount <= r.maxAmount, {
     message: "The minimum amount must not exceed the maximum.",
@@ -199,9 +216,26 @@ export const transactionRuleSchema = z
   })
   .refine(
     (r) =>
-      !!(r.setCategoryId || r.setTitle || r.setAmount !== undefined || r.setAccountId || r.appendNote || r.addTag),
+      !!(
+        r.setCategoryId ||
+        r.setTitle ||
+        r.setAmount !== undefined ||
+        r.setAccountId ||
+        r.appendNote ||
+        r.addTag ||
+        r.markAsTransfer
+      ),
     { message: "Choose at least one thing for the rule to set.", path: ["setCategoryId"] },
-  );
+  )
+  .refine((r) => !r.setTransferAccountId || r.markAsTransfer, {
+    message: "Tick “Mark as transfer” to name the other account.",
+    path: ["setTransferAccountId"],
+  })
+  // A transfer has only the transfer category, so a rule cannot both mark one and pick another.
+  .refine((r) => !(r.markAsTransfer && r.setCategoryId), {
+    message: "A transfer has no category; leave Category as is or untick “Mark as transfer”.",
+    path: ["setCategoryId"],
+  });
 
 export const updateTransactionRuleSchema = z.object({ ruleId: z.string().min(1) });
 

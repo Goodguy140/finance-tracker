@@ -2,7 +2,7 @@
 
 import { useId, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ExpenseForm, IncomeForm } from "@/components/forms";
+import { ExpenseForm, IncomeForm, TransferForm } from "@/components/forms";
 import type { ExpenseTitleSuggestion } from "@/lib/expense-title-suggestions";
 import { useOnlineStatus } from "@/lib/use-online-status";
 import {
@@ -76,8 +76,7 @@ export function DashboardMobileActions({
   defaultExpenseAccountId?: string | null;
   titleSuggestions: ExpenseTitleSuggestion[];
 }) {
-  const [expenseOpen, setExpenseOpen] = useState(false);
-  const [incomeOpen, setIncomeOpen] = useState(false);
+  const [open, setOpen] = useState<"expense" | "income" | "transfer" | null>(null);
   // Offline, the dashboard may be a cached copy: nothing can be saved, so don't offer to.
   const online = useOnlineStatus();
 
@@ -90,10 +89,7 @@ export function DashboardMobileActions({
           type="button"
           aria-label="Quick add expense"
           disabled={!online}
-          onClick={() => {
-            setIncomeOpen(false);
-            setExpenseOpen(true);
-          }}
+          onClick={() => setOpen("expense")}
           className="pointer-events-auto touch-manipulation inline-flex min-h-12 items-center justify-center rounded-full bg-blue-500 px-5 text-sm font-semibold text-white shadow-lg shadow-blue-950/40 ring-2 ring-blue-400/25 transition hover:bg-blue-400 active:bg-blue-600 disabled:opacity-50 disabled:shadow-none"
         >
           + Expense
@@ -102,20 +98,26 @@ export function DashboardMobileActions({
           type="button"
           aria-label="Quick add income"
           disabled={!online}
-          onClick={() => {
-            setExpenseOpen(false);
-            setIncomeOpen(true);
-          }}
+          onClick={() => setOpen("income")}
           className="pointer-events-auto touch-manipulation inline-flex min-h-12 items-center justify-center rounded-full border border-slate-600 bg-slate-800 px-4 text-sm font-semibold text-slate-100 shadow-lg shadow-black/30 transition hover:bg-slate-700 active:bg-slate-900 disabled:opacity-50 disabled:shadow-none"
         >
           + Income
         </button>
+        <button
+          type="button"
+          aria-label="Quick add transfer"
+          disabled={!online}
+          onClick={() => setOpen("transfer")}
+          className="pointer-events-auto touch-manipulation inline-flex min-h-12 items-center justify-center rounded-full border border-slate-600 bg-slate-800 px-4 text-sm font-semibold text-slate-100 shadow-lg shadow-black/30 transition hover:bg-slate-700 active:bg-slate-900 disabled:opacity-50 disabled:shadow-none"
+        >
+          + Transfer
+        </button>
       </div>
 
       <MobileFormSheet
-        open={expenseOpen}
+        open={open === "expense"}
         title="Add expense"
-        onClose={() => setExpenseOpen(false)}
+        onClose={() => setOpen(null)}
       >
         <ExpenseForm
           accounts={accounts}
@@ -123,21 +125,25 @@ export function DashboardMobileActions({
           defaultExpenseAccountId={defaultExpenseAccountId}
           titleSuggestions={titleSuggestions}
           variant="mobileSheet"
-          onSuccess={() => setExpenseOpen(false)}
+          onSuccess={() => setOpen(null)}
         />
       </MobileFormSheet>
 
       <MobileFormSheet
-        open={incomeOpen}
+        open={open === "income"}
         title="Add income"
-        onClose={() => setIncomeOpen(false)}
+        onClose={() => setOpen(null)}
       >
         <IncomeForm
           accounts={accounts}
           incomeCategories={incomeCategories}
           variant="mobileSheet"
-          onSuccess={() => setIncomeOpen(false)}
+          onSuccess={() => setOpen(null)}
         />
+      </MobileFormSheet>
+
+      <MobileFormSheet open={open === "transfer"} title="Add transfer" onClose={() => setOpen(null)}>
+        <TransferForm accounts={accounts} variant="mobileSheet" onSuccess={() => setOpen(null)} />
       </MobileFormSheet>
     </>
   );
