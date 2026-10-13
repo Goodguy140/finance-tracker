@@ -7,6 +7,7 @@ import {
   deleteCategoryAction,
   renameCategoryAction,
   setCategoryBudgetAction,
+  setCategoryRolloverAction,
   setPlaidCategoryMappingAction,
 } from "@/app/actions";
 import { ServerActionForm } from "@/components/server-action-form";
@@ -28,6 +29,10 @@ export type CategoryRow = {
   budgetLimitCents: number | null;
   /** Spent this month, for budgeted expense categories; null when there is no budget. */
   spentCents: number | null;
+  /** Whether unspent (or overspent) budget carries into the next month. */
+  rolloverOn: boolean;
+  /** Carried into this month by rollover; 0 when none. */
+  carryCents: number;
 };
 
 export type PlaidMappingRow = {
@@ -205,7 +210,10 @@ function CategoryItem({ category, others }: { category: CategoryRow; others: Cat
             </span>
           </span>
           {category.kind === "EXPENSE" && category.budgetLimitCents !== null ? (
-            <BudgetMeter spentCents={category.spentCents ?? 0} limitCents={category.budgetLimitCents} />
+            <BudgetMeter
+              spentCents={category.spentCents ?? 0}
+              limitCents={category.budgetLimitCents + category.carryCents}
+            />
           ) : null}
           {category.kind === "EXPENSE" ? (
             <span
@@ -297,6 +305,10 @@ function CategoryItem({ category, others }: { category: CategoryRow; others: Cat
             </ServerActionForm>
           ) : null}
 
+          {category.kind === "EXPENSE" && category.budgetLimitCents !== null ? (
+            <RolloverToggle category={category} />
+          ) : null}
+
           <div className="flex flex-wrap items-center gap-2 border-t border-slate-800/80 pt-3">
             <p className="min-w-0 flex-1 text-xs text-slate-500">
               {inUse ? `Used by ${describeUsage(category)}.` : "Nothing uses this category."}
@@ -360,6 +372,37 @@ function CategoryItem({ category, others }: { category: CategoryRow; others: Cat
         />
       ) : null}
     </li>
+  );
+}
+
+/** The budget rollover switch, saved as soon as it changes. */
+function RolloverToggle({ category }: { category: CategoryRow }) {
+  return (
+    <ServerActionForm action={setCategoryRolloverAction} className="space-y-1">
+      <input type="hidden" name="categoryId" value={category.id} />
+      <input type="hidden" name="enabled" value={category.rolloverOn ? "false" : "true"} />
+      <label className="flex items-center gap-2 text-sm text-slate-200">
+        <input
+          // Re-mounted when the saved value changes, so a refresh after saving shows the server's answer.
+          key={String(category.rolloverOn)}
+          type="checkbox"
+          aria-label={`Roll over ${category.name}'s budget`}
+          className="h-4 w-4 rounded border-slate-600 bg-slate-900"
+          defaultChecked={category.rolloverOn}
+          onChange={(e) => e.currentTarget.form?.requestSubmit()}
+        />
+        Roll over to next month
+      </label>
+      <p className="text-xs text-slate-500">
+        {category.rolloverOn
+          ? category.carryCents > 0
+            ? `${formatCurrency(category.carryCents)} left over from earlier months is added to this month's budget.`
+            : category.carryCents < 0
+              ? `${formatCurrency(-category.carryCents)} overspent in earlier months comes off this month's budget.`
+              : "What's left of this month's budget carries into next month; going over takes it off next month's."
+          : "What's left at the end of a month is added to the next one, and going over takes it off. It starts from this month."}
+      </p>
+    </ServerActionForm>
   );
 }
 

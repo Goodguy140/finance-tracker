@@ -157,11 +157,22 @@ export const reallocateBudgetAction = formAction(async (formData: FormData) => {
   const periodMonth = currentYmInTimeZone(user.timezone);
   const progress = await buildMonthlyBudgetProgress(user.id, periodMonth);
 
+  // The plan works on what each budget has this month, rollover carry included; what is
+  // stored is the monthly budget, so the carry comes back off before saving.
+  const carryByCategory = new Map(progress.budgets.map((row) => [row.categoryId, row.carryCents]));
   const updates = computeReallocationPlan(
     progress.budgets,
     payload.destinationCategoryId,
     payload.transfers,
-  );
+  ).map((update) => ({ ...update, newLimitCents: update.newLimitCents - (carryByCategory.get(update.categoryId) ?? 0) }));
+  // A surplus carried in can be spent but not moved: it would leave a monthly budget below zero.
+  const belowZero = updates.find((update) => update.newLimitCents < 0);
+  if (belowZero) {
+    const row = progress.budgets.find((b) => b.categoryId === belowZero.categoryId);
+    throw new Error(
+      `${row?.categoryName ?? "That budget"} can give at most ${((row?.baseLimitCents ?? 0) / 100).toFixed(2)} this month.`,
+    );
+  }
 
   // Preserve any carried-forward label when creating a fresh current-month row.
   const affectedCategoryIds = updates.map((update) => update.categoryId);

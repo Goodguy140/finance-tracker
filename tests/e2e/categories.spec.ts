@@ -2,7 +2,9 @@ import { expect, test, type Page } from "@playwright/test";
 import { hash } from "bcryptjs";
 import { CategoryKind, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
+import { shiftYm } from "../../src/lib/dashboard-period";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
+import { currentYmInTimeZone } from "../../src/lib/period-month";
 import { expectDashboardHome } from "./expect-dashboard-home";
 import { uniqueStamp } from "./helpers";
 
@@ -139,4 +141,49 @@ test("deleting a category in use asks, in the page, where its transactions and r
   // Deleting the category is the merge's last write.
   await expect.poll(async () => prisma.category.count({ where: { id: gym.id } })).toBe(0);
   expect((await prisma.recurringTransaction.findUniqueOrThrow({ where: { id: rule.id } })).categoryId).toBe(fun.id);
+});
+
+test("budget rollover carries last month's leftover into this month's budget", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Settings flow is covered by the chromium project");
+  const { user, stamp } = await createUserAndLogin(page);
+  const account = await prisma.account.findFirstOrThrow({ where: { userId: user.id } });
+  const thisYm = currentYmInTimeZone("America/Toronto");
+  const lastYm = shiftYm(thisYm, -1);
+  const books = await prisma.category.create({ data: { userId: user.id, name: `Books ${stamp}`, kind: CategoryKind.EXPENSE } });
+  await prisma.budget.create({ data: { userId: user.id, categoryId: books.id, periodMonth: lastYm, limitCents: 10_000 } });
+  await prisma.transaction.create({
+    data: {
+      userId: user.id,
+      accountId: account.id,
+      categoryId: books.id,
+      type: TransactionType.EXPENSE,
+      amountCents: 3_500,
+      date: new Date(`${lastYm}-15T00:00:00Z`),
+      title: `Novel ${stamp}`,
+    },
+  });
+
+  await page.goto("/settings/categories");
+  const panel = page.getByRole("region", { name: "Categories & budgets" });
+  const row = panel.getByTestId("category-row").filter({ hasText: books.name });
+  await row.locator("summary").click();
+  await row.getByLabel(`Roll over ${books.name}'s budget`).check();
+  await expect
+    .poll(async () => (await prisma.category.findUniqueOrThrow({ where: { id: books.id } })).rolloverSinceMonth)
+    .toBe(thisYm);
+  await expect(row).toContainText("carries into next month");
+
+  // As if it had been turned on last month: last month's $65 left over is this month's to spend.
+  await prisma.category.update({ where: { id: books.id }, data: { rolloverSinceMonth: lastYm } });
+  await page.reload();
+  await row.locator("summary").click();
+  await expect(row).toContainText("$65.00 left over from earlier months is added to this month's budget.");
+  await row.screenshot({ path: testInfo.outputPath("settings-row.png") });
+
+  await page.goto("/");
+  const card = page.getByRole("region", { name: "Budgets" });
+  const budgetRow = card.locator("div.rounded-xl").filter({ hasText: books.name });
+  await expect(budgetRow).toContainText("$0.00 / $165.00");
+  await expect(budgetRow.getByTestId("budget-rollover-note")).toHaveText("Includes $65.00 left over from earlier months");
+  await card.screenshot({ path: testInfo.outputPath("budgets-card.png") });
 });

@@ -1,7 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { tryDecryptSecret } from "./security";
 
-export const SCHEMA_REPAIR_VERSION = "12";
+export const SCHEMA_REPAIR_VERSION = "13";
 
 export const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 export const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
@@ -33,6 +33,7 @@ export const REQUIRED_SCHEMA_COLUMNS = [
   { table: "Account", column: "countsAsSavings" },
   { table: "TransactionRule", column: "markAsTransfer" },
   { table: "TransactionRule", column: "setTransferAccountId" },
+  { table: "Category", column: "rolloverSinceMonth" },
 ] as const;
 
 const OAUTH_KEY_PREFIX = "oauth.";

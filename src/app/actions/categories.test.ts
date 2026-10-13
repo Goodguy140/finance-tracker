@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { currentYmInTimeZone } from "@/lib/period-month";
 
 /**
  * Category management against a real SQLite database built from the migrations: merging
@@ -238,6 +239,74 @@ describe("setCategoryBudgetAction", () => {
     });
     await expectOk(actions.setCategoryBudgetAction(form({ categoryId: food.id, intent: "remove" })));
     expect(await db.budget.count({ where: { categoryId: food.id } })).toBe(0);
+  });
+});
+
+describe("setCategoryRolloverAction", () => {
+  it("turns on from this month, keeps that month when turned on again, and goes with the budget", async () => {
+    const food = await category("Food");
+    expect(await actions.setCategoryRolloverAction(form({ categoryId: food.id, enabled: "true" }))).toMatchObject({
+      ok: false,
+    });
+
+    await db.budget.create({ data: { userId: session.userId, categoryId: food.id, periodMonth: "2026-01", limitCents: 100 } });
+    await expectOk(actions.setCategoryRolloverAction(form({ categoryId: food.id, enabled: "true" })));
+    const since = (await db.category.findUniqueOrThrow({ where: { id: food.id } })).rolloverSinceMonth;
+    expect(since).toBe(currentYmInTimeZone("America/Toronto"));
+
+    await db.category.update({ where: { id: food.id }, data: { rolloverSinceMonth: "2026-02" } });
+    await expectOk(actions.setCategoryRolloverAction(form({ categoryId: food.id, enabled: "true" })));
+    expect((await db.category.findUniqueOrThrow({ where: { id: food.id } })).rolloverSinceMonth).toBe("2026-02");
+
+    await expectOk(actions.setCategoryRolloverAction(form({ categoryId: food.id, enabled: "false" })));
+    expect((await db.category.findUniqueOrThrow({ where: { id: food.id } })).rolloverSinceMonth).toBeNull();
+
+    await db.category.update({ where: { id: food.id }, data: { rolloverSinceMonth: "2026-02" } });
+    await expectOk(actions.setCategoryBudgetAction(form({ categoryId: food.id, intent: "remove" })));
+    expect((await db.category.findUniqueOrThrow({ where: { id: food.id } })).rolloverSinceMonth).toBeNull();
+  });
+
+  it("adds the carry to the month's budget progress, counting only home-currency spend in the category", async () => {
+    const { buildMonthlyBudgetProgress } = await import("@/lib/budget-progress");
+    const food = await db.category.create({
+      data: { userId: session.userId, name: "Food", kind: "EXPENSE", rolloverSinceMonth: "2026-06" },
+    });
+    const fun = await category("Fun");
+    await db.budget.create({ data: { userId: session.userId, categoryId: food.id, periodMonth: "2026-01", limitCents: 10_000 } });
+    const usd = (await db.account.create({ data: { userId: session.userId, name: "US card", type: "CREDIT_CARD", currency: "USD" } })).id;
+    const spend = (date: string, amountCents: number, extra: Record<string, unknown> = {}) =>
+      db.transaction.create({
+        data: { userId: session.userId, accountId, categoryId: food.id, type: "EXPENSE", amountCents, date: new Date(`${date}T00:00:00Z`), title: "Shop", ...extra },
+      });
+    await spend("2026-05-10", 50_000); // before rollover started
+    await spend("2026-06-10", 4_000); // June leaves 60
+    await spend("2026-07-10", 13_000); // July goes 30 over
+    await spend("2026-07-11", 90_000, { accountId: usd }); // another currency: not counted
+    // A split filed under Fun with a Food part counts toward Food.
+    await db.transaction.create({
+      data: {
+        userId: session.userId,
+        accountId,
+        categoryId: fun.id,
+        type: "EXPENSE",
+        amountCents: 5_000,
+        date: new Date("2026-08-10T00:00:00Z"),
+        title: "Market",
+        splitParts: {
+          create: [
+            { userId: session.userId, categoryId: food.id, amountCents: 2_000 },
+            { userId: session.userId, categoryId: fun.id, amountCents: 3_000 },
+          ],
+        },
+      },
+    });
+    await spend("2026-09-10", 1_000);
+
+    const progress = await buildMonthlyBudgetProgress(session.userId, "2026-09", db);
+    const row = progress.budgets.find((b) => b.categoryId === food.id)!;
+    // June +60, July −30, August +80: 110 carried in.
+    expect(row).toMatchObject({ baseLimitCents: 10_000, carryCents: 11_000, limitCents: 21_000, spentCents: 1_000 });
+    expect(progress.totalLimitCents).toBe(21_000);
   });
 });
 

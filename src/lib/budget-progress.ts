@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { TransactionType } from "@prisma/client";
 import { endExclusiveOfMonthYm, startOfMonthYm } from "@/lib/dashboard-period";
 import { percentUsed } from "@/lib/budget-alerts";
+import { loadRolloverCarries } from "@/lib/budget-rollover";
 import { homeCurrencyOf, inCurrencyWhere } from "@/lib/home-currency";
 import { prisma } from "@/lib/prisma";
 
@@ -11,7 +12,12 @@ export type BudgetProgressRow = {
   categoryId: string;
   categoryName: string;
   spentCents: number;
+  /** What this month's spend is judged against: the monthly budget plus any rollover carry. */
   limitCents: number;
+  /** The monthly budget as set, before rollover. */
+  baseLimitCents: number;
+  /** Carried in from earlier months by rollover: positive left over, negative overspent. */
+  carryCents: number;
   /** Spend ÷ limit as 0–100 (clamped), for progress bars. */
   progressPct: number;
 };
@@ -71,23 +77,35 @@ type ActiveBudget = {
   category: { name: string };
 };
 
-/** Join active budgets with spend into sorted progress rows. */
+/** Spend ÷ limit as 0–100 for a bar; full when anything is spent against a limit of zero or less. */
+export function budgetProgressPct(spentCents: number, limitCents: number): number {
+  if (limitCents <= 0) return spentCents > 0 ? 100 : 0;
+  return Math.min(Math.max((spentCents / limitCents) * 100, 0), 100);
+}
+
+/**
+ * Join active budgets with spend into sorted progress rows. `carryByCategory` is the month's
+ * rollover carry per category (`loadRolloverCarries`, narrowed to the month); none by default.
+ */
 export function buildBudgetProgressRows(
   activeBudgets: ActiveBudget[],
   spendByCategory: Map<string, number>,
+  carryByCategory: ReadonlyMap<string, number> = new Map(),
 ): BudgetProgressRow[] {
   return activeBudgets
     .map((budget) => {
       const spentCents = spendByCategory.get(budget.categoryId) ?? 0;
-      const limitCents = budget.limitCents;
-      const progressPct = limitCents > 0 ? Math.min(Math.max((spentCents / limitCents) * 100, 0), 100) : 0;
+      const carryCents = carryByCategory.get(budget.categoryId) ?? 0;
+      const limitCents = budget.limitCents + carryCents;
       return {
         id: budget.id,
         categoryId: budget.categoryId,
         categoryName: budget.category.name,
         spentCents,
         limitCents,
-        progressPct,
+        baseLimitCents: budget.limitCents,
+        carryCents,
+        progressPct: budgetProgressPct(spentCents, limitCents),
       };
     })
     .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
@@ -130,7 +148,8 @@ export async function buildMonthlyBudgetProgress(
 
   const spendByCategory = computeSpendByCategory(periodExpenses);
   const activeBudgets = Array.from(selectActiveBudgetsByCategory(budgets, ym).values());
-  const rows = buildBudgetProgressRows(activeBudgets, spendByCategory);
+  const carryByCategory = carriesForMonth(await loadRolloverCarries(client, userId, currency, [ym], budgets), ym);
+  const rows = buildBudgetProgressRows(activeBudgets, spendByCategory, carryByCategory);
 
   return {
     periodMonth: ym,
@@ -139,6 +158,16 @@ export async function buildMonthlyBudgetProgress(
     totalLimitCents: rows.reduce((sum, row) => sum + row.limitCents, 0),
     totalSpentCents: rows.reduce((sum, row) => sum + row.spentCents, 0),
   };
+}
+
+/** One month's entries from `loadRolloverCarries`, keyed by category. */
+export function carriesForMonth(carries: ReadonlyMap<string, number>, ym: string): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const [key, cents] of carries) {
+    const [keyYm, categoryId] = key.split("|");
+    if (keyYm === ym) out.set(categoryId, cents);
+  }
+  return out;
 }
 
 /** Convenience for callers that want WaniKani-style percent without the row. */
