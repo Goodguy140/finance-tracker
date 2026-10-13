@@ -224,6 +224,7 @@ export function TransactionRulesPanel({
         learned={visibleLearned}
         categoryKinds={categoryKinds}
         categoryName={categoryName}
+        accountName={accountName}
         tagName={tagName}
       />
 
@@ -319,6 +320,7 @@ function RuleEditor({
   const ids = useId();
   const editing = Boolean(draft.id);
   const [type, setType] = useState<"" | RuleTransactionType>(draft.transactionType ?? "");
+  const [asTransfer, setAsTransfer] = useState(draft.markAsTransfer ?? false);
   const categoryOptions = categories.filter((c) => !type || c.kind === type);
   const activeAccounts = accounts.filter((a) => !a.archived || a.id === draft.setAccountId);
 
@@ -452,6 +454,7 @@ function RuleEditor({
               name="setCategoryId"
               className={selectClass}
               defaultValue={draft.setCategoryId ?? ""}
+              disabled={asTransfer}
             >
               <option value="">Leave as is</option>
               {(["EXPENSE", "INCOME"] as const).map((kind) => {
@@ -468,7 +471,9 @@ function RuleEditor({
                 );
               })}
             </select>,
-            "Choosing a category limits the rule to that category's type.",
+            asTransfer
+              ? "A transfer has no category of its own to choose."
+              : "Choosing a category limits the rule to that category's type.",
           )}
           {field(
             "setTitle",
@@ -551,6 +556,47 @@ function RuleEditor({
             "Kept alongside the tags a transaction already has. A new name creates the tag.",
           )}
         </div>
+        <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+          <label className="flex items-start gap-2 text-sm text-slate-200" htmlFor={`${ids}-markAsTransfer`}>
+            <input
+              id={`${ids}-markAsTransfer`}
+              name="markAsTransfer"
+              type="checkbox"
+              className="mt-0.5"
+              checked={asTransfer}
+              onChange={(e) => setAsTransfer(e.target.checked)}
+            />
+            <span>
+              <span className="font-medium">Mark as transfer</span>
+              <span className="block text-xs text-slate-500">
+                For card payments and moves between your own accounts. Transfers are left out of spending, income and
+                budgets. Bank rows it matches arrive with “transfer” already ticked.
+              </span>
+            </span>
+          </label>
+          {asTransfer
+            ? field(
+                "setTransferAccountId",
+                "Other account",
+                <select
+                  id={`${ids}-setTransferAccountId`}
+                  name="setTransferAccountId"
+                  className={selectClass}
+                  defaultValue={draft.setTransferAccountId ?? ""}
+                >
+                  <option value="">Not set</option>
+                  {accounts
+                    .filter((a) => !a.archived || a.id === draft.setTransferAccountId)
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                </select>,
+                "Where the money went, or came from if it arrived. Ignored when it is the transaction's own account.",
+              )
+            : null}
+        </div>
       </fieldset>
 
       <div className="flex flex-wrap gap-2">
@@ -626,7 +672,7 @@ function RulePreview({
             <p className="text-slate-200">
               {preview.total} past transaction{preview.total === 1 ? "" : "s"} would change
               {preview.total > preview.sample.length ? ` (first ${preview.sample.length} shown)` : ""}. Amounts are never
-              changed; split transactions are skipped.
+              changed; split transactions are skipped, and entries someone owes you part of are not made transfers.
             </p>
             <ul className="max-h-64 space-y-1.5 overflow-y-auto">
               {preview.sample.map((change) => (
@@ -644,6 +690,17 @@ function RulePreview({
                   {change.addTagId ? (
                     <p>
                       Tag: <span className="text-slate-100">+ {tagName(change.addTagId)}</span>
+                    </p>
+                  ) : null}
+                  {change.markAsTransfer ? (
+                    <p>
+                      Counted as: <span className="text-slate-100">transfer</span>
+                      {change.transferAccountId ? (
+                        <>
+                          {" "}
+                          with <span className="text-slate-100">{accountName(change.transferAccountId)}</span>
+                        </>
+                      ) : null}
                     </p>
                   ) : null}
                 </li>
@@ -669,12 +726,14 @@ function RuleTester({
   learned,
   categoryKinds,
   categoryName,
+  accountName,
   tagName,
 }: {
   rules: TransactionRuleInput[];
   learned: { title: string; categoryId: string }[];
   categoryKinds: ReadonlyMap<string, RuleTransactionType>;
   categoryName: (id: string) => string;
+  accountName: (id: string) => string;
   tagName: (id: string) => string;
 }) {
   const ids = useId();
@@ -736,6 +795,17 @@ function RuleTester({
                 <li>Amount: <span className="text-slate-100">{formatCurrency(outcome.amountCents)}</span></li>
               ) : null}
               {outcome.appendNote ? <li>Note: <span className="text-slate-100">{outcome.appendNote}</span></li> : null}
+              {outcome.markAsTransfer ? (
+                <li>
+                  Counted as: <span className="text-slate-100">transfer</span>
+                  {outcome.transferAccountId ? (
+                    <>
+                      {" "}
+                      with <span className="text-slate-100">{accountName(outcome.transferAccountId)}</span>
+                    </>
+                  ) : null}
+                </li>
+              ) : null}
               {outcome.tagIds.length > 0 ? (
                 <li>
                   Tags: <span className="text-slate-100">{outcome.tagIds.map(tagName).join(", ")}</span>

@@ -30,6 +30,8 @@ export function toTransactionRuleInput(row: TransactionRule): TransactionRuleInp
     setAccountId: row.setAccountId,
     appendNote: row.appendNote,
     addTagId: row.addTagId,
+    markAsTransfer: row.markAsTransfer,
+    setTransferAccountId: row.setTransferAccountId,
   };
 }
 

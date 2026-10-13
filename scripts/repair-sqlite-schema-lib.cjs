@@ -1,5 +1,5 @@
 /** Keep in sync with SCHEMA_REPAIR_VERSION in src/lib/migration-health.ts */
-const SCHEMA_REPAIR_VERSION = "11";
+const SCHEMA_REPAIR_VERSION = "12";
 const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
 
@@ -114,6 +114,16 @@ const COLUMN_REPAIRS = [
     table: "Account",
     column: "countsAsSavings",
     ddl: 'ALTER TABLE "Account" ADD COLUMN "countsAsSavings" BOOLEAN NOT NULL DEFAULT false',
+  },
+  {
+    table: "TransactionRule",
+    column: "markAsTransfer",
+    ddl: 'ALTER TABLE "TransactionRule" ADD COLUMN "markAsTransfer" BOOLEAN NOT NULL DEFAULT false',
+  },
+  {
+    table: "TransactionRule",
+    column: "setTransferAccountId",
+    ddl: 'ALTER TABLE "TransactionRule" ADD COLUMN "setTransferAccountId" TEXT REFERENCES "Account" ("id") ON DELETE SET NULL ON UPDATE CASCADE',
   },
 ];
 

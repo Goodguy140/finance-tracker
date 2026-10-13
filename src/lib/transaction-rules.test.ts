@@ -27,6 +27,8 @@ function rule(overrides: Partial<TransactionRuleInput> = {}): TransactionRuleInp
     setAccountId: null,
     appendNote: null,
     addTagId: null,
+    markAsTransfer: false,
+    setTransferAccountId: null,
     ...overrides,
   };
 }
@@ -177,6 +179,8 @@ describe("planRuleApplication", () => {
         before: { title: "NETFLIX.COM", categoryId: "shopping", accountId: "acc1", note: null },
         after: { title: "Netflix", categoryId: "subs", accountId: "acc1", note: null },
         addTagId: null,
+        markAsTransfer: false,
+        transferAccountId: null,
       },
     ]);
     expect(changes[0].after).not.toHaveProperty("amountCents");
@@ -191,5 +195,54 @@ describe("planRuleApplication", () => {
     const changes = planRuleApplication(rule({ addTagId: "tag-subs" }), tagged, kinds);
     expect(changes.map((c) => [c.id, c.addTagId])).toEqual([["t1", "tag-subs"]]);
     expect(changes[0].after).toEqual(changes[0].before);
+  });
+
+  it("turns matching expenses into transfers with the rule's other account, except entries with owed shares", () => {
+    const owed = [...rows, { ...rows[1], id: "t4", hasOwedShares: true }];
+    const changes = planRuleApplication(
+      rule({ markAsTransfer: true, setTransferAccountId: "acc-visa", setTitle: "Netflix" }),
+      owed,
+      kinds,
+    );
+    expect(changes.map((c) => [c.id, c.markAsTransfer, c.transferAccountId])).toEqual([
+      ["t1", true, "acc-visa"],
+      ["t2", true, "acc-visa"],
+    ]);
+  });
+
+  it("does not name the row's own account as the other side", () => {
+    const [change] = planRuleApplication(rule({ markAsTransfer: true, setTransferAccountId: "acc1" }), rows, kinds);
+    expect(change).toMatchObject({ markAsTransfer: true, transferAccountId: null });
+  });
+});
+
+describe("mark as transfer", () => {
+  it("is filled by the first marking rule, with that rule's other account", () => {
+    const outcome = resolveRuleOutcome(
+      [
+        rule({ id: "a", priority: 0, markAsTransfer: true }),
+        rule({ id: "b", priority: 1, markAsTransfer: true, setTransferAccountId: "acc-visa" }),
+      ],
+      subject(),
+      kinds,
+    );
+    expect(outcome).toMatchObject({ markAsTransfer: true, ruleIds: ["a"] });
+    expect(outcome.transferAccountId).toBeUndefined();
+  });
+
+  it("does not fall back to a learned category for an entry a rule marks", () => {
+    const outcome = resolveRuleOutcome([rule({ markAsTransfer: true })], subject(), kinds, {
+      learned: [{ title: "NETFLIX.COM 866-579", categoryId: "subs" }],
+      hiddenTitleKeys: [],
+    });
+    expect(outcome.categoryId).toBeUndefined();
+  });
+
+  it("keeps an expenses-only marking rule matching the transfer it made, by the direction of the money", () => {
+    const marking = rule({ transactionType: "EXPENSE", markAsTransfer: true, setTitle: "Visa payment" });
+    expect(ruleMatches(marking, subject({ type: "TRANSFER", amountCents: 50000 }))).toBe(true);
+    expect(ruleMatches(marking, subject({ type: "TRANSFER", amountCents: -50000 }))).toBe(false);
+    // A rule that does not mark transfers stays off transfers, as before.
+    expect(ruleMatches(rule({ transactionType: "EXPENSE" }), subject({ type: "TRANSFER" }))).toBe(false);
   });
 });

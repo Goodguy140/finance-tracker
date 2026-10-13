@@ -416,6 +416,7 @@ model Account {
   plaidAccounts          PlaidAccount[]
   rulesMatchingAccount   TransactionRule[]        @relation("TransactionRuleMatchAccount")
   rulesSettingAccount    TransactionRule[]        @relation("TransactionRuleSetAccount")
+  rulesSettingTransferTo TransactionRule[]        @relation("TransactionRuleSetTransferAccount")
 }
 
 model Category {
@@ -983,6 +984,12 @@ model TransactionRule {
   /// Added alongside any tags the transaction already has. Unlike the other actions, every
   /// matching rule's tag is added, not only the first.
   addTagId       String?
+  /// Books the transaction as a transfer between the user's own accounts, which takes it out
+  /// of every total. Taken from the first matching rule that sets it, with its other account.
+  markAsTransfer       Boolean @default(false)
+  /// The account on the other side of the transfer, when the rule names one. Only used with
+  /// `markAsTransfer`.
+  setTransferAccountId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -994,6 +1001,7 @@ model TransactionRule {
   setCategory  Category? @relation(fields: [setCategoryId], references: [id], onDelete: SetNull)
   setAccount   Account?  @relation("TransactionRuleSetAccount", fields: [setAccountId], references: [id], onDelete: SetNull)
   addTag       Tag?      @relation(fields: [addTagId], references: [id], onDelete: SetNull)
+  setTransferAccount Account? @relation("TransactionRuleSetTransferAccount", fields: [setTransferAccountId], references: [id], onDelete: SetNull)
 
   @@index([userId, priority])
 }
