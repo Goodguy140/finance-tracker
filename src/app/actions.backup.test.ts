@@ -12,6 +12,7 @@ const mockPrisma = vi.hoisted(() => ({
   investmentFlow: { deleteMany: vi.fn(), create: vi.fn(), createMany: vi.fn() },
   portfolioSnapshot: { deleteMany: vi.fn(), create: vi.fn(), createMany: vi.fn() },
   accountBalanceSnapshot: { createMany: vi.fn() },
+  savingsGoal: { deleteMany: vi.fn(), createMany: vi.fn() },
   transaction: { deleteMany: vi.fn(), create: vi.fn(), update: vi.fn() },
   account: { deleteMany: vi.fn(), create: vi.fn() },
   category: { deleteMany: vi.fn(), create: vi.fn() },
@@ -489,6 +490,46 @@ describe("importUserBackupAction", () => {
     expect(mockPrisma.investmentFlow.createMany.mock.calls[0]?.[0]?.data).toEqual([
       expect.objectContaining({ accountId: "acc-new", transactionId: "txn-new" }),
     ]);
+  });
+
+  it("restores savings goals, linked ones under the account's new id", async () => {
+    const iso = "2026-01-01T00:00:00.000Z";
+    mockPrisma.account.create.mockResolvedValue({ id: "acc-new" });
+    const backup = {
+      ...minimalBackup("user@example.com"),
+      accounts: [
+        { id: "acc-old", name: "Savings", type: "SAVINGS", currency: "CAD", countryCode: "CA", provider: null, archived: false, createdAt: iso, updatedAt: iso },
+      ],
+      savingsGoals: [
+        { name: "Emergency fund", targetCents: 1_000_000, targetDate: null, accountId: "acc-old", savedCents: 0, createdAt: iso },
+        { name: "Trip", targetCents: 300_000, targetDate: iso, accountId: null, savedCents: 45_000, createdAt: iso },
+      ],
+    };
+    const formData = new FormData();
+    formData.set("backupJson", new File([JSON.stringify(backup)], "backup.json", { type: "application/json" }));
+
+    await importUserBackupAction(formData);
+
+    expect(mockPrisma.savingsGoal.deleteMany).toHaveBeenCalledWith({ where: { userId: "user-1" } });
+    expect(mockPrisma.savingsGoal.createMany.mock.calls[0]?.[0]?.data).toEqual([
+      expect.objectContaining({ name: "Emergency fund", accountId: "acc-new" }),
+      expect.objectContaining({ name: "Trip", accountId: null, savedCents: 45_000 }),
+    ]);
+  });
+
+  it("refuses a file whose savings goal points at an account it does not contain", async () => {
+    const iso = "2026-01-01T00:00:00.000Z";
+    const backup = {
+      ...minimalBackup("user@example.com"),
+      savingsGoals: [{ name: "Ghost", targetCents: 100, targetDate: null, accountId: "missing", savedCents: 0, createdAt: iso }],
+    };
+    const formData = new FormData();
+    formData.set("backupJson", new File([JSON.stringify(backup)], "backup.json", { type: "application/json" }));
+
+    const result = await importUserBackupAction(formData);
+
+    expect(result).toEqual({ ok: false, error: expect.stringContaining("savings goal account") });
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("restores both legs of a paired transfer, each pointing at the other's new id", async () => {

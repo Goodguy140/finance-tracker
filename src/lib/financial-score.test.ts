@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { tx } from "@/lib/insights/test-fixtures";
-import { computeFinancialScore, monthlyRecurringCents, scoreBand, type FinancialScoreInput } from "./financial-score";
+import {
+  computeFinancialScore,
+  emergencyFundCents,
+  isEmergencyFundAccount,
+  monthlyRecurringCents,
+  scoreBand,
+  type FinancialScoreInput,
+} from "./financial-score";
 
 const TODAY = "2026-10-07";
 const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -63,10 +70,44 @@ describe("computeFinancialScore", () => {
     expect(result.score).toBeGreaterThanOrEqual(80);
   });
 
+  it("scores the emergency fund in months of average spending", () => {
+    const txs = steadyMonths(500_000, 300_000);
+    const fund = (cents: number) => scored({ txs, emergencyFundCents: cents }).factors.find((f) => f.id === "emergency")!;
+
+    expect(fund(900_000).score).toBe(90);
+    expect(fund(900_000).detail).toBe("3.0 months of spending in chequing and savings");
+    expect(fund(900_000).suggestion).toBeNull();
+    expect(fund(1_800_000).score).toBe(100);
+    expect(fund(300_000).score).toBe(40);
+    expect(fund(300_000).detail).toBe("1.0 month of spending in chequing and savings");
+    expect(fund(0).score).toBe(0);
+    expect(fund(-20_000).detail).toBe("Chequing and savings are overdrawn");
+
+    const thin = scored({ txs, emergencyFundCents: 360_000 });
+    expect(thin.suggestions).toContain(
+      "Chequing and savings cover 1.2 months of spending. Setting aside about $5400.00 would build a 3-month emergency fund.",
+    );
+    expect(scored({ txs, emergencyFundCents: -1 }).suggestions).toContain(
+      "Chequing and savings hold nothing to fall back on. Setting aside about $9000.01 would build a 3-month emergency fund.",
+    );
+  });
+
+  it("leaves the emergency fund out without balances, and weighs it in with them", () => {
+    const txs = steadyMonths(500_000, 300_000);
+    const without = scored({ txs });
+    expect(without.factors.map((f) => f.id)).not.toContain("emergency");
+    expect(without.omitted).toContainEqual({ label: "Emergency fund", reason: "no chequing or savings balances yet" });
+
+    const withFund = scored({ txs, emergencyFundCents: 0 });
+    expect(withFund.omitted.map((o) => o.label)).not.toContain("Emergency fund");
+    expect(withFund.factors.find((f) => f.id === "emergency")!.weight).toBeCloseTo(20 / 80);
+    expect(withFund.score).toBeLessThan(without.score);
+  });
+
   it("drops factors it has no data for and reweights the rest", () => {
     const result = scored({ txs: steadyMonths(500_000, 350_000) });
     expect(result.factors.map((f) => f.id).sort()).toEqual(["consistency", "savings", "trend"]);
-    expect(result.omitted.map((o) => o.label).sort()).toEqual(["Budgets kept", "Fixed bills"]);
+    expect(result.omitted.map((o) => o.label).sort()).toEqual(["Budgets kept", "Emergency fund", "Fixed bills"]);
     expect(result.factors.reduce((s, f) => s + f.weight, 0)).toBeCloseTo(1);
   });
 
@@ -223,5 +264,44 @@ describe("monthlyRecurringCents", () => {
       { name: "b", cents: 2_600 },
       { name: "q", cents: 400 },
     ]);
+  });
+});
+
+describe("emergency fund accounts", () => {
+  const account = (type: string, extra: Partial<{ countsAsSavings: boolean; archived: boolean; currency: string; latestCents: number | null }> = {}) => ({
+    type,
+    countsAsSavings: false,
+    archived: false,
+    currency: "CAD",
+    latestCents: 100_000,
+    ...extra,
+  });
+
+  it("counts spendable accounts and marked savings, never an RRSP or what is owed", () => {
+    expect(isEmergencyFundAccount(account("CHEQUING"))).toBe(true);
+    expect(isEmergencyFundAccount(account("SAVINGS"))).toBe(true);
+    expect(isEmergencyFundAccount(account("CASH"))).toBe(true);
+    expect(isEmergencyFundAccount(account("TFSA"))).toBe(false);
+    expect(isEmergencyFundAccount(account("TFSA", { countsAsSavings: true }))).toBe(true);
+    expect(isEmergencyFundAccount(account("RRSP", { countsAsSavings: true }))).toBe(false);
+    expect(isEmergencyFundAccount(account("CREDIT_CARD", { countsAsSavings: true }))).toBe(false);
+    expect(isEmergencyFundAccount(account("PROPERTY", { countsAsSavings: true }))).toBe(false);
+  });
+
+  it("totals latest balances in the score's currency, and is null with none", () => {
+    expect(
+      emergencyFundCents(
+        [
+          account("CHEQUING", { latestCents: 250_000 }),
+          account("SAVINGS", { latestCents: 500_000 }),
+          account("SAVINGS", { latestCents: 999_000, currency: "USD" }),
+          account("SAVINGS", { latestCents: 999_000, archived: true }),
+          account("RRSP", { latestCents: 999_000, countsAsSavings: true }),
+          account("CHEQUING", { latestCents: null }),
+        ],
+        "CAD",
+      ),
+    ).toBe(750_000);
+    expect(emergencyFundCents([account("CHEQUING", { latestCents: null }), account("RRSP")], "CAD")).toBeNull();
   });
 });

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { MAX_AMOUNT_CENTS } from "@/lib/money";
 import { YM_PATTERN } from "@/lib/period-month";
+import { MAX_GOAL_NAME_LENGTH } from "@/lib/savings-goals";
 import { MAX_TAG_NAME_LENGTH, MAX_TAGS_PER_TRANSACTION } from "@/lib/tags";
 
 const isoDate = z.iso.datetime();
@@ -221,6 +222,20 @@ export const userBackupSchema = z.object({
         date: isoDate,
         balanceCents: z.number().int().min(-1_000_000_000_000).max(1_000_000_000_000),
         source: z.enum(["PLAID", "MANUAL"]),
+        createdAt: isoDate,
+      }),
+    )
+    .optional()
+    .default([]),
+  // Optional with a default: backups written before goals existed have none.
+  savingsGoals: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(MAX_GOAL_NAME_LENGTH),
+        targetCents: z.number().int().positive().max(MAX_AMOUNT_CENTS),
+        targetDate: isoDate.nullable(),
+        accountId: z.string().min(1).nullable(),
+        savedCents: z.number().int().nonnegative().max(MAX_AMOUNT_CENTS),
         createdAt: isoDate,
       }),
     )
