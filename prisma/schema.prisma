@@ -420,13 +420,16 @@ model Account {
 }
 
 model Category {
-  id        String       @id @default(cuid())
-  userId    String
-  name      String
-  kind      CategoryKind
-  isDefault Boolean      @default(false)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id                 String       @id @default(cuid())
+  userId             String
+  name               String
+  kind               CategoryKind
+  isDefault          Boolean      @default(false)
+  /// Budget rollover: from this month (YYYY-MM) on, what is left of each month's budget, or
+  /// what went over it, carries into the next. Null when rollover is off.
+  rolloverSinceMonth String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
   user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions          Transaction[]
