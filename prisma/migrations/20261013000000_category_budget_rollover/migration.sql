@@ -5,7 +5,7 @@
 -- existing category: nothing changes until the user turns it on.
 --
 -- Hand-written like every migration here (see AGENTS.md). The column is also listed in
--- REQUIRED_SCHEMA_COLUMNS and COLUMN_REPAIRS, with SCHEMA_REPAIR_VERSION bumped in both files.
+-- REQUIRED_SCHEMA_COLUMNS and COLUMN_REPAIRS, with SCHEMA_REPAIR_VERSION bumped in both files (to 13).
 
 -- AlterTable
 ALTER TABLE "Category" ADD COLUMN "rolloverSinceMonth" TEXT;

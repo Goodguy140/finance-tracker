@@ -13,6 +13,7 @@ export {
   deleteExpenseTransactionAction,
   importExpensesCsvAction,
   createIncomeAction,
+  createTransferAction,
   updateIncomeAction,
   deleteIncomeTransactionAction,
   markAsTransferAction,

@@ -157,7 +157,8 @@ export async function linkStagedRow(
 }
 
 /** What a commit takes from the queue's proposal. Tags are optional for callers that have none. */
-type StagedProposalFields = Pick<StagedRuleProposal, "title" | "note"> & Partial<Pick<StagedRuleProposal, "tagIds">>;
+type StagedProposalFields = Pick<StagedRuleProposal, "title" | "note"> &
+  Partial<Pick<StagedRuleProposal, "tagIds" | "transferAccountId">>;
 
 /**
  * Adds this bank row to the log as a new transaction: the bank's account, amount and dates,
@@ -165,7 +166,8 @@ type StagedProposalFields = Pick<StagedRuleProposal, "title" | "note"> & Partial
  *
  * `type` books it as something other than the sync guessed — a transfer the bank filed as a
  * purchase, or the reverse. The amount is the bank's either way, converted to the new type's
- * sign (`convertAmountCents`); the staged row keeps the bank's own view.
+ * sign (`convertAmountCents`); the staged row keeps the bank's own view. A transfer takes the
+ * other account a rule named, unless that is the row's own account.
  */
 export async function addStagedRow(
   tx: Tx,
@@ -179,6 +181,12 @@ export async function addStagedRow(
 ): Promise<ReviewOutcome> {
   const { userId, staged } = input;
   const type = input.type ?? staged.type;
+  const transferAccountId =
+    type === TransactionType.TRANSFER &&
+    input.proposal.transferAccountId &&
+    input.proposal.transferAccountId !== staged.suggestedAccountId
+      ? input.proposal.transferAccountId
+      : null;
   // Claimed before the transaction exists, so a losing double-submit creates nothing. The
   // resolved id is filled in below, inside the same database transaction.
   if (!(await claim(tx, userId, staged.id, PlaidStagedStatus.ADDED, null))) {
@@ -195,6 +203,7 @@ export async function addStagedRow(
       postedDate: staged.postedDate,
       title: input.proposal.title,
       note: input.proposal.note,
+      transferAccountId,
     },
     select: { id: true },
   });

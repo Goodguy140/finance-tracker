@@ -630,7 +630,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     // or unticking "transfer" shows what the rules do for that choice.
     const transferProposal = proposeStagedRowAs(propose, row, TransactionType.TRANSFER);
     const nonTransferProposal = proposeStagedRowAs(propose, row, nonTransferType);
-    const proposal = isTransfer ? transferProposal : nonTransferProposal;
+    // A rule that marks transfers ticks "transfer" for a row the sync filed as spending or income.
+    const offeredAsTransfer = isTransfer || nonTransferProposal.markAsTransfer;
+    const proposal = offeredAsTransfer ? transferProposal : nonTransferProposal;
     const nonTransferOptions =
       nonTransferType === TransactionType.INCOME ? incomeCategoryOptionsForQueue : expenseCategoryOptionsForQueue;
     const candidate = row.matchTransactionId ? matchCandidateById.get(row.matchTransactionId) : undefined;
@@ -643,7 +645,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       asTransfer: queueProposalView(transferProposal),
       asNonTransfer: queueProposalView(nonTransferProposal),
       amountCents: row.amountCents,
-      isTransfer,
+      isTransfer: offeredAsTransfer,
       dateDisplay: formatDateOnlyUtc(row.date),
       accountLabel: stagedAccountLabel(row.suggestedAccountId),
       transferPair: (() => {

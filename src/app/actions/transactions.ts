@@ -16,6 +16,7 @@ import { assertSplitLinesMatch, parseSplitLinesFromForm, saveSplitLines } from "
 import { appendRuleNote, resolveRuleOutcome } from "@/lib/transaction-rules";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
 import { addTagsToTransaction, replaceTransactionTags, resolveTagIds } from "@/lib/tags-server";
+import { ensureFallbackCategoryFor } from "@/lib/fallback-categories";
 import {
   markAsTransfer,
   setTransferAccount,
@@ -27,6 +28,7 @@ import {
   expenseCsvImportSchema,
   expenseBaseSchema,
   incomeSchema,
+  transferSchema,
   updateIncomeBaseSchema,
   updateExpenseBaseSchema,
   positiveAmount,
@@ -300,14 +302,15 @@ export const importExpensesCsvAction = formActionWithResult(async (formData: For
   });
 
   // Expenses already in the log over the file's span, so a statement imported twice (or
-  // two overlapping statements) does not book the same spend twice.
+  // two overlapping statements) does not book the same spend twice. Transfers too: a rule may
+  // have booked a statement line as one, and the transfer sign is the expense sign.
   const times = datedRows.map((entry) => entry.transactionDate.getTime());
   const existing =
     times.length > 0
       ? await prisma.transaction.findMany({
           where: {
             userId: user.id,
-            type: TransactionType.EXPENSE,
+            type: { in: [TransactionType.EXPENSE, TransactionType.TRANSFER] },
             date: {
               gte: new Date(Date.UTC(...ymdParts(new Date(Math.min(...times))))),
               lt: new Date(Date.UTC(...ymdParts(new Date(Math.max(...times)))) + 86_400_000),
@@ -326,6 +329,7 @@ export const importExpensesCsvAction = formActionWithResult(async (formData: For
     // Tags the rules add. A tagged row gets its id here so its tags can name it in the same
     // batch; createMany returns no ids.
     const pendingTags: Prisma.TransactionTagCreateManyInput[] = [];
+    let transferCategoryId: string | null = null;
     for (const { rowNumber, row, amount, transactionDate, postedDate, statementTitle } of datedRows) {
       const statementNote = getOptionalMappedValue(row, payload.mapping.note) ?? payload.manualValues.note;
       const accountName = getOptionalMappedValue(row, payload.mapping.accountName) ?? payload.manualValues.accountName;
@@ -361,6 +365,29 @@ export const importExpensesCsvAction = formActionWithResult(async (formData: For
       const resolvedAccountId = accountName
         ? accountByName.get(accountName.toLowerCase()) ?? ruleAccountId ?? payload.defaults.accountId
         : ruleAccountId ?? payload.defaults.accountId;
+
+      // A rule that marks transfers books the line as one, whatever category the file names:
+      // the user said lines like this are not spending.
+      if (rule.markAsTransfer) {
+        const id = rule.tagIds.length > 0 ? randomUUID() : undefined;
+        if (id) pendingTags.push(...rule.tagIds.map((tagId) => ({ transactionId: id, tagId })));
+        transferCategoryId ??= await ensureFallbackCategoryFor(tx, user.id, CategoryKind.TRANSFER);
+        pending.push({
+          id,
+          userId: user.id,
+          accountId: resolvedAccountId,
+          categoryId: transferCategoryId,
+          type: TransactionType.TRANSFER,
+          amountCents: toCents(amount),
+          transferAccountId:
+            rule.transferAccountId && rule.transferAccountId !== resolvedAccountId ? rule.transferAccountId : null,
+          date: transactionDate,
+          postedDate,
+          title,
+          note,
+        });
+        continue;
+      }
 
       let resolvedCategoryId = rule.categoryId ?? payload.defaults.categoryId;
       if (categoryName) {
@@ -436,6 +463,48 @@ export const createIncomeAction = formAction(async (formData: FormData) => {
         accountId: payload.accountId,
         categoryId: payload.categoryId,
         type: TransactionType.INCOME,
+        amountCents: toCents(payload.amount),
+        date: dateFromYmd(payload.date),
+        title: payload.title,
+        note: payload.note,
+      },
+      select: { id: true },
+    });
+    await addTagsToTransaction(tx, created.id, await resolveTagIds(tx, user.id, tagNames));
+  });
+  revalidatePath("/");
+});
+
+/**
+ * Records a transfer by hand: one entry on the account the money left, naming the account it
+ * went to, kept out of every total like any transfer. It is one entry, not two legs, so the
+ * money is not counted on both sides.
+ */
+export const createTransferAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const payload = transferSchema.parse({
+    fromAccountId: getFormValue(formData, "fromAccountId"),
+    toAccountId: getFormValue(formData, "toAccountId"),
+    amount: getFormValue(formData, "amount"),
+    date: getFormValue(formData, "date"),
+    title: getFormValue(formData, "title") || undefined,
+    note: getFormValue(formData, "note") || undefined,
+  });
+  const tagNames = getTagNames(formData) ?? [];
+  await Promise.all([
+    assertUserOwnsAccount(user.id, payload.fromAccountId),
+    assertUserOwnsAccount(user.id, payload.toAccountId),
+  ]);
+
+  await prisma.$transaction(async (tx) => {
+    const created = await tx.transaction.create({
+      data: {
+        userId: user.id,
+        accountId: payload.fromAccountId,
+        transferAccountId: payload.toAccountId,
+        categoryId: await ensureFallbackCategoryFor(tx, user.id, CategoryKind.TRANSFER),
+        type: TransactionType.TRANSFER,
+        // Transfers carry the expense sign: positive is money leaving `accountId`.
         amountCents: toCents(payload.amount),
         date: dateFromYmd(payload.date),
         title: payload.title,

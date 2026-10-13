@@ -30,7 +30,7 @@ import {
   type PlaidUpdateKind,
 } from "@/lib/plaid/connections";
 import { openAccessToken, requirePlaidClient } from "@/lib/plaid/service";
-import { proposeStagedRowAs } from "@/lib/plaid/staged-rules";
+import { defaultStagedType, proposeStagedRowAs } from "@/lib/plaid/staged-rules";
 import {
   describeHistoryWindow,
   historyWindowLabel,
@@ -662,12 +662,26 @@ export const bulkAddStagedTransactionsAction = formAction(async (formData: FormD
   });
 
   const propose = await loadStagedProposer(user.id);
-  const proposals = new Map(rows.map((row) => [row.id, propose(row)]));
+  // Each row as the queue offers it: a rule that marks transfers books its rows as transfers,
+  // as the row's ticked "transfer" box would.
+  const plans = new Map(
+    rows.map((row) => {
+      const type = defaultStagedType(propose, row);
+      return [row.id, { type, proposal: proposeStagedRowAs(propose, row, type) }];
+    }),
+  );
+  // A row a rule turned into a transfer has no category of the right kind from the sync.
+  const retyped = (row: (typeof rows)[number]) => plans.get(row.id)!.type !== row.type;
+  const transferCategoryId = rows.some(retyped)
+    ? await ensureFallbackCategoryFor(prisma, user.id, CategoryKind.TRANSFER)
+    : null;
+  const categoryFor = (row: (typeof rows)[number]) =>
+    retyped(row) ? transferCategoryId : plans.get(row.id)!.proposal.categoryId;
 
   // A row with no suggested category cannot be written -- Transaction.categoryId is
   // non-nullable. Refusing the batch beats silently adding fewer rows than the button
   // promised, which is invisible to the person who pressed it.
-  const uncategorised = rows.filter((row) => !proposals.get(row.id)?.categoryId);
+  const uncategorised = rows.filter((row) => !categoryFor(row));
   if (uncategorised.length > 0) {
     throw new Error(
       `${uncategorised.length} of these have no category yet. Open each one and pick a category, or add them individually.`,
@@ -678,9 +692,15 @@ export const bulkAddStagedTransactionsAction = formAction(async (formData: FormD
   // rather than quietly shrinking it.
   await prisma.$transaction(async (tx) => {
     for (const row of rows) {
-      const proposal = proposals.get(row.id)!;
+      const { type, proposal } = plans.get(row.id)!;
       orRefuse(
-        await addStagedRow(tx, { userId: user.id, staged: toCommittable(row), categoryId: proposal.categoryId!, proposal }),
+        await addStagedRow(tx, {
+          userId: user.id,
+          staged: toCommittable(row),
+          categoryId: categoryFor(row)!,
+          proposal,
+          type,
+        }),
       );
     }
   }, LONG_TRANSACTION_OPTIONS);

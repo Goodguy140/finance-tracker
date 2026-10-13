@@ -121,7 +121,8 @@ export function assertBackupReferencesResolve(parsed: ParsedUserBackup): void {
     if (
       (row.setCategoryId && !categoryIds.has(row.setCategoryId)) ||
       (row.matchAccountId && !accountIds.has(row.matchAccountId)) ||
-      (row.setAccountId && !accountIds.has(row.setAccountId))
+      (row.setAccountId && !accountIds.has(row.setAccountId)) ||
+      (row.setTransferAccountId && !accountIds.has(row.setTransferAccountId))
     ) {
       throw new Error("Backup references unknown rule account or category.");
     }

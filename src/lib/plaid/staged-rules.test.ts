@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { makeStagedProposer, proposeForStagedRow, proposeStagedRowAs, type StagedRuleInput } from "./staged-rules";
+import {
+  defaultStagedType,
+  makeStagedProposer,
+  proposeForStagedRow,
+  proposeStagedRowAs,
+  type StagedRuleInput,
+} from "./staged-rules";
 import type { RuleTransactionType, TransactionRuleInput } from "@/lib/transaction-rules";
 
 const rule: TransactionRuleInput = {
@@ -18,6 +24,8 @@ const rule: TransactionRuleInput = {
   setAccountId: "acc-other",
   appendNote: "streaming",
   addTagId: null,
+  markAsTransfer: false,
+  setTransferAccountId: null,
 };
 
 const kinds = new Map<string, RuleTransactionType>([
@@ -44,6 +52,8 @@ describe("proposeForStagedRow", () => {
       categoryId: "cat-subs",
       note: "streaming",
       tagIds: [],
+      markAsTransfer: false,
+      transferAccountId: null,
       reason: "rule",
     });
   });
@@ -78,6 +88,8 @@ describe("proposeForStagedRow", () => {
       categoryId: "cat-food",
       note: null,
       tagIds: [],
+      markAsTransfer: false,
+      transferAccountId: null,
       reason: "learned",
     });
   });
@@ -116,5 +128,41 @@ describe("proposeStagedRowAs", () => {
 
   it("drops the sync's category for a spending row booked as a transfer", () => {
     expect(proposeStagedRowAs(propose, staged, "TRANSFER").categoryId).toBeNull();
+  });
+});
+
+describe("a rule that marks transfers", () => {
+  const marking: TransactionRuleInput = {
+    ...rule,
+    titlePattern: "visa payment",
+    transactionType: "EXPENSE",
+    setCategoryId: null,
+    setTitle: "Visa payment",
+    setAmountCents: null,
+    setAccountId: null,
+    appendNote: null,
+    markAsTransfer: true,
+    setTransferAccountId: "acc-visa",
+  };
+  const propose = makeStagedProposer({ rules: [marking], ...noLearned }, kinds);
+  const payment: StagedRuleInput = { ...staged, name: "VISA PAYMENT THANK YOU", amountCents: 50000 };
+
+  it("offers a spending row as a transfer, and leaves others as the sync typed them", () => {
+    expect(defaultStagedType(propose, payment)).toBe("TRANSFER");
+    expect(defaultStagedType(propose, staged)).toBe("EXPENSE");
+  });
+
+  it("gives the transfer side the rule's title and other account", () => {
+    expect(proposeStagedRowAs(propose, payment, "TRANSFER")).toMatchObject({
+      title: "Visa payment",
+      markAsTransfer: true,
+      transferAccountId: "acc-visa",
+      reason: "rule",
+    });
+  });
+
+  it("does not name the row's own account as the other side", () => {
+    const fromVisa = { ...payment, suggestedAccountId: "acc-visa" };
+    expect(proposeStagedRowAs(propose, fromVisa, "TRANSFER").transferAccountId).toBeNull();
   });
 });
