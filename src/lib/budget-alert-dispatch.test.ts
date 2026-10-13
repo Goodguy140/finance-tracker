@@ -62,6 +62,13 @@ describe("dispatchBudgetAlertEmails", () => {
     );
   });
 
+  it("points the reader at the page where email alerts are switched off", async () => {
+    await dispatchBudgetAlertEmails("u1", client() as never, now);
+    expect(sendBudgetAlertEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining("Settings → Notifications") }),
+    );
+  });
+
   it("does nothing when the user has not opted in or SMTP is missing", async () => {
     const off = client({ user: { email: "a@b.c", timezone: "UTC", budgetAlertEmailEnabled: false } });
     expect(await dispatchBudgetAlertEmails("u1", off as never, now)).toEqual({ sent: 0, skipped: "disabled" });

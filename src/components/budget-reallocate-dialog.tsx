@@ -122,7 +122,7 @@ export function BudgetReallocateDialog({
           <p className="rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-sm text-slate-300">
             No other budget has room to give. Adjust limits in{" "}
             <a href="/settings/categories" className="text-blue-300 underline-offset-4 hover:underline">
-              Settings → Budgets
+              Settings → Categories
             </a>
             .
           </p>
