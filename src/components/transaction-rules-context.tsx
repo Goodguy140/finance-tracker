@@ -100,9 +100,15 @@ export function RuleAutofillHint({ outcome }: { outcome: RuleOutcome | null }) {
   if (!outcome) return null;
   const byRule = outcome.ruleIds.length > 0;
   if (!byRule && outcome.categoryFrom !== "learned") return null;
+  // The hand-entry forms book what they say; a rule's transfer mark is only pointed out.
+  const message = outcome.markAsTransfer
+    ? "Your rules count entries like this as transfers. To keep it out of your totals, add it as a Transfer instead."
+    : byRule
+      ? "Filled in by your rules."
+      : "Category from a past entry with this title.";
   return (
     <p className="text-xs text-blue-200/80" data-testid="rule-autofill-hint">
-      {byRule ? "Filled in by your rules." : "Category from a past entry with this title."}{" "}
+      {message}{" "}
       <Link href="/settings/rules" className="underline underline-offset-2 hover:text-blue-100">
         Manage rules
       </Link>

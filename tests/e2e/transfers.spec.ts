@@ -185,3 +185,59 @@ test("a card payment synced from both banks is added as one paired transfer, and
     .toBe(0);
   await expect(transfers).toContainText("Transfers · 2");
 });
+
+test("a transfer entered by hand goes to the transfers list, from one account to the other", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "The Add card is the desktop layout");
+  const stamp = uniqueStamp();
+  const email = `e2e-transfer-manual-${stamp}@example.com`;
+  const password = "e2e-password-123";
+
+  const user = await prisma.user.create({
+    data: {
+      email,
+      passwordHash: await hash(password, 12),
+      displayName: "E2E Manual Transfer User",
+      countryCode: "CA",
+      timezone: "America/Toronto",
+      role: "USER",
+    },
+  });
+  await ensureDefaultDataForUser(user);
+  const [chequing, savings] = await Promise.all([
+    prisma.account.create({ data: { userId: user.id, name: `Chequing ${stamp}`, type: AccountType.CHEQUING } }),
+    prisma.account.create({ data: { userId: user.id, name: `Savings ${stamp}`, type: AccountType.SAVINGS } }),
+  ]);
+
+  await page.goto("/login");
+  await page.getByPlaceholder("Email").fill(email);
+  await page.getByPlaceholder("Password").fill(password);
+  await page.getByRole("button", { name: "Login" }).click();
+  await expectDashboardHome(page);
+
+  const card = page.getByRole("region", { name: "Add", exact: true });
+  await card.getByRole("radio", { name: "Transfer" }).click();
+  await card.getByLabel("From account").selectOption(chequing.id);
+  await card.getByLabel("To account").selectOption(savings.id);
+  await card.getByLabel("Amount").fill("300");
+  await card.locator('textarea[name="title"]').fill(`Top up ${stamp}`);
+  await card.getByRole("button", { name: "Add transfer" }).click();
+
+  await expect
+    .poll(async () =>
+      (await prisma.transaction.findMany({ where: { userId: user.id, type: TransactionType.TRANSFER } })).map((row) => [
+        row.amountCents,
+        row.accountId,
+        row.transferAccountId,
+        row.title,
+      ]),
+    )
+    .toEqual([[30000, chequing.id, savings.id, `Top up ${stamp}`]]);
+  expect(await prisma.transaction.count({ where: { userId: user.id, type: { not: TransactionType.TRANSFER } } })).toBe(0);
+
+  const transfers = expenseLogLocator(page).getByTestId("transfer-log").filter({ visible: true });
+  await expect(transfers).toContainText("Transfers · 1");
+  await transfers.getByRole("button", { name: /Transfers/ }).click();
+  await expect(transfers).toContainText(`FromChequing ${stamp}`);
+  await expect(transfers).toContainText(`ToSavings ${stamp}`);
+  await expect(transfers).toContainText("Out $300.00");
+});

@@ -270,6 +270,8 @@ export const userBackupSchema = z.object({
         setAccountId: z.string().min(1).nullable(),
         appendNote: z.string().max(250).nullable(),
         addTagId: z.string().min(1).nullable().optional(),
+        markAsTransfer: z.boolean().optional(),
+        setTransferAccountId: z.string().min(1).nullable().optional(),
         createdAt: isoDate,
       }),
     )
