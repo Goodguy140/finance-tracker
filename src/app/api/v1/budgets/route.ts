@@ -77,7 +77,10 @@ export async function GET(request: Request) {
       budgets: progress.budgets.map((row) => ({
         categoryId: row.categoryId,
         categoryName: row.categoryName,
+        // The month's limit with any budget rollover included, then its two parts.
         limitCents: row.limitCents,
+        monthlyLimitCents: row.baseLimitCents,
+        rolloverCents: row.carryCents,
         spentCents: row.spentCents,
         percentUsed: budgetRowPercentUsed(row),
       })),

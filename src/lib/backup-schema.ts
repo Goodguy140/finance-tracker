@@ -75,6 +75,8 @@ export const userBackupSchema = z.object({
       name: z.string().min(1).max(80),
       kind: z.enum(["EXPENSE", "INCOME", "TRANSFER"]),
       isDefault: z.boolean(),
+      /** Absent from backups made before budget rollover existed; it is then off. */
+      rolloverSinceMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).nullable().optional(),
       createdAt: isoDate,
       updatedAt: isoDate,
     }),

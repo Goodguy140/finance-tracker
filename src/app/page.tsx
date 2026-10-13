@@ -39,10 +39,12 @@ import {
 } from "@/lib/budget-alerts";
 import {
   buildBudgetProgressRows,
+  carriesForMonth,
   computeSpendByCategory,
   selectActiveBudgetsByCategory,
   type BudgetProgressRow,
 } from "@/lib/budget-progress";
+import { loadRolloverCarries } from "@/lib/budget-rollover";
 import { buildCumulativeSpendSeries, resolveMonthlyExpected } from "@/lib/cumulative-spend";
 import { dateFromYmd, formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
@@ -412,7 +414,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
   if (period.range === "month") {
     const activeBudgets = Array.from(selectActiveBudgetsByCategory(budgets, period.ym).values());
-    budgetProgressItems = buildBudgetProgressRows(activeBudgets, spendByCategory);
+    const rolloverCarries = await loadRolloverCarries(prisma, user.id, homeCurrency, [period.ym], budgets);
+    budgetProgressItems = buildBudgetProgressRows(activeBudgets, spendByCategory, carriesForMonth(rolloverCarries, period.ym));
     totalBudgetCents = budgetProgressItems.reduce((sum, row) => sum + row.limitCents, 0);
   } else if (period.range === "ytd") {
     const limitSumByCategory = new Map<string, number>();
@@ -440,6 +443,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           categoryName: nameByCategory.get(categoryId) ?? categoryName(categoryId),
           spentCents,
           limitCents,
+          // Rollover is a month-to-month carry; the summed limits over many months already net it.
+          baseLimitCents: limitCents,
+          carryCents: 0,
           progressPct,
         };
       })
@@ -470,6 +476,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           categoryName: nameByCategory.get(categoryId) ?? categoryName(categoryId),
           spentCents,
           limitCents,
+          // Rollover is a month-to-month carry; the summed limits over many months already net it.
+          baseLimitCents: limitCents,
+          carryCents: 0,
           progressPct,
         };
       })

@@ -17,7 +17,7 @@ export default async function CategoriesSettingsPage() {
   const ym = currentYmInTimeZone(user.timezone);
   const [categories, budgets, suggestionContext, transactionCounts, splitCounts, recurringCounts, plaidItemCount, progress] =
     await Promise.all([
-      prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true } }),
+      prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true, rolloverSinceMonth: true } }),
       prisma.budget.findMany({
         where: { userId: user.id },
         include: { category: { select: { name: true } } },
@@ -39,6 +39,7 @@ export default async function CategoriesSettingsPage() {
   const activeBudgets = selectActiveBudgetsByCategory(budgets, ym);
   const activeIds = new Set([...activeBudgets.values()].map((b) => b.id));
   const spentByCategory = new Map(progress.budgets.map((row) => [row.categoryId, row.spentCents]));
+  const carryByCategory = new Map(progress.budgets.map((row) => [row.categoryId, row.carryCents]));
   const history = budgets
     .filter((b) => !activeIds.has(b.id))
     .map((b) => ({ id: b.id, categoryName: b.category.name, periodMonth: b.periodMonth, limitCents: b.limitCents }));
@@ -70,6 +71,8 @@ export default async function CategoriesSettingsPage() {
                   recurringCount: recurringByCategory.get(c.id) ?? 0,
                   budgetLimitCents: activeBudgets.get(c.id)?.limitCents ?? null,
                   spentCents: activeBudgets.has(c.id) ? (spentByCategory.get(c.id) ?? 0) : null,
+                  rolloverOn: c.rolloverSinceMonth !== null,
+                  carryCents: carryByCategory.get(c.id) ?? 0,
                 },
               ],
         )}

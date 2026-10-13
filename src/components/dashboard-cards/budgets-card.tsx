@@ -7,6 +7,8 @@ export type DashboardBudgetProgressItem = {
   categoryName: string;
   spentCents: number;
   limitCents: number;
+  /** Rollover carried in from earlier months, already part of `limitCents`; 0 when none. */
+  carryCents?: number;
   progressPct: number;
 };
 
@@ -39,6 +41,17 @@ function BudgetPeriodNote({ periodRange }: { periodRange: DashboardRange }) {
     );
   }
   return null;
+}
+
+/** What rollover added to (or took off) this month's limit. */
+export function RolloverNote({ carryCents }: { carryCents: number }) {
+  return (
+    <p className="mt-1 text-xs text-slate-400" data-testid="budget-rollover-note">
+      {carryCents > 0
+        ? `Includes ${formatCurrency(carryCents)} left over from earlier months`
+        : `${formatCurrency(-carryCents)} overspent in earlier months comes off this one`}
+    </p>
+  );
 }
 
 /** Header control for the Budgets card, hoisted out so the shell can place it. */
@@ -117,6 +130,7 @@ export function BudgetsCardBody({
                   style={{ width: `${item.progressPct}%` }}
                 />
               </div>
+              {item.carryCents ? <RolloverNote carryCents={item.carryCents} /> : null}
             </div>
           ))}
         </div>
