@@ -55,7 +55,8 @@ export async function loginWithPassword(page: Page, email: string, password: str
 
 export async function logout(page: Page) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Logout" }).click();
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("menuitem", { name: "Log out" }).click();
   await page.waitForURL(/\/login/);
 }
 
