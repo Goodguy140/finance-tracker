@@ -36,7 +36,7 @@ function bodyFor(warning: BudgetWarning, monthLabel: string, baseUrl: string | u
     `Category: ${warning.categoryName}`,
   ];
   if (baseUrl) lines.push("", `Open your dashboard: ${baseUrl}/`);
-  lines.push("", "You are receiving this because budget email alerts are enabled in Settings → Budgets.");
+  lines.push("", "You are receiving this because budget email alerts are enabled in Settings → Notifications.");
   return lines.join("\n");
 }
 

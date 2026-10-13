@@ -366,8 +366,8 @@ export function BudgetAlertsPanel({
 
       <p className="mt-3 text-xs text-slate-500">
         Enable browser or email alerts in{" "}
-        <a href="/settings/categories" className="text-blue-300 underline-offset-4 hover:underline">
-          Settings → Budgets
+        <a href="/settings/notifications" className="text-blue-300 underline-offset-4 hover:underline">
+          Settings → Notifications
         </a>
         .
       </p>
