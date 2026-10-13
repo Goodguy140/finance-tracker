@@ -2,6 +2,7 @@ import {
   normalizeExpenseTitleKey,
   type ExpenseTitleSuggestion,
 } from "@/lib/expense-title-suggestions";
+import { untransferredType } from "@/lib/transfer-type";
 
 /**
  * The transaction rules engine. Pure and client-safe: the manual forms and the Settings →
@@ -34,6 +35,9 @@ export type TransactionRuleInput = {
   setAccountId: string | null;
   appendNote: string | null;
   addTagId: string | null;
+  markAsTransfer: boolean;
+  /** The other side of the transfer; only meaningful with `markAsTransfer`. */
+  setTransferAccountId: string | null;
 };
 
 export type RuleSubject = {
@@ -53,6 +57,10 @@ export type RuleOutcome = {
   amountCents?: number;
   accountId?: string;
   appendNote?: string;
+  /** Book it as a transfer between the user's own accounts. */
+  markAsTransfer?: true;
+  /** The account on the other side, from the same rule that marked it. */
+  transferAccountId?: string;
   /** Unlike the fields above, every matching rule adds its tag, in priority order. */
   tagIds: string[];
   /** Rules that contributed at least one field, in priority order. */
@@ -78,9 +86,25 @@ export function textMatches(operator: RuleTextOperator, pattern: string, text: s
   }
 }
 
+/**
+ * A rule scoped to expenses (or income) that marks transfers keeps matching what it turned
+ * into a transfer: the review queue evaluates a row both ways, and the transfer side should
+ * still get that rule's rename, note, tags and other account. Money out stands in for an
+ * expense and money in for income, the same way unmarking decides.
+ */
+function typeMatches(rule: TransactionRuleInput, subject: RuleSubject) {
+  if (!rule.transactionType || rule.transactionType === subject.type) return true;
+  return (
+    rule.markAsTransfer &&
+    subject.type === "TRANSFER" &&
+    subject.amountCents !== null &&
+    untransferredType(subject.amountCents) === rule.transactionType
+  );
+}
+
 export function ruleMatches(rule: TransactionRuleInput, subject: RuleSubject) {
   if (!rule.enabled) return false;
-  if (rule.transactionType && rule.transactionType !== subject.type) return false;
+  if (!typeMatches(rule, subject)) return false;
   if (rule.matchAccountId && rule.matchAccountId !== subject.accountId) return false;
   if (rule.minAmountCents !== null || rule.maxAmountCents !== null) {
     if (subject.amountCents === null) return false;
@@ -137,6 +161,13 @@ export function resolveRuleOutcome(
       outcome.appendNote = rule.appendNote.trim();
       contributed = true;
     }
+    if (outcome.markAsTransfer === undefined && rule.markAsTransfer) {
+      outcome.markAsTransfer = true;
+      if (rule.setTransferAccountId && rule.setTransferAccountId !== subject.accountId) {
+        outcome.transferAccountId = rule.setTransferAccountId;
+      }
+      contributed = true;
+    }
     if (rule.addTagId && !outcome.tagIds.includes(rule.addTagId)) {
       outcome.tagIds.push(rule.addTagId);
       contributed = true;
@@ -144,7 +175,7 @@ export function resolveRuleOutcome(
     if (contributed) outcome.ruleIds.push(rule.id);
   }
 
-  if (outcome.categoryId === undefined && subject.type === "EXPENSE" && learned) {
+  if (outcome.categoryId === undefined && subject.type === "EXPENSE" && !outcome.markAsTransfer && learned) {
     const categoryId = learnedCategoryFor(learned, subject.texts);
     if (categoryId && categoryKindById.get(categoryId) === "EXPENSE") {
       outcome.categoryId = categoryId;
@@ -226,6 +257,11 @@ export function describeRuleActions(
   if (rule.setAccountId) parts.push(`account → ${labels.account(rule.setAccountId)}`);
   if (rule.appendNote) parts.push(`note + “${rule.appendNote}”`);
   if (rule.addTagId) parts.push(`tag + ${labels.tag(rule.addTagId)}`);
+  if (rule.markAsTransfer) {
+    parts.push(
+      rule.setTransferAccountId ? `transfer ↔ ${labels.account(rule.setTransferAccountId)}` : "mark as transfer",
+    );
+  }
   return parts.join(", ") || "no actions";
 }
 
@@ -238,6 +274,8 @@ export type PastTransaction = {
   categoryId: string;
   note: string | null;
   tagIds: string[];
+  /** Shares someone owes back were taken out of the amount, so it cannot become a transfer. */
+  hasOwedShares?: boolean;
 };
 
 type RuleChangeFields = Pick<PastTransaction, "title" | "categoryId" | "accountId" | "note">;
@@ -248,13 +286,18 @@ export type RuleChange = {
   after: RuleChangeFields;
   /** The rule's tag, when the transaction does not have it yet. */
   addTagId: string | null;
+  /** Booked as a transfer from here on, naming `transferAccountId` as its other side. */
+  markAsTransfer: boolean;
+  transferAccountId: string | null;
 };
 
 /**
  * What applying one rule to past transactions would change. The amount action is never
  * applied retroactively — a recorded amount is a fact about what was spent, a rule's amount
  * is only a default for new entries. Rows the rule matches but would leave identical are
- * omitted. Callers exclude split transactions, whose categories live in their parts.
+ * omitted. Callers exclude split transactions, whose categories live in their parts. A rule
+ * that marks transfers turns matching expenses and income into transfers, except entries with
+ * owed shares, which keep the rule's other changes.
  */
 export function planRuleApplication(
   rule: TransactionRuleInput,
@@ -280,14 +323,20 @@ export function planRuleApplication(
     if (active.setAccountId) after.accountId = active.setAccountId;
     if (active.appendNote?.trim()) after.note = appendRuleNote(row.note, active.appendNote.trim());
     const addTagId = active.addTagId && !row.tagIds.includes(active.addTagId) ? active.addTagId : null;
+    const markAsTransfer = active.markAsTransfer && row.type !== "TRANSFER" && !row.hasOwedShares;
+    const transferAccountId =
+      markAsTransfer && active.setTransferAccountId && active.setTransferAccountId !== after.accountId
+        ? active.setTransferAccountId
+        : null;
     if (
       after.categoryId !== before.categoryId ||
       after.title !== before.title ||
       after.accountId !== before.accountId ||
       (after.note ?? null) !== (before.note ?? null) ||
-      addTagId
+      addTagId ||
+      markAsTransfer
     ) {
-      changes.push({ id: row.id, before, after, addTagId });
+      changes.push({ id: row.id, before, after, addTagId, markAsTransfer, transferAccountId });
     }
   }
   return changes;

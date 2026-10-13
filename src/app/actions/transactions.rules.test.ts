@@ -17,6 +17,9 @@ vi.mock("@/lib/session", () => ({ requireUser: vi.fn(async () => ({ id: "user-1"
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
 vi.mock("@/lib/budget-alert-dispatch", () => ({ scheduleBudgetAlertEmails: vi.fn() }));
 vi.mock("@/lib/audit-log", () => ({ AUDIT_ACTIONS: {}, recordAuditLog: vi.fn() }));
+vi.mock("@/lib/fallback-categories", () => ({
+  ensureFallbackCategoryFor: vi.fn(async (_client: unknown, _userId: string, kind: string) => `cat-${kind.toLowerCase()}`),
+}));
 vi.mock("@/lib/transaction-rules-server", () => ({
   loadRuleContext: vi.fn(async () => ruleContext.current),
 }));
@@ -39,6 +42,8 @@ const baseRule: TransactionRuleInput = {
   setAccountId: "acc-card",
   appendNote: "streaming",
   addTagId: null,
+  markAsTransfer: false,
+  setTransferAccountId: null,
 };
 
 function csvForm(rows: Record<string, string>[], mapping: Record<string, string>) {
@@ -138,6 +143,42 @@ describe("importExpensesCsvAction with rules", () => {
     expect(writtenRows()[0]).toMatchObject({ categoryId: "cat-default" });
   });
 
+  it("books a line a marking rule matches as a transfer, naming the rule's other account", async () => {
+    ruleContext.current = {
+      ...ruleContext.current!,
+      rules: [
+        {
+          ...baseRule,
+          titlePattern: "visa payment",
+          setCategoryId: null,
+          setAccountId: null,
+          appendNote: null,
+          markAsTransfer: true,
+          setTransferAccountId: "acc-card",
+        },
+      ],
+    };
+    await importExpensesCsvAction(
+      csvForm(
+        [
+          { Amount: "500", Desc: "VISA PAYMENT THANK YOU" },
+          { Amount: "5", Desc: "Corner shop" },
+        ],
+        { amount: "Amount", title: "Desc" },
+      ),
+    );
+    const [payment, shop] = writtenRows();
+    expect(payment).toMatchObject({
+      type: "TRANSFER",
+      categoryId: "cat-transfer",
+      accountId: "acc-default",
+      transferAccountId: "acc-card",
+      amountCents: 50000,
+      title: "Netflix",
+    });
+    expect(shop).toMatchObject({ type: "EXPENSE", categoryId: "cat-default" });
+  });
+
   it("ignores a rule account that is archived (not in the active list)", async () => {
     ruleContext.current = { ...ruleContext.current!, rules: [{ ...baseRule, setAccountId: "acc-archived" }] };
     await importExpensesCsvAction(csvForm([{ Amount: "15.99", Desc: "NETFLIX" }], { amount: "Amount", title: "Desc" }));
@@ -219,7 +260,7 @@ describe("importExpensesCsvAction dates and duplicates", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           userId: "user-1",
-          type: "EXPENSE",
+          type: { in: ["EXPENSE", "TRANSFER"] },
           date: { gte: new Date("2026-03-02T00:00:00Z"), lt: new Date("2026-03-04T00:00:00Z") },
         }),
       }),

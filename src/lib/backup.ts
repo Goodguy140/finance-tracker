@@ -212,6 +212,9 @@ export type UserBackupPayload = {
     appendNote: string | null;
     /** By its exported `tags[].id`. */
     addTagId: string | null;
+    /** Optional: older backups predate the transfer action. */
+    markAsTransfer?: boolean;
+    setTransferAccountId?: string | null;
     createdAt: IsoString;
   }>;
   /** The user's tags. Optional: older backups predate them. */
@@ -476,6 +479,8 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       setAccountId: row.setAccountId,
       appendNote: row.appendNote,
       addTagId: row.addTagId,
+      markAsTransfer: row.markAsTransfer,
+      setTransferAccountId: row.setTransferAccountId,
       createdAt: row.createdAt.toISOString(),
     })),
     tags: user.tags.map((row) => ({ id: row.id, name: row.name, createdAt: row.createdAt.toISOString() })),
