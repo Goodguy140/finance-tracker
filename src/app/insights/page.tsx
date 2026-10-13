@@ -1,6 +1,7 @@
 import { CategoryKind } from "@prisma/client";
 import Link from "next/link";
 import { setHabitDetectionAction } from "@/app/actions";
+import { AppNav, APP_TAB_BAR_PAD_CLASS } from "@/components/app-nav";
 import { TagFilterSelect } from "@/components/expense-log";
 import { FinancialScoreCard } from "@/components/financial-score-card";
 import { SavingsGoalsCard } from "@/components/savings-goals-card";
@@ -50,16 +51,12 @@ const SECTIONS: Array<{ id: InsightSection; title: string; description: string; 
   },
 ];
 
-const linkBtn =
-  "inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 transition hover:bg-slate-800";
-
 export default async function InsightsPage({ searchParams }: { searchParams: SearchParams }) {
   const user = await requireUser();
   const sp = await searchParams;
   const tags = await listTags(prisma, user.id);
   // `?tag=`, as on the dashboard and Reports: every insight is worked out from tagged rows only.
   const tagFilter = resolveTagFilter(sp.tag, tags);
-  const tagQuery = tagFilter ? `?tag=${encodeURIComponent(tagFilter.id)}` : "";
   const [loaded, accounts, categories, financial, savingsGoals] = await Promise.all([
     loadInsights(user.id, user.countryCode, tagFilter?.id ?? null),
     prisma.account.findMany({ where: { userId: user.id, archived: false }, orderBy: { createdAt: "asc" } }),
@@ -83,25 +80,14 @@ export default async function InsightsPage({ searchParams }: { searchParams: Sea
   for (const insight of visible) bySection.set(insight.section, [...(bySection.get(insight.section) ?? []), insight]);
 
   return (
-    <main className="mx-auto mb-4 mt-[max(1rem,env(safe-area-inset-top))] w-full max-w-4xl space-y-4 px-4 pb-8 pt-2 text-slate-100 sm:px-5 lg:my-6 lg:space-y-5 lg:px-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Insights</h1>
-          <p className="mt-1 text-sm text-slate-400">
-            Worked out from your last year of transactions, on this server. Nothing is sent anywhere.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <Link href={`/reports${tagQuery}`} className={linkBtn}>
-            Reports
-          </Link>
-          <Link href="/settings" className={linkBtn}>
-            Settings
-          </Link>
-          <Link href="/" className={linkBtn}>
-            Back to dashboard
-          </Link>
-        </div>
+    <>
+    <AppNav displayName={user.displayName} countryCode={user.countryCode} tagId={tagFilter?.id} />
+    <main className={`mx-auto my-4 w-full max-w-4xl space-y-4 px-4 pb-8 pt-2 text-slate-100 sm:px-5 lg:my-6 lg:space-y-5 lg:px-6 ${APP_TAB_BAR_PAD_CLASS}`}>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Insights</h1>
+        <p className="mt-1 text-sm text-slate-400">
+          Worked out from your last year of transactions, on this server. Nothing is sent anywhere.
+        </p>
       </div>
 
       <FinancialScoreCard score={financial.score} note={tags.length ? "It doesn't change with the tag below" : undefined} />
@@ -199,5 +185,6 @@ export default async function InsightsPage({ searchParams }: { searchParams: Sea
         </details>
       ) : null}
     </main>
+    </>
   );
 }

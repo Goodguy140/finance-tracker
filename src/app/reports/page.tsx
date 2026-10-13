@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AppNav, APP_TAB_BAR_PAD_CLASS } from "@/components/app-nav";
 import { TagFilterSelect } from "@/components/expense-log";
 import { FinancialScoreCard } from "@/components/financial-score-card";
 import { CashFlowSankey, IncomeSpendingChart, NetWorthChart } from "@/components/reports/report-charts";
@@ -34,8 +35,6 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 const TOP_MERCHANTS = 15;
 
-const linkBtn =
-  "inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 transition hover:bg-slate-800";
 const card = "rounded-2xl border border-slate-800 bg-slate-900/70 p-4 lg:p-5";
 
 function reportsHref(periodKey: string, tagQuery: string): string {
@@ -118,24 +117,16 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   const comparisonLabel = period.key === "12m" ? "the 12 months before" : `the same dates in ${Number(period.key) - 1}`;
 
   return (
-    <main className="mx-auto mb-4 mt-[max(1rem,env(safe-area-inset-top))] w-full max-w-4xl space-y-4 px-4 pb-8 pt-2 text-slate-100 sm:px-5 lg:my-6 lg:space-y-5 lg:px-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Reports</h1>
-          <p className="mt-1 text-sm text-slate-400">
-            {tracksSavings
-              ? "Transfers between your accounts are left out, except money moved into accounts that count as savings."
-              : "Income and spending only. Transfers between your accounts are left out."}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <Link href={tagFilter ? `/insights?${tagQuery}` : "/insights"} className={linkBtn}>
-            Insights
-          </Link>
-          <Link href="/" className={linkBtn}>
-            Back to dashboard
-          </Link>
-        </div>
+    <>
+    <AppNav displayName={user.displayName} countryCode={user.countryCode} tagId={tagFilter?.id} />
+    <main className={`mx-auto my-4 w-full max-w-4xl space-y-4 px-4 pb-8 pt-2 text-slate-100 sm:px-5 lg:my-6 lg:space-y-5 lg:px-6 ${APP_TAB_BAR_PAD_CLASS}`}>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Reports</h1>
+        <p className="mt-1 text-sm text-slate-400">
+          {tracksSavings
+            ? "Transfers between your accounts are left out, except money moved into accounts that count as savings."
+            : "Income and spending only. Transfers between your accounts are left out."}
+        </p>
       </div>
 
       <FinancialScoreCard score={financial.score} note="It doesn't change with the period or tag below" />
@@ -333,6 +324,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
         )}
       </section>
     </main>
+    </>
   );
 }
 

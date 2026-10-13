@@ -28,7 +28,7 @@ test("user can login with email/password", async ({ page }) => {
   await page.getByRole("button", { name: "Login" }).click();
 
   await expectDashboardHome(page);
-  await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
 });
 
 test("user can login with email/password when optional Google settings are unreadable", async ({ page }) => {
@@ -64,7 +64,7 @@ test("user can login with email/password when optional Google settings are unrea
   await page.getByRole("button", { name: "Login" }).click();
 
   await expectDashboardHome(page);
-  await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
 });
 
 test("user can logout and is redirected to login", async ({ page }) => {
@@ -90,10 +90,11 @@ test("user can logout and is redirected to login", async ({ page }) => {
   await page.getByRole("button", { name: "Login" }).click();
 
   await expectDashboardHome(page);
-  await page.getByRole("button", { name: "Logout" }).click();
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("menuitem", { name: "Log out" }).click();
 
   await expect(page).toHaveURL(/\/login/);
-  await expect(page.getByRole("button", { name: "Logout" })).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "Account menu" })).not.toBeVisible();
   await expect(page.getByPlaceholder("Email")).toBeVisible();
 
   const sessionRes = await page.request.get("/api/auth/session");

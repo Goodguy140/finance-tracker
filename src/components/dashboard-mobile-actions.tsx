@@ -83,8 +83,9 @@ export function DashboardMobileActions({
 
   return (
     <>
+      {/* Floats just above the app's tab bar (3.5rem plus the home-indicator inset). */}
       <div
-        className={`pointer-events-none fixed inset-x-0 bottom-0 ${MOBILE_FAB_Z_CLASS} flex justify-center gap-2 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 lg:hidden`}
+        className={`pointer-events-none fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] ${MOBILE_FAB_Z_CLASS} flex justify-center gap-2 px-3 pb-2 pt-2 lg:hidden`}
       >
         <button
           type="button"

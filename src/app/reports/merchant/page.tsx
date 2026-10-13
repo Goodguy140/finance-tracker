@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AppNav, APP_TAB_BAR_PAD_CLASS } from "@/components/app-nav";
 import { MerchantMonthChart } from "@/components/reports/report-charts";
 import { getCountryConfig } from "@/lib/country-config";
 import { formatDateOnlyUtc } from "@/lib/date-only";
@@ -43,7 +44,9 @@ export default async function MerchantReportPage({ searchParams }: { searchParam
   ];
 
   return (
-    <main className="mx-auto mb-4 mt-[max(1rem,env(safe-area-inset-top))] w-full max-w-4xl space-y-4 px-4 pb-8 pt-2 text-slate-100 sm:px-5 lg:my-6 lg:space-y-5 lg:px-6">
+    <>
+    <AppNav displayName={user.displayName} countryCode={user.countryCode} />
+    <main className={`mx-auto my-4 w-full max-w-4xl space-y-4 px-4 pb-8 pt-2 text-slate-100 sm:px-5 lg:my-6 lg:space-y-5 lg:px-6 ${APP_TAB_BAR_PAD_CLASS}`}>
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h1 className="truncate text-2xl font-semibold tracking-tight sm:text-3xl" data-testid="merchant-name">
@@ -114,5 +117,6 @@ export default async function MerchantReportPage({ searchParams }: { searchParam
         </ul>
       </section>
     </main>
+    </>
   );
 }
