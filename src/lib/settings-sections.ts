@@ -10,6 +10,7 @@ export type SettingsSectionId =
   | "notifications"
   | "appearance"
   | "accounts"
+  | "goals"
   | "banks"
   | "categories"
   | "rules"
@@ -70,6 +71,13 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     label: "Accounts",
     summary: "Where your transactions are recorded.",
     keywords: ["balance", "net worth", "savings", "archive", "default", "tfsa", "rrsp", "fhsa", "contribution room", "currency"],
+  },
+  {
+    id: "goals",
+    group: "money",
+    label: "Savings goals",
+    summary: "What you're saving toward, and how far along you are.",
+    keywords: ["goal", "target", "emergency fund", "save up", "down payment"],
   },
   {
     id: "banks",
@@ -149,6 +157,7 @@ const LEGACY_HASHES: Record<string, string> = {
   security: "/settings/security",
   accounts: "/settings/accounts",
   balances: "/settings/accounts",
+  goals: "/settings/goals",
   "contribution-room": "/settings/accounts",
   tfsa: "/settings/accounts",
   rrsp: "/settings/accounts",

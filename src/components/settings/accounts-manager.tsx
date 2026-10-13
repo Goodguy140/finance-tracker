@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronRight, Plus, Trash2 } from "lucide-react";
 import {
   createFinancialAccountAction,
+  deleteAccountBalanceAction,
   deleteFinancialAccountAction,
   setAccountBalanceAction,
   setFinancialAccountArchivedAction,
@@ -14,7 +15,7 @@ import { AccountTypePill } from "@/components/account-type-pill";
 import { RoomCard } from "@/components/contribution-room-panel";
 import { inputClass, primaryBtnClass, secondaryBtnClass, selectClass } from "@/components/forms/shared";
 import { ServerActionForm } from "@/components/server-action-form";
-import { ConfirmDialog, Drawer, FormDialog } from "@/components/settings/dialog";
+import { ConfirmDialog, Drawer, FormDialog, useConfirm } from "@/components/settings/dialog";
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPE_ORDER, formatAccountTypeLabel } from "@/lib/account-type-labels";
 import {
   computeRoomYear,
@@ -38,6 +39,8 @@ export type ManagedAccount = {
   /** Whether its balance counts against net worth (a loan, a card). Null when archived. */
   liability: boolean | null;
   latest: { cents: number; dateYmd: string; source: "PLAID" | "MANUAL" | "PORTFOLIO" } | null;
+  /** Balances entered by hand, newest first. Bank-synced ones are not listed: a sync rewrites them. */
+  manualBalances: { id: string; cents: number; dateYmd: string }[];
 };
 
 const SOURCE_LABEL = { PLAID: "from your bank", MANUAL: "entered by you", PORTFOLIO: "portfolio snapshot" } as const;
@@ -275,6 +278,7 @@ function AccountDrawer({
   const removeForm = useRef<HTMLFormElement>(null);
   const defaultForm = useRef<HTMLFormElement>(null);
   const liability = account.liability ?? false;
+  const { ask, dialog: confirmDialog } = useConfirm();
 
   return (
     <Drawer
@@ -412,6 +416,41 @@ function AccountDrawer({
               Save balance
             </button>
           </ServerActionForm>
+          {account.manualBalances.length > 0 ? (
+            <div className="space-y-1.5" data-testid="manual-balances">
+              <h4 className="text-xs font-medium text-slate-400">Entered by you</h4>
+              <ul className="divide-y divide-slate-800/80 rounded-xl border border-slate-800">
+                {account.manualBalances.map((entry) => (
+                  <li key={entry.id} className="flex items-center justify-between gap-3 px-3 py-1.5">
+                    <span className="text-sm text-slate-300">{formatYmd(entry.dateYmd)}</span>
+                    <span className="ml-auto text-sm tabular-nums text-slate-200">
+                      {formatCurrency(entry.cents, account.currency)}
+                    </span>
+                    <ServerActionForm
+                      action={deleteAccountBalanceAction}
+                      beforeSubmit={() =>
+                        ask({
+                          title: "Delete this balance?",
+                          body: `The ${formatCurrency(entry.cents, account.currency)} you entered for ${formatYmd(entry.dateYmd)} is removed, and net worth on Reports no longer counts it.`,
+                          confirmLabel: "Delete balance",
+                          danger: true,
+                        })
+                      }
+                    >
+                      <input type="hidden" name="id" value={entry.id} />
+                      <button
+                        type="submit"
+                        aria-label={`Delete balance from ${formatYmd(entry.dateYmd)}`}
+                        className="rounded-lg p-1 text-slate-500 transition hover:bg-slate-800 hover:text-red-300"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                      </button>
+                    </ServerActionForm>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -438,6 +477,7 @@ function AccountDrawer({
           }}
         />
       ) : null}
+      {confirmDialog}
     </Drawer>
   );
 }

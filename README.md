@@ -13,6 +13,7 @@ Self-hosted personal finance app. Next.js, SQLite and Prisma, shipped as a singl
 - **Tags** that cut across categories, added by hand or by transaction rules, with a dashboard filter
 - **Money owed to you**: mark part of an expense as owed by someone, keep it out of your spending, and track it until paid back
 - **Investments** with TFSA, RRSP and FHSA contribution room tracking
+- **Savings goals** with a target and optional date, following a savings account's balance or an amount you record, with what each needs a month
 - **Bank sync** through Plaid; synced transactions wait in a review queue and are never posted on their own; you choose which of your categories each Plaid category is suggested as
 - **Multi-user** with roles, Google or Authentik SSO, passkeys, and an admin audit log
 - **Backup and restore** of each user's data, plus a read-only API with personal access tokens

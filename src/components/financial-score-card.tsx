@@ -1,4 +1,4 @@
-import { scoreBand, type FinancialScore, type FinancialScoreBand } from "@/lib/financial-score";
+import { EMERGENCY_FUND_TARGET_MONTHS, scoreBand, type FinancialScore, type FinancialScoreBand } from "@/lib/financial-score";
 import { formatYmShortLabel } from "@/lib/dashboard-period";
 
 /** Ring and bar colour per band; the band's name is always printed beside it. */
@@ -114,7 +114,7 @@ export function FinancialScoreCard({ score, note }: { score: FinancialScore; not
         <div className="mt-2 space-y-2 text-slate-400">
           <p>
             Each factor is scored 0–100 from your full months of income and spending (transfers between your accounts are left
-            out), and the overall score is their weighted average:
+            out) and your account balances, and the overall score is their weighted average:
           </p>
           <ul className="space-y-0.5 tabular-nums">
             {score.factors.map((f) => (
@@ -130,7 +130,11 @@ export function FinancialScoreCard({ score, note }: { score: FinancialScore; not
               {score.omitted.map((o) => `${o.label.toLowerCase()} (${o.reason})`).join(", ")}.
             </p>
           ) : null}
-          <p>Account balances aren&apos;t tracked, so savings on hand, debt and an emergency fund aren&apos;t part of the score.</p>
+          <p>
+            The emergency fund is the latest balance of your chequing, savings and cash accounts, plus any other account marked
+            &ldquo;Counts as savings&rdquo; except an RRSP, against {EMERGENCY_FUND_TARGET_MONTHS} months of your average spending.
+            Debt isn&apos;t part of the score.
+          </p>
         </div>
       </details>
     </section>

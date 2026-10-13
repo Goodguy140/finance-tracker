@@ -162,6 +162,15 @@ export type UserBackupPayload = {
     source: string;
     createdAt: IsoString;
   }>;
+  /** Savings goals; `accountId` is an exported account id or null. Optional for older backups. */
+  savingsGoals?: Array<{
+    name: string;
+    targetCents: number;
+    targetDate: IsoString | null;
+    accountId: string | null;
+    savedCents: number;
+    createdAt: IsoString;
+  }>;
   /**
    * Which transactions were confirmed against a bank record, keyed by the exported
    * `transactions[].id` (remapped on import like every other cross-reference).
@@ -280,6 +289,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       investmentFlows: true,
       portfolioSnapshots: true,
       balanceSnapshots: true,
+      savingsGoals: { orderBy: { createdAt: "asc" } },
       transactionVerifications: true,
       transactionRules: { orderBy: [{ priority: "asc" }, { id: "asc" }] },
       hiddenTitleSuggestions: true,
@@ -437,6 +447,14 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       date: row.date.toISOString(),
       balanceCents: row.balanceCents,
       source: row.source,
+      createdAt: row.createdAt.toISOString(),
+    })),
+    savingsGoals: user.savingsGoals.map((row) => ({
+      name: row.name,
+      targetCents: row.targetCents,
+      targetDate: toIso(row.targetDate),
+      accountId: row.accountId,
+      savedCents: row.savedCents,
       createdAt: row.createdAt.toISOString(),
     })),
     transactionVerifications: user.transactionVerifications.map((row) => ({

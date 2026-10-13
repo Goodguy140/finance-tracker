@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { MAX_AMOUNT, MAX_AMOUNT_CENTS } from "@/lib/money";
 import { YM_PATTERN } from "@/lib/period-month";
+import { MAX_GOAL_NAME_LENGTH } from "@/lib/savings-goals";
 import { MAX_TAG_NAME_LENGTH } from "@/lib/tags";
 
 /**
@@ -315,6 +316,25 @@ export const accountBalanceSchema = z.object({
   accountId: z.string().min(1),
   balance: z.coerce.number().min(-MAX_AMOUNT, amountTooLarge).max(MAX_AMOUNT, amountTooLarge),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { message: "Pick a date." }),
+});
+
+/** A savings goal from its form. Empty `accountId` means tracked by hand; empty date, no deadline. */
+export const savingsGoalSchema = z.object({
+  name: z.string().trim().min(1, { message: "Name the goal." }).max(MAX_GOAL_NAME_LENGTH),
+  target: positiveAmount,
+  targetDate: z.union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { message: "Pick a date." })]),
+  accountId: z.string(),
+  saved: z.union([z.literal(""), nonNegativeAmount]),
+});
+
+/** Money put toward (positive) or taken back from (negative) a goal tracked by hand. */
+export const savingsGoalContributionSchema = z.object({
+  goalId: z.string().min(1),
+  amount: z.coerce
+    .number()
+    .min(-MAX_AMOUNT, amountTooLarge)
+    .max(MAX_AMOUNT, amountTooLarge)
+    .refine((n) => n !== 0, { message: "Enter an amount." }),
 });
 
 export const passwordChangeSchema = z

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { hash } from "bcryptjs";
-import { CategoryKind, RecurringCadence, TransactionType } from "@prisma/client";
+import { AccountType, CategoryKind, RecurringCadence, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
@@ -14,8 +14,9 @@ function fifthOfMonthsAgo(monthsBack: number) {
 
 /**
  * Six full months of $4,000 pay and $3,000 groceries, plus $600 a month of dining in the
- * latest three against a $300 dining budget, and $2,000 rent as a recurring bill. That is a
- * fair score with three things to fix: the dining budget, the rise in spending, and rent.
+ * latest three against a $300 dining budget, $2,000 rent as a recurring bill, and $3,300 in
+ * chequing (one month of the $3,300 average spending). That is a fair score with three things
+ * to fix: the dining budget, the rise in spending, and the emergency fund.
  */
 async function seedUser(page: Page) {
   const email = `e2e-score-${uniqueStamp()}@example.com`;
@@ -34,7 +35,7 @@ async function seedUser(page: Page) {
   const category = (name: string, kind: CategoryKind = CategoryKind.EXPENSE) =>
     prisma.category.findFirstOrThrow({ where: { userId: user.id, kind, name } });
   const [account, groceries, dining, rent, salary] = await Promise.all([
-    prisma.account.findFirstOrThrow({ where: { userId: user.id } }),
+    prisma.account.findFirstOrThrow({ where: { userId: user.id, type: AccountType.CHEQUING } }),
     category("Groceries"),
     category("Dining"),
     category("Rent"),
@@ -56,6 +57,9 @@ async function seedUser(page: Page) {
       ...months.map((m) => row(groceries.id, TransactionType.EXPENSE, 300_000, "Loblaws", m)),
       ...[1, 2, 3].map((m) => row(dining.id, TransactionType.EXPENSE, 60_000, "Bistro", m)),
     ],
+  });
+  await prisma.accountBalanceSnapshot.create({
+    data: { userId: user.id, accountId: account.id, date: fifthOfMonthsAgo(1), balanceCents: 330_000, source: "MANUAL" },
   });
   await prisma.budget.create({ data: { userId: user.id, categoryId: dining.id, periodMonth: "2020-01", limitCents: 30_000 } });
   await prisma.recurringTransaction.create({
@@ -84,15 +88,18 @@ test("the financial score shows on Insights and Reports with what to improve", a
   for (const path of ["/insights", "/reports"]) {
     await page.goto(path);
     const card = page.getByTestId("financial-score");
-    // Savings 84, bills 70, budgets 0, trend 17, months in the black 100, weighted 35/20/20/15/10.
-    await expect(card.getByTestId("financial-score-value")).toHaveText("56");
+    // Savings 84, emergency fund 40, bills 70, budgets 0, trend 17, months in the black 100,
+    // weighted 35/20/20/20/15/10.
+    await expect(card.getByTestId("financial-score-value")).toHaveText("53");
     await expect(card.getByTestId("financial-score-band")).toHaveText("Fair");
-    await expect(card.getByTestId("financial-score-factors").getByRole("listitem")).toHaveCount(5);
+    await expect(card.getByTestId("financial-score-factors").getByRole("listitem")).toHaveCount(6);
     const suggestions = card.getByTestId("financial-score-suggestions").getByRole("listitem");
     await expect(suggestions).toHaveCount(3);
     await expect(suggestions.nth(0)).toContainText("Dining went over budget in 3 of the last 3 months");
     await expect(suggestions.nth(1)).toContainText("The biggest rise is Dining, up $600.00 a month");
-    await expect(suggestions.nth(2)).toContainText("Rent ($2,000.00/mo)");
+    await expect(suggestions.nth(2)).toHaveText(
+      "Chequing and savings cover 1.0 month of spending. Setting aside about $6,600.00 would build a 3-month emergency fund.",
+    );
     await card.screenshot({ path: testInfo.outputPath(`score${path.replace("/", "-")}.png`) });
   }
 });
