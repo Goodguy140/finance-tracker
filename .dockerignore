@@ -16,3 +16,4 @@ dev.db
 **/*.db-shm
 .data
 prisma/.data
+site
