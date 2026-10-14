@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { AppNav, APP_TAB_BAR_PAD_CLASS } from "@/components/app-nav";
-import { SummaryDownload, TemplateCard } from "@/components/printables-panel";
+import { SummaryDownload, TemplateList } from "@/components/printables-panel";
 import { shiftYm } from "@/lib/dashboard-period";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import { printMonth } from "@/lib/printables/format";
-import { TEMPLATES } from "@/lib/printables/templates";
+import { EXTRA_BLANK_ROWS, EXTRA_ROW_OPTIONS, TEMPLATES } from "@/lib/printables/templates";
 import { prisma } from "@/lib/prisma";
 import { resolveReportPeriod, yearsWithActivity } from "@/lib/reports";
 import { loadActivityBounds } from "@/lib/reports/load";
@@ -64,16 +64,14 @@ export default async function PrintPage({ searchParams }: { searchParams: Search
           <p className="mt-0.5 text-sm text-slate-400">
             Worksheets for planning. &ldquo;With my data&rdquo; fills in what the app already knows and leaves the rest for
             you to write; &ldquo;Blank&rdquo; has nothing of yours on it, so it is fine to share. CSV opens in a spreadsheet.
+            A sheet that would run just past a page is drawn a little tighter to fit on one.
           </p>
-          <ul className="mt-3 space-y-3">
-            {TEMPLATES.map((t) => (
-              <TemplateCard
-                key={t.id}
-                template={t}
-                months={[currentYm, shiftYm(currentYm, 1)].map((ym) => ({ value: ym, label: printMonth(ym) }))}
-              />
-            ))}
-          </ul>
+          <TemplateList
+            templates={[...TEMPLATES]}
+            months={[currentYm, shiftYm(currentYm, 1)].map((ym) => ({ value: ym, label: printMonth(ym) }))}
+            rowOptions={EXTRA_ROW_OPTIONS}
+            defaultRows={EXTRA_BLANK_ROWS}
+          />
         </section>
       </main>
     </>

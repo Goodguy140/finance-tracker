@@ -468,14 +468,14 @@ export class PrintDoc {
    * A month as a calendar grid, Sunday first, with each day's entries written in its box.
    * `entries` is keyed by day of the month.
    */
-  calendar(ym: string, entries: ReadonlyMap<number, string[]>) {
+  calendar(ym: string, entries: ReadonlyMap<number, string[]>, maxCellHeight = 78) {
     const [year, month] = ym.split("-").map(Number);
     const firstDow = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
     const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
     const weeks = Math.ceil((firstDow + days) / 7);
     const colW = CONTENT_WIDTH / 7;
     const headH = 16;
-    const cellH = Math.min(78, Math.max(56, (this.y - MARGIN_BOTTOM - headH - 10) / weeks));
+    const cellH = Math.min(maxCellHeight, Math.max(Math.min(40, maxCellHeight), (this.y - MARGIN_BOTTOM - headH - 10) / weeks));
     this.ensure(headH + cellH * weeks);
     const top = this.y;
     ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach((d, i) => {
@@ -505,6 +505,10 @@ export class PrintDoc {
       });
     }
     this.y = top - headH - weeks * cellH - 12;
+  }
+
+  get pageCount(): number {
+    return this.pages.length;
   }
 
   async finish(): Promise<Uint8Array> {

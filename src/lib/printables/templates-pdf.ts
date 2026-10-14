@@ -15,41 +15,70 @@ import {
   type TemplateSheet,
 } from "./templates";
 
-/** Handwriting needs taller rows than print. */
-const WRITE_ROW = 20;
+/**
+ * How roomy a sheet is drawn: the height of a write-in row, the largest calendar box, and how
+ * many empty rows each table gets for the user's own additions.
+ */
+type Layout = { row: number; cell: number; extra: number };
+
+/** Roomiest first. Handwriting wants 20pt rows; 14pt is still writable. */
+const DENSITIES: ReadonlyArray<Omit<Layout, "extra">> = [
+  { row: 20, cell: 78 },
+  { row: 18, cell: 66 },
+  { row: 16, cell: 56 },
+  { row: 14, cell: 46 },
+];
 
 const blank = (count: number, width: number): Cell[][] => Array.from({ length: count }, () => Array<Cell>(width).fill(""));
 
-export async function renderTemplatePdf(t: TemplateSheet, meta: { todayYmd: string }): Promise<Uint8Array> {
+/**
+ * The template as a PDF. It is drawn at each density from roomiest to tightest, and the roomiest
+ * that needs no more pages than the tightest wins: a sheet that would spill a few lines onto a
+ * second page is tightened onto one, and one that needs three pages anyway stays roomy.
+ */
+export async function renderTemplatePdf(
+  t: TemplateSheet,
+  meta: { todayYmd: string; extraRows?: number },
+): Promise<Uint8Array> {
+  const extra = meta.extraRows ?? EXTRA_BLANK_ROWS;
+  const attempts: Array<{ pages: number; bytes: Uint8Array }> = [];
+  for (const density of DENSITIES) {
+    attempts.push(await renderAt(t, meta.todayYmd, { ...density, extra }));
+  }
+  const fewest = Math.min(...attempts.map((a) => a.pages));
+  return attempts.find((a) => a.pages === fewest)!.bytes;
+}
+
+async function renderAt(t: TemplateSheet, todayYmd: string, l: Layout): Promise<{ pages: number; bytes: Uint8Array }> {
   const info = findTemplate(t.id)!;
   const filled = t.sheet.mode === "filled";
   const doc = await PrintDoc.create({
     title: info.title,
     footer: filled
-      ? `${info.title}, filled in from your data on ${printYmd(meta.todayYmd)}. Amounts in ${t.sheet.currency}.`
+      ? `${info.title}, filled in from your data on ${printYmd(todayYmd)}. Amounts in ${t.sheet.currency}.`
       : `${info.title}. Amounts in ${t.sheet.currency}.`,
   });
   switch (t.id) {
     case "budget":
-      budget(doc, t.sheet);
+      budget(doc, t.sheet, l);
       break;
     case "bills":
-      bills(doc, t.sheet);
+      bills(doc, t.sheet, l);
       break;
     case "goals":
-      goals(doc, t.sheet);
+      goals(doc, t.sheet, l);
       break;
     case "debt":
-      debt(doc, t.sheet);
+      debt(doc, t.sheet, l);
       break;
     case "net-worth":
-      netWorth(doc, t.sheet);
+      netWorth(doc, t.sheet, l);
       break;
   }
-  return doc.finish();
+  return { pages: doc.pageCount, bytes: await doc.finish() };
 }
 
-function budget(doc: PrintDoc, s: BudgetSheet) {
+function budget(doc: PrintDoc, s: BudgetSheet, l: Layout) {
   const fmt = moneyFormatter(s.currency);
   const filled = s.mode === "filled";
   const money = (cents: number | null) => (cents === null ? "" : fmt(cents));
@@ -89,7 +118,7 @@ function budget(doc: PrintDoc, s: BudgetSheet) {
       "",
       "",
     ]),
-    ...blank(EXTRA_BLANK_ROWS, filled ? 7 : 4),
+    ...blank(l.extra, filled ? 7 : 4),
   ];
   const sum = (list: BudgetSheet["income"], key: "plannedCents" | "lastMonthCents" | "averageCents") =>
     list.reduce((total, r) => total + (r[key] ?? 0), 0);
@@ -99,10 +128,10 @@ function budget(doc: PrintDoc, s: BudgetSheet) {
       : ["Total", "", "", ""];
 
   doc.section("Income", filled ? "Expected is what your recurring income entries put in this month." : undefined, 80);
-  doc.table({ columns: columns("Source", "Expected"), rows: rows(s.income), totals: totals(s.income), rowHeight: WRITE_ROW, grid: true });
+  doc.table({ columns: columns("Source", "Expected"), rows: rows(s.income), totals: totals(s.income), rowHeight: l.row, grid: true });
 
   doc.section("Spending", undefined, 80);
-  doc.table({ columns: columns("Category", "Budget"), rows: rows(s.expenses), totals: totals(s.expenses), rowHeight: WRITE_ROW, grid: true });
+  doc.table({ columns: columns("Category", "Budget"), rows: rows(s.expenses), totals: totals(s.expenses), rowHeight: l.row, grid: true });
   if (filled && s.expenses.some((r) => r.carryCents)) {
     doc.paragraph("* Includes rollover carried in from earlier months.", { size: 8.5, color: INK.muted });
   }
@@ -120,7 +149,7 @@ function budget(doc: PrintDoc, s: BudgetSheet) {
   doc.writeLines(["Total income planned", "Total spending planned", "Left to save or invest", "Actually saved"], { columns: 2 });
 }
 
-function bills(doc: PrintDoc, s: BillSheet) {
+function bills(doc: PrintDoc, s: BillSheet, l: Layout) {
   const fmt = moneyFormatter(s.currency);
   const filled = s.mode === "filled";
   doc.title("Bill calendar", [
@@ -133,7 +162,7 @@ function bills(doc: PrintDoc, s: BillSheet) {
     const text = `${item.type === "INCOME" ? "+" : ""}${fmt(item.amountCents)} ${item.name}`;
     byDay.set(day, [...(byDay.get(day) ?? []), text]);
   }
-  doc.calendar(s.ym, byDay);
+  doc.calendar(s.ym, byDay, l.cell);
 
   doc.section("Checklist", undefined, 80);
   const bills = s.items.filter((i) => i.type === "EXPENSE");
@@ -155,15 +184,15 @@ function bills(doc: PrintDoc, s: BillSheet) {
         { text: i.paidOn ? printDate(i.paidOn) : "", color: INK.muted },
         { text: "", checkbox: true, checked: i.paidOn !== null },
       ]),
-      ...Array.from({ length: filled ? EXTRA_BLANK_ROWS : 14 }, (): Cell[] => ["", "", "", "", "", { text: "", checkbox: true }]),
+      ...Array.from({ length: filled ? l.extra : l.extra + 10 }, (): Cell[] => ["", "", "", "", "", { text: "", checkbox: true }]),
     ],
     totals: filled && bills.length ? ["", `${bills.length} bill${bills.length === 1 ? "" : "s"}`, "", fmt(bills.reduce((t, b) => t + b.amountCents, 0)), "", ""] : undefined,
-    rowHeight: WRITE_ROW,
+    rowHeight: l.row,
     grid: true,
   });
 }
 
-function goals(doc: PrintDoc, s: GoalSheet) {
+function goals(doc: PrintDoc, s: GoalSheet, l: Layout) {
   const months = Array.from({ length: GOAL_TRACKER_MONTHS }, (_, i) => shiftYm(s.startYm, i));
   const filled = s.mode === "filled";
   doc.title("Savings goal tracker", [
@@ -185,25 +214,23 @@ function goals(doc: PrintDoc, s: GoalSheet) {
         i === 0 && firstBalance ? { text: `Start: ${firstBalance}`, color: INK.muted } : "",
         { text: "", checkbox: true },
       ]),
-      rowHeight: 18,
+      rowHeight: l.row - 2,
       grid: true,
     });
 
   if (!filled || s.goals.length === 0) {
     if (filled) doc.paragraph("You have no savings goals in progress, so this is a blank tracker. Add goals under Settings, Savings goals.", { size: 9.5, color: INK.muted });
     for (let i = 0; i < 2; i++) {
-      if (i > 0) doc.newPage();
-      doc.section("Goal", undefined, 300);
+      doc.section("Goal", undefined, 110 + 13 * (l.row - 2));
       doc.writeLines(["Saving for", "Target amount", "By (date)", "Saved so far", "Still to go", "Needed each month"], { columns: 2 });
       grid("", "", false);
     }
     return;
   }
 
-  s.goals.forEach((g, i) => {
+  s.goals.forEach((g) => {
     const fmt = moneyFormatter(g.currency);
-    if (i > 0) doc.newPage();
-    doc.section(g.name, g.accountName ? `Follows the balance of ${g.accountName}.` : undefined, 300);
+    doc.section(g.name, g.accountName ? `Follows the balance of ${g.accountName}.` : undefined, 90 + 13 * (l.row - 2));
     doc.facts([
       ["Target", fmt(g.targetCents)],
       ["By", g.targetYmd ? printYmd(g.targetYmd) : "No date set"],
@@ -232,7 +259,7 @@ function balanceRows(rows: BalanceSheetRow[], filled: boolean, extra: number): C
   ];
 }
 
-function debt(doc: PrintDoc, s: DebtSheet) {
+function debt(doc: PrintDoc, s: DebtSheet, l: Layout) {
   const fmt = moneyFormatter(s.currency);
   const filled = s.mode === "filled";
   doc.title("Debt payoff planner", [
@@ -260,10 +287,10 @@ function debt(doc: PrintDoc, s: DebtSheet) {
         "",
         "",
       ]),
-      ...blank(EXTRA_BLANK_ROWS, 7),
+      ...blank(l.extra, 7),
     ],
     totals: filled && counted.length ? ["Total owed", fmt(counted.reduce((t, d) => t + (d.balanceCents ?? 0), 0)), "", "", "", "", ""] : undefined,
-    rowHeight: WRITE_ROW,
+    rowHeight: l.row,
     grid: true,
   });
   if (filled && s.debts.length === 0) {
@@ -280,13 +307,13 @@ function debt(doc: PrintDoc, s: DebtSheet) {
       { label: "Interest charged", weight: 2.2, align: "right" },
       { label: "New balance", weight: 2.2, align: "right" },
     ],
-    rows: (filled ? months.map(printMonthShort) : Array<string>(16).fill("")).map((m): Cell[] => [m, "", "", "", ""]),
-    rowHeight: WRITE_ROW,
+    rows: (filled ? months.map(printMonthShort) : Array<string>(12 + l.extra).fill("")).map((m): Cell[] => [m, "", "", "", ""]),
+    rowHeight: l.row,
     grid: true,
   });
 }
 
-function netWorth(doc: PrintDoc, s: NetWorthSheet) {
+function netWorth(doc: PrintDoc, s: NetWorthSheet, l: Layout) {
   const filled = s.mode === "filled";
   const fmt = moneyFormatter(s.currency);
   doc.title("Net worth worksheet", [
@@ -307,9 +334,9 @@ function netWorth(doc: PrintDoc, s: NetWorthSheet) {
   const totals = (rows: BalanceSheetRow[]): Cell[] | undefined => (filled ? ["Total", "", fmt(total(rows)), "", ""] : undefined);
 
   doc.section("What you own", undefined, 80);
-  doc.table({ columns, rows: balanceRows(s.assets, filled, EXTRA_BLANK_ROWS), totals: totals(s.assets), rowHeight: WRITE_ROW, grid: true });
+  doc.table({ columns, rows: balanceRows(s.assets, filled, l.extra), totals: totals(s.assets), rowHeight: l.row, grid: true });
   doc.section("What you owe", undefined, 80);
-  doc.table({ columns, rows: balanceRows(s.liabilities, filled, EXTRA_BLANK_ROWS), totals: totals(s.liabilities), rowHeight: WRITE_ROW, grid: true });
+  doc.table({ columns, rows: balanceRows(s.liabilities, filled, l.extra), totals: totals(s.liabilities), rowHeight: l.row, grid: true });
   if (filled && [...s.assets, ...s.liabilities].some((r) => r.currency !== s.currency)) {
     doc.paragraph(`Accounts in another currency are listed in their own currency and left out of the ${s.currency} totals.`, { size: 8.5, color: INK.muted });
   }

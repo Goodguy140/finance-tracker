@@ -60,6 +60,10 @@ test("templates come filled from the user's data or blank, as PDF or CSV", async
   expect(budgetText).toContain("$2,650.00"); // the monthly pay rule, expected
   expect(budgetText).toContain("$5,300.00"); // the last full month: two pay cheques
 
+  // The empty-rows choice follows into every template's links.
+  await page.getByTestId("template-rows").selectOption("8");
+  await expect(page.getByTestId("template-debt-blank-csv")).toHaveAttribute("href", "/api/printables/templates/debt?mode=blank&format=csv&rows=8");
+
   // This month's rent was already posted from its rule: it is on the calendar, marked paid.
   const bills = await page.request.get("/api/printables/templates/bills?mode=filled&format=csv");
   expect(await bills.text()).toMatch(/\d{4}-\d{2}-01,Rent,Bill,1750\.00,Main Chequing,\d{4}-\d{2}-01/);

@@ -200,3 +200,35 @@ describe("templates", () => {
     }
   });
 });
+
+describe("fitting a template to the page", () => {
+  const categories = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ name: `Category ${i + 1}`, plannedCents: 10_000, carryCents: 0, lastMonthCents: 9_000, averageCents: 9_500 }));
+  const budgetSheet = (n: number): TemplateSheet => ({
+    id: "budget",
+    sheet: { mode: "filled", ym: "2026-11", historyMonths: ["2026-07", "2026-08", "2026-09"], currency: "CAD", income: categories(4), expenses: categories(n) },
+  });
+  const pages = async (t: TemplateSheet, extraRows?: number) =>
+    (await pdfPageTexts(await renderTemplatePdf(t, { todayYmd: "2026-10-14", extraRows }))).length;
+
+  it("tightens a sheet that would run just past one page onto one", async () => {
+    // Ten categories and four income sources overflow at the roomiest rows.
+    expect(await pages(budgetSheet(10))).toBe(1);
+    for (const id of ["bills", "goals", "debt", "net-worth"] as const) {
+      const blank = {
+        bills: { id, sheet: { mode: "blank", ym: "2026-11", currency: "CAD", items: [] } },
+        goals: { id, sheet: { mode: "blank", currency: "CAD", startYm: "2026-10", goals: [] } },
+        debt: { id, sheet: { mode: "blank", currency: "CAD", startYm: "2026-10", debts: [] } },
+        "net-worth": { id, sheet: { mode: "blank", currency: "CAD", assets: [], liabilities: [] } },
+      }[id] as TemplateSheet;
+      expect(await pages(blank), id).toBe(1);
+    }
+  });
+
+  it("lets a sheet that cannot fit run on, and honours the rows asked for", async () => {
+    expect(await pages(budgetSheet(60))).toBeGreaterThan(1);
+    const csvRows = (extra: number) => templateCsv(budgetSheet(10), extra).split("\r\n").length;
+    expect(csvRows(12) - csvRows(0)).toBe(24); // twelve more under income and under spending
+    expect(await pages(budgetSheet(10), 0)).toBe(1);
+  });
+});

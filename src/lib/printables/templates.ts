@@ -63,8 +63,14 @@ export function resolveTemplateMonth(raw: string | null | undefined, currentYm: 
   return raw === shiftYm(currentYm, 1) ? raw : currentYm;
 }
 
-/** Rows a blank table gets beyond any named ones, as room to add your own. */
+/** Rows a table gets beyond any named ones, as room to add your own: the default, and the choices. */
 export const EXTRA_BLANK_ROWS = 4;
+export const EXTRA_ROW_OPTIONS = [0, 4, 8, 12] as const;
+
+export function parseExtraRows(raw: string | null | undefined): number {
+  const n = Number(raw);
+  return raw ? ((EXTRA_ROW_OPTIONS as readonly number[]).includes(n) ? n : EXTRA_BLANK_ROWS) : EXTRA_BLANK_ROWS;
+}
 
 // --- Budget worksheet ---------------------------------------------------------------------
 
@@ -220,7 +226,7 @@ function ymd(date: Date | null): string {
 const blankRows = (count: number, width: number): string[][] => Array.from({ length: count }, () => Array(width).fill(""));
 
 /** The template as a CSV: the same rows as the PDF, with its write-in columns left empty. */
-export function templateCsv(t: TemplateSheet): string {
+export function templateCsv(t: TemplateSheet, extra: number = EXTRA_BLANK_ROWS): string {
   switch (t.id) {
     case "budget": {
       const s = t.sheet;
@@ -238,9 +244,9 @@ export function templateCsv(t: TemplateSheet): string {
         ["Month", "Section", "Name", "Budget or expected", s.historyMonths.at(-1) ?? "Last month", `${BUDGET_AVERAGE_MONTHS}-month average`, "Planned", "Actual", "Difference"],
         [
           ...s.income.map(row("Income")),
-          ...blankRows(s.mode === "blank" ? EXTRA_BLANK_ROWS : 0, 8).map((r) => ["Income", ...r.slice(1)]),
+          ...blankRows(extra, 8).map((r) => ["Income", ...r.slice(1)]),
           ...s.expenses.map(row("Spending")),
-          ...blankRows(EXTRA_BLANK_ROWS, 8).map((r) => ["Spending", ...r.slice(1)]),
+          ...blankRows(extra, 8).map((r) => ["Spending", ...r.slice(1)]),
         ].map((r) => [s.ym, ...r]),
       );
     }
@@ -250,7 +256,7 @@ export function templateCsv(t: TemplateSheet): string {
         ["Due date", "Bill", "Type", "Amount", "Account", "Paid on"],
         [
           ...s.items.map((i) => [ymd(i.date), i.name, i.type === "INCOME" ? "Income" : "Bill", amount(i.amountCents), i.accountName, ymd(i.paidOn)]),
-          ...blankRows(EXTRA_BLANK_ROWS * 2, 6),
+          ...blankRows(extra + 4, 6),
         ],
       );
     }
@@ -280,7 +286,7 @@ export function templateCsv(t: TemplateSheet): string {
         ["Debt", "Type", "Balance", "Balance as of", "Interest rate %", "Minimum payment", "Extra payment", "Payoff order"],
         [
           ...s.debts.map((d) => [d.name, d.typeLabel, amount(d.balanceCents), ymd(d.asOf), "", "", "", ""]),
-          ...blankRows(EXTRA_BLANK_ROWS, 8),
+          ...blankRows(extra, 8),
         ],
       );
     }
@@ -291,9 +297,9 @@ export function templateCsv(t: TemplateSheet): string {
         ["Kind", "Account", "Type", "Currency", "Last balance", "As of", "Balance today"],
         [
           ...s.assets.map(row("Asset")),
-          ...blankRows(EXTRA_BLANK_ROWS, 7).map((r) => ["Asset", ...r.slice(1)]),
+          ...blankRows(extra, 7).map((r) => ["Asset", ...r.slice(1)]),
           ...s.liabilities.map(row("Owed")),
-          ...blankRows(EXTRA_BLANK_ROWS, 7).map((r) => ["Owed", ...r.slice(1)]),
+          ...blankRows(extra, 7).map((r) => ["Owed", ...r.slice(1)]),
         ],
       );
     }

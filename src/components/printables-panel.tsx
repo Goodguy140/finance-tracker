@@ -84,13 +84,43 @@ export function SummaryDownload({
 
 export type TemplateCardInfo = { id: string; title: string; description: string; monthly: boolean };
 
-export function TemplateCard({ template, months }: { template: TemplateCardInfo; months: Option[] }) {
+/** The templates, with one choice of how many empty rows to leave that applies to all of them. */
+export function TemplateList({ templates, months, rowOptions, defaultRows }: { templates: TemplateCardInfo[]; months: Option[]; rowOptions: readonly number[]; defaultRows: number }) {
+  const [rows, setRows] = useState(defaultRows);
+  return (
+    <>
+      <label className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-300">
+        Empty rows to write in, per table
+        <select
+          value={rows}
+          onChange={(e) => setRows(Number(e.target.value))}
+          className="block w-24 rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-100"
+          data-testid="template-rows"
+        >
+          {rowOptions.map((n) => (
+            <option key={n} value={n}>
+              {n === 0 ? "None" : n}
+            </option>
+          ))}
+        </select>
+      </label>
+      <ul className="mt-3 space-y-3">
+        {templates.map((t) => (
+          <TemplateCard key={t.id} template={t} months={months} rows={rows === defaultRows ? null : rows} />
+        ))}
+      </ul>
+    </>
+  );
+}
+
+function TemplateCard({ template, months, rows }: { template: TemplateCardInfo; months: Option[]; rows: number | null }) {
   const [month, setMonth] = useState(months[0]?.value ?? "");
   const href = (mode: "filled" | "blank", format: "pdf" | "csv", view = false) =>
     `/api/printables/templates/${template.id}${query({
       mode,
       format,
       month: template.monthly ? month : null,
+      rows: rows === null ? null : String(rows),
       view: view ? "1" : null,
     })}`;
   const links: Array<{ mode: "filled" | "blank"; label: string }> = [

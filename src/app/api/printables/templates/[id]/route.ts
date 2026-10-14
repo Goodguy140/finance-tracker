@@ -3,14 +3,17 @@ import { NextResponse, type NextRequest } from "next/server";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { printFileName } from "@/lib/printables/format";
 import { authFailure, printableResponse } from "@/lib/printables/respond";
-import { findTemplate, parseTemplateFormat, parseTemplateMode, templateCsv } from "@/lib/printables/templates";
+import { findTemplate, parseExtraRows, parseTemplateFormat, parseTemplateMode, templateCsv } from "@/lib/printables/templates";
 import { loadTemplateSheet } from "@/lib/printables/templates-data";
 import { renderTemplatePdf } from "@/lib/printables/templates-pdf";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
 import { requireUserApiUser } from "@/lib/session";
 
-/** One planning template: `?mode=filled|blank`, `?format=pdf|csv`, `?month=YYYY-MM` for monthly ones. */
+/**
+ * One planning template: `?mode=filled|blank`, `?format=pdf|csv`, `?month=YYYY-MM` for monthly
+ * ones, `?rows=` for how many empty rows each table gets.
+ */
 export async function GET(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireUserApiUser();
   if (auth.status !== "ok") return authFailure(auth.status);
@@ -20,6 +23,7 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ id: str
   const params = request.nextUrl.searchParams;
   const mode = parseTemplateMode(params.get("mode"));
   const format = parseTemplateFormat(params.get("format"));
+  const extraRows = parseExtraRows(params.get("rows"));
   const todayYmd = currentYmdInTimeZone(auth.user.timezone);
   const sheet = await loadTemplateSheet(auth.user, template.id, mode, { month: params.get("month") });
 
@@ -36,12 +40,12 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ id: str
   const base = `${template.id}-${mode === "blank" ? "blank" : "filled"}`;
   if (format === "csv") {
     // A byte-order mark so Excel reads the file as UTF-8 and keeps accented names intact.
-    return printableResponse(`﻿${templateCsv(sheet)}\r\n`, {
+    return printableResponse(`﻿${templateCsv(sheet, extraRows)}\r\n`, {
       filename: printFileName(base, todayYmd, "csv"),
       contentType: "text/csv; charset=utf-8",
     });
   }
-  return printableResponse(await renderTemplatePdf(sheet, { todayYmd }), {
+  return printableResponse(await renderTemplatePdf(sheet, { todayYmd, extraRows }), {
     filename: printFileName(base, todayYmd, "pdf"),
     contentType: "application/pdf",
     inline: params.get("view") === "1",
