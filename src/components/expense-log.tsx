@@ -11,6 +11,7 @@ import { TagInput } from "@/components/tag-input";
 import { useTagOptions } from "@/components/transaction-rules-context";
 import type { TagOption } from "@/lib/tags";
 import { MarkAsTransferSection } from "@/components/transfer-log";
+import { EditSheet, EditSheetFooter, editSheetDeleteBtnClass } from "@/components/edit-sheet";
 import { VerifiedBadge, verificationTooltip, type VerificationInfo } from "@/components/verified-badge";
 import {
   CategoryDot,
@@ -31,17 +32,15 @@ import {
   DateField,
   ExpenseTitleAndCategoryFields,
   type ExpenseTitleSuggestion,
+  FieldHintModeProvider,
   LabeledField,
   formGridResponsive,
   inputClass,
-  primaryBtnClass,
-  secondaryBtnClass,
   selectClass,
   spanFullSm,
   textAreaClass,
 } from "@/components/forms";
 import { expenseLogMatchesQuery } from "@/lib/expense-title-suggestions";
-import { MOBILE_OVERLAY_ROOT_Z_CLASS } from "@/lib/mobile-z-index";
 import { formatCurrency } from "@/lib/money";
 import { OWED_SHARE_NAME_MAX, OWED_SHARES_FIELD, owedTotalCents } from "@/lib/owed-shares";
 import { SPLIT_LINES_FIELD } from "@/lib/split-lines";
@@ -399,26 +398,51 @@ function EditExpenseModal({
     setReceiptBreakdown(false);
   }
 
+  const formId = `${fieldIds}-form`;
+
   return (
-    <div
-      className={`fixed inset-0 ${MOBILE_OVERLAY_ROOT_Z_CLASS} flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4`}
-      role="presentation"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <EditSheet
+      titleId="edit-expense-title"
+      title="Edit expense"
+      onClose={onClose}
+      footer={
+        <EditSheetFooter
+          formId={formId}
+          error={state.ok === false && state.error ? state.error : null}
+          isPending={isPending}
+          deletePending={deletePending}
+          onClose={onClose}
+          deleteControl={
+          <form action={deleteFormAction}>
+            <input type="hidden" name="transactionId" value={entry.id} />
+            {deleteState.ok === false && deleteState.error ? (
+              <p className="mb-2 text-sm text-red-300">{deleteState.error}</p>
+            ) : null}
+            <button
+              type="submit"
+              disabled={isPending || deletePending}
+              className={editSheetDeleteBtnClass}
+              onClick={(e) => {
+                if (
+                  !window.confirm(
+                    "Delete this expense permanently? This cannot be undone.",
+                  )
+                ) {
+                  e.preventDefault();
+                }
+              }}
+            >
+              {deletePending ? "Deleting…" : "Delete expense"}
+            </button>
+          </form>
+          }
+        />
+      }
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="edit-expense-title"
-        className="max-h-[min(90dvh,40rem)] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-slate-700 border-b-0 bg-slate-900 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 shadow-2xl sm:rounded-2xl sm:border-b sm:px-5 sm:pb-5 sm:pt-5"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <h3 id="edit-expense-title" className="mb-4 text-lg font-semibold text-slate-100">
-          Edit expense
-        </h3>
-        <form action={formAction} className={formGridResponsive}>
+        <FieldHintModeProvider mode="info">
+        <form id={formId} action={formAction} className={formGridResponsive}>
           <input type="hidden" name="transactionId" value={entry.id} />
+          <div className={spanFullSm}>
           <ExpenseTitleAndCategoryFields
             fieldIds={fieldIds}
             expenseCategories={categories}
@@ -430,6 +454,7 @@ function EditExpenseModal({
             accountRemovedFallback={!entry.accountId}
             hideCategory={isSplit}
           />
+          </div>
 
           <div className={`${spanFullSm} flex flex-wrap gap-2`}>
             <button
@@ -760,59 +785,11 @@ function EditExpenseModal({
           ) : (
             <input type="hidden" name="tags" value="" />
           )}
-          {state.ok === false && state.error ? (
-            <p className={`${spanFullSm} text-sm text-red-300`}>{state.error}</p>
-          ) : null}
-          <div className={`${spanFullSm} flex flex-col gap-2 pt-1 sm:flex-row sm:flex-wrap`}>
-            <button
-              type="submit"
-              disabled={isPending || deletePending}
-              className={`w-full ${primaryBtnClass} py-2.5 sm:w-auto sm:py-2`}
-            >
-              {isPending ? "Saving…" : "Save changes"}
-            </button>
-            <button
-              type="button"
-              disabled={isPending || deletePending}
-              className={`w-full ${secondaryBtnClass} py-2.5 sm:w-auto sm:py-2`}
-              onClick={onClose}
-            >
-              Cancel
-            </button>
-          </div>
         </form>
+        </FieldHintModeProvider>
 
         <MarkAsTransferSection transactionId={entry.id} kind="expense" onDone={onClose} />
-
-        <div className={`${spanFullSm} mt-4 border-t border-slate-800/90 pt-4`}>
-          <p className="mb-2 text-xs leading-relaxed text-slate-500">
-            Remove this expense from your log and category totals. This cannot be undone.
-          </p>
-          <form action={deleteFormAction}>
-            <input type="hidden" name="transactionId" value={entry.id} />
-            {deleteState.ok === false && deleteState.error ? (
-              <p className="mb-2 text-sm text-red-300">{deleteState.error}</p>
-            ) : null}
-            <button
-              type="submit"
-              disabled={isPending || deletePending}
-              className="w-full touch-manipulation rounded-xl border border-red-800/70 bg-red-950/40 px-3 py-2.5 text-sm font-medium text-red-200 transition hover:border-red-700/80 hover:bg-red-950/60 sm:w-auto"
-              onClick={(e) => {
-                if (
-                  !window.confirm(
-                    "Delete this expense permanently? This cannot be undone.",
-                  )
-                ) {
-                  e.preventDefault();
-                }
-              }}
-            >
-              {deletePending ? "Deleting…" : "Delete expense"}
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
+    </EditSheet>
   );
 }
 
