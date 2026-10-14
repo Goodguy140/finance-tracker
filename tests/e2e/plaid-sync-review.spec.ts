@@ -206,8 +206,9 @@ test("syncing stages transactions for review, links exact matches, and only a re
 
   // A low-tier match pre-selects "Add as new", so the user picks Link themselves.
   const hardwareCard = queue.locator("li").filter({ hasText: "Maple Hardware Ottawa" }).first();
+  await hardwareCard.getByRole("button", { name: /^More options for/ }).click();
+  await hardwareCard.getByRole("button", { name: "Link to existing" }).click();
   await hardwareCard.getByRole("button", { name: "Link", exact: true }).click();
-  await hardwareCard.getByRole("button", { name: "Link it" }).click();
 
   await expect
     .poll(async () => prisma.transactionVerification.count({ where: { userId: user.id } }), {
@@ -245,7 +246,7 @@ test("syncing stages transactions for review, links exact matches, and only a re
     .locator("li")
     .filter({ hasText: "Loblaws" })
     .first();
-  await groceriesCard.getByRole("button", { name: "Add it" }).click();
+  await groceriesCard.getByRole("button", { name: "Add", exact: true }).click();
 
   await expect
     .poll(async () => prisma.transaction.count({ where: { userId: user.id } }), { timeout: 15_000 })

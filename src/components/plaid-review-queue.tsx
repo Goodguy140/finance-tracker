@@ -1,10 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Ellipsis } from "lucide-react";
 import { ServerActionForm } from "@/components/server-action-form";
-import { MetaChip, TagChips } from "@/components/meta-chip";
-import { inputClass, primaryBtnClass, secondaryBtnClass } from "@/components/forms/shared";
+import { InlineTags, MetaChip } from "@/components/meta-chip";
+import { primaryBtnClass, secondaryBtnClass } from "@/components/forms/shared";
+import {
+  CategoryDot,
+  MetaParts,
+  TransactionDayHeader,
+  TransactionMetaLine,
+} from "@/components/transaction-rows";
+import { groupTransactionsByDay } from "@/lib/transaction-day-groups";
+import type { CardDensity } from "@/lib/dashboard-layout/schema";
 import {
   applyBankRevisionAction,
   bulkAddStagedTransactionsAction,
@@ -44,6 +53,7 @@ export type ReviewRow = {
   amountCents: number;
   /** The sync took it for money moving between the user's own accounts. */
   isTransfer: boolean;
+  dateYmd: string;
   dateDisplay: string;
   accountLabel: string;
   /** What the row is booked as when it is not a transfer, and that type's categories. */
@@ -81,6 +91,8 @@ export type PlaidReviewQueueProps = {
   /** The `?queue=` value that shows the next page; null when every row is shown. */
   nextLimit: number | null;
   revisions: RevisionRow[];
+  /** The Expense Log card's density, which the queue sits inside and follows. */
+  density?: CardDensity;
 };
 
 function AmountText({ cents }: { cents: number }) {
@@ -94,130 +106,197 @@ function AmountText({ cents }: { cents: number }) {
   );
 }
 
-function ReviewRowCard({ row }: { row: ReviewRow }) {
+const choiceBtnClass =
+  "rounded-lg border px-2.5 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40";
+const actionBtnClass =
+  "shrink-0 touch-manipulation rounded-lg border px-2.5 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40";
+
+function ReviewQueueRow({ row, density }: { row: ReviewRow; density: CardDensity | undefined }) {
   // Pre-selection follows the matcher's confidence: a strong match proposes Link, anything
-  // weaker proposes Add and shows the candidate so the user can override.
+  // weaker proposes Add and keeps the candidate in view so the user can switch to it.
   // A pair beats a weak match: two bank rows agreeing to the cent on opposite sides is
   // stronger evidence than a hand-entered row that only roughly fits.
-  const [decision, setDecision] = useState<"link" | "pair" | "add" | "ignore">(
+  const [decision, setDecision] = useState<"link" | "pair" | "add">(
     row.match?.tier === "high" ? "link" : row.transferPair ? "pair" : "add",
   );
   const [asTransfer, setAsTransfer] = useState(row.isTransfer);
-  // What the chosen decision would write. Linking keeps the entry the user already made and
-  // ignoring writes nothing, so rules only come into it when the row is added or paired.
+  const [categoryId, setCategoryId] = useState(row.suggestedCategoryId);
+  const [showOptions, setShowOptions] = useState(false);
+  const optionsId = useId();
+  // What the chosen decision would write. Linking keeps the entry the user already made, so
+  // rules only come into it when the row is added or paired.
   const committed =
-    decision === "pair"
-      ? row.asTransfer
-      : decision === "add"
-        ? asTransfer
-          ? row.asTransfer
-          : row.asNonTransfer
-        : null;
+    decision === "pair" ? row.asTransfer : decision === "add" ? (asTransfer ? row.asTransfer : row.asNonTransfer) : null;
   const shown = committed ?? (row.isTransfer ? row.asTransfer : row.asNonTransfer);
   const renamed = shown.title !== row.bankName;
+  const bookedAsTransfer = decision === "pair" || (decision === "add" && asTransfer);
+  const pad = density === "compact" ? "py-1.5" : "py-2.5";
+
+  const transferDirection = row.transferPair
+    ? row.transferPair.outflow
+      ? `${row.accountLabel} → ${row.transferPair.accountLabel}`
+      : `${row.transferPair.accountLabel} → ${row.accountLabel}`
+    : null;
 
   return (
-    <li className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/50 p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-slate-100">{shown.title}</p>
-          <p className="text-xs text-slate-500">
-            {renamed ? `${row.bankName} · ` : ""}
-            {row.dateDisplay} · {row.accountLabel}
-            {row.isTransfer ? " · transfer" : ""}
-            {row.isPending ? " · pending" : ""}
-            {committed?.reason === "rule"
-              ? " · filled in by your rules"
-              : committed?.reason === "learned"
-                ? " · category from a past entry"
-                : ""}
-          </p>
-          {committed && (committed.note || committed.tagNames.length > 0) ? (
-            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-400" data-testid="review-rule-extras">
-              {committed.note ? <span>Note: {committed.note}</span> : null}
-              <TagChips tags={committed.tagNames} />
-            </p>
-          ) : null}
-        </div>
-        <p className="text-sm font-semibold">
+    <li className={`space-y-1.5 px-2 ${pad}`} data-testid="review-queue-row">
+      <div className="flex items-start gap-2.5">
+        <CategoryDot categoryIds={bookedAsTransfer || decision === "link" ? [] : [categoryId]} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium leading-snug text-slate-100">{shown.title}</span>
+          <TransactionMetaLine density={density} title={[renamed ? row.bankName : null, row.accountLabel].filter(Boolean).join(" · ")}>
+            <MetaParts
+              parts={[
+                renamed ? row.bankName : null,
+                row.accountLabel,
+                row.isTransfer ? "transfer" : null,
+                row.isPending ? "pending" : null,
+                committed?.reason === "rule"
+                  ? "filled in by your rules"
+                  : committed?.reason === "learned"
+                    ? "category from a past entry"
+                    : null,
+                committed?.note ? (
+                  <span data-testid="review-rule-extras">{committed.note}</span>
+                ) : null,
+              ]}
+            />
+            {committed ? <InlineTags tags={committed.tagNames} /> : null}
+          </TransactionMetaLine>
+        </span>
+        <span className="shrink-0 text-sm font-semibold tabular-nums">
           <AmountText cents={row.amountCents} />
-        </p>
+        </span>
       </div>
 
-      {row.match ? (
-        <div className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs text-slate-300">
-          <p>
-            Looks like{" "}
-            <span className="font-medium text-slate-100">{row.match.candidate.title}</span>{" "}
-            ({formatCurrency(Math.abs(row.match.candidate.amountCents))} ·{" "}
-            {row.match.candidate.dateDisplay})
-          </p>
-          <p className="mt-0.5 text-slate-500">{row.match.reasons.join(" · ")}</p>
-        </div>
+      {row.match && (decision === "link" || !row.transferPair) ? (
+        <p className="pl-5 text-xs leading-snug text-slate-400">
+          <span className="text-sky-300/90">Looks like</span>{" "}
+          <span className="font-medium text-slate-200">{row.match.candidate.title}</span>
+          <span className="text-slate-500">
+            {" "}
+            · {formatCurrency(Math.abs(row.match.candidate.amountCents))} · {row.match.candidate.dateDisplay}
+            {row.match.reasons.length > 0 ? ` · ${row.match.reasons.join(", ")}` : ""}
+          </span>
+        </p>
+      ) : null}
+      {row.transferPair && decision !== "link" ? (
+        <p className="pl-5 text-xs leading-snug text-slate-400">
+          <span className="text-sky-300/90">Looks like the other side of a transfer:</span>{" "}
+          <span className="font-medium text-slate-200">{row.transferPair.heading}</span>
+          <span className="text-slate-500">
+            {" "}
+            · {row.transferPair.accountLabel} · {row.transferPair.dateDisplay}
+          </span>
+        </p>
       ) : null}
 
-      {row.transferPair ? (
-        <div className="rounded-lg border border-sky-500/30 bg-sky-950/30 px-3 py-2 text-xs text-slate-300">
-          <p>
-            Looks like the other side of a transfer:{" "}
-            <span className="font-medium text-slate-100">{row.transferPair.heading}</span> (
-            {row.transferPair.accountLabel} · {row.transferPair.dateDisplay})
-          </p>
-          <p className="mt-0.5 text-slate-500">
-            {row.transferPair.outflow
-              ? `${row.accountLabel} → ${row.transferPair.accountLabel}`
-              : `${row.transferPair.accountLabel} → ${row.accountLabel}`}{" "}
-            · same amount, opposite sides
-          </p>
-        </div>
-      ) : null}
-
-      <ServerActionForm
-        action={decision === "pair" ? pairStagedTransfersAction : resolveStagedTransactionAction}
-        className="space-y-2"
-      >
-        <input type="hidden" name="stagedId" value={row.id} />
-        <input type="hidden" name="decision" value={decision} />
-        {row.match ? (
-          <input type="hidden" name="linkTransactionId" value={row.match.candidate.id} />
-        ) : null}
-        {decision === "pair" && row.transferPair ? (
-          <input type="hidden" name="peerStagedId" value={row.transferPair.stagedId} />
-        ) : null}
-
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label={`What to do with ${row.heading}`}>
-          {(
-            [
-              ["link", "Link"],
-              ...(row.transferPair ? ([["pair", "Pair as transfer"]] as const) : []),
-              ["add", "Add as new"],
-              ["ignore", "Ignore"],
-            ] as const
-          ).map(([value, label]) => {
-            const disabled = value === "link" && !row.match;
-            const active = decision === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={active}
-                disabled={disabled}
-                onClick={() => setDecision(value)}
-                className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                  active
-                    ? "border-blue-400/60 bg-blue-500/15 text-blue-100"
-                    : "border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
-                }`}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-
-        {decision === "add" ? (
-          <>
+      <div className="flex items-center gap-1.5 pl-5" role="group" aria-label={`What to do with ${row.heading}`}>
+        <ServerActionForm
+          action={decision === "pair" ? pairStagedTransfersAction : resolveStagedTransactionAction}
+          className="flex min-w-0 flex-1 items-center gap-1.5"
+        >
+          <input type="hidden" name="stagedId" value={row.id} />
+          <input type="hidden" name="decision" value={decision} />
+          {decision === "link" && row.match ? (
+            <input type="hidden" name="linkTransactionId" value={row.match.candidate.id} />
+          ) : null}
+          {decision === "pair" && row.transferPair ? (
+            <input type="hidden" name="peerStagedId" value={row.transferPair.stagedId} />
+          ) : null}
+          {decision === "add" ? (
             <input type="hidden" name="countAs" value={asTransfer ? "TRANSFER" : row.nonTransferType} />
+          ) : null}
+
+          <span className="min-w-0 flex-1">
+            {decision === "add" && !asTransfer ? (
+              <select
+                name="categoryId"
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                className="h-7 w-full max-w-[13rem] truncate rounded-lg border border-slate-700/80 bg-slate-900/70 px-2 text-xs text-slate-200 focus:border-blue-500 focus:outline-none"
+                aria-label={`Category for ${row.heading}`}
+              >
+                {row.categoryOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="block truncate text-xs text-slate-500">
+                {decision === "link"
+                  ? "Verifies the entry you already made"
+                  : decision === "pair"
+                    ? `${transferDirection} · one transfer`
+                    : "Transfer · not counted as spending or income"}
+              </span>
+            )}
+          </span>
+          <button
+            type="submit"
+            className={`${actionBtnClass} border-blue-400/50 bg-blue-500/15 text-blue-100 hover:bg-blue-500/25`}
+          >
+            {decision === "link" ? "Link" : decision === "pair" ? "Pair" : "Add"}
+          </button>
+        </ServerActionForm>
+        <ServerActionForm action={resolveStagedTransactionAction}>
+          <input type="hidden" name="stagedId" value={row.id} />
+          <input type="hidden" name="decision" value="ignore" />
+          <button
+            type="submit"
+            className={`${actionBtnClass} border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800`}
+          >
+            Ignore
+          </button>
+        </ServerActionForm>
+        <button
+          type="button"
+          aria-expanded={showOptions}
+          aria-controls={optionsId}
+          aria-label={`More options for ${row.heading}`}
+          title="More options"
+          onClick={() => setShowOptions((v) => !v)}
+          className={`${actionBtnClass} px-1.5 ${
+            showOptions
+              ? "border-blue-400/50 bg-blue-500/15 text-blue-100"
+              : "border-slate-700 bg-slate-900 text-slate-400 hover:bg-slate-800"
+          }`}
+        >
+          <Ellipsis className="h-4 w-4" aria-hidden />
+        </button>
+      </div>
+
+      {showOptions ? (
+        <div id={optionsId} className="ml-5 space-y-2 rounded-lg border border-slate-800 bg-slate-950/60 p-2.5">
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label={`Choose how to add ${row.heading}`}>
+            {(
+              [
+                ["link", "Link to existing"],
+                ...(row.transferPair ? ([["pair", "Pair as transfer"]] as const) : []),
+                ["add", "Add as new"],
+              ] as const
+            ).map(([value, label]) => {
+              const active = decision === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={active}
+                  disabled={value === "link" && !row.match}
+                  onClick={() => setDecision(value)}
+                  className={`${choiceBtnClass} ${
+                    active
+                      ? "border-blue-400/60 bg-blue-500/15 text-blue-100"
+                      : "border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          {decision === "add" ? (
             <label className="flex items-start gap-2 text-xs text-slate-300">
               <input
                 type="checkbox"
@@ -232,42 +311,17 @@ function ReviewRowCard({ row }: { row: ReviewRow }) {
                 </span>
               </span>
             </label>
-          </>
-        ) : null}
-
-        {decision === "add" && !asTransfer ? (
-          <label className="block space-y-1">
-            <span className="text-xs font-medium text-slate-400">Category</span>
-            <select
-              name="categoryId"
-              defaultValue={row.suggestedCategoryId}
-              className={inputClass}
-              aria-label={`Category for ${row.heading}`}
-            >
-              {row.categoryOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-
-        <button type="submit" className={secondaryBtnClass}>
-          {decision === "link"
-            ? "Link it"
-            : decision === "pair"
-              ? "Add both as one transfer"
-              : decision === "add"
-                ? "Add it"
-                : "Ignore it"}
-        </button>
-      </ServerActionForm>
+          ) : null}
+          {decision === "pair" && transferDirection ? (
+            <p className="text-xs text-slate-500">{transferDirection} · same amount, opposite sides. Both rows become one transfer.</p>
+          ) : null}
+        </div>
+      ) : null}
     </li>
   );
 }
 
-export function PlaidReviewQueue({ rows, totalCount, nextLimit, revisions }: PlaidReviewQueueProps) {
+export function PlaidReviewQueue({ rows, totalCount, nextLimit, revisions, density }: PlaidReviewQueueProps) {
   const [open, setOpen] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
@@ -278,6 +332,7 @@ export function PlaidReviewQueue({ rows, totalCount, nextLimit, revisions }: Pla
     () => rows.filter((row) => !row.match && !row.transferPair).map((row) => row.id),
     [rows],
   );
+  const days = useMemo(() => groupTransactionsByDay(rows, (row) => row), [rows]);
 
   if (rows.length === 0 && revisions.length === 0) return null;
 
@@ -359,11 +414,18 @@ export function PlaidReviewQueue({ rows, totalCount, nextLimit, revisions }: Pla
             </ServerActionForm>
           ) : null}
 
-          <ul className="space-y-2" data-testid="review-queue-rows">
-            {rows.map((row) => (
-              <ReviewRowCard key={row.id} row={row} />
+          <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-1 pb-1 pt-2" data-testid="review-queue-rows">
+            {days.map((day) => (
+              <section key={day.dateYmd} aria-label={day.dateDisplay}>
+                <TransactionDayHeader dateDisplay={day.dateDisplay} />
+                <ul className="divide-y divide-slate-800/50">
+                  {day.items.map((row) => (
+                    <ReviewQueueRow key={row.id} row={row} density={density} />
+                  ))}
+                </ul>
+              </section>
             ))}
-          </ul>
+          </div>
 
           {nextLimit !== null ? (
             <div className="flex flex-wrap items-center gap-2" data-testid="review-queue-more">

@@ -77,7 +77,7 @@ test("a review queue longer than a page says how many rows it holds and shows th
   await expect(page).toHaveURL(/[?&]month=/);
 
   const queue = page.locator("section").filter({ hasText: "From your bank" }).first();
-  const cards = queue.getByTestId("review-queue-rows").locator("> li");
+  const cards = queue.getByTestId("review-queue-row");
   await expect(queue.getByTitle(`To review: ${total}`)).toBeVisible();
   await expect(cards).toHaveCount(REVIEW_QUEUE_PAGE_SIZE);
   // Same date, so name order decides; the last-created row ($7.04) is the one left off.

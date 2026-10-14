@@ -151,8 +151,9 @@ test("a card payment synced from both banks is added as one paired transfer, and
   const outCard = queue.locator("li").filter({ hasText: /visa payment/i }).first();
   await expect(outCard).toContainText("Looks like the other side of a transfer");
   // Pairing is what the queue proposes for both rows.
+  await outCard.getByRole("button", { name: /^More options for/ }).click();
   await expect(outCard.getByRole("button", { name: "Pair as transfer" })).toHaveAttribute("aria-pressed", "true");
-  await outCard.getByRole("button", { name: "Add both as one transfer" }).click();
+  await outCard.getByRole("button", { name: "Pair", exact: true }).click();
 
   // The last write links the arriving leg back to the leaving one.
   await expect
