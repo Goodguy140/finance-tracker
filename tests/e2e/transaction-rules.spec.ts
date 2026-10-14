@@ -209,7 +209,7 @@ test("a rule added after a sync applies to the bank row already waiting in the q
   await expect(card.getByTestId("tag-chip")).toHaveText(`#${tagName}`);
   await expect(card.locator('select[name="categoryId"]')).toHaveValue(ruleCategory.id);
 
-  await card.getByRole("button", { name: "Add it" }).click();
+  await card.getByRole("button", { name: "Add", exact: true }).click();
 
   // The staged row's link to the transaction is the last thing adding it writes.
   await expect
@@ -295,8 +295,9 @@ test("a rule that marks transfers ticks “transfer” for a queued bank row and
     .locator("li")
     .filter({ has: page.getByRole("group", { name: "What to do with Visa card payment" }) });
   await expect(card).toContainText("· transfer");
+  await card.getByRole("button", { name: /^More options for/ }).click();
   await expect(card.getByRole("checkbox", { name: /Transfer between my accounts/ })).toBeChecked();
-  await card.getByRole("button", { name: "Add it" }).click();
+  await card.getByRole("button", { name: "Add", exact: true }).click();
 
   // The staged row's link to the transaction is the last thing adding it writes.
   await expect
