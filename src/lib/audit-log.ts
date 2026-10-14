@@ -26,6 +26,7 @@ export const AUDIT_ACTIONS = {
   financial_account_deleted: "financial_account_deleted",
   user_account_deleted: "user_account_deleted",
   user_backup_exported: "user_backup_exported",
+  user_printable_downloaded: "user_printable_downloaded",
   api_token_created: "api_token_created",
   api_token_revoked: "api_token_revoked",
   api_budgets_read: "api_budgets_read",
