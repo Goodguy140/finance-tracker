@@ -65,8 +65,8 @@ test("entries on a USD account are listed in USD and kept out of the CAD totals"
   await expect(page.getByTestId("budgets-other-currency").first()).toHaveText("Not included: US$40.00 in USD");
   await expect(page.getByTestId("income-other-currency").first()).toHaveText("Not included: US$500.00 in USD");
   // The USD rows are still in the logs, in their own currency.
-  await expect(page.getByText("Paid US$40.00").filter({ visible: true }).first()).toBeVisible();
-  await expect(page.getByText("Received US$500.00").filter({ visible: true }).first()).toBeVisible();
+  await expect(page.getByTestId("expense-amount").filter({ hasText: "US$40.00" }).filter({ visible: true }).first()).toBeVisible();
+  await expect(page.getByTestId("income-amount").filter({ hasText: "+US$500.00" }).filter({ visible: true }).first()).toBeVisible();
 
   await page.goto("/reports");
   const totals = page.getByTestId("report-totals");
