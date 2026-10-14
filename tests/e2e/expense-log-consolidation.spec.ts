@@ -107,30 +107,27 @@ test("consolidates same day/title/account expenses and keeps each editable", asy
   const groupHeader = log.locator('button[aria-expanded="false"]:not([aria-haspopup])');
   await expect(groupHeader).toHaveCount(1);
   await expect(groupHeader).toContainText("3 transactions");
-  await expect(groupHeader).toContainText("Paid $142.60");
+  await expect(groupHeader.getByTestId("expense-amount")).toHaveText("$142.60");
 
   const rows = log.getByRole("button").filter({ hasText: title });
   await expect(rows).toHaveCount(3);
-  // Each row renders a mobile and a desktop layout; only one is visible per breakpoint.
-  const shownAmount = (amount: string) => log.getByText(amount).filter({ visible: true });
-  await expect(shownAmount("Paid $11.11")).toHaveCount(1);
-  await expect(shownAmount("Paid $22.22")).toHaveCount(1);
+  // A row's amount, shown with no label; hidden group members are not visible.
+  const shownAmount = (amount: string) =>
+    log.getByTestId("expense-amount").filter({ visible: true }).getByText(amount, { exact: true });
+  await expect(shownAmount("$11.11")).toHaveCount(1);
+  await expect(shownAmount("$22.22")).toHaveCount(1);
 
   // Members are hidden until the group is expanded.
-  await expect(shownAmount("Paid $52.10")).toHaveCount(0);
+  await expect(shownAmount("$52.10")).toHaveCount(0);
 
   await groupHeader.click();
   await expect(log.locator('button[aria-expanded="true"]:not([aria-haspopup])')).toHaveCount(1);
-  for (const amount of ["Paid $52.10", "Paid $60.00", "Paid $30.50"]) {
+  for (const amount of ["$52.10", "$60.00", "$30.50"]) {
     await expect(shownAmount(amount)).toHaveCount(1);
   }
 
   // Each member opens its own edit modal.
-  await log
-    .getByRole("button")
-    .filter({ hasText: "Paid $60.00" })
-    .first()
-    .click();
+  await shownAmount("$60.00").click();
   const dialog = page.getByRole("dialog", { name: "Edit expense" });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('input[name="amount"]')).toHaveValue("60.00");
@@ -145,10 +142,10 @@ test("consolidates same day/title/account expenses and keeps each editable", asy
   const updatedGroup = log.getByRole("button", { expanded: true });
   await expect(updatedGroup).toHaveCount(1);
   await expect(updatedGroup).toContainText("3 transactions");
-  await expect(updatedGroup).toContainText("Paid $157.60");
-  await expect(shownAmount("Paid $75.00")).toHaveCount(1);
+  await expect(updatedGroup.getByTestId("expense-amount")).toHaveText("$157.60");
+  await expect(shownAmount("$75.00")).toHaveCount(1);
 
   // Collapsing hides the members again.
   await updatedGroup.click();
-  await expect(shownAmount("Paid $75.00")).toHaveCount(0);
+  await expect(shownAmount("$75.00")).toHaveCount(0);
 });

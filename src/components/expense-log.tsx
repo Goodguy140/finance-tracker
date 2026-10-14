@@ -6,13 +6,22 @@ import { LIST_MAX_HEIGHT_CLASS } from "@/lib/dashboard-layout/display";
 import type { ListHeight } from "@/lib/dashboard-layout/schema";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { deleteExpenseTransactionAction, updateExpenseAction } from "@/app/actions";
-import { MetaChip, TagChips } from "@/components/meta-chip";
+import { InlineTags } from "@/components/meta-chip";
 import { TagInput } from "@/components/tag-input";
 import { useTagOptions } from "@/components/transaction-rules-context";
 import type { TagOption } from "@/lib/tags";
 import { MarkAsTransferSection } from "@/components/transfer-log";
 import { EditSheet, EditSheetFooter, editSheetDeleteBtnClass } from "@/components/edit-sheet";
 import { VerifiedBadge, verificationTooltip, type VerificationInfo } from "@/components/verified-badge";
+import {
+  CategoryDot,
+  MetaParts,
+  TransactionDay,
+  TransactionDayHeader,
+  TransactionMetaLine,
+  transactionRowClass,
+} from "@/components/transaction-rows";
+import { groupTransactionsByDay, homeCurrencyDayTotal } from "@/lib/transaction-day-groups";
 import {
   type ExpenseGroupSummary,
   groupExpenseLogEntries,
@@ -91,72 +100,56 @@ function showReceiptBreakdown(txn: ExpenseLogEntry) {
   return txn.preCreditCents !== txn.amountCents;
 }
 
-function ExpenseAmountBlock({ txn, size }: { txn: ExpenseLogEntry; size: "default" | "compact" }) {
-  const meta = showReceiptBreakdown(txn);
-  const owedCents = owedTotalCents(txn.owedShares);
-  const currency = txn.currency ?? undefined;
-  const textClass =
-    size === "compact" ? "text-[10px] leading-tight" : "text-xs leading-snug";
+/** The figure on the right of a row: what the expense cost you, with no label. */
+function ExpenseAmount({ cents, currency }: { cents: number; currency?: string }) {
+  // A negative expense is a refund or credit: it gives money back, so it reads as green.
   return (
-    <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-      <AmountPill cents={txn.amountCents} size={size} label={owedCents > 0 ? "Yours" : "Paid"} currency={currency} />
-      {owedCents > 0 ? (
-        <div className={`max-w-[16rem] space-y-0.5 ${textClass}`} data-testid="expense-owed-breakdown">
-          <p className="tabular-nums text-slate-400">
-            Paid <span className="font-medium text-slate-300">{formatCurrency(txn.amountCents + owedCents, currency)}</span>
-          </p>
-          <p className="tabular-nums text-amber-300/95">
-            Owed to you <span className="font-medium">{formatCurrency(-owedCents, currency)}</span>
-          </p>
-        </div>
-      ) : null}
-      {meta ? (
-        <div className={`max-w-[16rem] space-y-0.5 ${textClass}`}>
-          <p className="tabular-nums text-slate-400">
-            Total <span className="font-medium text-slate-300">{formatCurrency(txn.preCreditCents!, currency)}</span>
-          </p>
-          {(txn.creditCents ?? 0) > 0 ? (
-            <p className="tabular-nums text-emerald-400/95">
-              Credits <span className="font-medium">{formatCurrency(-(txn.creditCents ?? 0), currency)}</span>
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-      {/* The verification mark sits under the amount rather than in the chip row: it is a
-          statement about this figure, and the chip row is already the longest line here. */}
-      {txn.verification ? (
-        <VerifiedBadge info={txn.verification} variant={size === "compact" ? "text" : "chip"} />
-      ) : null}
-    </div>
+    <span
+      data-testid="expense-amount"
+      className={`font-semibold tabular-nums ${cents < 0 ? "text-emerald-300" : "text-slate-100"}`}
+    >
+      {formatCurrency(cents, currency)}
+    </span>
   );
 }
 
-function AmountPill({
-  cents,
-  size = "default",
-  label = "Paid",
+function ReceiptBreakdown({
+  preCreditCents,
+  creditCents,
   currency,
 }: {
-  cents: number;
-  size?: "default" | "compact";
-  label?: string;
+  preCreditCents: number;
+  creditCents: number;
   currency?: string;
 }) {
-  const credit = cents < 0;
-  const sizeClass =
-    size === "compact"
-      ? "px-2 py-0.5 text-xs font-semibold tabular-nums"
-      : "px-2.5 py-1 text-sm font-semibold tabular-nums";
   return (
-    <span
-      className={
-        credit
-          ? `shrink-0 rounded-full border border-emerald-500/35 bg-emerald-500/15 text-emerald-100 ${sizeClass}`
-          : `shrink-0 rounded-full border border-violet-500/35 bg-violet-500/15 text-violet-100 ${sizeClass}`
-      }
-    >
-      {credit ? formatCurrency(cents, currency) : <>{label} {formatCurrency(cents, currency)}</>}
-    </span>
+    <p className="text-[11px] leading-tight tabular-nums text-slate-400">
+      Total {formatCurrency(preCreditCents, currency)}
+      {creditCents > 0 ? (
+        <span className="text-emerald-400/95"> · Credits {formatCurrency(-creditCents, currency)}</span>
+      ) : null}
+    </p>
+  );
+}
+
+function ExpenseAmountBlock({ txn }: { txn: ExpenseLogEntry }) {
+  const owedCents = owedTotalCents(txn.owedShares);
+  const currency = txn.currency ?? undefined;
+  return (
+    <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
+      <ExpenseAmount cents={txn.amountCents} currency={currency} />
+      {owedCents > 0 ? (
+        <p className="text-[11px] leading-tight tabular-nums text-amber-300/95" data-testid="expense-owed-breakdown">
+          <span className="block text-slate-400">Paid {formatCurrency(txn.amountCents + owedCents, currency)}</span>
+          <span className="block">{formatCurrency(owedCents, currency)} owed</span>
+        </p>
+      ) : null}
+      {showReceiptBreakdown(txn) ? (
+        <ReceiptBreakdown preCreditCents={txn.preCreditCents!} creditCents={txn.creditCents ?? 0} currency={currency} />
+      ) : null}
+      {/* The verification mark sits under the amount: it is a statement about this figure. */}
+      {txn.verification ? <VerifiedBadge info={txn.verification} variant="text" /> : null}
+    </div>
   );
 }
 
@@ -168,108 +161,52 @@ function splitLinesSummary(txn: ExpenseLogEntry) {
   return txn.splitLines.map((line) => `${line.categoryLabel} ${formatCurrency(line.amountCents)}`).join(" · ");
 }
 
-function ExpenseChipRow({ txn }: { txn: ExpenseLogEntry }) {
-  return (
-    <div className="mt-1 flex flex-wrap gap-1.5">
-      {txn.isSplit ? (
-        <MetaChip label="Split">{splitLinesSummary(txn)}</MetaChip>
-      ) : (
-        <MetaChip label="Category">{txn.categoryLabel}</MetaChip>
-      )}
-      <MetaChip label="Account">{txn.accountLabel}</MetaChip>
-      <MetaChip label="Transaction">{txn.dateDisplay}</MetaChip>
-      {txn.postedDateDisplay ? <MetaChip label="Posted">{txn.postedDateDisplay}</MetaChip> : null}
-      {txn.note ? <MetaChip label="Note">{txn.note}</MetaChip> : null}
-      <TagChips tags={txn.tags} />
-    </div>
-  );
+function expenseDotCategories(txn: ExpenseLogEntry) {
+  return txn.isSplit && txn.splitLines.length > 0 ? txn.splitLines.map((line) => line.categoryId) : [txn.categoryId];
 }
 
-function ExpenseLogMeta({
-  txn,
-  density,
-  isSplit,
-}: {
-  txn: ExpenseLogEntry;
-  density: ExpenseLogDensity;
-  isSplit: boolean;
-}) {
-  if (density === "compact") {
-    const parts: string[] = [txn.categoryLabel, txn.accountLabel, txn.dateDisplay];
-    if (txn.postedDateDisplay) parts.push(`posted ${txn.postedDateDisplay}`);
-    if (txn.note) parts.push(txn.note);
-    if (txn.tags.length > 0) parts.push(txn.tags.map((tag) => `#${tag}`).join(" "));
-    const line = parts.join(" · ");
-    // `title` never fires on touch, so the verification detail is spelled out here
-    // rather than living only in the badge tooltip.
-    const fullTitle = [
-      isSplit ? `Split: ${splitLinesSummary(txn)}` : null,
-      line,
-      txn.verification ? verificationTooltip(txn.verification) : null,
-    ].filter(Boolean).join(" · ");
-    return (
-      <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-slate-400 sm:text-xs" title={fullTitle}>
-        {isSplit ? (
-          <>
-            <span className="font-medium text-amber-300/90">Split</span>
-            <span className="text-slate-600"> · </span>
-          </>
-        ) : null}
-        {line}
-      </p>
-    );
-  }
-
-  return <ExpenseChipRow txn={txn} />;
-}
-
-function ExpenseLogMobileCard({
-  txn,
-  pillSize,
-  isSplit,
-}: {
-  txn: ExpenseLogEntry;
-  pillSize: "default" | "compact";
-  isSplit: boolean;
-}) {
+/**
+ * Category (when the title is not already the category), account, posted date and note on
+ * one muted line, then tags. The transaction date is the day header above the row.
+ */
+function ExpenseRowMeta({ txn, density }: { txn: ExpenseLogEntry; density: ExpenseLogDensity }) {
+  const hasTitle = Boolean(txn.title?.trim());
+  const split = txn.isSplit ? (
+    <>
+      <span className="font-medium text-amber-300/90">Split</span> {splitLinesSummary(txn)}
+    </>
+  ) : null;
+  const parts = [
+    split ?? (hasTitle ? txn.categoryLabel : null),
+    txn.accountLabel,
+    txn.postedDateDisplay ? `Posted ${txn.postedDateDisplay}` : null,
+    txn.note,
+  ];
+  const fullTitle = [
+    txn.isSplit ? `Split: ${splitLinesSummary(txn)}` : hasTitle ? txn.categoryLabel : null,
+    txn.accountLabel,
+    txn.dateDisplay,
+    txn.postedDateDisplay ? `posted ${txn.postedDateDisplay}` : null,
+    txn.note,
+    txn.tags.length > 0 ? txn.tags.map((tag) => `#${tag}`).join(" ") : null,
+    txn.verification ? verificationTooltip(txn.verification) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
-    <div className="flex flex-col gap-2 sm:hidden">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-300/90">Expense</p>
-          <p className="mt-0.5 text-base font-semibold leading-snug text-slate-50">{expenseLogHeading(txn)}</p>
-        </div>
-        <ExpenseAmountBlock txn={txn} size={pillSize} />
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {isSplit ? (
-          <MetaChip label="Split">{splitLinesSummary(txn)}</MetaChip>
-        ) : (
-          <MetaChip label="Category">{txn.categoryLabel}</MetaChip>
-        )}
-        <TagChips tags={txn.tags} />
-      </div>
-      <p className="text-xs leading-snug text-slate-500">
-        <span className="font-medium text-slate-400">{txn.accountLabel}</span>
-        <span className="text-slate-600"> · </span>
-        <span>{txn.dateDisplay}</span>
-        {txn.postedDateDisplay ? (
-          <>
-            <span className="text-slate-600"> · </span>
-            <span>posted {txn.postedDateDisplay}</span>
-          </>
-        ) : null}
-        {/* The badge carries its detail in `title`, which never fires on touch — so on a
-            phone the same sentence is spelled out here instead. */}
-        {txn.verification ? (
-          <>
-            <span className="text-slate-600"> · </span>
-            <span>{verificationTooltip(txn.verification)}</span>
-          </>
-        ) : null}
-      </p>
-      {txn.note ? <p className="text-xs leading-snug text-slate-400">{txn.note}</p> : null}
-    </div>
+    <>
+      <TransactionMetaLine density={density} title={fullTitle}>
+        <MetaParts parts={parts} />
+        <InlineTags tags={txn.tags} />
+      </TransactionMetaLine>
+      {/* The badge's detail lives in `title`, which never fires on touch, so touch screens
+          get the sentence spelled out. */}
+      {txn.verification ? (
+        <span className="hidden text-[11px] leading-snug text-slate-500 pointer-coarse:block">
+          {verificationTooltip(txn.verification)}
+        </span>
+      ) : null}
+    </>
   );
 }
 
@@ -876,40 +813,20 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
 function ExpenseLogRow({
   txn,
   density,
-  pillSize,
-  cardPad,
   onEdit,
 }: {
   txn: ExpenseLogEntry;
   density: ExpenseLogDensity;
-  pillSize: "default" | "compact";
-  cardPad: string;
   onEdit: (id: string) => void;
 }) {
-  const body = (
-    <>
-      <ExpenseLogMobileCard txn={txn} pillSize={pillSize} isSplit={txn.isSplit} />
-      <div className="hidden sm:block">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <span className="block font-semibold leading-snug text-slate-100">
-              {expenseLogHeading(txn)}
-            </span>
-            <ExpenseLogMeta txn={txn} density={density} isSplit={txn.isSplit} />
-          </div>
-          <ExpenseAmountBlock txn={txn} size={pillSize} />
-        </div>
-      </div>
-    </>
-  );
-
   return (
-    <button
-      type="button"
-      onClick={() => onEdit(txn.id)}
-      className={`w-full rounded-xl border border-slate-800 bg-slate-950/50 text-left text-sm text-slate-100 transition hover:border-blue-500/40 hover:bg-slate-900/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 touch-manipulation ${cardPad}`}
-    >
-      {body}
+    <button type="button" onClick={() => onEdit(txn.id)} className={transactionRowClass(density, "blue")}>
+      <CategoryDot categoryIds={expenseDotCategories(txn)} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium leading-snug text-slate-100">{expenseLogHeading(txn)}</span>
+        <ExpenseRowMeta txn={txn} density={density} />
+      </span>
+      <ExpenseAmountBlock txn={txn} />
     </button>
   );
 }
@@ -920,56 +837,15 @@ function showGroupReceiptBreakdown(summary: ExpenseGroupSummary) {
   return summary.preCreditCents !== summary.amountCents;
 }
 
-function ExpenseGroupAmountBlock({
-  summary,
-  size,
-  currency,
-}: {
-  summary: ExpenseGroupSummary;
-  size: "default" | "compact";
-  /** A group is one account's, so one currency. */
-  currency?: string;
-}) {
-  const meta = showGroupReceiptBreakdown(summary);
-  const textClass = size === "compact" ? "text-[10px] leading-tight" : "text-xs leading-snug";
-  return (
-    <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-      <AmountPill cents={summary.amountCents} size={size} currency={currency} />
-      {meta ? (
-        <div className={`max-w-[16rem] space-y-0.5 ${textClass}`}>
-          <p className="tabular-nums text-slate-400">
-            Total <span className="font-medium text-slate-300">{formatCurrency(summary.preCreditCents!, currency)}</span>
-          </p>
-          {summary.creditCents > 0 ? (
-            <p className="tabular-nums text-emerald-400/95">
-              Credits <span className="font-medium">{formatCurrency(-summary.creditCents, currency)}</span>
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function groupCategorySummary(labels: string[]) {
   if (labels.length <= 2) return labels.join(", ");
   return `${labels.slice(0, 2).join(", ")} +${labels.length - 2}`;
-}
-
-function CountChip({ count }: { count: number }) {
-  return (
-    <span className="inline-flex shrink-0 items-center rounded-full border border-blue-500/40 bg-blue-500/15 px-2.5 py-1 text-[11px] font-medium text-blue-100 sm:text-xs">
-      {count} transactions
-    </span>
-  );
 }
 
 function ExpenseLogGroupHeader({
   entries,
   summary,
   density,
-  pillSize,
-  cardPad,
   expanded,
   listId,
   onToggle,
@@ -977,8 +853,6 @@ function ExpenseLogGroupHeader({
   entries: ExpenseLogEntry[];
   summary: ExpenseGroupSummary;
   density: ExpenseLogDensity;
-  pillSize: "default" | "compact";
-  cardPad: string;
   expanded: boolean;
   listId: string;
   onToggle: () => void;
@@ -986,7 +860,8 @@ function ExpenseLogGroupHeader({
   const first = entries[0];
   const heading = first.title?.trim() || first.categoryLabel;
   const categories = groupCategorySummary(summary.categoryLabels);
-  const compactLine = [categories, first.accountLabel, first.dateDisplay].join(" · ");
+  // A group is one account's, so one currency.
+  const currency = first.currency ?? undefined;
 
   return (
     <button
@@ -994,58 +869,39 @@ function ExpenseLogGroupHeader({
       onClick={onToggle}
       aria-expanded={expanded}
       aria-controls={listId}
-      className={`w-full rounded-xl border border-slate-800 bg-slate-950/50 text-left text-sm text-slate-100 transition hover:border-blue-500/40 hover:bg-slate-900/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 touch-manipulation ${cardPad}`}
+      className={transactionRowClass(density, "blue")}
     >
-      <div className="flex flex-col gap-2 sm:hidden">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-300/90">Expense</p>
-            <p className="mt-0.5 flex items-center gap-1.5 text-base font-semibold leading-snug text-slate-50">
-              <ChevronIcon expanded={expanded} />
-              <span className="min-w-0 truncate">{heading}</span>
-            </p>
-          </div>
-          <ExpenseGroupAmountBlock summary={summary} size={pillSize} currency={first.currency ?? undefined} />
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          <CountChip count={summary.count} />
-          <MetaChip label="Category">{categories}</MetaChip>
-        </div>
-        <p className="text-xs leading-snug text-slate-500">
-          <span className="font-medium text-slate-400">{first.accountLabel}</span>
-          <span className="text-slate-600"> · </span>
-          <span>{first.dateDisplay}</span>
-        </p>
-      </div>
-
-      <div className="hidden sm:block">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <span className="flex items-center gap-1.5 font-semibold leading-snug text-slate-100">
-              <ChevronIcon expanded={expanded} />
-              <span className="min-w-0 truncate">{heading}</span>
-            </span>
-            {density === "compact" ? (
-              <p
-                className="mt-1 line-clamp-2 text-[11px] leading-snug text-slate-400 sm:text-xs"
-                title={`${summary.count} transactions · ${compactLine}`}
-              >
-                <span className="font-medium text-blue-300/90">{summary.count} transactions</span>
-                <span className="text-slate-600"> · </span>
-                {compactLine}
-              </p>
-            ) : (
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                <CountChip count={summary.count} />
-                <MetaChip label="Category">{categories}</MetaChip>
-                <MetaChip label="Account">{first.accountLabel}</MetaChip>
-                <MetaChip label="Transaction">{first.dateDisplay}</MetaChip>
-              </div>
-            )}
-          </div>
-          <ExpenseGroupAmountBlock summary={summary} size={pillSize} currency={first.currency ?? undefined} />
-        </div>
-      </div>
+      <CategoryDot categoryIds={entries.flatMap(expenseDotCategories)} />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5 font-medium leading-snug text-slate-100">
+          <span className="min-w-0 truncate">{heading}</span>
+          <ChevronIcon expanded={expanded} />
+        </span>
+        <TransactionMetaLine
+          density={density}
+          title={`${summary.count} transactions · ${categories} · ${first.accountLabel}`}
+        >
+          <MetaParts
+            parts={[
+              <span key="count" className="font-medium text-blue-300/90">
+                {summary.count} transactions
+              </span>,
+              categories,
+              first.accountLabel,
+            ]}
+          />
+        </TransactionMetaLine>
+      </span>
+      <span className="flex shrink-0 flex-col items-end gap-0.5 text-right">
+        <ExpenseAmount cents={summary.amountCents} currency={currency} />
+        {showGroupReceiptBreakdown(summary) ? (
+          <ReceiptBreakdown
+            preCreditCents={summary.preCreditCents!}
+            creditCents={summary.creditCents}
+            currency={currency}
+          />
+        ) : null}
+      </span>
     </button>
   );
 }
@@ -1053,14 +909,10 @@ function ExpenseLogGroupHeader({
 function ExpenseLogGroupRows({
   entries,
   density,
-  pillSize,
-  cardPad,
   onEdit,
 }: {
   entries: ExpenseLogEntry[];
   density: ExpenseLogDensity;
-  pillSize: "default" | "compact";
-  cardPad: string;
   onEdit: (id: string) => void;
 }) {
   const listId = useId();
@@ -1068,27 +920,18 @@ function ExpenseLogGroupRows({
   const summary = useMemo(() => summarizeExpenseGroup(entries), [entries]);
 
   return (
-    <div className="space-y-2">
+    <div>
       <ExpenseLogGroupHeader
         entries={entries}
         summary={summary}
         density={density}
-        pillSize={pillSize}
-        cardPad={cardPad}
         expanded={expanded}
         listId={listId}
         onToggle={() => setExpanded((v) => !v)}
       />
-      <div id={listId} hidden={!expanded} className="ml-3 space-y-2 border-l border-slate-800/80 pl-3">
+      <div id={listId} hidden={!expanded} className="mb-1 ml-3 border-l border-slate-800/80 pl-2">
         {entries.map((txn) => (
-          <ExpenseLogRow
-            key={txn.id}
-            txn={txn}
-            density={density}
-            pillSize={pillSize}
-            cardPad={cardPad}
-            onEdit={onEdit}
-          />
+          <ExpenseLogRow key={txn.id} txn={txn} density={density} onEdit={onEdit} />
         ))}
       </div>
     </div>
@@ -1124,13 +967,14 @@ export function ExpenseLogPanel({
     () => entries.filter((e) => expenseLogMatchesQuery(e, searchQuery, formatCurrency)),
     [entries, searchQuery],
   );
-  // Consolidate same-day repeats of the same titled purchase on the same account.
-  const groups = useMemo(() => groupExpenseLogEntries(filteredEntries), [filteredEntries]);
+  // Consolidate same-day repeats of the same titled purchase on the same account, then
+  // put each day's rows under its date. A group's members share a date by construction.
+  const days = useMemo(
+    () => groupTransactionsByDay(groupExpenseLogEntries(filteredEntries), (group) => group.entries[0]),
+    [filteredEntries],
+  );
   const editing = editingId ? entries.find((e) => e.id === editingId) : null;
   const trimmedSearch = searchQuery.trim();
-
-  const cardPad = density === "compact" ? "p-2" : "p-2.5";
-  const pillSize = density === "compact" ? "compact" : "default";
 
   return (
     <>
@@ -1160,37 +1004,39 @@ export function ExpenseLogPanel({
             </p>
           </div>
         ) : null}
-        <div className="space-y-2">
-          {entries.length === 0 ? (
-            <p className="text-sm text-slate-400">
-              {tagFilter?.selectedId ? "No expenses with this tag in this period." : "No expenses in this period."}
-            </p>
-          ) : filteredEntries.length === 0 ? (
-            <p className="text-sm text-slate-400">No expenses match your search.</p>
-          ) : (
-            groups.map((group) =>
-              group.entries.length === 1 ? (
-                <ExpenseLogRow
-                  key={group.key}
-                  txn={group.entries[0]}
-                  density={density}
-                  pillSize={pillSize}
-                  cardPad={cardPad}
-                  onEdit={setEditingId}
+        {entries.length === 0 ? (
+          <p className="text-sm text-slate-400">
+            {tagFilter?.selectedId ? "No expenses with this tag in this period." : "No expenses in this period."}
+          </p>
+        ) : filteredEntries.length === 0 ? (
+          <p className="text-sm text-slate-400">No expenses match your search.</p>
+        ) : (
+          days.map((day) => {
+            const total = homeCurrencyDayTotal(day.items.flatMap((group) => group.entries));
+            return (
+              <section key={day.dateYmd} aria-label={day.dateDisplay}>
+                <TransactionDayHeader
+                  dateDisplay={day.dateDisplay}
+                  total={total === null ? null : formatCurrency(total)}
                 />
-              ) : (
-                <ExpenseLogGroupRows
-                  key={group.key}
-                  entries={group.entries}
-                  density={density}
-                  pillSize={pillSize}
-                  cardPad={cardPad}
-                  onEdit={setEditingId}
-                />
-              ),
-            )
-          )}
-        </div>
+                <TransactionDay>
+                  {day.items.map((group) =>
+                    group.entries.length === 1 ? (
+                      <ExpenseLogRow key={group.key} txn={group.entries[0]} density={density} onEdit={setEditingId} />
+                    ) : (
+                      <ExpenseLogGroupRows
+                        key={group.key}
+                        entries={group.entries}
+                        density={density}
+                        onEdit={setEditingId}
+                      />
+                    ),
+                  )}
+                </TransactionDay>
+              </section>
+            );
+          })
+        )}
       </div>
       {editing ? (
         <EditExpenseModal

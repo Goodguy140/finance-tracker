@@ -1,12 +1,21 @@
 "use client";
 
 import { isActionFailure } from "@/lib/action-result";
-import { useActionState, useEffect, useId, useState } from "react";
+import { useActionState, useEffect, useId, useMemo, useState } from "react";
 import { COMPACT_LIST_MAX_HEIGHT_CLASS } from "@/lib/dashboard-layout/display";
 import type { ListHeight } from "@/lib/dashboard-layout/schema";
 import { useRouter } from "next/navigation";
 import { deleteIncomeTransactionAction, updateIncomeAction } from "@/app/actions";
-import { MetaChip, TagChips } from "@/components/meta-chip";
+import { InlineTags } from "@/components/meta-chip";
+import {
+  CategoryDot,
+  MetaParts,
+  TransactionDay,
+  TransactionDayHeader,
+  TransactionMetaLine,
+  transactionRowClass,
+} from "@/components/transaction-rows";
+import { groupTransactionsByDay, homeCurrencyDayTotal } from "@/lib/transaction-day-groups";
 import { TagInput } from "@/components/tag-input";
 import { useTagOptions } from "@/components/transaction-rules-context";
 import { MarkAsTransferSection } from "@/components/transfer-log";
@@ -53,92 +62,55 @@ type DeleteState = { ok: true } | { ok: false; error: string | null };
 type IncomeLogDensity = "expanded" | "compact";
 
 
-function ReceivedPill({
-  cents,
-  size = "default",
-  currency,
-}: {
-  cents: number;
-  size?: "default" | "compact";
-  currency?: string | null;
-}) {
-  const sizeClass =
-    size === "compact"
-      ? "px-2 py-0.5 text-xs font-semibold tabular-nums"
-      : "px-2.5 py-1 text-sm font-semibold tabular-nums";
-  return (
-    <span
-      className={`shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/15 text-emerald-100 shadow-sm ring-1 ring-emerald-500/15 ${sizeClass}`}
-    >
-      Received {formatCurrency(cents, currency ?? undefined)}
-    </span>
-  );
+function incomeHeading(entry: IncomeLogEntry) {
+  return entry.title?.trim() || entry.sourceLabel;
 }
 
-function IncomeChipRow({ entry }: { entry: IncomeLogEntry }) {
-  return (
-    <div className="mt-1 flex flex-wrap gap-1.5">
-      <MetaChip label="Account">{entry.accountLabel}</MetaChip>
-      {entry.verification ? <VerifiedBadge info={entry.verification} /> : null}
-      <MetaChip label="Date">{entry.dateDisplay}</MetaChip>
-      {entry.note ? <MetaChip label="Note">{entry.note}</MetaChip> : null}
-      <TagChips tags={entry.tags} />
-    </div>
-  );
-}
-
-function IncomeLogMeta({ entry, density }: { entry: IncomeLogEntry; density: IncomeLogDensity }) {
-  if (density === "compact") {
-    const parts: string[] = [];
-    if (entry.title) parts.push(entry.title);
-    parts.push(entry.sourceLabel, entry.accountLabel, entry.dateDisplay);
-    if (entry.note) parts.push(entry.note);
-    if (entry.tags.length > 0) parts.push(entry.tags.map((tag) => `#${tag}`).join(" "));
-    const line = parts.join(" · ");
-    return (
-      <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-slate-400 sm:text-xs" title={line}>
-        {line}
-      </p>
-    );
-  }
-
-  return <IncomeChipRow entry={entry} />;
-}
-
-function IncomeLogMobileCard({
+function IncomeLogRow({
   entry,
-  pillSize,
+  density,
+  onEdit,
 }: {
   entry: IncomeLogEntry;
-  pillSize: "default" | "compact";
+  density: IncomeLogDensity;
+  onEdit: (id: string) => void;
 }) {
+  const hasTitle = Boolean(entry.title?.trim());
+  const fullTitle = [
+    hasTitle ? entry.sourceLabel : null,
+    entry.accountLabel,
+    entry.dateDisplay,
+    entry.note,
+    entry.tags.length > 0 ? entry.tags.map((tag) => `#${tag}`).join(" ") : null,
+    entry.verification ? verificationTooltip(entry.verification) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
-    <div className="flex flex-col gap-2 sm:hidden">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-400/85">Income source</p>
-          <span className="mt-0.5 block text-base font-semibold leading-snug text-slate-50">{entry.sourceLabel}</span>
-          {entry.title ? (
-            <span className="mt-1 block text-sm leading-snug text-slate-300">{entry.title}</span>
-          ) : null}
-        </div>
-        <ReceivedPill cents={entry.amountCents} size={pillSize} currency={entry.currency} />
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        <MetaChip label="Account">{entry.accountLabel}</MetaChip>
-        <MetaChip label="Date">{entry.dateDisplay}</MetaChip>
-        {entry.verification ? <VerifiedBadge info={entry.verification} /> : null}
-        <TagChips tags={entry.tags} />
-      </div>
-      {/* `title` never fires on touch, so the badge's detail is spelled out on the card. */}
-      {entry.verification ? (
-        <p className="text-xs leading-snug text-slate-500">{verificationTooltip(entry.verification)}</p>
-      ) : null}
-      {entry.note ? <p className="text-xs leading-snug text-slate-400">{entry.note}</p> : null}
-    </div>
+    <button type="button" onClick={() => onEdit(entry.id)} className={transactionRowClass(density, "emerald")}>
+      <CategoryDot categoryIds={[entry.categoryId]} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium leading-snug text-slate-100">{incomeHeading(entry)}</span>
+        <TransactionMetaLine density={density} title={fullTitle}>
+          <MetaParts parts={[hasTitle ? entry.sourceLabel : null, entry.accountLabel, entry.note]} />
+          <InlineTags tags={entry.tags} />
+        </TransactionMetaLine>
+        {/* `title` never fires on touch, so touch screens get the badge's detail spelled out. */}
+        {entry.verification ? (
+          <span className="hidden text-[11px] leading-snug text-slate-500 pointer-coarse:block">
+            {verificationTooltip(entry.verification)}
+          </span>
+        ) : null}
+      </span>
+      <span className="flex shrink-0 flex-col items-end gap-0.5 text-right">
+        <span data-testid="income-amount" className="font-semibold tabular-nums text-emerald-300">
+          +{formatCurrency(entry.amountCents, entry.currency ?? undefined)}
+        </span>
+        {entry.verification ? <VerifiedBadge info={entry.verification} variant="text" /> : null}
+      </span>
+    </button>
   );
 }
-
 
 function EditIncomeModal({
   entry,
@@ -392,38 +364,30 @@ export function IncomeLogPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const editing = editingId ? entries.find((e) => e.id === editingId) : null;
 
-  const cardPad = density === "compact" ? "p-2" : "p-2.5";
-  const pillSize = density === "compact" ? "compact" : "default";
+  const days = useMemo(() => groupTransactionsByDay(entries, (entry) => entry), [entries]);
 
   return (
     <>
-      <div className={`${COMPACT_LIST_MAX_HEIGHT_CLASS[maxHeight]} min-h-0 space-y-2 overflow-y-auto overflow-x-hidden pr-1 [-webkit-overflow-scrolling:touch]`}>
+      <div className={`${COMPACT_LIST_MAX_HEIGHT_CLASS[maxHeight]} min-h-0 overflow-y-auto overflow-x-hidden pr-1 [-webkit-overflow-scrolling:touch]`}>
         {entries.length === 0 ? (
           <p className="text-sm text-slate-400">No income in this period.</p>
         ) : (
-          entries.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              onClick={() => setEditingId(entry.id)}
-              className={`w-full rounded-xl border border-slate-800 bg-slate-950/50 text-left text-sm text-slate-100 transition hover:border-emerald-500/35 hover:bg-slate-900/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 touch-manipulation ${cardPad}`}
-            >
-              <IncomeLogMobileCard entry={entry} pillSize={pillSize} />
-              <div className="hidden sm:block">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400/85">Income source</p>
-                    <span className="mt-0.5 block break-words font-semibold leading-snug text-slate-50">{entry.sourceLabel}</span>
-                    {entry.title ? (
-                      <span className="mt-1 block break-words text-sm leading-snug text-slate-300">{entry.title}</span>
-                    ) : null}
-                    <IncomeLogMeta entry={entry} density={density} />
-                  </div>
-                  <ReceivedPill cents={entry.amountCents} size={pillSize} currency={entry.currency} />
-                </div>
-              </div>
-            </button>
-          ))
+          days.map((day) => {
+            const total = homeCurrencyDayTotal(day.items);
+            return (
+              <section key={day.dateYmd} aria-label={day.dateDisplay}>
+                <TransactionDayHeader
+                  dateDisplay={day.dateDisplay}
+                  total={total === null ? null : `+${formatCurrency(total)}`}
+                />
+                <TransactionDay>
+                  {day.items.map((entry) => (
+                    <IncomeLogRow key={entry.id} entry={entry} density={density} onEdit={setEditingId} />
+                  ))}
+                </TransactionDay>
+              </section>
+            );
+          })
         )}
       </div>
       {editing ? (
