@@ -28,3 +28,23 @@ export function TagChips({ tags }: { tags: readonly string[] }) {
     </>
   );
 }
+
+/**
+ * A transaction's tags as bare `#tag` text, for the compact log rows, where a pill per tag
+ * would bring back the chip clutter those rows replaced. Same test id as {@link TagChips}.
+ */
+export function InlineTags({ tags }: { tags: readonly string[] }) {
+  if (tags.length === 0) return null;
+  return (
+    <>
+      {tags.map((tag) => (
+        <span key={tag}>
+          {" "}
+          <span className="font-medium text-teal-300/90" title={`Tag: ${tag}`} data-testid="tag-chip">
+            #{tag}
+          </span>
+        </span>
+      ))}
+    </>
+  );
+}
