@@ -646,6 +646,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       asNonTransfer: queueProposalView(nonTransferProposal),
       amountCents: row.amountCents,
       isTransfer: offeredAsTransfer,
+      dateYmd: ymdFromDateUtc(row.date),
       dateDisplay: formatDateOnlyUtc(row.date),
       accountLabel: stagedAccountLabel(row.suggestedAccountId),
       transferPair: (() => {
@@ -1049,6 +1050,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
               totalCount={reviewQueueTotal}
               nextLimit={nextReviewQueueLimit(reviewRows.length, reviewQueueTotal)}
               revisions={revisionRows}
+              density={cardSettings["expense-log"]?.density}
             />
           )}
           <OwedToYouList items={owedToYouItems} />
