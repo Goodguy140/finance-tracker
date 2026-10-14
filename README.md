@@ -1,5 +1,7 @@
 # Finance Tracker
 
+This is vibe coded
+
 Self-hosted personal finance app. Next.js, SQLite and Prisma, shipped as a single Docker image.
 
 Project site: https://goodguy140.github.io/finance-tracker/ (source in [`site/`](site/)).
