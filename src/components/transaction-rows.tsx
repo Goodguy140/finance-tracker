@@ -1,38 +1,18 @@
 import type { ReactNode } from "react";
 import type { CardDensity } from "@/lib/dashboard-layout/schema";
+import { categoryColor, NEUTRAL_CATEGORY_COLOR } from "@/lib/category-colors";
+import { useCategoryColors } from "@/components/category-colors-context";
 
 /**
  * Pieces shared by the Expense Log and Income lists: a date header per day, and compact
  * rows under it with a category dot, the title, one muted line of detail, and the amount.
  */
 
-// The palette of the Spending by category pie, so a category's dot reads as the same family.
-const DOT_COLORS = [
-  "#38bdf8",
-  "#a78bfa",
-  "#34d399",
-  "#fbbf24",
-  "#fb7185",
-  "#2dd4bf",
-  "#818cf8",
-  "#f472b6",
-  "#4ade80",
-  "#fcd34d",
-];
-
-/** A stable colour per category, so the same category keeps its dot across rows and visits. */
-export function categoryDotColor(categoryId: string): string {
-  let hash = 0;
-  for (let i = 0; i < categoryId.length; i += 1) {
-    hash = (hash * 31 + categoryId.charCodeAt(i)) | 0;
-  }
-  return DOT_COLORS[Math.abs(hash) % DOT_COLORS.length];
-}
-
 /** One dot per row; a split expense's dot is cut into its categories' colours. */
 export function CategoryDot({ categoryIds }: { categoryIds: readonly string[] }) {
-  const colors = [...new Set(categoryIds)].map(categoryDotColor);
-  let background = colors[0] ?? "#64748b";
+  const categoryColors = useCategoryColors();
+  const colors = [...new Set(categoryIds)].map((id) => categoryColor(categoryColors, id));
+  let background = colors[0] ?? NEUTRAL_CATEGORY_COLOR;
   if (colors.length > 1) {
     const step = 100 / colors.length;
     background = `conic-gradient(${colors
@@ -42,6 +22,7 @@ export function CategoryDot({ categoryIds }: { categoryIds: readonly string[] })
   return (
     <span
       aria-hidden
+      data-category-dot
       className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-slate-950/60"
       style={{ background }}
     />

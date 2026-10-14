@@ -53,6 +53,8 @@ import { PlaidReviewQueue } from "@/components/plaid-review-queue";
 import { nextReviewQueueLimit, parseReviewQueueLimit } from "@/lib/plaid/review-queue-page";
 import { TransferLog, type TransferLogEntry } from "@/components/transfer-log";
 import { TransactionRulesProvider } from "@/components/transaction-rules-context";
+import { CategoryColorsProvider } from "@/components/category-colors-context";
+import { assignCategoryColors, categoryColor } from "@/lib/category-colors";
 import { visibleLearnedSuggestions, type RuleTransactionType } from "@/lib/transaction-rules";
 import { catchAllCategoryId } from "@/lib/plaid/category-map";
 import { outflowCents, untransferredType } from "@/lib/transfer-type";
@@ -582,10 +584,11 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     monthlyExpected,
   });
 
+  const categoryColors = assignCategoryColors(categories);
   const categoryPieSlices = Array.from((tagFilter ? computeSpendByCategory(logExpenses.filter(inHomeCurrency)) : spendByCategory).entries())
     .map(([categoryId, cents]) => {
       const cat = categories.find((c) => c.id === categoryId);
-      return { name: cat?.name ?? "Unknown", cents };
+      return { name: cat?.name ?? "Unknown", cents, color: categoryColor(categoryColors, categoryId) };
     })
     .filter((s) => s.cents !== 0)
     .sort((a, b) => Math.abs(b.cents) - Math.abs(a.cents));
@@ -1152,6 +1155,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
   return (
     <TransactionRulesProvider value={formRules}>
+    <CategoryColorsProvider value={categoryColors}>
     <AppNav displayName={user.displayName} countryCode={user.countryCode} tagId={tagFilter?.id} />
     {/* Phones: room under the last card for the quick-add buttons and the tab bar below them. */}
     <main data-rendered-at={new Date().toISOString()} className="bg-slate-950 px-4 pb-[calc(9rem+env(safe-area-inset-bottom))] pt-3 text-slate-100 lg:p-4 lg:pb-4">
@@ -1222,6 +1226,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         />
       </div>
     </main>
+    </CategoryColorsProvider>
     </TransactionRulesProvider>
   );
 }
