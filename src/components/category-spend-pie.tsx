@@ -3,24 +3,14 @@
 import type { TooltipProps } from "recharts";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { formatCurrency } from "@/lib/money";
+import { NEUTRAL_CATEGORY_COLOR } from "@/lib/category-colors";
 
 export type CategorySpendSlice = {
   name: string;
   cents: number;
+  /** The category's colour from assignCategoryColors, so the slice matches its log dots. */
+  color: string;
 };
-
-const SLICE_COLORS = [
-  "#38bdf8",
-  "#a78bfa",
-  "#34d399",
-  "#fbbf24",
-  "#fb7185",
-  "#2dd4bf",
-  "#818cf8",
-  "#f472b6",
-  "#4ade80",
-  "#fcd34d",
-];
 
 function renderTooltip({ active, payload }: TooltipProps<number, string>) {
   if (!active || !payload?.length) return null;
@@ -45,7 +35,7 @@ function collapseToMaxSlices(
   const ranked = [...slices].sort((a, b) => Math.abs(b.cents) - Math.abs(a.cents));
   const kept = ranked.slice(0, maxSlices - 1);
   const restCents = ranked.slice(maxSlices - 1).reduce((sum, slice) => sum + slice.cents, 0);
-  return restCents === 0 ? kept : [...kept, { name: "Other categories", cents: restCents }];
+  return restCents === 0 ? kept : [...kept, { name: "Other categories", cents: restCents, color: NEUTRAL_CATEGORY_COLOR }];
 }
 
 export function CategorySpendPieChart({
@@ -61,6 +51,7 @@ export function CategorySpendPieChart({
   const chartData = collapseToMaxSlices(data.filter((d) => d.cents !== 0), maxSlices).map((d) => ({
     name: d.name,
     cents: d.cents,
+    color: d.color,
     /** Pie sector size; credits use absolute value so the chart stays readable. */
     value: Math.abs(d.cents),
   }));
@@ -87,8 +78,8 @@ export function CategorySpendPieChart({
               return p >= 0.06 ? `${Math.round(p * 100)}%` : "";
             }}
           >
-            {chartData.map((_, index) => (
-              <Cell key={`cell-${index}`} fill={SLICE_COLORS[index % SLICE_COLORS.length]} stroke="#0f172a" strokeWidth={1} />
+            {chartData.map((slice, index) => (
+              <Cell key={`cell-${index}`} fill={slice.color} stroke="#0f172a" strokeWidth={1} />
             ))}
           </Pie>
           <Tooltip content={renderTooltip} />
