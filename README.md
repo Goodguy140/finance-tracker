@@ -2,6 +2,8 @@
 
 Self-hosted personal finance app. Next.js, SQLite and Prisma, shipped as a single Docker image.
 
+Project site: https://goodguy140.github.io/finance-tracker/ (source in [`site/`](site/)).
+
 ## Features
 
 - **Expense and income log** with categories, month / year-to-date / lifetime views, and CSV import

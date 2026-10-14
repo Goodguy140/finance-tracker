@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Finance Tracker</title>
+  <meta name="description" content="A self-hosted personal finance app: budgets, recurring bills, bank sync with review, reports and net worth, on your own server.">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="./"><img src="icon.svg" alt=""><span>Finance Tracker</span></a>
+      <nav class="nav" aria-label="Site">
+        <a href="./#features">Features</a>
+        <a href="download.html">Download</a>
+        <a class="hide-sm" href="https://github.com/Goodguy140/finance-tracker">GitHub</a>
+        <a class="btn btn-primary" href="sign-in.html">Sign in</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="wrap hero">
+      <span class="eyebrow">Open source · Self-hosted · One Docker image</span>
+      <h1>Your money, on your own server.</h1>
+      <p class="lead">Finance Tracker keeps your spending, budgets, bills and savings in one place you control. Nothing is posted to your books without you, and nothing leaves your server unless you connect a bank.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="download.html">Get it running</a>
+        <a class="btn btn-ghost" href="sign-in.html">Sign in to your server</a>
+      </div>
+      <div class="shot"><img src="images/dashboard.png" alt="The Finance Tracker dashboard with budgets, spending by category, upcoming bills and the expense log" width="1440" height="900"></div>
+    </div>
+
+    <section id="features">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Everything a household budget needs</h2>
+          <p>Built for one person or a family, with the details that usually get left out.</p>
+        </div>
+        <div class="grid">
+          <div class="card"><h3>Expense and income log</h3><p>Categories, month, year-to-date and lifetime views, search, notes, receipt breakdowns and CSV import.</p></div>
+          <div class="card"><h3>Budgets with rollover</h3><p>A monthly budget per category, with what is left (or overspent) carried into next month if you want it, and email alerts near the limit.</p></div>
+          <div class="card"><h3>Recurring bills and salary</h3><p>Rules that post by hand or automatically, and an upcoming-bills forecast for the next 30, 60 or 90 days.</p></div>
+          <div class="card"><h3>Bank sync you review</h3><p>Connect banks through Plaid. Synced transactions wait in a review queue and are never posted on their own.</p></div>
+          <div class="card"><h3>Transfers, tags and splits</h3><p>Moves between your accounts stay out of income and spending. Tags cut across categories, and rules can add them for you.</p></div>
+          <div class="card"><h3>Money owed to you</h3><p>Mark part of an expense as someone else's share, keep it out of your spending, and track it until it is paid back.</p></div>
+          <div class="card"><h3>Savings goals and net worth</h3><p>Goals with a target date and what each needs a month, account balances over time, and projected balances.</p></div>
+          <div class="card"><h3>Investments and contribution room</h3><p>TFSA, RRSP and FHSA room tracking, with a warning before you go over.</p></div>
+          <div class="card"><h3>Reports and insights</h3><p>Income against spending, a cash-flow diagram, year over year, top payees, a financial score and habits worth a look.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="split">
+          <div>
+            <h3>See where it all went</h3>
+            <p>Reports show income against spending by month, what you saved, and how this year compares with last. Transfers between your own accounts are left out so the numbers mean what they say.</p>
+            <ul class="ticks">
+              <li>Cash-flow diagram from income to each category</li>
+              <li>Top payees, with a page per merchant</li>
+              <li>Net worth from your account balances</li>
+            </ul>
+          </div>
+          <div class="shot"><img src="images/reports.png" alt="The Reports page with income against spending by month and the cash-flow diagram" width="1280" height="800"></div>
+        </div>
+        <div class="split reverse">
+          <div>
+            <h3>Insights worked out on your server</h3>
+            <p>Finance Tracker looks over the last year of transactions for recurring charges you have not tracked, categories with no budget, and goals that are falling behind. The analysis runs locally; nothing is sent anywhere.</p>
+            <ul class="ticks">
+              <li>Savings goals and what each needs a month</li>
+              <li>Recurring charges you have not set up yet</li>
+              <li>A 0 to 100 financial score with the factors behind it</li>
+            </ul>
+          </div>
+          <div class="shot"><img src="images/insights.png" alt="The Insights page with savings goals and recurring charges it noticed" width="1280" height="800"></div>
+        </div>
+        <div class="split">
+          <div>
+            <h3>Works on your phone</h3>
+            <p>Install it to your home screen like an app. A bottom tab bar and quick-add sheet make logging a coffee take a few seconds.</p>
+            <ul class="ticks">
+              <li>Installable web app with offline banner</li>
+              <li>Passkeys, two-factor and Google or Authentik sign-in</li>
+              <li>Several users per server, each with their own data</li>
+            </ul>
+          </div>
+          <div class="shot" style="max-width: 360px; justify-self: center;"><img src="images/phone.png" alt="The dashboard on a phone, with quick-add buttons and the bottom tab bar" width="390" height="664"></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Yours to run</h2>
+          <p>Finance Tracker is a single Docker image with SQLite inside. No external database, no account with us, no subscription.</p>
+        </div>
+        <div class="grid">
+          <div class="card"><h3>Private by default</h3><p>Your data lives in one file on your volume. Back it up, restore it, or export each user's data from Settings.</p></div>
+          <div class="card"><h3>Admin tools included</h3><p>Roles, signup control, an audit log, schema health checks and a read-only API with personal access tokens.</p></div>
+          <div class="card"><h3>Open source</h3><p>Read the code, file an issue, or send a pull request on <a class="hide-sm" href="https://github.com/Goodguy140/finance-tracker">GitHub</a>.</p></div>
+        </div>
+        <p style="margin-top: 28px;"><a class="btn btn-primary" href="download.html">Download and install</a></p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>Finance Tracker · open source personal finance</span>
+      <nav aria-label="Footer">
+        <a href="download.html">Download</a>
+        <a href="sign-in.html">Sign in</a>
+        <a href="https://github.com/Goodguy140/finance-tracker">Source</a>
+        <a href="https://github.com/Goodguy140/finance-tracker/issues">Issues</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>
