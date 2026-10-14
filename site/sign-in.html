@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · Finance Tracker</title>
+  <meta name="description" content="Go to the sign-in page of your own Finance Tracker server.">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="./"><img src="icon.svg" alt=""><span>Finance Tracker</span></a>
+      <nav class="nav" aria-label="Site">
+        <a href="./#features">Features</a>
+        <a href="download.html">Download</a>
+        <a class="hide-sm" href="https://github.com/Goodguy140/finance-tracker">GitHub</a>
+        <a class="btn btn-primary" href="sign-in.html" aria-current="page">Sign in</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="signin">
+      <div class="card">
+        <h1>Sign in</h1>
+        <p class="sub">Finance Tracker runs on your own server, so your account lives there. Enter its address and we will take you to its sign-in page.</p>
+
+        <div class="saved" id="saved" hidden>
+          <div class="host" id="saved-host"></div>
+          <a class="btn btn-primary" id="saved-go" href="#">Continue</a>
+        </div>
+        <p id="saved-forget-row" hidden style="margin: -10px 0 18px;"><button type="button" class="linklike" id="saved-forget">Use a different server</button></p>
+
+        <form id="signin-form" novalidate>
+          <label for="server">Server address</label>
+          <input id="server" name="server" type="url" inputmode="url" autocomplete="url" placeholder="https://finance.example.com" required>
+          <p class="hint">The address your admin gave you, the same as their <code>NEXTAUTH_URL</code>.</p>
+          <p class="error" id="error" role="alert" hidden></p>
+          <label class="remember"><input type="checkbox" id="remember" checked> Remember this server on this device</label>
+          <button class="btn btn-primary full" type="submit">Go to sign in</button>
+        </form>
+      </div>
+      <p style="margin-top: 20px; color: var(--muted); font-size: 0.92rem; text-align: center;">
+        No server yet? <a href="download.html">Set one up</a> in a few minutes.
+      </p>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>Finance Tracker · open source personal finance</span>
+      <nav aria-label="Footer">
+        <a href="./">Home</a>
+        <a href="download.html">Download</a>
+        <a href="https://github.com/Goodguy140/finance-tracker">Source</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      var KEY = "finance-tracker.server";
+      var form = document.getElementById("signin-form");
+      var input = document.getElementById("server");
+      var error = document.getElementById("error");
+      var remember = document.getElementById("remember");
+      var saved = document.getElementById("saved");
+      var savedHost = document.getElementById("saved-host");
+      var savedGo = document.getElementById("saved-go");
+      var forgetRow = document.getElementById("saved-forget-row");
+
+      function read() { try { return localStorage.getItem(KEY); } catch (_) { return null; } }
+      function write(v) { try { v ? localStorage.setItem(KEY, v) : localStorage.removeItem(KEY); } catch (_) {} }
+
+      // Accept "finance.example.com" as well as a full URL, keep only the origin,
+      // and refuse anything that is not http(s) so the link can never run script.
+      function toOrigin(raw) {
+        var text = (raw || "").trim();
+        if (!text) return null;
+        if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) text = "https://" + text;
+        try {
+          var url = new URL(text);
+          if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+          if (!url.hostname) return null;
+          return url.origin;
+        } catch (_) {
+          return null;
+        }
+      }
+
+      function showSaved(origin) {
+        saved.hidden = !origin;
+        forgetRow.hidden = !origin;
+        form.hidden = !!origin;
+        if (origin) {
+          savedHost.textContent = origin.replace(/^https?:\/\//, "");
+          savedGo.href = origin + "/login";
+        }
+      }
+
+      var stored = toOrigin(read());
+      showSaved(stored);
+
+      document.getElementById("saved-forget").addEventListener("click", function () {
+        write(null);
+        showSaved(null);
+        input.focus();
+      });
+
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        var origin = toOrigin(input.value);
+        if (!origin) {
+          error.textContent = "That does not look like a web address. Try something like https://finance.example.com.";
+          error.hidden = false;
+          return;
+        }
+        error.hidden = true;
+        write(remember.checked ? origin : null);
+        window.location.href = origin + "/login";
+      });
+    })();
+  </script>
+</body>
+</html>
