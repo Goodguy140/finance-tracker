@@ -38,6 +38,7 @@ import { DashboardCard, DragHandle, RemoveCardButton } from "@/components/dashbo
 import { CardSettingsControl, type CardSettingsChange } from "@/components/dashboard-cards/card-settings-forms";
 import { useCardStack } from "@/components/dashboard-cards/card-stack";
 import { DashboardColumnResizer } from "@/components/dashboard-column-resizer";
+import { useConfirm } from "@/components/settings/dialog";
 import {
   DashboardEditToolbar,
   type AddCardDestination,
@@ -509,10 +510,16 @@ export function DashboardGrid({
     [mutate],
   );
 
-  const resetLayout = useCallback(() => {
-    if (!window.confirm("Reset the dashboard to its default arrangement?")) return;
+  const { ask: askConfirm, dialog: confirmDialog } = useConfirm();
+  const resetLayout = useCallback(async () => {
+    const ok = await askConfirm({
+      title: "Reset the dashboard?",
+      body: "Cards and columns go back to their default arrangement.",
+      confirmLabel: "Reset layout",
+    });
+    if (!ok) return;
     mutate(() => JSON.parse(JSON.stringify(DEFAULT_LAYOUT)) as DashboardLayout);
-  }, [mutate]);
+  }, [askConfirm, mutate]);
 
   const canAddColumn = stored.columns.length < MAX_COLUMNS;
 
@@ -657,6 +664,7 @@ export function DashboardGrid({
           </DndContext>
         </div>
       ) : null}
+      {confirmDialog}
     </>
   );
 }

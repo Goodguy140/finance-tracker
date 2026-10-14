@@ -1,7 +1,7 @@
 "use client";
 
 import { isActionFailure } from "@/lib/action-result";
-import { useActionState, useEffect, useId, useMemo, useState } from "react";
+import { useActionState, useEffect, useId, useMemo, useRef, useState } from "react";
 import { COMPACT_LIST_MAX_HEIGHT_CLASS } from "@/lib/dashboard-layout/display";
 import type { ListHeight } from "@/lib/dashboard-layout/schema";
 import { useRouter } from "next/navigation";
@@ -20,6 +20,7 @@ import { TagInput } from "@/components/tag-input";
 import { useTagOptions } from "@/components/transaction-rules-context";
 import { MarkAsTransferSection } from "@/components/transfer-log";
 import { EditSheet, EditSheetFooter, editSheetDeleteBtnClass } from "@/components/edit-sheet";
+import { useConfirm } from "@/components/settings/dialog";
 import { VerifiedBadge, verificationTooltip, type VerificationInfo } from "@/components/verified-badge";
 import { formatCurrency } from "@/lib/money";
 import {
@@ -144,6 +145,10 @@ function EditIncomeModal({
     { ok: false, error: null },
   );
 
+  const confirm = useConfirm();
+  const deleteFormRef = useRef<HTMLFormElement>(null);
+  const confirmOpen = confirm.dialog !== null;
+
   const [deleteState, deleteFormAction, deletePending] = useActionState(
     async (_prev: DeleteState, formData: FormData): Promise<DeleteState> => {
       try {
@@ -173,12 +178,14 @@ function EditIncomeModal({
   }, [deleteState, onClose, router]);
 
   useEffect(() => {
+    // While the delete confirmation is open, Escape belongs to it, not to this modal.
+    if (confirmOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, confirmOpen]);
 
   const amountDollars = (entry.amountCents / 100).toFixed(2);
 
@@ -197,23 +204,23 @@ function EditIncomeModal({
           deletePending={deletePending}
           onClose={onClose}
           deleteControl={
-          <form action={deleteFormAction}>
+          <form ref={deleteFormRef} action={deleteFormAction}>
             <input type="hidden" name="transactionId" value={entry.id} />
             {deleteState.ok === false && deleteState.error ? (
               <p className="mb-2 text-sm text-red-300">{deleteState.error}</p>
             ) : null}
             <button
-              type="submit"
+              type="button"
               disabled={isPending || deletePending}
               className={editSheetDeleteBtnClass}
-              onClick={(e) => {
-                if (
-                  !window.confirm(
-                    "Delete this income entry permanently? This cannot be undone.",
-                  )
-                ) {
-                  e.preventDefault();
-                }
+              onClick={async () => {
+                const ok = await confirm.ask({
+                  title: "Delete this income entry?",
+                  body: "It comes off your income list and dashboard totals. This cannot be undone.",
+                  confirmLabel: "Delete",
+                  danger: true,
+                });
+                if (ok) deleteFormRef.current?.requestSubmit();
               }}
             >
               {deletePending ? "Deleting…" : "Delete income"}
@@ -343,6 +350,7 @@ function EditIncomeModal({
         </FieldHintModeProvider>
 
         <MarkAsTransferSection transactionId={entry.id} kind="income" onDone={onClose} />
+      {confirm.dialog}
     </EditSheet>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { isActionFailure } from "@/lib/action-result";
-import { useActionState, useEffect, useId, useMemo, useState } from "react";
+import { useActionState, useEffect, useId, useRef, useMemo, useState } from "react";
 import { LIST_MAX_HEIGHT_CLASS } from "@/lib/dashboard-layout/display";
 import type { ListHeight } from "@/lib/dashboard-layout/schema";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -12,6 +12,7 @@ import { useTagOptions } from "@/components/transaction-rules-context";
 import type { TagOption } from "@/lib/tags";
 import { MarkAsTransferSection } from "@/components/transfer-log";
 import { EditSheet, EditSheetFooter, editSheetDeleteBtnClass } from "@/components/edit-sheet";
+import { useConfirm } from "@/components/settings/dialog";
 import { VerifiedBadge, verificationTooltip, type VerificationInfo } from "@/components/verified-badge";
 import {
   CategoryDot,
@@ -264,6 +265,10 @@ function EditExpenseModal({
     { ok: false, error: null },
   );
 
+  const confirm = useConfirm();
+  const deleteFormRef = useRef<HTMLFormElement>(null);
+  const confirmOpen = confirm.dialog !== null;
+
   const [deleteState, deleteFormAction, deletePending] = useActionState(
     async (_prev: DeleteState, formData: FormData): Promise<DeleteState> => {
       try {
@@ -293,12 +298,14 @@ function EditExpenseModal({
   }, [deleteState, onClose, router]);
 
   useEffect(() => {
+    // While the delete confirmation is open, Escape belongs to it, not to this modal.
+    if (confirmOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, confirmOpen]);
 
   // The amount field is what the user paid; what others owe comes out of it on save.
   const initialOwedCents = owedTotalCents(entry.owedShares);
@@ -413,23 +420,23 @@ function EditExpenseModal({
           deletePending={deletePending}
           onClose={onClose}
           deleteControl={
-          <form action={deleteFormAction}>
+          <form ref={deleteFormRef} action={deleteFormAction}>
             <input type="hidden" name="transactionId" value={entry.id} />
             {deleteState.ok === false && deleteState.error ? (
               <p className="mb-2 text-sm text-red-300">{deleteState.error}</p>
             ) : null}
             <button
-              type="submit"
+              type="button"
               disabled={isPending || deletePending}
               className={editSheetDeleteBtnClass}
-              onClick={(e) => {
-                if (
-                  !window.confirm(
-                    "Delete this expense permanently? This cannot be undone.",
-                  )
-                ) {
-                  e.preventDefault();
-                }
+              onClick={async () => {
+                const ok = await confirm.ask({
+                  title: "Delete this expense?",
+                  body: "It comes off your log and category totals. This cannot be undone.",
+                  confirmLabel: "Delete",
+                  danger: true,
+                });
+                if (ok) deleteFormRef.current?.requestSubmit();
               }}
             >
               {deletePending ? "Deleting…" : "Delete expense"}
@@ -789,6 +796,7 @@ function EditExpenseModal({
         </FieldHintModeProvider>
 
         <MarkAsTransferSection transactionId={entry.id} kind="expense" onDone={onClose} />
+      {confirm.dialog}
     </EditSheet>
   );
 }
