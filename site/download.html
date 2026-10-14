@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Download Finance Tracker</title>
+  <meta name="description" content="Run Finance Tracker with Docker, or from source with Node.js 22.">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="./"><img src="icon.svg" alt=""><span>Finance Tracker</span></a>
+      <nav class="nav" aria-label="Site">
+        <a href="./#features">Features</a>
+        <a href="download.html" aria-current="page">Download</a>
+        <a class="hide-sm" href="https://github.com/Goodguy140/finance-tracker">GitHub</a>
+        <a class="btn btn-primary" href="sign-in.html">Sign in</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Download and install</h2>
+          <p>Every change to <code>main</code> is tested and published as a Docker image. Pull it, give it a volume and a few settings, and you are running.</p>
+        </div>
+
+        <div class="steps">
+          <div class="step">
+            <h3>Pull the image</h3>
+            <p>Published to the GitHub Container Registry for <code>linux/amd64</code>. <code>latest</code> follows <code>main</code>; every build is also tagged with its commit (<code>sha-…</code>) so you can pin one.</p>
+            <pre><code>docker pull ghcr.io/goodguy140/finance-tracker-app:latest</code></pre>
+          </div>
+
+          <div class="step">
+            <h3>Run it with Docker Compose</h3>
+            <p>Save this as <code>compose.yaml</code>, fill in the three secrets, and run <code>docker compose up -d</code>. The database lives at <code>/data/app.db</code> on the volume, and migrations run on every start.</p>
+            <pre><code>services:
+  finance-tracker:
+    image: ghcr.io/goodguy140/finance-tracker-app:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - finance-data:/data
+    environment:
+      NEXTAUTH_URL: https://finance.example.com
+      NEXTAUTH_SECRET: change-me          # openssl rand -base64 48
+      SERVER_SETTINGS_ENCRYPTION_KEY: change-me-to-32-or-more-characters
+      AUTH_TRUST_HOST: "true"             # behind a reverse proxy
+
+volumes:
+  finance-data:</code></pre>
+          </div>
+
+          <div class="step">
+            <h3>Create the admin account</h3>
+            <p>Open your <code>NEXTAUTH_URL</code> and sign up. The first account becomes the server admin (set <code>INITIAL_ADMIN_EMAIL</code> to choose who). Public signup is closed after that unless you turn it on under Settings → Server admin.</p>
+            <p><code>GET /api/health</code> returns 200 once the app is up, which suits a reverse proxy or uptime check.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Settings</h2>
+          <p>Most optional settings can also be changed in the app under Settings → Server admin; a value in the environment wins.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Variable</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td><code>NEXTAUTH_URL</code></td><td><strong>Required.</strong> The public URL people visit. Passkeys are bound to this hostname.</td></tr>
+              <tr><td><code>NEXTAUTH_SECRET</code></td><td><strong>Required.</strong> Session signing secret.</td></tr>
+              <tr><td><code>SERVER_SETTINGS_ENCRYPTION_KEY</code></td><td><strong>Required.</strong> At least 32 characters. Encrypts SSO and Plaid credentials stored in the database.</td></tr>
+              <tr><td><code>AUTH_TRUST_HOST</code></td><td>Set to <code>true</code> behind a reverse proxy.</td></tr>
+              <tr><td><code>INITIAL_ADMIN_EMAIL</code></td><td>Only this email becomes admin on first signup.</td></tr>
+              <tr><td><code>ALLOW_PUBLIC_SIGNUP</code></td><td>Open signup to anyone who can reach the server. Off by default.</td></tr>
+              <tr><td><code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_USER</code>, <code>SMTP_PASS</code>, <code>SMTP_FROM</code></td><td>Email for password resets and budget alerts.</td></tr>
+              <tr><td><code>PLAID_CLIENT_ID</code>, <code>PLAID_SECRET</code>, <code>PLAID_ENV</code></td><td>Bank sync through Plaid. <code>PLAID_ENV</code> is <code>sandbox</code> or <code>production</code>.</td></tr>
+              <tr><td><code>AUTHENTIK_*</code></td><td>Single sign-on with Authentik. Google sign-in is set up in the app.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="margin-top: 16px; color: var(--muted);">The full list is in the <a href="https://github.com/Goodguy140/finance-tracker#production">README</a>.</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Other ways to get it</h2>
+        </div>
+        <div class="grid">
+          <div class="card">
+            <h3>Run from source</h3>
+            <p>Needs Node.js 22. No environment variables are needed for development.</p>
+            <pre style="margin-top: 12px;"><code>git clone https://github.com/Goodguy140/finance-tracker
+cd finance-tracker
+npm ci
+npm run db:deploy
+npm run dev</code></pre>
+          </div>
+          <div class="card">
+            <h3>Source code</h3>
+            <p>Browse the code, history and open issues, or download a zip of any version.</p>
+            <p style="margin-top: 14px; display: flex; flex-wrap: wrap; gap: 10px;">
+              <a class="btn btn-ghost" href="https://github.com/Goodguy140/finance-tracker">View on GitHub</a>
+              <a class="btn btn-ghost" href="https://github.com/Goodguy140/finance-tracker/archive/refs/heads/main.zip">Download zip</a>
+            </p>
+          </div>
+          <div class="card">
+            <h3>Earlier versions</h3>
+            <p>Tagged versions are listed on GitHub, each with a source archive.</p>
+            <p style="margin-top: 14px;"><a class="btn btn-ghost" href="https://github.com/Goodguy140/finance-tracker/tags">All versions</a></p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>Finance Tracker · open source personal finance</span>
+      <nav aria-label="Footer">
+        <a href="./">Home</a>
+        <a href="sign-in.html">Sign in</a>
+        <a href="https://github.com/Goodguy140/finance-tracker">Source</a>
+        <a href="https://github.com/Goodguy140/finance-tracker/issues">Issues</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>
