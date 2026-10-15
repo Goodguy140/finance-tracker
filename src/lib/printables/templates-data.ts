@@ -12,11 +12,17 @@ import { loadReportTxs } from "@/lib/reports/load";
 import { loadSavingsGoals } from "@/lib/savings-goals-data";
 import {
   amountsByMonthAndCategory,
+  BLANK_ACCOUNT_ROWS,
   BLANK_ASSET_ROWS,
   BLANK_DEBT_ROWS,
   BUDGET_AVERAGE_MONTHS,
   budgetSheetRows,
+  groupByPaycheque,
   resolveTemplateMonth,
+  SINKING_CADENCES,
+  sinkingFund,
+  subscriptionRows,
+  yearlyCents,
   type BalanceSheetRow,
   type BillSheetItem,
   type BudgetSheetRow,
@@ -98,52 +104,110 @@ export async function loadTemplateSheet(
 
     case "bills": {
       if (mode === "blank") return { id, sheet: { mode, ym, currency, items: [] } };
-      const [rules, posted] = await Promise.all([
-        loadForecastRules(user.id, currency),
-        // Occurrences already posted this month have moved the rule on, so the forecast no
-        // longer lists them; they come from the entries they became, marked paid.
-        prisma.transaction.findMany({
-          where: {
-            userId: user.id,
-            type: { in: ["EXPENSE", "INCOME"] },
-            recurringTransactionId: { not: null },
-            recurringExpectedDate: { gte: startOfMonthYm(ym), lt: startOfMonthYm(shiftYm(ym, 1)) },
-            account: { currency },
-          },
-          select: {
-            date: true,
-            amountCents: true,
-            type: true,
-            recurringExpectedDate: true,
-            recurringTransactionId: true,
-            title: true,
-            account: { select: { name: true } },
-          },
-        }),
-      ]);
-      const forecast = forecastRecurringOccurrences(rules, { todayYmd, currentYm, days: daysThroughEndOf(ym, todayYmd) });
-      const ruleNames = new Map(rules.map((r) => [r.id, r.name]));
-      const items: BillSheetItem[] = [
-        ...posted.map((t) => ({
-          date: t.recurringExpectedDate!,
-          name: ruleNames.get(t.recurringTransactionId!) ?? t.title ?? "",
-          type: t.type as "EXPENSE" | "INCOME",
-          amountCents: t.amountCents,
-          accountName: t.account?.name ?? "",
-          paidOn: t.date,
-        })),
-        ...forecast.occurrences
-          .filter((o) => ymdFromDateUtc(o.date).slice(0, 7) === ym)
-          .map((o) => ({
-            date: o.date,
-            name: o.rule.name,
-            type: o.rule.type as "EXPENSE" | "INCOME",
-            amountCents: o.rule.amountCents,
-            accountName: o.rule.account.name,
-            paidOn: null,
+      return { id, sheet: { mode, ym, currency, items: await loadBillItems(user.id, currency, ym, todayYmd) } };
+    }
+
+    case "paycheque": {
+      if (mode === "blank") return { id, sheet: { mode, ym, currency, pays: [], beforeFirst: [] } };
+      return { id, sheet: { mode, ym, currency, ...groupByPaycheque(await loadBillItems(user.id, currency, ym, todayYmd)) } };
+    }
+
+    case "subscriptions": {
+      if (mode === "blank") return { id, sheet: { mode, currency, rows: [] } };
+      const rules = (await loadForecastRules(user.id, currency)).filter((r) => r.type === "EXPENSE");
+      const categories = new Map(
+        (await prisma.category.findMany({ where: { userId: user.id }, select: { id: true, name: true } })).map((c) => [c.id, c.name]),
+      );
+      const next = firstOccurrences(rules, todayYmd, currentYm);
+      return {
+        id,
+        sheet: {
+          mode,
+          currency,
+          rows: subscriptionRows(
+            rules.map((r) => ({
+              name: r.name,
+              categoryName: categories.get(r.categoryId) ?? "",
+              accountName: r.account.name,
+              cadence: r.cadence,
+              amountCents: r.amountCents,
+              yearlyCents: yearlyCents(r.amountCents, r.cadence),
+              next: next.get(r.id) ?? null,
+            })),
+          ),
+        },
+      };
+    }
+
+    case "sinking-funds": {
+      if (mode === "blank") return { id, sheet: { mode, currency, startYm: currentYm, funds: [] } };
+      const rules = (await loadForecastRules(user.id, currency)).filter((r) => r.type === "EXPENSE" && SINKING_CADENCES.has(r.cadence));
+      const next = firstOccurrences(rules, todayYmd, currentYm);
+      return {
+        id,
+        sheet: {
+          mode,
+          currency,
+          startYm: currentYm,
+          funds: rules
+            .flatMap((r) => {
+              const due = next.get(r.id);
+              return due ? [sinkingFund(r.name, r.amountCents, due, currentYm)] : [];
+            })
+            .sort((a, b) => a.due!.getTime() - b.due!.getTime()),
+        },
+      };
+    }
+
+    case "spending-log": {
+      if (mode === "blank") {
+        return {
+          id,
+          sheet: { mode, ym, currency, running: false, budgets: config.defaultExpenseCategories.map((name) => ({ name, limitCents: null, spentCents: null })) },
+        };
+      }
+      const progress = await buildMonthlyBudgetProgress(user.id, ym);
+      const running = ym === currentYm;
+      return {
+        id,
+        sheet: {
+          mode,
+          ym,
+          currency,
+          running,
+          budgets: progress.budgets
+            .map((b) => ({ name: b.categoryName, limitCents: b.limitCents, spentCents: running ? b.spentCents : null }))
+            .sort((a, b) => (b.limitCents ?? 0) - (a.limitCents ?? 0)),
+        },
+      };
+    }
+
+    case "accounts": {
+      if (mode === "blank") {
+        return { id, sheet: { mode, currency, accounts: BLANK_ACCOUNT_ROWS.map((name) => ({ name, typeLabel: "", institution: "", mask: "" })) } };
+      }
+      const accounts = await prisma.account.findMany({
+        where: { userId: user.id, archived: false },
+        orderBy: { createdAt: "asc" },
+        select: {
+          name: true,
+          type: true,
+          plaidAccounts: { select: { mask: true, plaidItem: { select: { institutionName: true } } }, take: 1 },
+        },
+      });
+      return {
+        id,
+        sheet: {
+          mode,
+          currency,
+          accounts: accounts.map((a) => ({
+            name: a.name,
+            typeLabel: formatAccountTypeLabel(a.type),
+            institution: a.plaidAccounts[0]?.plaidItem.institutionName ?? "",
+            mask: a.plaidAccounts[0]?.mask ?? "",
           })),
-      ].sort((a, b) => a.date.getTime() - b.date.getTime());
-      return { id, sheet: { mode, ym, currency, items } };
+        },
+      };
     }
 
     case "goals": {
@@ -211,8 +275,73 @@ export async function loadTemplateSheet(
   }
 }
 
+/**
+ * The month's bills and income for the bill calendar and the paycheque planner: what is still to
+ * come from the recurring rules, plus what was already posted from them this month, marked paid.
+ */
+async function loadBillItems(userId: string, currency: string, ym: string, todayYmd: string): Promise<BillSheetItem[]> {
+  const currentYm = todayYmd.slice(0, 7);
+  const [rules, posted] = await Promise.all([
+    loadForecastRules(userId, currency),
+    // Occurrences already posted this month have moved the rule on, so the forecast no
+    // longer lists them; they come from the entries they became, marked paid.
+    prisma.transaction.findMany({
+      where: {
+        userId,
+        type: { in: ["EXPENSE", "INCOME"] },
+        recurringTransactionId: { not: null },
+        recurringExpectedDate: { gte: startOfMonthYm(ym), lt: startOfMonthYm(shiftYm(ym, 1)) },
+        account: { currency },
+      },
+      select: {
+        date: true,
+        amountCents: true,
+        type: true,
+        recurringExpectedDate: true,
+        recurringTransactionId: true,
+        title: true,
+        account: { select: { name: true } },
+      },
+    }),
+  ]);
+  const forecast = forecastRecurringOccurrences(rules, { todayYmd, currentYm, days: daysThroughEndOf(ym, todayYmd) });
+  const ruleNames = new Map(rules.map((r) => [r.id, r.name]));
+  return [
+    ...posted.map((t) => ({
+      date: t.recurringExpectedDate!,
+      name: ruleNames.get(t.recurringTransactionId!) ?? t.title ?? "",
+      type: t.type as "EXPENSE" | "INCOME",
+      amountCents: t.amountCents,
+      accountName: t.account?.name ?? "",
+      paidOn: t.date,
+    })),
+    ...forecast.occurrences
+      .filter((o) => ymdFromDateUtc(o.date).slice(0, 7) === ym)
+      .map((o) => ({
+        date: o.date,
+        name: o.rule.name,
+        type: o.rule.type as "EXPENSE" | "INCOME",
+        amountCents: o.rule.amountCents,
+        accountName: o.rule.account.name,
+        paidOn: null,
+      })),
+  ].sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
+/**
+ * Each rule's next occurrence still to pay, from today on (two years out, for a two-yearly bill).
+ * An overdue one is left for the Recurring card; the plan is about what comes next.
+ */
+function firstOccurrences(rules: Awaited<ReturnType<typeof loadForecastRules>>, todayYmd: string, currentYm: string): Map<string, Date> {
+  const out = new Map<string, Date>();
+  for (const o of forecastRecurringOccurrences(rules, { todayYmd, currentYm, days: 731 }).occurrences) {
+    if (!o.overdue && !out.has(o.rule.id)) out.set(o.rule.id, o.date);
+  }
+  return out;
+}
+
 /** Enabled bill and income rules on home-currency accounts, as the Upcoming bills card takes them. */
-async function loadForecastRules(userId: string, currency: string) {
+export async function loadForecastRules(userId: string, currency: string) {
   const rules = await prisma.recurringTransaction.findMany({
     where: { userId, enabled: true, type: { in: ["EXPENSE", "INCOME"] } },
     select: {

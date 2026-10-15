@@ -19,7 +19,7 @@ function ym(monthsBack: number) {
 
 /**
  * A made-up household with a year of history: pay, rent, groceries and the rest, budgets with
- * rollover, balances on five accounts, recurring bills, two savings goals and TFSA room. Every
+ * rollover, balances on five accounts, recurring bills (one yearly), two savings goals and TFSA room. Every
  * name and figure is invented, so screenshots and sample PDFs made from it are safe to share.
  * Signs the browser in as the new user.
  */
@@ -159,6 +159,20 @@ export async function seedPrintablesDemo(page: Page): Promise<{ userId: string; 
       nextExpectedDate: nextOn(day),
       anchorDay: day,
     })),
+  });
+  // A yearly bill, five months out: what the sinking funds planner is for.
+  await prisma.recurringTransaction.create({
+    data: {
+      userId: user.id,
+      accountId: chequing.id,
+      categoryId: cat("Insurance"),
+      type: TransactionType.EXPENSE,
+      name: "Car insurance",
+      amountCents: 120_000,
+      cadence: RecurringCadence.YEARLY,
+      nextExpectedDate: dayOfMonthsAgo(-5, 10),
+      anchorDay: 10,
+    },
   });
   // This month's rent was posted from its rule, so the bill calendar shows it paid.
   const rentRule = rules.find((r) => r.name === "Rent")!;
