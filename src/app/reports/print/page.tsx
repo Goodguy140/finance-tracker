@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { AppNav, APP_TAB_BAR_PAD_CLASS } from "@/components/app-nav";
-import { SummaryDownload, TemplateList } from "@/components/printables-panel";
+import { ActionPlanDownload, SummaryDownload, TemplateList } from "@/components/printables-panel";
 import { shiftYm } from "@/lib/dashboard-period";
 import { currentYmdInTimeZone } from "@/lib/period-month";
+import { PLAN_RANGE_OPTIONS } from "@/lib/printables/action-plan";
 import { printMonth } from "@/lib/printables/format";
 import { EXTRA_BLANK_ROWS, EXTRA_ROW_OPTIONS, TEMPLATES } from "@/lib/printables/templates";
 import { prisma } from "@/lib/prisma";
@@ -56,6 +57,8 @@ export default async function PrintPage({ searchParams }: { searchParams: Search
           initialPeriod={period.key}
           initialTag={tagFilter?.id ?? null}
         />
+
+        <ActionPlanDownload ranges={PLAN_RANGE_OPTIONS.map((o) => ({ value: String(o.value), label: o.label }))} defaultRange="24" />
 
         <section aria-labelledby="print-templates" className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 lg:p-5">
           <h2 id="print-templates" className="text-lg font-semibold">

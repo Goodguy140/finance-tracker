@@ -3,15 +3,27 @@ import { moneyFormatter, printDate, printDay, printMonth, printMonthShort, print
 import { INK, PrintDoc, type Cell } from "./pdf-doc";
 import {
   BUDGET_AVERAGE_MONTHS,
+  CADENCE_LABELS,
+  CONTACT_ROWS,
   EXTRA_BLANK_ROWS,
   findTemplate,
   GOAL_TRACKER_MONTHS,
+  INSURANCE_ROWS,
+  KEPT_ROWS,
+  SINKING_FUND_IDEAS,
+  SPENDING_LOG_ROWS,
+  type AccountsSheet,
   type BalanceSheetRow,
+  type BillSheetItem,
   type BudgetSheet,
   type BillSheet,
   type DebtSheet,
   type GoalSheet,
   type NetWorthSheet,
+  type PaychequeSheet,
+  type SinkingFundSheet,
+  type SpendingLogSheet,
+  type SubscriptionSheet,
   type TemplateSheet,
 } from "./templates";
 
@@ -73,6 +85,21 @@ async function renderAt(t: TemplateSheet, todayYmd: string, l: Layout): Promise<
       break;
     case "net-worth":
       netWorth(doc, t.sheet, l);
+      break;
+    case "subscriptions":
+      subscriptions(doc, t.sheet, l);
+      break;
+    case "sinking-funds":
+      sinkingFunds(doc, t.sheet, l);
+      break;
+    case "paycheque":
+      paycheque(doc, t.sheet, l);
+      break;
+    case "spending-log":
+      spendingLog(doc, t.sheet, l);
+      break;
+    case "accounts":
+      accounts(doc, t.sheet, l);
       break;
   }
   return { pages: doc.pageCount, bytes: await doc.finish() };
@@ -348,4 +375,275 @@ function netWorth(doc: PrintDoc, s: NetWorthSheet, l: Layout) {
     });
   }
   doc.writeLines(["Total owned", "Total owed", "Net worth", "Date"], { columns: 2 });
+}
+
+function subscriptions(doc: PrintDoc, s: SubscriptionSheet, l: Layout) {
+  const fmt = moneyFormatter(s.currency);
+  const filled = s.mode === "filled";
+  doc.title("Subscription and bill audit", [
+    filled
+      ? "Every recurring bill, dearest over a year first. Tick what to do with each, then total what you would save."
+      : "Go through a bank or card statement and list everything that repeats. Then decide on each.",
+  ]);
+  doc.section(
+    "Recurring bills",
+    filled
+      ? "From your recurring entries. Look for subscriptions with no recurring entry too: a statement lists them all."
+      : "Look for streaming, music, apps and cloud storage, phone and internet, gym, news, delivery memberships and insurance.",
+    100,
+  );
+  const box = { text: "", checkbox: true };
+  doc.table({
+    columns: [
+      { label: "Bill", weight: 4 },
+      { label: "How often", weight: 2.2 },
+      { label: "Amount", weight: 2, align: "right" },
+      { label: "A year", weight: 2, align: "right" },
+      { label: "Next", weight: 1.8 },
+      { label: "Keep", weight: 1.1, align: "center" },
+      { label: "Cancel", weight: 1.2, align: "center" },
+      { label: "Cheaper", weight: 1.3, align: "center" },
+    ],
+    rows: [
+      ...s.rows.map((r): Cell[] => [
+        r.name,
+        { text: CADENCE_LABELS[r.cadence], color: INK.muted },
+        fmt(r.amountCents),
+        fmt(r.yearlyCents),
+        { text: r.next ? printMonthShort(r.next.toISOString().slice(0, 7)) : "", color: INK.muted },
+        box,
+        box,
+        box,
+      ]),
+      ...Array.from({ length: filled ? l.extra : l.extra + 12 }, (): Cell[] => ["", "", "", "", "", box, box, box]),
+    ],
+    totals:
+      filled && s.rows.length
+        ? ["Total", "", { text: `${fmt(Math.round(s.rows.reduce((t, r) => t + r.yearlyCents, 0) / 12))}/mo` }, fmt(s.rows.reduce((t, r) => t + r.yearlyCents, 0)), "", "", "", ""]
+        : undefined,
+    rowHeight: l.row,
+    grid: true,
+  });
+  if (filled && !s.rows.length) doc.paragraph("No recurring bills yet, so the rows are blank. Add them on the dashboard's Recurring card.", { size: 9.5, color: INK.muted });
+  doc.section("What you would save", undefined, 60);
+  doc.writeLines(["Cancelled a month", "Cancelled a year", "Switched or renegotiated", "Total saved a year"], { columns: 2 });
+}
+
+function sinkingFunds(doc: PrintDoc, s: SinkingFundSheet, l: Layout) {
+  const fmt = moneyFormatter(s.currency);
+  const filled = s.mode === "filled";
+  doc.title("Sinking funds planner", [
+    "A sinking fund is money set aside a little each month for a cost you know is coming, so it never lands all at once.",
+  ]);
+  doc.section(
+    "Funds",
+    filled
+      ? "Your quarterly and yearly bills first, with what to set aside each month to have the whole amount by its due date; then the usual irregular costs to price yourself."
+      : "List each cost, when it is due and how much. Divide the amount by the months until then: that is the monthly set-aside.",
+    100,
+  );
+  const perMonth = s.funds.reduce((t, f) => t + (f.perMonthCents ?? 0), 0);
+  doc.table({
+    columns: [
+      { label: "Fund", weight: 4 },
+      { label: "Amount", weight: 2, align: "right" },
+      { label: "Due", weight: 2 },
+      { label: "Months", weight: 1.3, align: "right" },
+      { label: "A month", weight: 2, align: "right" },
+      { label: "Saved so far", weight: 2.2, align: "right" },
+    ],
+    rows: [
+      ...s.funds.map((f): Cell[] => [
+        f.name,
+        f.amountCents === null ? "" : fmt(f.amountCents),
+        { text: f.due ? printDate(f.due) : "", color: INK.muted },
+        { text: f.monthsToSave === null ? "" : String(f.monthsToSave), color: INK.muted },
+        f.perMonthCents === null ? "" : { text: fmt(f.perMonthCents), bold: true },
+        "",
+      ]),
+      ...SINKING_FUND_IDEAS.map((name): Cell[] => [{ text: name, color: INK.muted }, "", "", "", "", ""]),
+      ...blank(l.extra, 6),
+    ],
+    totals: filled && s.funds.length ? ["Set aside each month", "", "", "", fmt(perMonth), ""] : undefined,
+    rowHeight: l.row,
+    grid: true,
+  });
+  doc.section("Monthly log", "What went in, what came out to pay a bill, and the balance across all funds.", 120);
+  const months = Array.from({ length: 12 }, (_, i) => shiftYm(s.startYm, i));
+  doc.table({
+    columns: [
+      { label: "Month", weight: 2 },
+      { label: "Set aside", weight: 2, align: "right" },
+      { label: "Spent from funds", weight: 2.4, align: "right" },
+      { label: "On what", weight: 4 },
+      { label: "Balance", weight: 2, align: "right" },
+    ],
+    rows: (filled ? months.map(printMonthShort) : Array<string>(12).fill("")).map((m): Cell[] => [m, filled && perMonth ? { text: fmt(perMonth), color: INK.faint } : "", "", "", ""]),
+    rowHeight: l.row - 2,
+    grid: true,
+  });
+}
+
+function paycheque(doc: PrintDoc, s: PaychequeSheet, l: Layout) {
+  const fmt = moneyFormatter(s.currency);
+  const filled = s.mode === "filled";
+  doc.title("Paycheque planner", [
+    printMonth(s.ym),
+    filled
+      ? "Each pay with the bills due before the next one. What is left is yours to split between saving and spending."
+      : "One block per pay: list the bills due before the next pay, then split what is left.",
+  ]);
+  const columns = [
+    { label: "Due", weight: 2.2 },
+    { label: "Bill", weight: 4 },
+    { label: "Account", weight: 3 },
+    { label: "Amount", weight: 2, align: "right" as const },
+    { label: "Paid", weight: 1, align: "center" as const },
+  ];
+  const billRows = (bills: BillSheetItem[], extra: number): Cell[][] => [
+    ...bills.map((b): Cell[] => [printDay(b.date), b.name, { text: b.accountName, color: INK.muted }, fmt(b.amountCents), { text: "", checkbox: true, checked: b.paidOn !== null }]),
+    ...Array.from({ length: extra }, (): Cell[] => ["", "", "", "", { text: "", checkbox: true }]),
+  ];
+  const split = () => doc.writeLines(["To savings", "To debt", "Spending money", "Left over"], { columns: 4 });
+
+  if (!filled || s.pays.length === 0) {
+    if (filled) doc.paragraph("No recurring income in this month, so the blocks are blank. Add your pay as recurring income to fill them in.", { size: 9.5, color: INK.muted });
+    for (let i = 0; i < 3; i++) {
+      doc.section(`Pay ${i + 1}`, undefined, 60 + 6 * l.row);
+      doc.writeLines(["Pay date", "Amount", "Bills total", "Left after bills"], { columns: 4 });
+      doc.table({ columns, rows: billRows([], Math.max(4, l.extra)), rowHeight: l.row, grid: true });
+    }
+    return;
+  }
+
+  if (s.beforeFirst.length) {
+    const total = s.beforeFirst.reduce((t, b) => t + b.amountCents, 0);
+    doc.section("Before the first pay", `Due before ${printDate(s.pays[0].date)}: last month's pay covers these, ${fmt(total)} in all.`, 40 + l.row * 2);
+    doc.table({ columns, rows: billRows(s.beforeFirst, 0), rowHeight: l.row, grid: true });
+  }
+  s.pays.forEach((p, i) => {
+    const total = p.bills.reduce((t, b) => t + b.amountCents, 0);
+    const until = s.pays[i + 1] ? `until ${printDate(s.pays[i + 1].date)}` : "to the end of the month";
+    doc.section(`${printDay(p.date)}: ${p.name} ${fmt(p.amountCents)}`, `Bills ${until}: ${fmt(total)}. Left after them: ${fmt(p.amountCents - total)}.`, 60 + l.row * 3);
+    doc.table({
+      columns,
+      rows: billRows(p.bills, Math.min(l.extra, 2)),
+      totals: p.bills.length ? ["", "Bills", "", fmt(total), ""] : undefined,
+      rowHeight: l.row,
+      grid: true,
+    });
+    split();
+  });
+}
+
+function spendingLog(doc: PrintDoc, s: SpendingLogSheet, l: Layout) {
+  const fmt = moneyFormatter(s.currency);
+  const filled = s.mode === "filled";
+  doc.title("Spending log", [
+    printMonth(s.ym),
+    "Write down every purchase as you make it. At the end of each week, add it up by category.",
+  ]);
+  if (s.budgets.length) {
+    doc.section(
+      "Budgets this month",
+      filled ? (s.running ? `Spent so far is as of today; write the rest in as you go.` : "The month has not started; write spending in as you go.") : undefined,
+      80,
+    );
+    doc.table({
+      columns: [
+        { label: "Category", weight: 4 },
+        { label: "Budget", weight: 2, align: "right" },
+        { label: "Spent so far", weight: 2, align: "right" },
+        { label: "Left", weight: 2, align: "right" },
+        { label: "Week 1", weight: 1.6, align: "right" },
+        { label: "Week 2", weight: 1.6, align: "right" },
+        { label: "Week 3", weight: 1.6, align: "right" },
+        { label: "Week 4+", weight: 1.6, align: "right" },
+      ],
+      rows: s.budgets.map((b): Cell[] => {
+        const left = b.limitCents !== null && b.spentCents !== null ? b.limitCents - b.spentCents : null;
+        return [
+          b.name,
+          b.limitCents === null ? "" : fmt(b.limitCents),
+          { text: b.spentCents === null ? "" : fmt(b.spentCents), color: INK.muted },
+          left === null ? "" : { text: left < 0 ? `-${fmt(-left)}` : fmt(left), color: left < 0 ? INK.negative : INK.positive },
+          "",
+          "",
+          "",
+          "",
+        ];
+      }),
+      rowHeight: l.row,
+      grid: true,
+    });
+  } else if (filled) {
+    doc.paragraph("No budgets set for this month. Set them under Settings, Categories, or use the monthly budget worksheet.", { size: 9.5, color: INK.muted });
+  }
+  doc.section("Log", undefined, 120);
+  doc.table({
+    columns: [
+      { label: "Date", weight: 1.6 },
+      { label: "What", weight: 5 },
+      { label: "Category", weight: 3 },
+      { label: "Amount", weight: 2, align: "right" },
+      { label: "Paid with", weight: 2.4 },
+    ],
+    rows: blank(SPENDING_LOG_ROWS + l.extra, 5),
+    rowHeight: l.row,
+    grid: true,
+  });
+}
+
+function accounts(doc: PrintDoc, s: AccountsSheet, l: Layout) {
+  const filled = s.mode === "filled";
+  doc.title("Accounts and contacts", [
+    "Where everything is, for you or for whoever has to step in. Keep it somewhere safe.",
+  ]);
+  doc.paragraph("Never write a full account number, password or PIN here: the last four digits and where to find the rest are enough.", {
+    size: 8.5,
+    color: INK.negative,
+  });
+  doc.section("Accounts", filled ? "Your accounts, with the bank for those linked to one." : undefined, 80);
+  doc.table({
+    columns: [
+      { label: "Account", weight: 3.6 },
+      { label: "Type", weight: 2.2 },
+      { label: "Bank or company", weight: 3 },
+      { label: "Ending in", weight: 1.6 },
+      { label: "Phone or website", weight: 3.2 },
+    ],
+    rows: [
+      ...s.accounts.map((a): Cell[] => [a.name, { text: a.typeLabel, color: INK.muted }, a.institution, a.mask, ""]),
+      ...blank(l.extra, 5),
+    ],
+    rowHeight: l.row,
+    grid: true,
+  });
+  doc.section("Insurance", undefined, 80);
+  doc.table({
+    columns: [
+      { label: "Policy", weight: 3 },
+      { label: "Company", weight: 3 },
+      { label: "Policy number", weight: 2.6 },
+      { label: "Phone", weight: 2.4 },
+      { label: "Renews", weight: 1.8 },
+    ],
+    rows: INSURANCE_ROWS.map((name): Cell[] => [{ text: name, color: INK.muted }, "", "", "", ""]),
+    rowHeight: l.row,
+    grid: true,
+  });
+  doc.section("People to call", undefined, 80);
+  doc.table({
+    columns: [
+      { label: "Who", weight: 3.2 },
+      { label: "Name", weight: 3.4 },
+      { label: "Phone", weight: 2.6 },
+      { label: "Email", weight: 3.6 },
+    ],
+    rows: CONTACT_ROWS.map((name): Cell[] => [{ text: name, color: INK.muted }, "", "", ""]),
+    rowHeight: l.row,
+    grid: true,
+  });
+  doc.section("Where papers are kept", undefined, 70);
+  doc.writeLines(KEPT_ROWS, { columns: 2 });
 }

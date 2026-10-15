@@ -4,6 +4,9 @@ import {
   amountsByMonthAndCategory,
   budgetSheetRows,
   findTemplate,
+  groupByPaycheque,
+  sinkingFund,
+  yearlyCents,
   parseTemplateFormat,
   parseTemplateMode,
   resolveTemplateMonth,
@@ -86,6 +89,47 @@ describe("budget worksheet rows", () => {
   });
 });
 
+const newBlanks: TemplateSheet[] = [
+  { id: "subscriptions", sheet: { mode: "blank", currency: "CAD", rows: [] } },
+  { id: "sinking-funds", sheet: { mode: "blank", currency: "CAD", startYm: "2026-10", funds: [] } },
+  { id: "paycheque", sheet: { mode: "blank", ym: "2026-11", currency: "CAD", pays: [], beforeFirst: [] } },
+  { id: "spending-log", sheet: { mode: "blank", ym: "2026-11", currency: "CAD", running: false, budgets: [{ name: "Groceries", limitCents: null, spentCents: null }] } },
+  { id: "accounts", sheet: { mode: "blank", currency: "CAD", accounts: [{ name: "Chequing", typeLabel: "", institution: "", mask: "" }] } },
+];
+
+describe("paycheques and sinking funds", () => {
+  const item = (ymd: string, name: string, type: "EXPENSE" | "INCOME", amountCents: number) => ({ date: d(ymd), name, type, amountCents, accountName: "Chequing", paidOn: null });
+
+  it("puts each bill under the last pay on or before it", () => {
+    const { pays, beforeFirst } = groupByPaycheque([
+      item("2026-11-20", "Phone", "EXPENSE", 5_500),
+      item("2026-11-01", "Rent", "EXPENSE", 175_000),
+      item("2026-11-15", "Pay", "INCOME", 265_000),
+      // A bill due on payday is paid from that pay.
+      item("2026-11-30", "Hydro", "EXPENSE", 9_800),
+      item("2026-11-30", "Pay", "INCOME", 265_000),
+    ]);
+    expect(beforeFirst.map((b) => b.name)).toEqual(["Rent"]);
+    expect(pays.map((p) => [p.date.toISOString().slice(0, 10), p.bills.map((b) => b.name)])).toEqual([
+      ["2026-11-15", ["Phone"]],
+      ["2026-11-30", ["Hydro"]],
+    ]);
+  });
+
+  it("spreads a bill over the months left before it is due", () => {
+    expect(sinkingFund("Insurance", 120_000, d("2027-04-01"), "2026-10")).toMatchObject({ monthsToSave: 6, perMonthCents: 20_000 });
+    // Due next month: one month to save it all.
+    expect(sinkingFund("Insurance", 120_000, d("2026-11-15"), "2026-10")).toMatchObject({ monthsToSave: 1, perMonthCents: 120_000 });
+    expect(sinkingFund("Odd", 100, d("2027-01-01"), "2026-10").perMonthCents).toBe(34);
+  });
+
+  it("puts every cadence on a yearly footing", () => {
+    expect(yearlyCents(1_000, "WEEKLY")).toBe(52_000);
+    expect(yearlyCents(1_000, "BIWEEKLY")).toBe(26_000);
+    expect(yearlyCents(1_000, "BIENNIAL")).toBe(500);
+  });
+});
+
 const filledSheets: TemplateSheet[] = [
   {
     id: "budget",
@@ -148,6 +192,47 @@ const filledSheets: TemplateSheet[] = [
       liabilities: [{ name: "Rewards Visa", typeLabel: "Credit card", currency: "CAD", balanceCents: 123_456, asOf: d("2026-10-12") }],
     },
   },
+  {
+    id: "subscriptions",
+    sheet: {
+      mode: "filled",
+      currency: "CAD",
+      rows: [
+        { name: "StreamFlix", categoryName: "Recurring Services", accountName: "Visa", cadence: "MONTHLY", amountCents: 1_899, yearlyCents: 22_788, next: d("2026-11-08") },
+        { name: "Car insurance", categoryName: "Insurance", accountName: "Chequing", cadence: "YEARLY", amountCents: 120_000, yearlyCents: 120_000, next: d("2027-04-01") },
+      ],
+    },
+  },
+  {
+    id: "sinking-funds",
+    sheet: { mode: "filled", currency: "CAD", startYm: "2026-10", funds: [{ name: "Car insurance", amountCents: 120_000, due: d("2027-04-01"), monthsToSave: 6, perMonthCents: 20_000 }] },
+  },
+  {
+    id: "paycheque",
+    sheet: {
+      mode: "filled",
+      ym: "2026-11",
+      currency: "CAD",
+      beforeFirst: [{ date: d("2026-11-01"), name: "Rent", type: "EXPENSE", amountCents: 175_000, accountName: "Chequing", paidOn: null }],
+      pays: [
+        {
+          date: d("2026-11-15"),
+          name: "Payroll",
+          amountCents: 265_000,
+          paidOn: null,
+          bills: [{ date: d("2026-11-20"), name: "Phone plan", type: "EXPENSE", amountCents: 5_500, accountName: "Chequing", paidOn: null }],
+        },
+      ],
+    },
+  },
+  {
+    id: "spending-log",
+    sheet: { mode: "filled", ym: "2026-10", currency: "CAD", running: true, budgets: [{ name: "Groceries", limitCents: 45_000, spentCents: 50_000 }] },
+  },
+  {
+    id: "accounts",
+    sheet: { mode: "filled", currency: "CAD", accounts: [{ name: "Everyday Chequing", typeLabel: "Chequing", institution: "Maple Bank", mask: "4321" }] },
+  },
 ];
 
 /** What each filled sheet's own figures look like on paper and in a spreadsheet. */
@@ -163,6 +248,15 @@ const expected: Record<TemplateSheet["id"], { pdf: string[]; csv: string[] }> = 
   goals: { pdf: ["Emergency fund", "$10,000.00", "$625.00", "Start: $2,500.00", "Oct 2026", "Sep 2027"], csv: ["Emergency fund,10000.00,2027-10-01,2500.00,2026-10,625.00,,"] },
   debt: { pdf: ["Rewards Visa", "$1,234.56", "Oct 12, 2026", "Total owed"], csv: ["Rewards Visa,Credit card,1234.56,2026-10-12,,,,"] },
   "net-worth": { pdf: ["Chequing", "$5,000.00", "Rewards Visa", "$3,765.44"], csv: ["Asset,Chequing,Chequing,CAD,5000.00,2026-10-12,", "Owed,Rewards Visa,Credit card,CAD,1234.56,2026-10-12,"] },
+  // $227.88 + $1,200.00 a year is $1,427.88, or $118.99 a month.
+  subscriptions: { pdf: ["StreamFlix", "Monthly", "$227.88", "Yearly", "$1,427.88", "$118.99/mo"], csv: ["StreamFlix,Recurring Services,Visa,Monthly,18.99,227.88,2026-11-08,"] },
+  "sinking-funds": { pdf: ["Car insurance", "$1,200.00", "Apr 1, 2027", "$200.00", "Gifts and holidays", "Oct 2026"], csv: ["Car insurance,1200.00,2027-04-01,6,200.00,", "Gifts and holidays,,,,,"] },
+  paycheque: {
+    pdf: ["Before the first pay", "Rent", "Payroll $2,650.00", "Bills to the end of the month: $55.00. Left after them: $2,595.00.", "Phone plan"],
+    csv: ["Before the first pay,2026-11-01,Rent,1750.00,Chequing,", "2026-11-15 Payroll,2026-11-20,Phone plan,55.00,Chequing,"],
+  },
+  "spending-log": { pdf: ["October 2026", "Groceries", "$450.00", "$500.00", "-$50.00", "Paid with"], csv: ["Date,What,Category,Amount,Paid with"] },
+  accounts: { pdf: ["Everyday Chequing", "Maple Bank", "4321", "Executor", "Will"], csv: ["Account,Everyday Chequing,Chequing,Maple Bank,4321,,", "Insurance,Life,"] },
 };
 
 describe("templates", () => {
@@ -190,6 +284,7 @@ describe("templates", () => {
       { id: "goals", sheet: { mode: "blank", currency: "CAD", startYm: "2026-10", goals: [] } },
       { id: "debt", sheet: { mode: "blank", currency: "CAD", startYm: "2026-10", debts: [] } },
       { id: "net-worth", sheet: { mode: "blank", currency: "CAD", assets: [], liabilities: [] } },
+      ...newBlanks,
     ];
     for (const sheet of blanks) {
       const text = (await pdfPageTexts(await renderTemplatePdf(sheet, { todayYmd: "2026-10-14" }))).join("\n");
@@ -223,6 +318,7 @@ describe("fitting a template to the page", () => {
       }[id] as TemplateSheet;
       expect(await pages(blank), id).toBe(1);
     }
+    for (const blank of [...newBlanks, ...filledSheets.slice(5)]) expect(await pages(blank), `${blank.id} ${blank.sheet.mode}`).toBe(1);
   });
 
   it("lets a sheet that cannot fit run on, and honours the rows asked for", async () => {

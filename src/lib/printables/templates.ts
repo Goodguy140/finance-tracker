@@ -40,6 +40,36 @@ export const TEMPLATES = [
     description: "Every account with its latest balance and a column to write today's, totalled into assets, owed and net worth.",
     monthly: false,
   },
+  {
+    id: "subscriptions",
+    title: "Subscription and bill audit",
+    description: "Every recurring bill with what it costs a month and a year, and boxes for keep, cancel or find cheaper.",
+    monthly: false,
+  },
+  {
+    id: "sinking-funds",
+    title: "Sinking funds planner",
+    description: "Yearly and irregular costs with what to set aside each month so they never come as a surprise, and a log to record it.",
+    monthly: false,
+  },
+  {
+    id: "paycheque",
+    title: "Paycheque planner",
+    description: "Each pay in the month with the bills it has to cover before the next one, and room to split what is left.",
+    monthly: true,
+  },
+  {
+    id: "spending-log",
+    title: "Spending log",
+    description: "A page to write down every purchase as you make it, with the month's budgets and what is left of them at the top.",
+    monthly: true,
+  },
+  {
+    id: "accounts",
+    title: "Accounts and contacts",
+    description: "Where everything is: each account and its bank, insurance policies, the people to call and where papers are kept. For you, or for family in an emergency.",
+    monthly: false,
+  },
 ] as const;
 
 export type TemplateId = (typeof TEMPLATES)[number]["id"];
@@ -205,12 +235,130 @@ export type NetWorthSheet = { mode: TemplateMode; currency: string; assets: Bala
 export const BLANK_ASSET_ROWS = ["Chequing", "Savings", "Investments", "Retirement savings", "Home", "Vehicle"];
 export const BLANK_DEBT_ROWS = ["Credit card", "Line of credit", "Car loan", "Student loan", "Mortgage"];
 
+// --- Subscription audit -------------------------------------------------------------------
+
+export type Cadence = "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL";
+
+export const CADENCE_LABELS: Record<Cadence, string> = {
+  WEEKLY: "Weekly",
+  BIWEEKLY: "Every 2 weeks",
+  MONTHLY: "Monthly",
+  QUARTERLY: "Quarterly",
+  YEARLY: "Yearly",
+  BIENNIAL: "Every 2 years",
+};
+
+const PER_YEAR: Record<Cadence, number> = { WEEKLY: 52, BIWEEKLY: 26, MONTHLY: 12, QUARTERLY: 4, YEARLY: 1, BIENNIAL: 0.5 };
+
+/** What a recurring amount comes to over a year. */
+export function yearlyCents(amountCents: number, cadence: Cadence): number {
+  return Math.round(amountCents * PER_YEAR[cadence]);
+}
+
+export type SubscriptionRow = {
+  name: string;
+  categoryName: string;
+  accountName: string;
+  cadence: Cadence;
+  amountCents: number;
+  yearlyCents: number;
+  next: Date | null;
+};
+export type SubscriptionSheet = { mode: TemplateMode; currency: string; rows: SubscriptionRow[] };
+
+/** Recurring bills, dearest over a year first. */
+export function subscriptionRows(rows: SubscriptionRow[]): SubscriptionRow[] {
+  return [...rows].sort((a, b) => b.yearlyCents - a.yearlyCents || a.name.localeCompare(b.name));
+}
+
+// --- Sinking funds ------------------------------------------------------------------------
+
+export type SinkingFundRow = {
+  name: string;
+  amountCents: number | null;
+  due: Date | null;
+  /** Monthly set-asides left before it is due, this month included; at least 1. */
+  monthsToSave: number | null;
+  perMonthCents: number | null;
+};
+export type SinkingFundSheet = { mode: TemplateMode; currency: string; startYm: string; funds: SinkingFundRow[] };
+
+/** Costs that come round less than monthly: the bills a sinking fund is for. */
+export const SINKING_CADENCES: ReadonlySet<Cadence> = new Set<Cadence>(["QUARTERLY", "YEARLY", "BIENNIAL"]);
+
+/** Irregular costs most households have and no bill reminds them of, as named rows to fill in. */
+export const SINKING_FUND_IDEAS = ["Car repairs and maintenance", "Home repairs", "Gifts and holidays", "Medical and dental", "Travel", "Clothing"];
+
+/** A fund for a bill due on `due`: what to set aside each month from `currentYm` to have it all by then. */
+export function sinkingFund(name: string, amountCents: number, due: Date, currentYm: string): SinkingFundRow {
+  const dueIndex = due.getUTCFullYear() * 12 + due.getUTCMonth();
+  const [y, m] = currentYm.split("-").map(Number);
+  const months = Math.max(1, dueIndex - (y * 12 + m - 1));
+  return { name, amountCents, due, monthsToSave: months, perMonthCents: Math.ceil(amountCents / months) };
+}
+
+// --- Paycheque planner --------------------------------------------------------------------
+
+export type Paycheque = { date: Date; name: string; amountCents: number; paidOn: Date | null; bills: BillSheetItem[] };
+export type PaychequeSheet = {
+  mode: TemplateMode;
+  ym: string;
+  currency: string;
+  pays: Paycheque[];
+  /** Bills due before the month's first pay: last month's pay covers them. */
+  beforeFirst: BillSheetItem[];
+};
+
+/**
+ * Each bill under the pay it falls after: a pay covers everything due from its date until the
+ * next pay. `items` is the bill calendar's month, income and bills together.
+ */
+export function groupByPaycheque(items: readonly BillSheetItem[]): { pays: Paycheque[]; beforeFirst: BillSheetItem[] } {
+  const sorted = [...items].sort((a, b) => a.date.getTime() - b.date.getTime() || Number(a.type === "EXPENSE") - Number(b.type === "EXPENSE"));
+  const pays: Paycheque[] = [];
+  const beforeFirst: BillSheetItem[] = [];
+  for (const item of sorted) {
+    if (item.type === "INCOME") pays.push({ date: item.date, name: item.name, amountCents: item.amountCents, paidOn: item.paidOn, bills: [] });
+    else (pays.length ? pays[pays.length - 1].bills : beforeFirst).push(item);
+  }
+  return { pays, beforeFirst };
+}
+
+// --- Spending log -------------------------------------------------------------------------
+
+export type SpendingLogSheet = {
+  mode: TemplateMode;
+  ym: string;
+  currency: string;
+  /** Spent so far is only known for the month that is running; a future month has none. */
+  running: boolean;
+  budgets: Array<{ name: string; limitCents: number | null; spentCents: number | null }>;
+};
+
+/** Lines in the log beyond the empty-rows choice. */
+export const SPENDING_LOG_ROWS = 20;
+
+// --- Accounts and contacts ----------------------------------------------------------------
+
+export type AccountsSheetRow = { name: string; typeLabel: string; institution: string; mask: string };
+export type AccountsSheet = { mode: TemplateMode; currency: string; accounts: AccountsSheetRow[] };
+
+export const BLANK_ACCOUNT_ROWS = ["Chequing", "Savings", "Credit card", "Investments", "Retirement savings", "Mortgage or loan"];
+export const INSURANCE_ROWS = ["Home or tenant", "Car", "Life", "Disability", "Health and dental"];
+export const CONTACT_ROWS = ["Executor", "Lawyer", "Accountant or tax preparer", "Financial advisor", "Employer benefits"];
+export const KEPT_ROWS = ["Will", "Power of attorney", "Tax returns", "Insurance policies", "Property deeds and car ownership", "Password manager or safe"];
+
 export type TemplateSheet =
   | { id: "budget"; sheet: BudgetSheet }
   | { id: "bills"; sheet: BillSheet }
   | { id: "goals"; sheet: GoalSheet }
   | { id: "debt"; sheet: DebtSheet }
-  | { id: "net-worth"; sheet: NetWorthSheet };
+  | { id: "net-worth"; sheet: NetWorthSheet }
+  | { id: "subscriptions"; sheet: SubscriptionSheet }
+  | { id: "sinking-funds"; sheet: SinkingFundSheet }
+  | { id: "paycheque"; sheet: PaychequeSheet }
+  | { id: "spending-log"; sheet: SpendingLogSheet }
+  | { id: "accounts"; sheet: AccountsSheet };
 
 // --- CSV ----------------------------------------------------------------------------------
 
@@ -300,6 +448,61 @@ export function templateCsv(t: TemplateSheet, extra: number = EXTRA_BLANK_ROWS):
           ...blankRows(extra, 7).map((r) => ["Asset", ...r.slice(1)]),
           ...s.liabilities.map(row("Owed")),
           ...blankRows(extra, 7).map((r) => ["Owed", ...r.slice(1)]),
+        ],
+      );
+    }
+    case "subscriptions": {
+      const s = t.sheet;
+      return toCsv(
+        ["Bill", "Category", "Account", "How often", "Amount", "A year", "Next due", "Keep, cancel or cheaper"],
+        [
+          ...s.rows.map((r) => [r.name, r.categoryName, r.accountName, CADENCE_LABELS[r.cadence], amount(r.amountCents), amount(r.yearlyCents), ymd(r.next), ""]),
+          ...blankRows(s.mode === "blank" ? extra + 12 : extra, 8),
+        ],
+      );
+    }
+    case "sinking-funds": {
+      const s = t.sheet;
+      return toCsv(
+        ["Fund", "Amount needed", "Due", "Months to save", "Set aside a month", "Saved so far"],
+        [
+          ...s.funds.map((f) => [f.name, amount(f.amountCents), ymd(f.due), f.monthsToSave === null ? "" : String(f.monthsToSave), amount(f.perMonthCents), ""]),
+          ...SINKING_FUND_IDEAS.map((name) => [name, "", "", "", "", ""]),
+          ...blankRows(extra, 6),
+        ],
+      );
+    }
+    case "paycheque": {
+      const s = t.sheet;
+      const bill = (pay: string) => (b: BillSheetItem) => [pay, ymd(b.date), b.name, amount(b.amountCents), b.accountName, ymd(b.paidOn)];
+      return toCsv(
+        ["Pay", "Due", "Bill", "Amount", "Account", "Paid on"],
+        [
+          ...s.beforeFirst.map(bill("Before the first pay")),
+          ...s.pays.flatMap((p) => [
+            [`${ymd(p.date)} ${p.name}`, ymd(p.date), `${p.name} (pay)`, amount(p.amountCents), "", ymd(p.paidOn)],
+            ...p.bills.map(bill(`${ymd(p.date)} ${p.name}`)),
+          ]),
+          ...blankRows(extra, 6),
+        ],
+      );
+    }
+    case "spending-log": {
+      return toCsv(
+        ["Date", "What", "Category", "Amount", "Paid with"],
+        Array.from({ length: SPENDING_LOG_ROWS + extra }, () => ["", "", "", "", ""]),
+      );
+    }
+    case "accounts": {
+      const s = t.sheet;
+      return toCsv(
+        ["Section", "Name", "Type", "Institution or company", "Ending in or policy number", "Contact or website", "Notes"],
+        [
+          ...s.accounts.map((a) => ["Account", a.name, a.typeLabel, a.institution, a.mask, "", ""]),
+          ...blankRows(extra, 7).map((r) => ["Account", ...r.slice(1)]),
+          ...INSURANCE_ROWS.map((name) => ["Insurance", name, "", "", "", "", ""]),
+          ...CONTACT_ROWS.map((name) => ["Contact", name, "", "", "", "", ""]),
+          ...KEPT_ROWS.map((name) => ["Where it is kept", name, "", "", "", "", ""]),
         ],
       );
     }

@@ -82,6 +82,53 @@ export function SummaryDownload({
   );
 }
 
+/** The action plan: how far ahead it looks, then the same filled-or-blank, PDF-or-CSV choice as a template. */
+export function ActionPlanDownload({ ranges, defaultRange }: { ranges: Option[]; defaultRange: string }) {
+  const [range, setRange] = useState(defaultRange);
+  const href = (mode: "filled" | "blank", format: "pdf" | "csv", view = false) =>
+    `/api/printables/action-plan${query({ range: range === defaultRange ? null : range, mode, format, view: view ? "1" : null })}`;
+  return (
+    <section aria-labelledby="print-plan" className={card} data-testid="print-plan">
+      <h2 id="print-plan" className="text-lg font-semibold">
+        Action plan
+      </h2>
+      <p className="mt-0.5 text-sm text-slate-400">
+        Next steps worked out from your figures: emergency fund, debts, bills, budgets, savings goals and contribution room,
+        as a checklist for the next 3, 6, 12 and 24 months and beyond. Steps already done come ticked. The blank one is a
+        general checklist anyone can follow.
+      </p>
+      <label className="mt-3 block max-w-xs text-sm text-slate-300">
+        How far ahead
+        <select value={range} onChange={(e) => setRange(e.target.value)} className={`mt-1 ${selectClass}`} data-testid="plan-range">
+          {ranges.map((r) => (
+            <option key={r.value} value={r.value}>
+              {r.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <a href={href("filled", "pdf", true)} target="_blank" rel="noopener" className={primaryBtn} data-testid="plan-filled-pdf">
+          <Printer className="h-4 w-4" aria-hidden />
+          Open my plan to print
+        </a>
+        <a href={href("filled", "csv")} className={secondaryBtn} data-testid="plan-filled-csv">
+          <FileSpreadsheet className="h-4 w-4" aria-hidden />
+          CSV
+        </a>
+        <a href={href("blank", "pdf", true)} target="_blank" rel="noopener" className={secondaryBtn} data-testid="plan-blank-pdf">
+          <FileText className="h-4 w-4" aria-hidden />
+          Blank PDF
+        </a>
+        <a href={href("blank", "csv")} className={secondaryBtn} data-testid="plan-blank-csv">
+          <FileSpreadsheet className="h-4 w-4" aria-hidden />
+          Blank CSV
+        </a>
+      </div>
+    </section>
+  );
+}
+
 export type TemplateCardInfo = { id: string; title: string; description: string; monthly: boolean };
 
 /** The templates, with one choice of how many empty rows to leave that applies to all of them. */

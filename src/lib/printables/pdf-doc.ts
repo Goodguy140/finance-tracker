@@ -124,6 +124,9 @@ export type BarItem = { label: string; value: number; valueText: string; color?:
 
 export type Tile = { label: string; value: string; note?: string; color?: RGB };
 
+/** `meta` is up to two short lines on the right, the first in bold: an amount, then a date. */
+export type ChecklistItem = { title: string; detail?: string; area?: string; meta?: string[]; checked?: boolean; marker?: string };
+
 export class PrintDoc {
   private page!: PDFPage;
   private y = 0;
@@ -447,6 +450,67 @@ export class PrintDoc {
       this.y -= rowHeight;
     }
     this.y -= 6;
+  }
+
+  /**
+   * A checklist: a tick box, a bold step and its explanation underneath, with a short note on the
+   * right (an area, an amount, a date). `writeIn` adds that many empty boxes on ruled lines.
+   * A `marker` ("1", "2") replaces the box, for a numbered list.
+   */
+  checklist(items: ChecklistItem[], opts: { writeIn?: number; writeInHeight?: number } = {}) {
+    const box = 10;
+    const indent = 18;
+    const metaWidth = 118;
+    const textWidth = CONTENT_WIDTH - indent - metaWidth - 8;
+    for (const item of items) {
+      const titleLines = this.wrap(item.title, 10, textWidth, true);
+      const detailLines = item.detail ? this.wrap(item.detail, 8.5, textWidth) : [];
+      const metaLines = (item.meta ?? []).slice(0, 2);
+      const height = Math.max(5 + titleLines.length * 13 + detailLines.length * 11, 16 + metaLines.length * 11) + 6;
+      this.ensure(height);
+      const top = this.y;
+      if (item.marker) {
+        this.page.drawCircle({ x: MARGIN_X + box / 2, y: top - 5 - box / 2 + 1, size: box / 2 + 1.5, color: INK.accent });
+        this.drawAligned(item.marker, MARGIN_X - 2, box + 4, top - 5 - box + 3, 8, "center", { bold: true, color: INK.white });
+      } else {
+        const by = top - 5 - box + 1;
+        this.page.drawRectangle({ x: MARGIN_X, y: by, width: box, height: box, borderColor: INK.muted, borderWidth: 0.9 });
+        if (item.checked) {
+          this.page.drawLine({ start: { x: MARGIN_X + 2, y: by + box / 2 }, end: { x: MARGIN_X + box * 0.42, y: by + 2 }, thickness: 1.3, color: INK.positive });
+          this.page.drawLine({ start: { x: MARGIN_X + box * 0.42, y: by + 2 }, end: { x: MARGIN_X + box - 1.5, y: by + box - 1.5 }, thickness: 1.3, color: INK.positive });
+        }
+      }
+      let y = top - 5;
+      for (const line of titleLines) {
+        this.draw(line, MARGIN_X + indent, y - 9, 10, { bold: true, color: item.checked ? INK.muted : INK.text });
+        y -= 13;
+      }
+      for (const line of detailLines) {
+        this.draw(line, MARGIN_X + indent, y - 8, 8.5, { color: INK.muted });
+        y -= 11;
+      }
+      const metaX = MARGIN_X + CONTENT_WIDTH - metaWidth;
+      if (item.area) this.drawAligned(item.area, metaX, metaWidth, top - 13, 7.5, "right", { color: INK.faint });
+      metaLines.forEach((line, i) =>
+        this.drawAligned(line, metaX, metaWidth, top - 25 - i * 11, i === 0 ? 9 : 8.5, "right", {
+          bold: i === 0,
+          color: item.checked || i > 0 ? INK.muted : INK.text,
+        }),
+      );
+      this.rule(top - height + 1, INK.hairline, 0.5);
+      this.y -= height;
+    }
+    const lineHeight = opts.writeInHeight ?? 22;
+    // Write-in lines stay together, not one stranded at the top of a page.
+    this.ensure(lineHeight * (opts.writeIn ?? 0));
+    for (let i = 0; i < (opts.writeIn ?? 0); i++) {
+      this.ensure(lineHeight);
+      const top = this.y;
+      this.page.drawRectangle({ x: MARGIN_X, y: top - lineHeight + 5, width: box, height: box, borderColor: INK.muted, borderWidth: 0.9 });
+      this.page.drawLine({ start: { x: MARGIN_X + indent, y: top - lineHeight + 5 }, end: { x: MARGIN_X + CONTENT_WIDTH, y: top - lineHeight + 5 }, thickness: 0.6, color: INK.faint });
+      this.y -= lineHeight;
+    }
+    this.y -= 8;
   }
 
   /** Label and value pairs in two columns, for a goal's or a debt's particulars. */
