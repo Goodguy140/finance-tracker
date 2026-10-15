@@ -94,6 +94,9 @@ test("the action plan turns the user's figures into steps, for the range chosen"
   expect(csv).toMatch(/Next 3 months,,Bills,Set aside \$\d+\.\d\d a month for bills that come yearly or quarterly/);
   expect(csv).toContain("Car insurance ($1,200.00)");
   expect(csv).not.toContain("In 6 to 12 months");
+  // The demo card owes less than its last two months of charges: cleared each month, not debt.
+  expect(csv).toContain("Next 3 months,Yes,Debt,Pay Primary Credit Card in full each month");
+  expect(csv).not.toContain("Pay off Primary Credit Card");
 
   const blank = await (await page.request.get("/api/printables/action-plan?mode=blank&format=csv")).text();
   expect(blank).toContain("Save a starter emergency fund");
