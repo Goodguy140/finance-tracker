@@ -110,7 +110,11 @@ export type PlanFacts = {
   score: FinancialScore;
   /** Chequing, savings and cash; null when none has a balance yet. */
   emergencyFundCents: number | null;
-  cards: Array<{ name: string; balanceCents: number }>;
+  /**
+   * Cards with a balance owing, each with what was charged to it in the
+   * {@link PAID_IN_FULL_WINDOW_DAYS} days up to that balance (see {@link paidInFull}).
+   */
+  cards: Array<{ name: string; balanceCents: number; recentChargesCents: number }>;
   loans: Array<{ name: string; balanceCents: number }>;
   hasCardAccount: boolean;
   /** Spending categories by average a month, largest first, with their budget if any. */
@@ -189,6 +193,23 @@ export function monthlyAverages(
   };
 }
 
+/**
+ * How far back a card's charges can explain its balance. A card cleared every statement owes at
+ * most the cycle that just closed (and is due in a few weeks) plus the one running now: under two
+ * months of charges.
+ */
+export const PAID_IN_FULL_WINDOW_DAYS = 60;
+
+/**
+ * Whether a card looks paid in full each month: everything it owes was charged in the last
+ * {@link PAID_IN_FULL_WINDOW_DAYS} days, so no older balance is being carried and no interest is
+ * running. A balance larger than its recent charges is carried debt. With no charges recorded on
+ * the card there is nothing to tell by, and the balance is taken as debt.
+ */
+export function paidInFull(card: { balanceCents: number; recentChargesCents: number }): boolean {
+  return card.recentChargesCents > 0 && card.balanceCents <= card.recentChargesCents;
+}
+
 /** Months of cover to one decimal, rounded down: 5.98 months is not yet "6.0". */
 export function monthsText(months: number): string {
   return `${(Math.floor(months * 10) / 10).toFixed(1)} months`;
@@ -216,6 +237,11 @@ export function horizonEndYmd(todayYmd: string, horizon: PlanHorizon): string {
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const list = (names: string[]) =>
   names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+
+/** Cards carrying a balance from month to month: the ones that are debt. */
+export function carriedCards(f: Pick<PlanFacts, "cards">): PlanFacts["cards"] {
+  return f.cards.filter((c) => !paidInFull(c));
+}
 
 export function buildActionPlan(f: PlanFacts, fmt: (cents: number) => string): PlanStep[] {
   const steps: PlanStep[] = [];
@@ -310,9 +336,11 @@ export function buildActionPlan(f: PlanFacts, fmt: (cents: number) => string): P
   }
 
   // --- Debt --------------------------------------------------------------------------------
-  const cardTotal = f.cards.reduce((s, c) => s + c.balanceCents, 0);
+  const cards = carriedCards(f);
+  const clearedCards = f.cards.filter(paidInFull);
+  const cardTotal = cards.reduce((s, c) => s + c.balanceCents, 0);
   const loanTotal = f.loans.reduce((s, c) => s + c.balanceCents, 0);
-  if (f.cards.length || f.loans.length) {
+  if (cards.length || f.loans.length) {
     add({
       horizon: 3,
       area: "Debt",
@@ -321,18 +349,29 @@ export function buildActionPlan(f: PlanFacts, fmt: (cents: number) => string): P
       priority: 75,
     });
   }
-  if (f.cards.length) {
+  if (cards.length) {
     const months = monthsAt(cardTotal);
-    const smallest = [...f.cards].sort((a, b) => a.balanceCents - b.balanceCents)[0];
+    const smallest = [...cards].sort((a, b) => a.balanceCents - b.balanceCents)[0];
     add({
       horizon: months === null ? 12 : horizonFor(months),
       area: "Debt",
-      title: `Pay off ${f.cards.length === 1 ? f.cards[0].name : `${f.cards.length} credit cards`}: ${fmt(cardTotal)}`,
-      detail: `Card interest is usually the dearest money you owe. Pay every minimum on time, then put anything extra on the highest rate${f.cards.length > 1 ? ` (or on ${smallest.name}, the smallest, to clear one sooner)` : ""}.${pace(cardTotal)}`,
+      title: `Pay off ${cards.length === 1 ? cards[0].name : `${cards.length} credit cards`}: ${fmt(cardTotal)}`,
+      detail: `Card interest is usually the dearest money you owe. Pay every minimum on time, then put anything extra on the highest rate${cards.length > 1 ? ` (or on ${smallest.name}, the smallest, to clear one sooner)` : ""}.${pace(cardTotal)}`,
       priority: 90,
       amountCents: cardTotal,
     });
-  } else if (f.hasCardAccount) {
+  }
+  if (clearedCards.length) {
+    const names = list(clearedCards.map((c) => c.name));
+    add({
+      horizon: 3,
+      area: "Debt",
+      title: `Pay ${clearedCards.length === 1 ? clearedCards[0].name : "credit cards"} in full each month`,
+      detail: `${names} ${clearedCards.length === 1 ? "owes" : "owe"} no more than ${clearedCards.length === 1 ? "its" : "their"} last two months of charges, so the statement is being cleared and no interest is running. Keep it up.`,
+      priority: 5,
+      done: true,
+    });
+  } else if (!cards.length && f.hasCardAccount) {
     add({
       horizon: 3,
       area: "Debt",

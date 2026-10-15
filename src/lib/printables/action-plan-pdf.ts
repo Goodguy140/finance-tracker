@@ -2,6 +2,7 @@ import { shiftYm } from "@/lib/dashboard-period";
 import { moneyFormatter, printMonthShort, printYmd } from "./format";
 import { INK, PrintDoc, type ChecklistItem } from "./pdf-doc";
 import {
+  carriedCards,
   horizonEndYmd,
   monthsText,
   nextSteps,
@@ -47,7 +48,9 @@ export async function renderActionPlanPdf(plan: ActionPlan, displayName: string 
   if (filled && facts) {
     const score = facts.score;
     const covered = facts.emergencyFundCents !== null && facts.avgSpendingCents > 0 ? facts.emergencyFundCents / facts.avgSpendingCents : null;
-    const owed = [...facts.cards, ...facts.loans].reduce((s, d) => s + d.balanceCents, 0);
+    // A card cleared every statement is spending in transit, not debt.
+    const debts = [...carriedCards(facts), ...facts.loans];
+    const owed = debts.reduce((s, d) => s + d.balanceCents, 0);
     const rate = facts.avgIncomeCents > 0 ? facts.avgSavedCents / facts.avgIncomeCents : null;
     doc.tiles([
       { label: "Financial score", value: score.status === "scored" ? `${score.score} / 100` : "Not yet", note: score.status === "scored" ? score.band : "Needs a full month" },
@@ -63,7 +66,7 @@ export async function renderActionPlanPdf(plan: ActionPlan, displayName: string 
         note: rate === null ? undefined : `${Math.round(rate * 100)}% of income`,
         color: facts.avgSavedCents < 0 ? INK.negative : undefined,
       },
-      { label: "Cards and loans", value: fmt(owed), note: owed ? `${facts.cards.length + facts.loans.length} owed` : "Nothing owed" },
+      { label: "Cards and loans", value: fmt(owed), note: owed ? `${debts.length} carried` : "Nothing carried" },
     ]);
 
     const first = nextSteps(stepsInRange(plan));

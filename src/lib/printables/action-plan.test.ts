@@ -5,10 +5,12 @@ import {
   actionPlanCsv,
   blankPlanSteps,
   buildActionPlan,
+  carriedCards,
   horizonFor,
   monthlyAverages,
   monthsText,
   nextSteps,
+  paidInFull,
   parsePlanRange,
   stepsInRange,
   type ActionPlan,
@@ -44,7 +46,8 @@ export function sampleFacts(overrides: Partial<PlanFacts> = {}): PlanFacts {
       omitted: [],
     },
     emergencyFundCents: 450_000,
-    cards: [{ name: "Visa", balanceCents: 120_000 }],
+    // $1,200 owed against $300 charged lately: a balance carried from month to month.
+    cards: [{ name: "Visa", balanceCents: 120_000, recentChargesCents: 30_000 }],
     loans: [{ name: "Car Loan", balanceCents: 1_100_000 }],
     hasCardAccount: true,
     topCategories: [
@@ -228,6 +231,42 @@ describe("the printed plan", () => {
     expect(csv).toContain('Next 3 months,,Debt,"Pay off Visa: $1,200.00"');
     expect(csv).toMatch(/Next 3 months,Yes,Emergency fund,Save a starter emergency fund/);
     expect(csv).not.toContain("In 3 to 6 months");
+  });
+});
+
+describe("cards paid in full", () => {
+  it("tells a card cleared each statement from one carrying a balance", () => {
+    expect(paidInFull({ balanceCents: 90_000, recentChargesCents: 140_000 })).toBe(true);
+    expect(paidInFull({ balanceCents: 140_000, recentChargesCents: 140_000 })).toBe(true);
+    expect(paidInFull({ balanceCents: 150_000, recentChargesCents: 140_000 })).toBe(false);
+    // Nothing charged to go by: the balance is taken as debt.
+    expect(paidInFull({ balanceCents: 5_000, recentChargesCents: 0 })).toBe(false);
+  });
+
+  it("does not ask to pay off a card that is cleared every month", () => {
+    const facts = sampleFacts({ cards: [{ name: "Visa", balanceCents: 120_000, recentChargesCents: 180_000 }], loans: [] });
+    const steps = buildActionPlan(facts, fmt);
+    expect(steps.some((s) => s.title.startsWith("Pay off"))).toBe(false);
+    expect(steps.some((s) => s.title.includes("interest rate and minimum"))).toBe(false);
+    expect(steps.find((s) => s.title === "Pay Visa in full each month")).toMatchObject({ done: true, horizon: 3 });
+    expect(carriedCards(facts)).toEqual([]);
+  });
+
+  it("keeps a carried card as debt beside one paid in full", async () => {
+    const facts = sampleFacts({
+      cards: [
+        { name: "Visa", balanceCents: 120_000, recentChargesCents: 180_000 },
+        { name: "Store card", balanceCents: 250_000, recentChargesCents: 10_000 },
+      ],
+      loans: [],
+    });
+    const steps = buildActionPlan(facts, fmt);
+    expect(steps.find((s) => s.title.startsWith("Pay off"))!.title).toBe("Pay off Store card: $2,500.00");
+    expect(steps.find((s) => s.title === "Pay Visa in full each month")?.done).toBe(true);
+    // The tile counts only what is carried.
+    const text = (await pdfPageTexts(await renderActionPlanPdf(plan(facts), null))).join("\n");
+    expect(text).toContain("1 carried");
+    expect(text).toContain("$2,500.00");
   });
 });
 

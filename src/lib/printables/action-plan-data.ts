@@ -19,6 +19,7 @@ import {
   blankPlanSteps,
   buildActionPlan,
   monthlyAverages,
+  PAID_IN_FULL_WINDOW_DAYS,
   STALE_BALANCE_DAYS,
   type ActionPlan,
   type PlanBill,
@@ -77,10 +78,40 @@ async function loadPlanFacts(user: PlanUser, todayYmd: string, currency: string)
   const latest = new Map(netWorth.accounts.map((a) => [a.accountId, a.latest]));
   const active = balances.accounts.filter((a) => !a.archived);
   const staleBefore = dateFromYmd(todayYmd).getTime() - STALE_BALANCE_DAYS * 86_400_000;
-  const owed = (type: AccountType) =>
-    netWorth.accounts
-      .filter((a) => a.counted && a.type === type && a.latest && a.latest.cents > 0)
-      .map((a) => ({ name: a.name, balanceCents: a.latest!.cents }));
+  const owing = (type: AccountType) => netWorth.accounts.filter((a) => a.counted && a.type === type && a.latest && a.latest.cents > 0);
+  const owed = (type: AccountType) => owing(type).map((a) => ({ name: a.name, balanceCents: a.latest!.cents }));
+  // What each card with a balance had charged to it in the window before that balance was read:
+  // a balance no larger than that is being paid off each statement.
+  const cards = await Promise.all(
+    owing(AccountType.CREDIT_CARD).map(async (a) => {
+      const end = a.latest!.date;
+      const date = { gt: new Date(end.getTime() - PAID_IN_FULL_WINDOW_DAYS * 86_400_000), lte: end };
+      const [logged, waiting] = await Promise.all([
+        prisma.transaction.aggregate({
+          where: { userId: user.id, accountId: a.accountId, type: "EXPENSE", date },
+          _sum: { amountCents: true },
+        }),
+        // A synced balance already includes charges still waiting in the review queue; the
+        // ones the matcher paired with an entry are counted above already.
+        prisma.plaidStagedTransaction.aggregate({
+          where: {
+            userId: user.id,
+            status: PlaidStagedStatus.NEEDS_REVIEW,
+            type: "EXPENSE",
+            matchTransactionId: null,
+            plaidAccount: { accountId: a.accountId },
+            date,
+          },
+          _sum: { amountCents: true },
+        }),
+      ]);
+      return {
+        name: a.name,
+        balanceCents: a.latest!.cents,
+        recentChargesCents: (logged._sum.amountCents ?? 0) + (waiting._sum.amountCents ?? 0),
+      };
+    }),
+  );
 
   // Bills: overdue and the next 30 days, and the irregular ones over the next year.
   const forecast = forecastRecurringOccurrences(rules, { todayYmd, currentYm, days: 365 });
@@ -114,7 +145,7 @@ async function loadPlanFacts(user: PlanUser, todayYmd: string, currency: string)
       balances.accounts.map((a) => ({ ...a, latestCents: latest.get(a.id)?.cents ?? null })),
       currency,
     ),
-    cards: owed(AccountType.CREDIT_CARD),
+    cards,
     loans: owed(AccountType.LOAN),
     hasCardAccount: active.some((a) => a.type === AccountType.CREDIT_CARD),
     topCategories: averages.categories.slice(0, 8).map((c) => ({ name: c.name, avgCents: c.avgCents, budgeted: budgeted.has(c.categoryId) })),
