@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultCountsAsSavings,
+  savedByTransferBetween,
   savedByTransferByMonth,
   savingsCentsFor,
   totalSavedByTransfer,
@@ -60,5 +61,32 @@ describe("defaultCountsAsSavings", () => {
   it("starts savings and investment accounts marked, and spending accounts not", () => {
     expect(["SAVINGS", "TFSA", "RRSP", "FHSA", "NON_REGISTERED"].every(defaultCountsAsSavings)).toBe(true);
     expect(["CHEQUING", "CREDIT_CARD", "CASH"].some(defaultCountsAsSavings)).toBe(false);
+  });
+});
+
+describe("savedByTransferBetween", () => {
+  const txs = [
+    { ...leg("2026-08-31", "chq", "hisa", 40_000) },
+    { ...leg("2026-09-01", "chq", "hisa", 50_000), tagIds: ["trip"] },
+    { ...leg("2026-09-15", "hisa", "chq", 20_000) },
+    { ...leg("2026-10-01", "chq", "tfsa", 70_000) },
+  ];
+  const sept = { gte: new Date("2026-09-01T00:00:00Z"), lt: new Date("2026-10-01T00:00:00Z") };
+
+  it("nets what went in and what came back out inside the range", () => {
+    expect(savedByTransferBetween({ savingsAccountIds: SAVINGS, txs }, sept)).toBe(30_000);
+  });
+
+  it("goes negative when more came out than went in", () => {
+    const out = [leg("2026-09-15", "hisa", "chq", 20_000)];
+    expect(savedByTransferBetween({ savingsAccountIds: SAVINGS, txs: out }, sept)).toBe(-20_000);
+  });
+
+  it("covers every transfer when the range is open", () => {
+    expect(savedByTransferBetween({ savingsAccountIds: SAVINGS, txs }, {})).toBe(140_000);
+  });
+
+  it("keeps only the filtered tag's transfers", () => {
+    expect(savedByTransferBetween({ savingsAccountIds: SAVINGS, txs }, sept, "trip")).toBe(50_000);
   });
 });

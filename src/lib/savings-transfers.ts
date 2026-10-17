@@ -82,3 +82,27 @@ export type SavingsTransfers = {
   savingsAccountIds: ReadonlySet<string>;
   txs: SavingsTransferTx[];
 };
+
+/**
+ * Net cents moved into savings between `gte` and `lt` (either open), for the Spending by
+ * category pie's optional Savings slice. Only `tagId`'s transfers count when a tag filter is on.
+ *
+ * Net, as Reports' "Saved" is: money taken back out of savings in the same period reduces the
+ * slice, and a period that withdrew more than it put in gives a negative slice, drawn the way
+ * the pie draws a category whose refunds outweigh its spending.
+ */
+export function savedByTransferBetween(
+  { savingsAccountIds, txs }: SavingsTransfers,
+  range: { gte?: Date; lt?: Date },
+  tagId?: string | null,
+): number {
+  return totalSavedByTransfer(
+    txs.filter(
+      (tx) =>
+        (!range.gte || tx.date >= range.gte) &&
+        (!range.lt || tx.date < range.lt) &&
+        (!tagId || (tx.tagIds ?? []).includes(tagId)),
+    ),
+    savingsAccountIds,
+  );
+}

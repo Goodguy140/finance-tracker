@@ -58,7 +58,10 @@ import { nextReviewQueueLimit, parseReviewQueueLimit } from "@/lib/plaid/review-
 import { TransferLog, type TransferLogEntry } from "@/components/transfer-log";
 import { TransactionRulesProvider } from "@/components/transaction-rules-context";
 import { CategoryColorsProvider } from "@/components/category-colors-context";
-import { assignCategoryColors, categoryColor } from "@/lib/category-colors";
+import { assignCategoryColors, categoryColor, SAVINGS_SLICE_COLOR } from "@/lib/category-colors";
+import type { CategorySpendSlice } from "@/components/category-spend-pie";
+import { loadSavingsTransfers } from "@/lib/reports/load";
+import { savedByTransferBetween } from "@/lib/savings-transfers";
 import { visibleLearnedSuggestions, type RuleTransactionType } from "@/lib/transaction-rules";
 import { catchAllCategoryId } from "@/lib/plaid/category-map";
 import { outflowCents, untransferredType } from "@/lib/transfer-type";
@@ -924,6 +927,21 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   });
   const insights = await insightsPromise;
 
+  // Transfers stay out of every spending total; this slice only draws them beside the
+  // categories, so nothing else (Reports' Saved, the score) is counted again.
+  let savingsPieSlice: CategorySpendSlice | null = null;
+  if (cardSettings["spending-by-category"]?.showSavings) {
+    const range: { gte?: Date; lt?: Date } = "date" in transactionDateFilter ? transactionDateFilter.date : {};
+    const savedCents = savedByTransferBetween(
+      await loadSavingsTransfers(user.id, range.gte ?? null, homeCurrency),
+      range,
+      tagFilter?.id,
+    );
+    if (savedCents !== 0) {
+      savingsPieSlice = { name: "Savings", cents: savedCents, color: SAVINGS_SLICE_COLOR, pinned: true };
+    }
+  }
+
   // Always from today, whatever period is on screen: it answers "what is coming up".
   const billsForecastDays = cardSettings["bills-forecast"]?.days ?? DEFAULT_BILLS_FORECAST_DAYS;
   const todayYmd = currentYmdInTimeZone(user.timezone, now);
@@ -1037,6 +1055,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           categoryPieSlices={categoryPieSlices}
           chartHeight={cardSettings["spending-by-category"]?.chartHeight}
           maxSlices={cardSettings["spending-by-category"]?.maxSlices}
+          savingsSlice={savingsPieSlice}
         />
       ),
     },

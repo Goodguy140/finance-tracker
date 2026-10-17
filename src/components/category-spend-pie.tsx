@@ -10,6 +10,8 @@ export type CategorySpendSlice = {
   cents: number;
   /** The category's colour from assignCategoryColors, so the slice matches its log dots. */
   color: string;
+  /** Never rolled into "Other categories": the Savings slice, which is not a category. */
+  pinned?: boolean;
 };
 
 function renderTooltip({ active, payload }: TooltipProps<number, string>) {
@@ -31,11 +33,14 @@ function collapseToMaxSlices(
   slices: CategorySpendSlice[],
   maxSlices: number | undefined,
 ): CategorySpendSlice[] {
-  if (!maxSlices || slices.length <= maxSlices) return slices;
-  const ranked = [...slices].sort((a, b) => Math.abs(b.cents) - Math.abs(a.cents));
+  const pinned = slices.filter((slice) => slice.pinned);
+  const categories = slices.filter((slice) => !slice.pinned);
+  if (!maxSlices || categories.length <= maxSlices) return slices;
+  const ranked = [...categories].sort((a, b) => Math.abs(b.cents) - Math.abs(a.cents));
   const kept = ranked.slice(0, maxSlices - 1);
   const restCents = ranked.slice(maxSlices - 1).reduce((sum, slice) => sum + slice.cents, 0);
-  return restCents === 0 ? kept : [...kept, { name: "Other categories", cents: restCents, color: NEUTRAL_CATEGORY_COLOR }];
+  const collapsed = restCents === 0 ? kept : [...kept, { name: "Other categories", cents: restCents, color: NEUTRAL_CATEGORY_COLOR }];
+  return [...collapsed, ...pinned];
 }
 
 export function CategorySpendPieChart({
