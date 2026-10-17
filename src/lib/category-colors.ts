@@ -21,6 +21,12 @@ export const CATEGORY_PALETTE = [
 /** For a category the map does not know (deleted since load) and the pie's rolled-up tail. */
 export const NEUTRAL_CATEGORY_COLOR = "#64748b";
 
+/**
+ * The Spending by category pie's optional Savings slice. Savings is not a category, so it sits
+ * outside the palette: no category can ever share its colour.
+ */
+export const SAVINGS_SLICE_COLOR = "#059669";
+
 export type CategoryColors = Readonly<Record<string, string>>;
 
 function hashIndex(id: string): number {

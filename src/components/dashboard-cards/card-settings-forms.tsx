@@ -140,6 +140,12 @@ function CardSettingsFields({
             ]}
             onChange={(maxSlices) => onChange("spending-by-category", { maxSlices })}
           />
+          <SettingToggleRow
+            label="Show savings"
+            hint="Adds a Savings slice for transfers into accounts marked Counts as savings, less what was moved back out."
+            checked={current.showSavings ?? false}
+            onChange={(showSavings) => onChange("spending-by-category", { showSavings })}
+          />
         </>
       );
     }

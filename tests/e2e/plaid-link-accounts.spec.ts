@@ -121,9 +121,15 @@ test("connecting a bank records the item, maps accounts, refuses a currency mism
   await panelAfter.getByRole("button", { name: "Disconnect" }).click();
   await panelAfter.getByRole("button", { name: "Yes, disconnect" }).click();
 
+  // The unlink action deletes the item and only then records its audit row: wait on the
+  // audit row, the last thing it writes, or the read below can land between the two.
   await expect
-    .poll(async () => prisma.plaidItem.count({ where: { userId: user.id } }), { timeout: 15_000 })
-    .toBe(0);
+    .poll(
+      async () => prisma.auditLog.count({ where: { userId: user.id, action: "plaid_item_unlinked" } }),
+      { timeout: 15_000 },
+    )
+    .toBe(1);
+  expect(await prisma.plaidItem.count({ where: { userId: user.id } })).toBe(0);
   expect(await prisma.plaidAccount.count({ where: { userId: user.id } })).toBe(0);
 
   const audit = await prisma.auditLog.findMany({
