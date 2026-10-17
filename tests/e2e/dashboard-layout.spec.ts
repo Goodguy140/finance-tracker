@@ -228,6 +228,58 @@ test("a per-card setting takes effect and survives a reload", async ({ page }, t
   expect((await rowsTemplate()).split(" ")).toHaveLength(2);
 });
 
+test("the cumulative card overlays last month's spending and remembers the choice", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const user = await signInFreshUser(page, "compare");
+
+  // A month that is over, so the whole of it is plotted whatever day the suite runs on.
+  const category = await prisma.category.findFirstOrThrow({
+    where: { userId: user.id, kind: CategoryKind.EXPENSE },
+  });
+  await prisma.transaction.createMany({
+    data: [
+      { date: "2026-02-03", amountCents: 20_000 },
+      { date: "2026-03-02", amountCents: 5_000 },
+    ].map((row, index) => ({
+      userId: user.id,
+      categoryId: category.id,
+      type: TransactionType.EXPENSE,
+      amountCents: row.amountCents,
+      date: new Date(`${row.date}T00:00:00Z`),
+      title: `Compare ${index}`,
+    })),
+  });
+
+  await page.goto("/?month=2026-03");
+  const card = page.getByRole("region", { name: "Cumulative spending" });
+  await expect(card.getByText("Last month", { exact: true })).toHaveCount(0);
+
+  await card.getByRole("button", { name: "Cumulative spending settings" }).click();
+  const popover = page.getByRole("dialog", { name: "Cumulative spending settings" });
+  await popover.getByRole("group", { name: "Compare with" }).getByRole("button", { name: "Last month" }).click();
+
+  await expect
+    .poll(
+      async () => {
+        const row = await prisma.dashboardLayout.findUnique({ where: { userId: user.id } });
+        if (!row) return null;
+        return (
+          (JSON.parse(row.layoutJson) as { settings?: { "cumulative-spend"?: { compareWith?: string } } })
+            .settings?.["cumulative-spend"]?.compareWith ?? null
+        );
+      },
+      { timeout: 10_000 },
+    )
+    .toBe("last-month");
+
+  // The line and the heading's gap are drawn on the server, so they appear on the reload.
+  await page.reload();
+  await expect(card.getByText("Last month", { exact: true })).toBeVisible();
+  await expect(card.getByText(/150\.00 less than last month/)).toBeVisible();
+});
+
 test("narrowing the window never produces horizontal scrolling, and no card disappears", async ({
   page,
 }, testInfo) => {

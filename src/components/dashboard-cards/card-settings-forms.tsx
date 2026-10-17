@@ -159,6 +159,17 @@ function CardSettingsFields({
             checked={current.showExpectedLine ?? true}
             onChange={(showExpectedLine) => onChange("cumulative-spend", { showExpectedLine })}
           />
+          <SettingChoiceRow
+            label="Compare with"
+            hint="A lighter line of earlier spending by the same day of the month. Single-month view only."
+            value={current.compareWith ?? "none"}
+            options={[
+              { value: "none" as const, label: "None" },
+              { value: "last-month" as const, label: "Last month" },
+              { value: "three-month-average" as const, label: "3-month avg" },
+            ]}
+            onChange={(compareWith) => onChange("cumulative-spend", { compareWith })}
+          />
         </>
       );
     }
