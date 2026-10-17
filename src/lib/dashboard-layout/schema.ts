@@ -79,6 +79,7 @@ const cardSettingsSchema = z
       .object({
         chartHeight: chartHeightSchema,
         showExpectedLine: z.boolean().catch(true),
+        compareWith: z.enum(["none", "last-month", "three-month-average"]).catch("none"),
       })
       .partial()
       .catch({}),

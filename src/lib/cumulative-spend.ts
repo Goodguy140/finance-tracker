@@ -16,6 +16,8 @@ export type CumulativeSpendPoint = {
   cumulativeCents: number | null;
   /** Running total the period was expected to reach by this bucket; null when nothing predicts it. */
   expectedCents: number | null;
+  /** Earlier months' running total by the same day of month; null when no comparison is drawn. */
+  comparisonCents: number | null;
 };
 
 /** Where the expected line came from, so the card can say so. */
@@ -37,7 +39,18 @@ type SeriesOptions = {
   todayYmd: string;
   /** Expected spend for one month, spread evenly across the buckets; omitted for no baseline. */
   monthlyExpected?: MonthlyExpected;
+  /** Running totals from `buildComparisonPace`, one per day of the month; month view only. */
+  comparisonPace?: readonly number[] | null;
 };
+
+/** Which earlier spending the month view overlays, if any. */
+export type CumulativeComparison = "none" | "last-month" | "three-month-average";
+
+/** The months each comparison draws on, oldest first, ending the month before `ym`. */
+export function comparisonMonthYms(comparison: CumulativeComparison, ym: string): string[] {
+  const count = comparison === "last-month" ? 1 : comparison === "three-month-average" ? 3 : 0;
+  return Array.from({ length: count }, (_, index) => shiftYm(ym, index - count));
+}
 
 /**
  * What one month of spending is expected to come to.
@@ -57,6 +70,46 @@ export function resolveMonthlyExpected(
   const sum = recentMonthlySpendCents.reduce((total, cents) => total + cents, 0);
   if (sum <= 0) return null;
   return { cents: Math.round(sum / recentMonthlySpendCents.length), basis: "average" };
+}
+
+/**
+ * Earlier months' running spend for `comparison`, lined up by day of month against the
+ * viewed month `ym`, and averaged when there are several.
+ *
+ * Months are matched by calendar day, not stretched to fit: day 10 means the 10th in every
+ * month, which is how people remember "by this point last month". A shorter month that has
+ * already ended holds its final total across the days it does not have. A longer month's
+ * extra days fold into the viewed month's last day, so the line still ends on each month's
+ * whole total and month end compares with month end. Months with no spend count as zero, as
+ * in `resolveMonthlyExpected`; with no spend in any of them there is nothing to draw.
+ */
+export function buildComparisonPace(
+  rows: readonly SpendRow[],
+  comparison: CumulativeComparison,
+  ym: string,
+): number[] | null {
+  const priorYms = comparisonMonthYms(comparison, ym);
+  if (priorYms.length === 0) return null;
+  const monthDays = daysInMonthYm(ym);
+  const totals = new Array<number>(monthDays).fill(0);
+  let any = false;
+  for (const priorYm of priorYms) {
+    const byDay = new Array<number>(monthDays).fill(0);
+    for (const row of rows) {
+      const rowYm = `${row.date.getUTCFullYear()}-${String(row.date.getUTCMonth() + 1).padStart(2, "0")}`;
+      if (rowYm !== priorYm) continue;
+      const index = Math.min(row.date.getUTCDate(), monthDays) - 1;
+      byDay[index] += row.amountCents;
+      if (row.amountCents !== 0) any = true;
+    }
+    let running = 0;
+    for (let index = 0; index < monthDays; index += 1) {
+      running += byDay[index];
+      totals[index] += running;
+    }
+  }
+  if (!any) return null;
+  return totals.map((cents) => Math.round(cents / priorYms.length));
 }
 
 function ymOf(ymd: string): string {
@@ -83,7 +136,7 @@ function daysInMonthYm(ym: string): number {
  */
 export function buildCumulativeSpendSeries(
   expenses: SpendRow[],
-  { range, ym, todayYmd, monthlyExpected = null }: SeriesOptions,
+  { range, ym, todayYmd, monthlyExpected = null, comparisonPace = null }: SeriesOptions,
 ): CumulativeSpendPoint[] {
   const buckets = new Map<string, number>();
   for (const row of expenses) {
@@ -167,6 +220,8 @@ export function buildCumulativeSpendSeries(
       bucketCents,
       cumulativeCents: index <= actualThroughIndex ? running : null,
       expectedCents: expectedAt(index),
+      // By day of month, so it has no meaning once the buckets are months.
+      comparisonCents: range === "month" && comparisonPace ? (comparisonPace[index] ?? null) : null,
     };
   });
 }
@@ -182,6 +237,7 @@ export function summarizeCumulativeSpend(points: readonly CumulativeSpendPoint[]
   totalCents: number;
   expectedCents: number | null;
   gapCents: number | null;
+  comparisonGapCents: number | null;
 } {
   let last: CumulativeSpendPoint | null = null;
   for (const point of points) {
@@ -189,9 +245,11 @@ export function summarizeCumulativeSpend(points: readonly CumulativeSpendPoint[]
   }
   const totalCents = last?.cumulativeCents ?? 0;
   const expectedCents = last?.expectedCents ?? null;
+  const comparisonCents = last?.comparisonCents ?? null;
   return {
     totalCents,
     expectedCents,
     gapCents: expectedCents === null ? null : totalCents - expectedCents,
+    comparisonGapCents: comparisonCents === null ? null : totalCents - comparisonCents,
   };
 }

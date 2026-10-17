@@ -22,7 +22,11 @@ function formatAxisAmount(cents: number): string {
   return String(Math.round(units));
 }
 
-function buildTooltip(granularity: CumulativeSpendGranularity, expectedLabel: string | null) {
+function buildTooltip(
+  granularity: CumulativeSpendGranularity,
+  expectedLabel: string | null,
+  comparisonLabel: string | null,
+) {
   return function CumulativeSpendTooltip({ active, payload }: TooltipProps<number, string>) {
     if (!active || !payload?.length) return null;
     const row = payload[0]?.payload as CumulativeSpendPoint | undefined;
@@ -57,6 +61,11 @@ function buildTooltip(granularity: CumulativeSpendGranularity, expectedLabel: st
             ) : null}
           </p>
         ) : null}
+        {comparisonLabel && row.comparisonCents !== null ? (
+          <p className="tabular-nums text-amber-200/90">
+            {formatCurrency(row.comparisonCents)} {comparisonLabel.toLowerCase()}
+          </p>
+        ) : null}
       </div>
     );
   };
@@ -66,17 +75,21 @@ export function CumulativeSpendChart({
   data,
   granularity,
   expectedBasis,
+  comparisonLabel = null,
   height = 220,
 }: {
   data: CumulativeSpendPoint[];
   granularity: CumulativeSpendGranularity;
   expectedBasis: ExpectedSpendBasis | null;
+  /** Names the comparison line in the tooltip; null when there is none. */
+  comparisonLabel?: string | null;
   height?: number;
 }) {
   if (data.length === 0) {
     return <p className="mt-2 text-sm text-slate-400">No spending in this period yet.</p>;
   }
 
+  const hasComparison = comparisonLabel !== null && data.some((p) => p.comparisonCents !== null);
   const hasExpected = expectedBasis !== null && data.some((p) => p.expectedCents !== null);
   const expectedLabel =
     expectedBasis === "budgets" ? "budgeted" : expectedBasis === "average" ? "3-month average" : null;
@@ -101,10 +114,22 @@ export function CumulativeSpendChart({
             tickFormatter={formatAxisAmount}
           />
           <Tooltip
-            content={buildTooltip(granularity, expectedLabel)}
+            content={buildTooltip(granularity, expectedLabel, hasComparison ? comparisonLabel : null)}
             cursor={{ stroke: "#475569", strokeDasharray: "3 3" }}
           />
-          {/* Declared first so it paints behind the actual-spend line. */}
+          {/* Declared first so both baselines paint behind the actual-spend line. */}
+          {hasComparison ? (
+            <Line
+              type="monotone"
+              dataKey="comparisonCents"
+              stroke="#fcd34d"
+              strokeOpacity={0.5}
+              strokeWidth={2}
+              dot={false}
+              activeDot={false}
+              isAnimationActive={false}
+            />
+          ) : null}
           {hasExpected ? (
             <Line
               type="linear"

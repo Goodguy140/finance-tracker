@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildComparisonPace,
   buildCumulativeSpendSeries,
+  comparisonMonthYms,
   resolveMonthlyExpected,
   summarizeCumulativeSpend,
 } from "./cumulative-spend";
@@ -220,6 +222,7 @@ describe("summarizeCumulativeSpend", () => {
       totalCents: 12_000,
       expectedCents: 10_000,
       gapCents: 2_000,
+      comparisonGapCents: null,
     });
   });
 
@@ -234,6 +237,7 @@ describe("summarizeCumulativeSpend", () => {
       totalCents: 12_000,
       expectedCents: null,
       gapCents: null,
+      comparisonGapCents: null,
     });
   });
 
@@ -242,6 +246,94 @@ describe("summarizeCumulativeSpend", () => {
       totalCents: 0,
       expectedCents: null,
       gapCents: null,
+      comparisonGapCents: null,
     });
+  });
+});
+
+describe("comparisonMonthYms", () => {
+  it("names the months before the viewed one, across a year boundary", () => {
+    expect(comparisonMonthYms("none", "2026-01")).toEqual([]);
+    expect(comparisonMonthYms("last-month", "2026-01")).toEqual(["2025-12"]);
+    expect(comparisonMonthYms("three-month-average", "2026-02")).toEqual(["2025-11", "2025-12", "2026-01"]);
+  });
+});
+
+describe("buildComparisonPace", () => {
+  it("runs last month's total by day of month", () => {
+    const pace = buildComparisonPace(
+      [
+        { date: utc(2026, 2, 2), amountCents: 1_000 },
+        { date: utc(2026, 2, 5), amountCents: 500 },
+        // Outside the comparison month: ignored.
+        { date: utc(2026, 1, 3), amountCents: 9_999 },
+      ],
+      "last-month",
+      "2026-03",
+    );
+
+    expect(pace).toHaveLength(31);
+    expect(pace?.slice(0, 6)).toEqual([0, 1_000, 1_000, 1_000, 1_500, 1_500]);
+    // February has ended by day 29–31, so it holds its final total.
+    expect(pace?.slice(27)).toEqual([1_500, 1_500, 1_500, 1_500]);
+  });
+
+  it("folds a longer month's extra days into the viewed month's last day", () => {
+    const pace = buildComparisonPace(
+      [
+        { date: utc(2026, 1, 28), amountCents: 100 },
+        { date: utc(2026, 1, 30), amountCents: 200 },
+        { date: utc(2026, 1, 31), amountCents: 400 },
+      ],
+      "last-month",
+      "2026-02",
+    );
+
+    expect(pace).toHaveLength(28);
+    expect(pace?.[26]).toBe(0);
+    expect(pace?.[27]).toBe(700);
+  });
+
+  it("averages three months day by day, counting a quiet month as zero", () => {
+    const pace = buildComparisonPace(
+      [
+        { date: utc(2026, 1, 1), amountCents: 300 },
+        { date: utc(2026, 3, 1), amountCents: 600 },
+        { date: utc(2026, 3, 10), amountCents: 300 },
+      ],
+      "three-month-average",
+      "2026-04",
+    );
+
+    expect(pace?.[0]).toBe(300);
+    expect(pace?.[9]).toBe(400);
+    expect(pace?.[29]).toBe(400);
+  });
+
+  it("draws nothing when the comparison months hold no spending", () => {
+    expect(buildComparisonPace([], "last-month", "2026-04")).toBeNull();
+    expect(buildComparisonPace([{ date: utc(2026, 3, 1), amountCents: 500 }], "none", "2026-04")).toBeNull();
+  });
+
+  it("feeds the series and the heading's gap in a month view only", () => {
+    const pace = buildComparisonPace([{ date: utc(2026, 2, 1), amountCents: 2_000 }], "last-month", "2026-03");
+    const series = buildCumulativeSpendSeries([{ date: utc(2026, 3, 1), amountCents: 500 }], {
+      range: "month",
+      ym: "2026-03",
+      todayYmd: "2026-03-04",
+      comparisonPace: pace,
+    });
+
+    expect(series[0].comparisonCents).toBe(2_000);
+    expect(series[30].comparisonCents).toBe(2_000);
+    expect(summarizeCumulativeSpend(series).comparisonGapCents).toBe(-1_500);
+
+    const ytd = buildCumulativeSpendSeries([{ date: utc(2026, 3, 1), amountCents: 500 }], {
+      range: "ytd",
+      ym: "2026-03",
+      todayYmd: "2026-03-04",
+      comparisonPace: pace,
+    });
+    expect(ytd.every((p) => p.comparisonCents === null)).toBe(true);
   });
 });

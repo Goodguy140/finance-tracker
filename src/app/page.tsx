@@ -45,7 +45,11 @@ import {
   type BudgetProgressRow,
 } from "@/lib/budget-progress";
 import { loadRolloverCarries } from "@/lib/budget-rollover";
-import { buildCumulativeSpendSeries, resolveMonthlyExpected } from "@/lib/cumulative-spend";
+import {
+  buildComparisonPace,
+  buildCumulativeSpendSeries,
+  resolveMonthlyExpected,
+} from "@/lib/cumulative-spend";
 import { dateFromYmd, formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
 import type { VerificationInfo } from "@/components/verified-badge";
@@ -577,12 +581,6 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     budgetedMonthlyCents,
     pastThreeMonthYms.map((ym) => spendByPastYm.get(ym) ?? 0),
   );
-  const cumulativeSpendPoints = buildCumulativeSpendSeries(homeExpenses, {
-    range: period.range,
-    ym: period.ym,
-    todayYmd: currentYmdInTimeZone(user.timezone, now),
-    monthlyExpected,
-  });
 
   const categoryColors = assignCategoryColors(categories);
   const categoryPieSlices = Array.from((tagFilter ? computeSpendByCategory(logExpenses.filter(inHomeCurrency)) : spendByCategory).entries())
@@ -909,6 +907,21 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   // user changes anything.
   const { stored: storedLayout } = await readDashboardLayout(user.id, availableCardIds);
   const cardSettings = storedLayout.settings;
+  // Built after the layout is read, since the card's settings pick the comparison. The
+  // comparison months are the last one or three before the viewed month — the same window
+  // the past-expense query above already fetched for the expected baseline.
+  const cumulativeComparison = cardSettings["cumulative-spend"]?.compareWith ?? "none";
+  const comparisonPace =
+    period.range === "month"
+      ? buildComparisonPace(pastExpenseTransactions, cumulativeComparison, period.ym)
+      : null;
+  const cumulativeSpendPoints = buildCumulativeSpendSeries(homeExpenses, {
+    range: period.range,
+    ym: period.ym,
+    todayYmd: currentYmdInTimeZone(user.timezone, now),
+    monthlyExpected,
+    comparisonPace,
+  });
   const insights = await insightsPromise;
 
   // Always from today, whatever period is on screen: it answers "what is coming up".
@@ -997,6 +1010,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           expectedBasis={monthlyExpected?.basis ?? null}
           chartHeight={cardSettings["cumulative-spend"]?.chartHeight}
           showExpectedLine={cardSettings["cumulative-spend"]?.showExpectedLine}
+          comparison={comparisonPace ? cumulativeComparison : "none"}
         />
       ),
     },
