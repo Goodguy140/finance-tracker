@@ -1,5 +1,6 @@
 import { detectAhead, type AheadInput } from "./ahead";
 import { detectChanges } from "./changes";
+import { detectStanding, type StandingInput } from "./standing";
 import { habitInsights, summarizeHabitSpending } from "./habits";
 import { suggestImprovements } from "./improvements";
 import { detectRecurringCandidates, recurringCandidateInsights } from "./recurring-detection";
@@ -34,6 +35,11 @@ export type BuildInsightsInput = {
   /** See `AheadInput`; left out, nothing about balances or budgets is said. */
   projection?: AheadInput["projection"];
   budgetProgress?: AheadInput["budgets"];
+  /** See `StandingInput`; each left out says nothing. */
+  owed?: StandingInput["owed"];
+  room?: StandingInput["room"];
+  score?: StandingInput["score"];
+  goals?: StandingInput["goals"];
   /**
    * The actual time, for whether a snooze has run out. `now` is the user's local date at noon
    * UTC, so the calendar months the detectors work in are the user's own.
@@ -48,7 +54,7 @@ export type BuiltInsights = {
   dismissed: Array<Insight & { snoozedUntil: Date | null }>;
 };
 
-export const SECTION_ORDER: InsightSection[] = ["ahead", "recurring", "habit", "saving", "improvement"];
+export const SECTION_ORDER: InsightSection[] = ["ahead", "recurring", "habit", "saving", "improvement", "good"];
 const SEVERITY_ORDER: Record<InsightSeverity, number> = { high: 0, medium: 1, low: 2 };
 
 export function compareInsights(a: Insight, b: Insight): number {
@@ -101,6 +107,15 @@ export function buildInsights(input: BuildInsightsInput): BuiltInsights {
     ...detectSavingsOpportunities({ txs, rules, candidates, now, fmt }),
     ...suggestImprovements({ txs, budgets, now, fmt, toSavingsByMonth, withSavingsRate: !input.scoreInsights }),
     ...(input.scoreInsights ?? []),
+    ...detectStanding({
+      txs,
+      now,
+      fmt,
+      owed: input.owed ?? null,
+      room: input.room ?? null,
+      score: input.score ?? null,
+      goals: input.goals ?? null,
+    }),
   ].sort(compareInsights);
 
   const dismissals = new Map(input.dismissals.map((row) => [row.insightKey, row]));

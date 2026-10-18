@@ -59,6 +59,7 @@ function summary(overrides: Partial<SummaryData> = {}): SummaryData {
       ],
       suggestions: ["Trim dining out by $50 a month."],
       omitted: [],
+      cushion: null,
     },
     netWorth: {
       currency: "CAD",

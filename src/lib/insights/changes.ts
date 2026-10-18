@@ -3,7 +3,7 @@ import { advanceRecurringDate } from "@/lib/recurring-transactions";
 import { factsOf } from "./facts";
 import { CADENCE_WORDS, classifyCadence, merchantGroups, MIN_REGULAR_SHARE, seriesOf } from "./recurring-detection";
 import type { Insight, InsightRecurringRule, InsightTx } from "./types";
-import { daysBetween, median, type MoneyFormatter } from "./util";
+import { daysBetween, median, wholeDaysSince, type MoneyFormatter } from "./util";
 
 /**
  * Something regular that changed: pay that did not come or came in short, a recurring entry
@@ -47,7 +47,7 @@ function payChanges(groups: Map<string, InsightTx[]>, { now, fmt }: ChangesInput
     const { merchantKey, merchantLabel } = factsOf(last);
     const every = CADENCE_WORDS[band.cadence];
     const expected = advanceRecurringDate(last.date, band.cadence);
-    const late = Math.floor(daysBetween(expected, now));
+    const late = wholeDaysSince(expected, now);
     // Late, but not so long ago that the job, or the account it is paid into, plainly changed.
     if (late > grace && late <= band.typicalDays) {
       out.push({

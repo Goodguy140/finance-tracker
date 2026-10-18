@@ -77,7 +77,8 @@ Page: `src/app/insights/page.tsx`. Engine: `src/lib/insights/*` (`load.ts` entry
 - **Coming up** (an account the recurring bills take below zero, from `projectBalances` and a
   balance read in the last month; a budget over, on pace to go over or nearly used this month,
   left off the dashboard card, which has the budget alerts panel; a yearly charge due within 30
-  days; pay that is late or came in short, `changes.ts`): `ahead.ts`
+  days; pay that is late or came in short, `changes.ts`; RRSP room left in the first 60 days of
+  the year and FHSA room that will not carry over, Canada only, `standing.ts`): `ahead.ts`
 - **Recurring charges we noticed** (track as recurring): `recurring-detection.ts`; a new
   streaming subscription or a trial turned paid, and a recurring entry with no charge for 1.5
   cycles: `changes.ts`
@@ -90,7 +91,11 @@ Page: `src/app/insights/page.tsx`. Engine: `src/lib/insights/*` (`load.ts` entry
   the score card, which keeps them on Reports and under a tag filter; spending ahead of income
   and savings rate only under a tag, where there is no score (by transfers into "Counts as
   savings" accounts once any is marked, as the score does); category up last month, no budget,
-  catch-all category, untitled): `improvements.ts`
+  catch-all category, untitled): `improvements.ts`; money owed back for over a month (left off
+  the dashboard card, which has the Expense Log's "Owed to you"), a savings goal behind, cash
+  beyond six months of spending (under Ways to save): `standing.ts`
+- **Going well** (a category well down on its usual, every scored month in the black, every
+  budget kept): `standing.ts`
 - **Dismiss / snooze / restore, tag filter** (a dismissed insight shows again once it is half as
   big again as when dismissed, `InsightDismissal.dismissedCents`): `actions/insights.ts`,
   `src/components/insights/insight-item.tsx`

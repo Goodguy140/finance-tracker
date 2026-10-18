@@ -1147,8 +1147,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       subtitle: "From your last year of transactions",
       body: insights ? (
         <InsightsCardBody
-          // The budget alerts panel on this page already says how each budget is going.
-          insights={insights.visible.filter((i) => !i.key.startsWith("ahead:budget:"))}
+          // The budget alerts panel and the Expense Log's "Owed to you" list on this page
+          // already say these.
+          insights={insights.visible.filter((i) => !i.key.startsWith("ahead:budget:") && !i.key.startsWith("owed:"))}
           maxItems={cardSettings.insights?.maxItems}
         />
       ) : (

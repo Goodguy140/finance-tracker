@@ -247,3 +247,34 @@ test("Coming up lists a budget gone over and a yearly charge due soon; the dashb
   await expect(section.locator(`[data-insight-key="${budgetKey}"]`)).toContainText("Fun is $50.00 over budget");
   await expect(section.locator(`[data-insight-key="${renewalKey}"]`)).toContainText("$120 on");
 });
+
+test("money owed for over a month is a suggestion on Insights, left to the Expense Log on the dashboard", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+  const { user, login } = await seedUser(page, "owed");
+  const [account, category] = await Promise.all([
+    prisma.account.findFirstOrThrow({ where: { userId: user.id } }),
+    prisma.category.findFirstOrThrow({ where: { userId: user.id, kind: CategoryKind.EXPENSE, name: "Fun" } }),
+  ]);
+  const date = daysAgo(40);
+  await prisma.transaction.create({
+    data: {
+      userId: user.id,
+      accountId: account.id,
+      categoryId: category.id,
+      type: TransactionType.EXPENSE,
+      amountCents: 6_000,
+      title: "Concert tickets",
+      date,
+      owedShares: { create: { userId: user.id, name: "Sam", amountCents: 6_000 } },
+    },
+  });
+  const key = `owed:${date.toISOString().slice(0, 10)}:sam`;
+
+  await login();
+  await expect(page.getByRole("region", { name: "Insights" })).not.toContainText("Sam owes you");
+
+  await page.goto("/insights");
+  const suggestions = page.getByRole("region", { name: /Suggestions/ });
+  await expect(suggestions.locator(`[data-insight-key="${key}"]`)).toContainText("Sam owes you $60.00");
+  await expect(suggestions.locator(`[data-insight-key="${key}"]`)).toContainText("for Concert tickets, is from");
+});

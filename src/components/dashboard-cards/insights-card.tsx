@@ -8,6 +8,7 @@ const SECTION_LABELS: Record<InsightSection, string> = {
   habit: "Habits",
   saving: "Savings",
   improvement: "Suggestions",
+  good: "Going well",
 };
 
 const SEVERITY_DOT = { high: "bg-amber-400", medium: "bg-blue-400", low: "bg-slate-500" } as const;

@@ -55,6 +55,12 @@ const SECTIONS: Array<{ id: InsightSection; title: string; description: string; 
     description: "Where your financial score could rise, how the last few months compare, and where a budget or a rule would help.",
     empty: "No suggestions right now.",
   },
+  {
+    id: "good",
+    title: "Going well",
+    description: "Spending down on its usual, months with money left over, budgets kept.",
+    empty: "Nothing to celebrate yet; it shows here when there is.",
+  },
 ];
 
 export default async function InsightsPage({ searchParams }: { searchParams: SearchParams }) {
