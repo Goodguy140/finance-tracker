@@ -25,7 +25,7 @@ export const PROJECTION_DAYS = BILLS_FORECAST_DAY_OPTIONS;
 export type ProjectableRule = Pick<
   RecurringForecastRule,
   "type" | "amountCents" | "cadence" | "nextExpectedDate" | "anchorDay" | "endDate" | "enabled"
-> & { accountId: string };
+> & { accountId: string; name?: string };
 
 export type ProjectedAccount = {
   accountId: string;
@@ -38,9 +38,9 @@ export type ProjectedAccount = {
   projectedCents: number[];
   /**
    * Set on an asset account whose balance goes below zero within the longest horizon: the first
-   * day it does and the lowest it gets.
+   * day it does, the rule whose occurrence takes it there, and the lowest it gets.
    */
-  belowZero: { date: Date; lowestCents: number } | null;
+  belowZero: { date: Date; cause: string | null; lowestCents: number } | null;
 };
 
 export type ProjectedBalances = {
@@ -91,8 +91,8 @@ export function projectBalances(input: {
       });
       if (!a.liability && running < 0) {
         belowZero = belowZero
-          ? { date: belowZero.date, lowestCents: Math.min(belowZero.lowestCents, running) }
-          : { date, lowestCents: running };
+          ? { date: belowZero.date, cause: belowZero.cause, lowestCents: Math.min(belowZero.lowestCents, running) }
+          : { date, cause: rule.name ?? null, lowestCents: running };
       }
     }
     return {

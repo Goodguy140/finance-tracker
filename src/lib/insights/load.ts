@@ -1,9 +1,15 @@
 import { TransactionType } from "@prisma/client";
 import { cache } from "react";
+import { buildMonthlyBudgetProgress } from "@/lib/budget-progress";
+import { roomFlowsFromData } from "@/lib/contribution-room";
+import { loadContributionRoomData } from "@/lib/contribution-room-data";
 import { loadFinancialScore } from "@/lib/financial-score-data";
+import { loadNetWorth, loadProjectionRules } from "@/lib/net-worth-data";
+import { projectBalances } from "@/lib/projected-balances";
 import { homeCurrencyOf, inCurrencyWhere } from "@/lib/home-currency";
 import { prisma } from "@/lib/prisma";
 import { loadSavingsTransfers } from "@/lib/reports/load";
+import { loadSavingsGoals } from "@/lib/savings-goals-data";
 import { savedByTransferByMonth } from "@/lib/savings-transfers";
 import { buildInsights, type BuiltInsights } from "./index";
 import { scoreInsights } from "./score";
@@ -43,7 +49,9 @@ export const loadInsights = cache(async (
   const now = insightsNow(timezone, clock);
   const since = daysAgo(now, INSIGHT_HISTORY_DAYS);
   const currency = homeCurrencyOf(countryCode);
-  const [transactions, staged, rules, budgets, preference, dismissals, savings, financial] = await Promise.all([
+  const user = { id: userId, timezone, countryCode };
+  const ym = now.toISOString().slice(0, 7);
+  const [transactions, staged, rules, budgets, preference, dismissals, savings, financial, ahead, standing] = await Promise.all([
     prisma.transaction.findMany({
       // Transfers are neither spending nor income: no habit, saving or recurring charge
       // should be read off a card payment. Nor is anything in another currency added in.
@@ -77,7 +85,16 @@ export const loadInsights = cache(async (
     }),
     prisma.recurringTransaction.findMany({
       where: { userId, account: { currency } },
-      select: { id: true, name: true, type: true, amountCents: true, cadence: true, enabled: true, categoryId: true },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        amountCents: true,
+        cadence: true,
+        enabled: true,
+        categoryId: true,
+        nextExpectedDate: true,
+      },
     }),
     prisma.budget.findMany({ where: { userId }, select: { categoryId: true, periodMonth: true } }),
     prisma.insightPreference.findUnique({ where: { userId }, select: { habitDetectionEnabled: true } }),
@@ -85,7 +102,22 @@ export const loadInsights = cache(async (
     // What moved into "Counts as savings" accounts: the savings rate the score uses.
     loadSavingsTransfers(userId, since, currency),
     // The score's suggestions join the list. Not under a tag: the score is of the whole picture.
-    tagId ? null : loadFinancialScore({ id: userId, timezone, countryCode }),
+    tagId ? null : loadFinancialScore(user),
+    // Balances and budgets for "Coming up": neither has a meaning under a tag.
+    tagId
+      ? null
+      : Promise.all([loadNetWorth(user), loadProjectionRules(userId), buildMonthlyBudgetProgress(userId, ym)]),
+    // Money owed back, registered-account room (Canada only) and savings goals.
+    tagId
+      ? null
+      : Promise.all([
+          prisma.owedShare.findMany({
+            where: { userId, paidAt: null, transaction: inCurrencyWhere(currency) },
+            select: { name: true, amountCents: true, transaction: { select: { date: true, title: true } } },
+          }),
+          countryCode === "CA" ? loadContributionRoomData(userId) : null,
+          loadSavingsGoals(user),
+        ]),
   ]);
 
   const plaidByTx = new Map(staged.map((row) => [row.resolvedTransactionId as string, row]));
@@ -125,6 +157,26 @@ export const loadInsights = cache(async (
     dismissals,
     toSavingsByMonth,
     scoreInsights: financial ? scoreInsights(financial.score) : null,
+    projection: ahead
+      ? projectBalances({ accounts: ahead[0].accounts, rules: ahead[1], todayYmd: now.toISOString().slice(0, 10), currentYm: ym })
+      : null,
+    budgetProgress: ahead ? ahead[2].budgets : null,
+    score: financial?.score ?? null,
+    owed: standing
+      ? standing[0]
+          .map((share) => ({ name: share.name, amountCents: share.amountCents, date: share.transaction.date, title: share.transaction.title }))
+          .sort((a, b) => a.date.getTime() - b.date.getTime())
+      : null,
+    room:
+      standing?.[1] && Object.keys(standing[1].accountTypes).length > 0
+        ? {
+            entries: standing[1].entries,
+            flows: roomFlowsFromData(standing[1]),
+            types: [...new Set(Object.values(standing[1].accountTypes))],
+          }
+        : null,
+    // Goals in another currency are not in the home-currency figures these are worded in.
+    goals: standing ? standing[2].goals.filter((goal) => goal.currency === currency) : null,
     clock,
   });
 

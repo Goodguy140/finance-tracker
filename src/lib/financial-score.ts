@@ -68,6 +68,8 @@ export type FinancialScore =
       suggestions: string[];
       /** Factors left out for lack of data. */
       omitted: FinancialScoreOmission[];
+      /** What chequing and savings hold, and average monthly spending; null with no balances. */
+      cushion: { fundCents: number; monthlySpendingCents: number } | null;
     }
   | { status: "insufficient"; reason: string };
 
@@ -418,5 +420,14 @@ export function computeFinancialScore(input: FinancialScoreInput): FinancialScor
   const score = Math.round(factors.reduce((s, f) => s + f.score * BASE_WEIGHTS[f.id], 0) / totalWeight);
   const suggestions = weakestFactors(weighted).map((f) => f.suggestion as string);
 
-  return { status: "scored", score, band: scoreBand(score), months, factors: weighted, suggestions, omitted: left };
+  return {
+    status: "scored",
+    score,
+    band: scoreBand(score),
+    months,
+    factors: weighted,
+    suggestions,
+    omitted: left,
+    cushion: fund === null ? null : { fundCents: fund, monthlySpendingCents: Math.round(avgSpending) },
+  };
 }

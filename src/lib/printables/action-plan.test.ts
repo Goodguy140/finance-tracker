@@ -44,6 +44,7 @@ export function sampleFacts(overrides: Partial<PlanFacts> = {}): PlanFacts {
       ],
       suggestions: [],
       omitted: [],
+      cushion: null,
     },
     emergencyFundCents: 450_000,
     // $1,200 owed against $300 charged lately: a balance carried from month to month.

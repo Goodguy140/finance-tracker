@@ -12,6 +12,11 @@ export function daysBetween(a: Date, b: Date): number {
   return Math.round((b.getTime() - a.getTime()) / DAY_MS);
 }
 
+/** Whole days from a stored date to `now` (noon on the user's date): the calendar count. */
+export function wholeDaysSince(date: Date, now: Date): number {
+  return Math.floor((now.getTime() - date.getTime()) / DAY_MS);
+}
+
 /**
  * What the detectors take as "now": noon UTC on the user's own calendar date. Rows are stored
  * as UTC midnight of their day, so this makes "last month" the user's last month rather than
@@ -123,6 +128,9 @@ export function observedDays(now: Date, historyStart: Date | null, windowDays: n
   const days = Math.floor((now.getTime() - historyStart.getTime()) / DAY_MS);
   return Math.max(0, Math.min(windowDays, days));
 }
+
+/** Fewer fully logged months than this and a monthly comparison is mostly noise. */
+export const MIN_OBSERVED_MONTHS = 2;
 
 /** A rate over fewer days than this is one or two purchases dressed up as a pattern. */
 export const MIN_OBSERVED_DAYS = 30;

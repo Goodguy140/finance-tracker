@@ -8,6 +8,7 @@ import {
   observedMonths,
   previousFullMonths,
   ymOf,
+  MIN_OBSERVED_MONTHS,
   type MoneyFormatter,
 } from "./util";
 
@@ -71,9 +72,6 @@ function monthlySpendByCategory(txs: InsightTx[], months: Set<string>): MonthlyC
 }
 
 // --- Savings rate ----------------------------------------------------------------------------
-
-/** Fewer fully logged months than this and a monthly comparison is mostly noise. */
-const MIN_OBSERVED_MONTHS = 2;
 
 function savingsRate({ txs, now, fmt, toSavingsByMonth = null }: ImprovementsInput): Insight[] {
   const monthList = observedMonths(previousFullMonths(now, 3), historyStartOf(txs));

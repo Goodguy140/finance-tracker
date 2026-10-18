@@ -44,7 +44,7 @@ Cards (`src/components/dashboard-cards/`), with their gear settings:
 | Spending by category (`spending-by-category`) `spending-by-category-card.tsx`, `category-spend-pie.tsx` | pie with colors shared with the log (`src/lib/category-colors.ts`), optional savings slice (`src/lib/savings-transfers.ts`) | chart height, slices shown, show savings |
 | Cumulative spending (`cumulative-spend`) `cumulative-spend-card.tsx`, `src/lib/cumulative-spend.ts` | running total, expected line, compare with last month / 3-month avg | chart height, expected line, compare with |
 | Recurring (`recurring`) `recurring-card.tsx`, `recurring-transactions-panel.tsx`, `recurring-rule-form.tsx` | rules due in the month, overdue carry ("Unposted since"), Post/Skip, auto-post, new/edit/pause/delete, cash-flow summary; `src/lib/recurring-transactions.ts`, `recurring-post.ts` | cash-flow summary, rules shown |
-| Insights (`insights`) `insights-card.tsx` | top insights, link to `/insights` | insights shown |
+| Insights (`insights`) `insights-card.tsx` | count per section and the most pressing few, link to `/insights`; leaves out budget and money-owed insights, which this page already shows | insights shown |
 | Upcoming bills (`bills-forecast`) `bills-forecast-card.tsx`, `src/lib/bills-forecast.ts` | bills and income due by day, running net | days ahead (30/60/90) |
 | Investments (`investments`, tab on Insights) `investments-card.tsx` | contributions/withdrawals, count a transfer toward room, portfolio snapshots, room left (`src/lib/contribution-room.ts`); `actions/investments.ts` | room left, add forms, recent activity |
 
@@ -68,22 +68,39 @@ Code: `src/lib/plaid/*`, `actions/plaid.ts`. Read the Plaid section of `AGENTS.m
 
 ## Insights (`/insights`)
 
-Page: `src/app/insights/page.tsx`. Engine: `src/lib/insights/*` (`load.ts` entry point).
+Page: `src/app/insights/page.tsx`. Engine: `src/lib/insights/*` (`load.ts` loads, `index.ts`
+builds and orders the sections, `facts.ts` works out each transaction's merchant, habit,
+delivery, fee, streaming service and category role once for every detector). Sections, in
+order: Coming up, Recurring, Habits, Ways to save, Suggestions, Going well. Under a `?tag=`
+filter only what is worked out from transactions shows (no score, balances, budgets, owed
+money, room or goals).
 
 - **Financial score** (savings rate, emergency fund, fixed bills, budgets kept, spending trend,
   months in the black): `financial-score-card.tsx`, `src/lib/financial-score.ts`,
   `financial-score-data.ts`
 - **Savings goals card**: `savings-goals-card.tsx`, `src/lib/savings-goals.ts`
-- **Recurring charges we noticed** (track as recurring): `recurring-detection.ts`
+- **Coming up** (an account the recurring bills take below zero, from `projectBalances` and a
+  balance read in the last month; a budget over, on pace to go over or nearly used this month,
+  left off the dashboard card, which has the budget alerts panel; a yearly charge due within 30
+  days; pay that is late or came in short, `changes.ts`; RRSP room left in the first 60 days of
+  the year and FHSA room that will not carry over, Canada only, `standing.ts`): `ahead.ts`
+- **Recurring charges we noticed** (track as recurring): `recurring-detection.ts`; a new
+  streaming subscription or a trial turned paid, and a recurring entry with no charge for 1.5
+  cycles: `changes.ts`
 - **Spending habits** (track separately, on/off): `habits.ts`, `habit-patterns.ts`
 - **Ways to save** (price increase, streaming overlap, double charge, frequent purchases,
-  delivery apps, eating-out share, bank fees; the "could save about $X a year" line adds up
-  each idea's `savingCents`, counting shared money once): `savings.ts`
+  delivery apps, eating-out share, bank fees; a scheduled bill far above its usual,
+  `changes.ts`; cash beyond six months of spending, `standing.ts`; the "could save about $X a year" line adds up each idea's `savingCents`,
+  counting shared money once): `savings.ts`
 - **Suggestions** (the financial score's weakest factors, `score.ts`, listed here instead of on
   the score card, which keeps them on Reports and under a tag filter; spending ahead of income
   and savings rate only under a tag, where there is no score (by transfers into "Counts as
   savings" accounts once any is marked, as the score does); category up last month, no budget,
-  catch-all category, untitled): `improvements.ts`
+  catch-all category, untitled): `improvements.ts`; money owed back for over a month (left off
+  the dashboard card, which has the Expense Log's "Owed to you"), a savings goal behind:
+  `standing.ts`
+- **Going well** (a category well down on its usual, every scored month in the black, every
+  budget kept): `standing.ts`
 - **Dismiss / snooze / restore, tag filter** (a dismissed insight shows again once it is half as
   big again as when dismissed, `InsightDismissal.dismissedCents`): `actions/insights.ts`,
   `src/components/insights/insight-item.tsx`

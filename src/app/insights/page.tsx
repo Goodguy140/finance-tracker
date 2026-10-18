@@ -25,9 +25,15 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 const SECTIONS: Array<{ id: InsightSection; title: string; description: string; empty: string }> = [
   {
+    id: "ahead",
+    title: "Coming up",
+    description: "Pay that is late or short, balances your recurring bills could run low, budgets running ahead this month, and yearly charges due soon.",
+    empty: "Nothing coming up that needs a look.",
+  },
+  {
     id: "recurring",
     title: "Recurring charges we noticed",
-    description: "Transactions that repeat on a schedule but have no recurring entry yet.",
+    description: "Transactions that repeat on a schedule but have no recurring entry yet, new subscriptions, and entries whose charges stopped.",
     empty: "Nothing new — everything that repeats is already tracked.",
   },
   {
@@ -48,6 +54,12 @@ const SECTIONS: Array<{ id: InsightSection; title: string; description: string; 
     title: "Suggestions",
     description: "Where your financial score could rise, how the last few months compare, and where a budget or a rule would help.",
     empty: "No suggestions right now.",
+  },
+  {
+    id: "good",
+    title: "Going well",
+    description: "Spending down on its usual, months with money left over, budgets kept.",
+    empty: "Nothing to celebrate yet; it shows here when there is.",
   },
 ];
 
