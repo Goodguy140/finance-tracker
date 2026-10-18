@@ -84,6 +84,11 @@ async function seedUser(page: Page) {
 
 test("the financial score shows on Insights and Reports with what to improve", async ({ page }, testInfo) => {
   await seedUser(page);
+  const suggested = [
+    "Dining went over budget in 3 of the last 3 months",
+    "The biggest rise is Dining, up $600.00 a month",
+    "Chequing and savings cover 1.0 month of spending. Setting aside about $6,600.00 would build a 3-month emergency fund.",
+  ];
 
   for (const path of ["/insights", "/reports"]) {
     await page.goto(path);
@@ -93,13 +98,22 @@ test("the financial score shows on Insights and Reports with what to improve", a
     await expect(card.getByTestId("financial-score-value")).toHaveText("53");
     await expect(card.getByTestId("financial-score-band")).toHaveText("Fair");
     await expect(card.getByTestId("financial-score-factors").getByRole("listitem")).toHaveCount(6);
-    const suggestions = card.getByTestId("financial-score-suggestions").getByRole("listitem");
-    await expect(suggestions).toHaveCount(3);
-    await expect(suggestions.nth(0)).toContainText("Dining went over budget in 3 of the last 3 months");
-    await expect(suggestions.nth(1)).toContainText("The biggest rise is Dining, up $600.00 a month");
-    await expect(suggestions.nth(2)).toHaveText(
-      "Chequing and savings cover 1.0 month of spending. Setting aside about $6,600.00 would build a 3-month emergency fund.",
-    );
     await card.screenshot({ path: testInfo.outputPath(`score${path.replace("/", "-")}.png`) });
+  }
+
+  // Reports lists what to improve on the card.
+  const suggestions = page.getByTestId("financial-score").getByTestId("financial-score-suggestions").getByRole("listitem");
+  await expect(suggestions).toHaveCount(3);
+  await expect(suggestions.nth(0)).toContainText(suggested[0]);
+  await expect(suggestions.nth(1)).toContainText(suggested[1]);
+  await expect(suggestions.nth(2)).toHaveText(suggested[2]);
+
+  // Insights lists them once, as insights that can be dismissed like the rest.
+  await page.goto("/insights");
+  await expect(page.getByTestId("financial-score-suggestions")).toHaveCount(0);
+  const fromScore = page.locator('[data-testid="insight"][data-insight-key^="score:"]');
+  await expect(fromScore).toHaveCount(3);
+  for (const [factor, text] of [["budgets", suggested[0]], ["trend", suggested[1]], ["emergency", suggested[2]]]) {
+    await expect(page.locator(`[data-testid="insight"][data-insight-key^="score:${factor}:"]`)).toContainText(text);
   }
 });

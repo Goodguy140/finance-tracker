@@ -117,3 +117,28 @@ describe("insightsNow", () => {
     expect(insightsNow("UTC", clock).toISOString()).toBe("2026-11-01T12:00:00.000Z");
   });
 });
+
+describe("score suggestions", () => {
+  const months = ["2026-06", "2026-07", "2026-08"];
+  const overspent = months.flatMap((m) => [
+    tx(`${m}-01`, "Payroll", 300000, { type: "INCOME", categoryId: "s", categoryName: "Salary" }),
+    tx(`${m}-02`, "Rent", 320000, { categoryId: "r", categoryName: "Rent" }),
+  ]);
+  const fromScore: Insight = {
+    key: "score:consistency:2026-09",
+    section: "improvement",
+    severity: "high",
+    title: "Months in the black: 0 of 3 months ended with money left over",
+    body: "Spent more than earned.",
+    evidenceTxIds: [],
+  };
+
+  it("join the list, and stand in for the engine's own savings rate", () => {
+    const own = buildInsights({ ...base, txs: overspent }).visible.map((i) => i.key);
+    expect(own).toContain("improve:savings-rate:2026-08");
+
+    const withScore = buildInsights({ ...base, txs: overspent, scoreInsights: [fromScore] }).visible.map((i) => i.key);
+    expect(withScore).toContain("score:consistency:2026-09");
+    expect(withScore.some((k) => k.startsWith("improve:savings-rate"))).toBe(false);
+  });
+});

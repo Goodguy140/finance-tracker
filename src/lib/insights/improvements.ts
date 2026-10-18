@@ -28,6 +28,8 @@ export type ImprovementsInput = {
    * financial score's savings rate uses, so the two never disagree.
    */
   toSavingsByMonth?: ReadonlyMap<string, number> | null;
+  /** False when the financial score's suggestions already cover the savings rate. */
+  withSavingsRate?: boolean;
 };
 
 /**
@@ -40,7 +42,7 @@ const isSavingsCategory = (name: string) => categoryRole(name) === "savings";
 
 export function suggestImprovements(input: ImprovementsInput): Insight[] {
   return [
-    ...savingsRate(input),
+    ...(input.withSavingsRate === false ? [] : savingsRate(input)),
     ...risingCategories(input),
     ...unbudgetedCategories(input),
     ...dataHygiene(input),
@@ -190,7 +192,8 @@ function risingCategories({ txs, now, fmt }: ImprovementsInput): Insight[] {
       key: `improve:rising:${categoryId}:${latest}`,
       section: "improvement",
       severity: rise >= 20_000 ? "medium" : "low",
-      title: `${entry.name} is up ${Math.round((rise / priorAvg) * 100)}%`,
+      // Named by its window: the score's spending trend compares three months with three.
+      title: `${entry.name} was up ${Math.round((rise / priorAvg) * 100)}% last month`,
       body:
         `Last month's ${entry.name} spending was ${fmt(current)}, against a ${fmt(Math.round(priorAvg))} average ` +
         `over the ${monthsWord(prior.length)} before. Worth a look at what changed.`,

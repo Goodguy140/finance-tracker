@@ -24,6 +24,12 @@ export type BuildInsightsInput = {
   /** See `ImprovementsInput.toSavingsByMonth`. */
   toSavingsByMonth?: ReadonlyMap<string, number> | null;
   /**
+   * The financial score's suggestions (`scoreInsights`), listed with the rest. When given, the
+   * engine's own savings-rate suggestion is left out: the score's savings and months-in-the-
+   * black factors say the same, measured the same way.
+   */
+  scoreInsights?: Insight[] | null;
+  /**
    * The actual time, for whether a snooze has run out. `now` is the user's local date at noon
    * UTC, so the calendar months the detectors work in are the user's own.
    */
@@ -86,7 +92,8 @@ export function buildInsights(input: BuildInsightsInput): BuiltInsights {
     // Turned off means not computed at all, not merely hidden.
     ...(input.habitsEnabled ? habitInsights(summarizeHabitSpending(txs, now), fmt) : []),
     ...detectSavingsOpportunities({ txs, rules, candidates, now, fmt }),
-    ...suggestImprovements({ txs, budgets, now, fmt, toSavingsByMonth }),
+    ...suggestImprovements({ txs, budgets, now, fmt, toSavingsByMonth, withSavingsRate: !input.scoreInsights }),
+    ...(input.scoreInsights ?? []),
   ].sort(compareInsights);
 
   const dismissals = new Map(input.dismissals.map((row) => [row.insightKey, row]));

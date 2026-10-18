@@ -186,6 +186,14 @@ export function monthlyRecurringCents(rules: readonly ScoreRecurringRule[], type
     .sort((a, b) => b.cents - a.cents);
 }
 
+/** The factors worth acting on, weakest first: at most three, each with a suggestion. */
+export function weakestFactors(factors: readonly FinancialScoreFactor[]): FinancialScoreFactor[] {
+  return [...factors]
+    .filter((f) => f.suggestion && f.score < 80)
+    .sort((a, b) => a.score - b.score || b.weight - a.weight)
+    .slice(0, 3);
+}
+
 export function computeFinancialScore(input: FinancialScoreInput): FinancialScore {
   const { formatCents: fmt } = input;
   const currentYm = input.todayYmd.slice(0, 7);
@@ -386,7 +394,7 @@ export function computeFinancialScore(input: FinancialScoreInput): FinancialScor
           : `Spending ${change > 0 ? "up" : "down"} ${pct(Math.abs(change))} on the 3 months before`,
       suggestion:
         change > 0 && riser && riser.delta > 0
-          ? `Spending rose ${pct(change)} over the last 3 months. The biggest rise is ${riser.name}, up ${fmt(Math.round(riser.delta / TREND_HALF))} a month.`
+          ? `Spending over the last 3 months was ${pct(change)} above the 3 before. The biggest rise is ${riser.name}, up ${fmt(Math.round(riser.delta / TREND_HALF))} a month.`
           : null,
     });
   }
@@ -408,11 +416,7 @@ export function computeFinancialScore(input: FinancialScoreInput): FinancialScor
   const totalWeight = factors.reduce((s, f) => s + BASE_WEIGHTS[f.id], 0);
   const weighted = factors.map((f) => ({ ...f, score: Math.round(f.score), weight: BASE_WEIGHTS[f.id] / totalWeight }));
   const score = Math.round(factors.reduce((s, f) => s + f.score * BASE_WEIGHTS[f.id], 0) / totalWeight);
-  const suggestions = [...weighted]
-    .filter((f) => f.suggestion && f.score < 80)
-    .sort((a, b) => a.score - b.score || b.weight - a.weight)
-    .slice(0, 3)
-    .map((f) => f.suggestion as string);
+  const suggestions = weakestFactors(weighted).map((f) => f.suggestion as string);
 
   return { status: "scored", score, band: scoreBand(score), months, factors: weighted, suggestions, omitted: left };
 }
