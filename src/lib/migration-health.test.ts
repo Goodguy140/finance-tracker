@@ -99,6 +99,12 @@ async function createMinimalSchema(prisma: PrismaClient) {
       "rolloverSinceMonth" TEXT
     )
   `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "InsightDismissal" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "dismissedCents" INTEGER
+    )
+  `);
 }
 
 describe("migration-health", () => {

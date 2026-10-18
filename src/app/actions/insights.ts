@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { CategoryKind, TransactionRuleTextOperator, TransactionType } from "@prisma/client";
 import { normalizeExpenseTitleKey } from "@/lib/expense-title-suggestions";
 import { HABIT_CATEGORY_NAMES } from "@/lib/insights/habit-patterns";
+import { insightSizeCents } from "@/lib/insights/index";
 import { loadInsights } from "@/lib/insights/load";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
@@ -29,10 +30,15 @@ export const dismissInsightAction = formAction(async (formData: FormData) => {
     mode: getFormValue(formData, "mode") || undefined,
   });
   const snoozedUntil = mode === "snooze" ? new Date(Date.now() + INSIGHT_SNOOZE_DAYS * 24 * 60 * 60 * 1000) : null;
+  // Its size now, worked out again on the server rather than taken from the form, so it can
+  // come back if it grows well past what the user dismissed.
+  const insights = await loadInsights(user.id, user.countryCode, user.timezone);
+  const insight = [...insights.visible, ...insights.dismissed].find((i) => i.key === insightKey);
+  const dismissedCents = insight ? insightSizeCents(insight) : null;
   await prisma.insightDismissal.upsert({
     where: { userId_insightKey: { userId: user.id, insightKey } },
-    create: { userId: user.id, insightKey, snoozedUntil },
-    update: { snoozedUntil },
+    create: { userId: user.id, insightKey, snoozedUntil, dismissedCents },
+    update: { snoozedUntil, dismissedCents },
   });
   revalidateInsights();
 });

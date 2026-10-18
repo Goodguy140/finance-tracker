@@ -54,6 +54,32 @@ describe("buildInsights", () => {
   });
 });
 
+describe("dismissals that come back when an insight grows", () => {
+  // Cannabis comes to 12,000 in the window: about 4,058 a month, 48,700 a year.
+  const habitSize = () => buildInsights(base).visible.find((i) => i.key === "habit:CANNABIS")!.annualCents!;
+
+  it("stays hidden while the insight is about the size it was dismissed at", () => {
+    const size = habitSize();
+    const { visible } = buildInsights({ ...base, dismissals: [{ insightKey: "habit:CANNABIS", snoozedUntil: null, dismissedCents: size }] });
+    expect(visible.some((i) => i.key === "habit:CANNABIS")).toBe(false);
+  });
+
+  it("shows again once it is half as big again as when dismissed", () => {
+    const size = habitSize();
+    const grown = buildInsights({
+      ...base,
+      dismissals: [{ insightKey: "habit:CANNABIS", snoozedUntil: null, dismissedCents: Math.floor(size / 1.5) }],
+    });
+    expect(grown.visible.some((i) => i.key === "habit:CANNABIS")).toBe(true);
+    expect(grown.dismissed.some((i) => i.key === "habit:CANNABIS")).toBe(false);
+  });
+
+  it("keeps a dismissal with no size recorded hidden for good, as before", () => {
+    const { visible } = buildInsights({ ...base, dismissals: [{ insightKey: "habit:CANNABIS", snoozedUntil: null, dismissedCents: null }] });
+    expect(visible.some((i) => i.key === "habit:CANNABIS")).toBe(false);
+  });
+});
+
 describe("insightsNow", () => {
   it("is the user's own date, so the 31st in Toronto is still the 31st", () => {
     // 21:30 on 31 October in Toronto is already 1 November in UTC.

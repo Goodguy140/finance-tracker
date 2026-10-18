@@ -33,11 +33,73 @@ describe("detectSavingsOpportunities", () => {
   });
 
   it("totals three or more streaming services", () => {
-    const txs = [tx("2026-09-01", "Netflix", 1899), tx("2026-09-03", "Crave", 2199), tx("2026-09-05", "Spotify P0A1", 1299)];
+    const txs = ["2026-08", "2026-09"].flatMap((m) => [
+      tx(`${m}-01`, "Netflix", 1899),
+      tx(`${m}-03`, "Crave", 2199),
+      tx(`${m}-05`, "Spotify P0A1", 1299),
+    ]);
     const streaming = run(txs).find((i) => i.key.startsWith("saving:streaming"));
     expect(streaming?.key).toBe("saving:streaming:Crave,Netflix,Spotify");
     expect(streaming?.monthlyCents).toBe(1899 + 2199 + 1299);
-    expect(run(txs.slice(0, 2)).some((i) => i.key.startsWith("saving:streaming"))).toBe(false);
+    expect(run(txs.filter((t) => t.title !== "Crave")).some((i) => i.key.startsWith("saving:streaming"))).toBe(false);
+  });
+
+  it("does not take a single charge for a subscription", () => {
+    // A meal at Crave Burger is not Crave the streaming service.
+    const txs = [
+      ...["2026-08-01", "2026-09-01"].map((d) => tx(d, "Netflix", 1899)),
+      ...["2026-08-05", "2026-09-05"].map((d) => tx(d, "Spotify", 1299)),
+      tx("2026-09-12", "Crave Burger", 3000),
+      tx("2026-09-14", "Amazon Prime", 999),
+      tx("2026-08-14", "Amazon Prime", 999),
+    ];
+    expect(run(txs).some((i) => i.key.startsWith("saving:streaming"))).toBe(false);
+  });
+
+  describe("price rises", () => {
+    const rule = { id: "r1", name: "Spotify", type: "EXPENSE", amountCents: 1299, cadence: "MONTHLY", enabled: true, categoryId: "c" } as const;
+    const charge = (m: string, cents: number) => tx(`2026-${m}-02`, "Spotify", cents, { recurringTransactionId: "r1" });
+
+    it("stops calling a price new once the step up is no longer recent", () => {
+      // Up in July; by late September the old price still outnumbers the new one in the
+      // history, which used to keep "went up" showing for months.
+      const txs = [
+        ...["01", "02", "03", "04", "05", "06"].map((m) => charge(m, 1099)),
+        ...["07", "08", "09"].map((m) => charge(m, 1299)),
+      ];
+      expect(run(txs, [rule]).some((i) => i.key.startsWith("saving:price-increase"))).toBe(false);
+    });
+
+    it("compares with the price just before the step, not the whole history", () => {
+      const txs = [
+        ...["01", "02", "03", "04"].map((m) => charge(m, 899)),
+        ...["05", "06", "07"].map((m) => charge(m, 1099)),
+        ...["08", "09"].map((m) => charge(m, 1299)),
+      ];
+      const rise = run(txs, [rule]).find((i) => i.key.startsWith("saving:price-increase"));
+      expect(rise?.body).toContain("up from $10.99");
+    });
+
+    it("sees a rise big enough to break the steady-amount check on an untracked subscription", () => {
+      const txs = [
+        ...["05", "06", "07"].map((m) => tx(`2026-${m}-02`, "Spotify", 1099)),
+        ...["08", "09"].map((m) => tx(`2026-${m}-02`, "Spotify", 1599)),
+      ];
+      const [candidate] = detectRecurringCandidates(txs, [], NOW);
+      expect(candidate?.medianAmountCents).toBe(1599);
+      const rise = run(txs).find((i) => i.key.startsWith("saving:price-increase"));
+      expect(rise?.key).toBe("saving:price-increase:spotify:1599");
+    });
+  });
+
+  describe("possible double charges", () => {
+    it("stays quiet once the merchant has refunded one", () => {
+      const txs = [tx("2026-09-10", "Best Buy", 12999), tx("2026-09-10", "Best Buy", 12999), tx("2026-09-14", "Best Buy", -12999)];
+      expect(run(txs).some((i) => i.key.startsWith("saving:duplicate"))).toBe(false);
+      // A refund of something else does not count.
+      txs[2] = tx("2026-09-14", "Best Buy", -2000);
+      expect(run(txs).find((i) => i.key.startsWith("saving:duplicate"))?.severity).toBe("medium");
+    });
   });
 
   describe("what each idea would save", () => {
@@ -60,8 +122,8 @@ describe("detectSavingsOpportunities", () => {
       const txs = [
         ...["2026-06-02", "2026-07-02", "2026-08-02"].map((d) => tx(d, "Spotify", 1099, { recurringTransactionId: "r1" })),
         tx("2026-09-02", "Spotify", 1299, { recurringTransactionId: "r1" }),
-        tx("2026-09-01", "Netflix", 1899),
-        tx("2026-09-03", "Crave", 2199),
+        ...["2026-08-01", "2026-09-01"].map((d) => tx(d, "Netflix", 1899)),
+        ...["2026-08-03", "2026-09-03"].map((d) => tx(d, "Crave", 2199)),
       ];
       const found = run(txs, [rule]);
       // Keep the two dearest (Crave, Netflix); Spotify is the one rotated out.

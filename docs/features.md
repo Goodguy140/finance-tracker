@@ -82,7 +82,8 @@ Page: `src/app/insights/page.tsx`. Engine: `src/lib/insights/*` (`load.ts` entry
 - **Suggestions** (spending ahead of income, savings rate (by transfers into "Counts as
   savings" accounts once any is marked, as the score does), category up, no budget, catch-all
   category, untitled): `improvements.ts`
-- **Dismiss / snooze / restore, tag filter**: `actions/insights.ts`,
+- **Dismiss / snooze / restore, tag filter** (a dismissed insight shows again once it is half as
+  big again as when dismissed, `InsightDismissal.dismissedCents`): `actions/insights.ts`,
   `src/components/insights/insight-item.tsx`
 
 ## Reports (`/reports`)

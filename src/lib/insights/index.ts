@@ -49,9 +49,27 @@ export function compareInsights(a: Insight, b: Insight): number {
   );
 }
 
-/** A dismissal hides its key for good, or until a snooze runs out. */
-export function isDismissalActive(row: InsightDismissalRow, now: Date): boolean {
-  return row.snoozedUntil === null || row.snoozedUntil > now;
+/** How big an insight is, in cents a year, for telling when a dismissed one has grown. */
+export function insightSizeCents(insight: Pick<Insight, "annualCents" | "monthlyCents">): number | null {
+  if (insight.annualCents !== undefined) return insight.annualCents;
+  if (insight.monthlyCents !== undefined) return insight.monthlyCents * 12;
+  return null;
+}
+
+/** Half as big again as when it was dismissed: no longer what the user said no to. */
+export const DISMISSAL_REGROWTH = 1.5;
+
+/**
+ * A dismissal hides its key for good, or until a snooze runs out — unless the insight has
+ * since grown well past the size it was dismissed at.
+ */
+export function isDismissalActive(row: InsightDismissalRow, now: Date, insight?: Insight): boolean {
+  if (row.snoozedUntil !== null && row.snoozedUntil <= now) return false;
+  const size = insight ? insightSizeCents(insight) : null;
+  if (row.dismissedCents != null && row.dismissedCents > 0 && size !== null && size >= row.dismissedCents * DISMISSAL_REGROWTH) {
+    return false;
+  }
+  return true;
 }
 
 export function buildInsights(input: BuildInsightsInput): BuiltInsights {
@@ -65,13 +83,12 @@ export function buildInsights(input: BuildInsightsInput): BuiltInsights {
     ...suggestImprovements({ txs, budgets, now, fmt, toSavingsByMonth }),
   ].sort(compareInsights);
 
-  const activeDismissals = new Map(
-    input.dismissals.filter((row) => isDismissalActive(row, input.clock ?? now)).map((row) => [row.insightKey, row]),
-  );
+  const dismissals = new Map(input.dismissals.map((row) => [row.insightKey, row]));
   const visible: Insight[] = [];
   const dismissed: BuiltInsights["dismissed"] = [];
   for (const insight of all) {
-    const row = activeDismissals.get(insight.key);
+    const found = dismissals.get(insight.key);
+    const row = found && isDismissalActive(found, input.clock ?? now, insight) ? found : null;
     if (row) dismissed.push({ ...insight, snoozedUntil: row.snoozedUntil });
     else visible.push(insight);
   }

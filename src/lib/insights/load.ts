@@ -79,7 +79,7 @@ export const loadInsights = cache(async (
     }),
     prisma.budget.findMany({ where: { userId }, select: { categoryId: true, periodMonth: true } }),
     prisma.insightPreference.findUnique({ where: { userId }, select: { habitDetectionEnabled: true } }),
-    prisma.insightDismissal.findMany({ where: { userId }, select: { insightKey: true, snoozedUntil: true } }),
+    prisma.insightDismissal.findMany({ where: { userId }, select: { insightKey: true, snoozedUntil: true, dismissedCents: true } }),
     // What moved into "Counts as savings" accounts: the savings rate the score uses.
     loadSavingsTransfers(userId, since, currency),
   ]);

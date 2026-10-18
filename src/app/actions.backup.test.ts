@@ -264,7 +264,7 @@ describe("importUserBackupAction", () => {
       ],
       hiddenTitleSuggestions: [{ titleKey: "coffee" }, { titleKey: "coffee" }],
       insightDismissals: [
-        { insightKey: "habit:ALCOHOL", snoozedUntil: null },
+        { insightKey: "habit:ALCOHOL", snoozedUntil: null, dismissedCents: 132000 },
         { insightKey: "recurring:EXPENSE:netflix", snoozedUntil: iso },
       ],
       insightPreference: { habitDetectionEnabled: false },
@@ -304,8 +304,9 @@ describe("importUserBackupAction", () => {
     expect(mockPrisma.insightDismissal.deleteMany).toHaveBeenCalledWith({ where: { userId: "user-1" } });
     expect(mockPrisma.insightDismissal.createMany).toHaveBeenCalledWith({
       data: [
-        { userId: "user-1", insightKey: "habit:ALCOHOL", snoozedUntil: null },
-        { userId: "user-1", insightKey: "recurring:EXPENSE:netflix", snoozedUntil: new Date(iso) },
+        { userId: "user-1", insightKey: "habit:ALCOHOL", snoozedUntil: null, dismissedCents: 132000 },
+        // A backup from before sizes were kept restores as hidden for good, as it was.
+        { userId: "user-1", insightKey: "recurring:EXPENSE:netflix", snoozedUntil: new Date(iso), dismissedCents: null },
       ],
     });
     expect(mockPrisma.insightPreference.create).toHaveBeenCalledWith({

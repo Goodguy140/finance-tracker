@@ -550,6 +550,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
         userId: user.id,
         insightKey: row.insightKey,
         snoozedUntil: row.snoozedUntil ? new Date(row.snoozedUntil) : null,
+        dismissedCents: row.dismissedCents ?? null,
       })),
     });
     if (parsed.insightPreference) {

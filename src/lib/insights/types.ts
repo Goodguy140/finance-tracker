@@ -81,4 +81,9 @@ export type Insight = {
   action?: InsightAction;
 };
 
-export type InsightDismissalRow = { insightKey: string; snoozedUntil: Date | null };
+export type InsightDismissalRow = {
+  insightKey: string;
+  snoozedUntil: Date | null;
+  /** `insightSizeCents` when dismissed; null when it had none. */
+  dismissedCents?: number | null;
+};
