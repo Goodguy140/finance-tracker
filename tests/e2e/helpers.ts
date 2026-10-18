@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { expect, type Page } from "@playwright/test";
 
 let stampSequence = 0;
@@ -18,7 +19,7 @@ let stampSequence = 0;
  */
 export function uniqueStamp(): string {
   stampSequence += 1;
-  return `${Date.now()}-${process.pid}-${stampSequence}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${Date.now()}-${process.pid}-${stampSequence}-${randomBytes(4).toString("hex")}`;
 }
 
 /**
