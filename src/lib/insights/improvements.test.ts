@@ -53,4 +53,38 @@ describe("suggestImprovements", () => {
     );
     expect(run(txs).some((i) => i.key === "improve:uncategorized")).toBe(true);
   });
+
+  describe("with a short history", () => {
+    it("does not read steady spending as rising when logging began mid-month", () => {
+      // Started 15 July: the same rent every month used to come out as "Rent is up 200%",
+      // because July was averaged with two months that had nothing logged.
+      const txs = [
+        tx("2026-07-15", "Rent", 150000, { categoryId: "r", categoryName: "Rent" }),
+        tx("2026-08-15", "Rent", 150000, { categoryId: "r", categoryName: "Rent" }),
+      ];
+      expect(run(txs).some((i) => i.key.startsWith("improve:rising"))).toBe(false);
+    });
+
+    it("averages only the months that were fully logged", () => {
+      // Logging began 10 May, so June and July are the comparison; May is left out.
+      const txs = [
+        tx("2026-05-10", "Store", 1000),
+        ...["2026-06", "2026-07"].map((m) => tx(`${m}-10`, "Store", 20000)),
+        tx("2026-08-10", "Store", 30000),
+      ];
+      const rising = run(txs).find((i) => i.key.startsWith("improve:rising"));
+      expect(rising?.title).toBe("Fun is up 50%");
+      expect(rising?.body).toContain("over the two months before");
+    });
+
+    it("leaves the savings rate alone until two full months are logged", () => {
+      const txs = [
+        salary("2026-07-20", 300000),
+        tx("2026-07-25", "Rent", 320000, { categoryId: "r", categoryName: "Rent" }),
+        salary("2026-08-01", 300000),
+        tx("2026-08-02", "Rent", 320000, { categoryId: "r", categoryName: "Rent" }),
+      ];
+      expect(run(txs).some((i) => i.key.startsWith("improve:savings-rate"))).toBe(false);
+    });
+  });
 });

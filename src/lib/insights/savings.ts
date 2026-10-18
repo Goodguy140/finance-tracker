@@ -7,9 +7,13 @@ import {
   daysAgo,
   daysBetween,
   evidenceIds,
+  historyStartOf,
   median,
+  MIN_OBSERVED_DAYS,
   merchantKeyFor,
   merchantLabelFor,
+  observedDays,
+  observedMonths,
   previousFullMonths,
   ymOf,
   type MoneyFormatter,
@@ -220,9 +224,20 @@ const SMALL_PURCHASE_MIN_MONTHLY_CENTS = 4_000;
 const WINDOW_DAYS = 90;
 const GROCERY_CATEGORY = /grocer|supermarket|食費/i;
 
+/**
+ * Days of the trailing window the history covers, or null when that is too little to turn
+ * into a monthly rate: two coffees in someone's first week are not "eight a month".
+ */
+function rateWindowDays(txs: InsightTx[], now: Date): number | null {
+  const days = observedDays(now, historyStartOf(txs), WINDOW_DAYS);
+  return days >= MIN_OBSERVED_DAYS ? days : null;
+}
+
 function frequentSmallPurchases({ txs, now, fmt }: SavingsInput): Insight[] {
+  const windowDays = rateWindowDays(txs, now);
+  if (windowDays === null) return [];
   const since = daysAgo(now, WINDOW_DAYS);
-  const months = WINDOW_DAYS / DAYS_PER_MONTH;
+  const months = windowDays / DAYS_PER_MONTH;
   const groups = new Map<string, InsightTx[]>();
   for (const tx of txs) {
     if (tx.type !== "EXPENSE" || tx.date < since || tx.recurringTransactionId) continue;
@@ -270,9 +285,11 @@ function isDeliveryApp(tx: InsightTx): boolean {
 }
 
 function deliveryApps({ txs, now, fmt }: SavingsInput): Insight[] {
+  const windowDays = rateWindowDays(txs, now);
+  if (windowDays === null) return [];
   const since = daysAgo(now, WINDOW_DAYS);
   const hits = txs.filter((tx) => tx.type === "EXPENSE" && tx.date >= since && isDeliveryApp(tx));
-  const monthlyCents = Math.round(hits.reduce((s, tx) => s + tx.amountCents, 0) / (WINDOW_DAYS / DAYS_PER_MONTH));
+  const monthlyCents = Math.round(hits.reduce((s, tx) => s + tx.amountCents, 0) / (windowDays / DAYS_PER_MONTH));
   if (monthlyCents < DELIVERY_MIN_MONTHLY_CENTS) return [];
   const annualCents = monthlyCents * 12;
   return [
@@ -282,7 +299,7 @@ function deliveryApps({ txs, now, fmt }: SavingsInput): Insight[] {
       severity: monthlyCents >= 30_000 ? "medium" : "low",
       title: `Delivery apps: about ${fmt(monthlyCents)} a month`,
       body:
-        `${hits.length} orders in the last ${WINDOW_DAYS} days. Service fees, delivery fees and menu mark-ups ` +
+        `${hits.length} orders in the last ${windowDays} days. Service fees, delivery fees and menu mark-ups ` +
         `often add 20–30%; picking up the same order yourself would save roughly ${fmt(Math.round(annualCents * 0.2))} a year.`,
       monthlyCents,
       annualCents,
@@ -304,7 +321,10 @@ export function categoryAmounts(tx: InsightTx): Array<{ categoryId: string; cate
 }
 
 function diningShare({ txs, now, fmt }: SavingsInput): Insight[] {
-  const months = new Set(previousFullMonths(now, 3));
+  const monthList = observedMonths(previousFullMonths(now, 3), historyStartOf(txs));
+  if (monthList.length < 2) return [];
+  const months = new Set(monthList);
+  const monthCount = monthList.length;
   let dining = 0;
   let grocery = 0;
   const evidence: InsightTx[] = [];
@@ -317,7 +337,7 @@ function diningShare({ txs, now, fmt }: SavingsInput): Insight[] {
       } else if (GROCERY_CATEGORY.test(part.categoryName)) grocery += part.amountCents;
     }
   }
-  const monthlyDining = Math.round(dining / 3);
+  const monthlyDining = Math.round(dining / monthCount);
   if (dining <= 0 || monthlyDining < DINING_MIN_MONTHLY_CENTS) return [];
   const share = dining / (dining + Math.max(grocery, 0));
   if (share < DINING_SHARE_THRESHOLD) return [];
@@ -329,8 +349,8 @@ function diningShare({ txs, now, fmt }: SavingsInput): Insight[] {
       severity: share >= 0.6 ? "medium" : "low",
       title: `${Math.round(share * 100)}% of food spending is eating out`,
       body:
-        `Over the last three months you spent about ${fmt(monthlyDining)} a month eating out or ordering in, ` +
-        `against ${fmt(Math.round(Math.max(grocery, 0) / 3))} on groceries. Swapping a quarter of those meals ` +
+        `Over the last ${monthCount === 3 ? "three" : "two"} months you spent about ${fmt(monthlyDining)} a month eating out or ordering in, ` +
+        `against ${fmt(Math.round(Math.max(grocery, 0) / monthCount))} on groceries. Swapping a quarter of those meals ` +
         `for cooking would save roughly ${fmt(Math.round((annualCents / 4) * 0.6))} a year after the extra groceries.`,
       monthlyCents: monthlyDining,
       annualCents,

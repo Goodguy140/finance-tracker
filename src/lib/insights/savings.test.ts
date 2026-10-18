@@ -83,4 +83,22 @@ describe("detectSavingsOpportunities", () => {
     const fees = run([tx("2026-09-01", "Overdraft interest charge", 500)]).find((i) => i.key === "saving:bank-fees");
     expect(fees?.annualCents).toBe(500);
   });
+
+  describe("with a short history", () => {
+    const order = (d: string) => tx(d, "UBER EATS", 4000, { categoryName: "Restaurants" });
+
+    it("works out delivery spend over the days logged, not a full 90", () => {
+      // Logging began 45 days before NOW; 6 orders of $40 is $240 in 45 days.
+      const txs = ["2026-08-11", "2026-08-20", "2026-08-28", "2026-09-05", "2026-09-12", "2026-09-20"].map(order);
+      const delivery = run(txs).find((i) => i.key === "saving:delivery-apps");
+      expect(delivery?.monthlyCents).toBe(Math.round(24000 / (45 / (365.25 / 12))));
+      expect(delivery?.body).toContain("in the last 45 days");
+    });
+
+    it("stays quiet with under a month of history", () => {
+      const txs = ["2026-09-05", "2026-09-07", "2026-09-09", "2026-09-11", "2026-09-13", "2026-09-15", "2026-09-17", "2026-09-20"].map(order);
+      expect(run(txs).some((i) => i.key === "saving:delivery-apps")).toBe(false);
+    });
+  });
 });
+

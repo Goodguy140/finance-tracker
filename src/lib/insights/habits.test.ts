@@ -37,6 +37,9 @@ describe("matchHabitKind", () => {
 });
 
 describe("summarizeHabitSpending", () => {
+  /** An unrelated row from long ago, so the history covers the whole window. */
+  const history = tx("2026-01-05", "Groceries", 5000);
+
   it("flags repeat purchases in the window with a monthly figure", () => {
     const txs = [
       tx("2026-07-10", "SQDC", 4000),
@@ -66,15 +69,38 @@ describe("summarizeHabitSpending", () => {
   });
 
   it("counts only the habit part of a split receipt", () => {
-    const receipt = tx("2026-09-10", "Costco", 20000, {
-      splits: [
-        { categoryId: "g", categoryName: "Groceries", amountCents: 14000 },
-        { categoryId: "a", categoryName: "Alcohol", amountCents: 6000 },
-      ],
-    });
-    const [summary] = summarizeHabitSpending([receipt], NOW);
+    const receipt = (date: string) =>
+      tx(date, "Costco", 20000, {
+        splits: [
+          { categoryId: "g", categoryName: "Groceries", amountCents: 14000 },
+          { categoryId: "a", categoryName: "Alcohol", amountCents: 6000 },
+        ],
+      });
+    const [summary] = summarizeHabitSpending([history, receipt("2026-08-10"), receipt("2026-09-10")], NOW);
     expect(summary.kind).toBe("ALCOHOL");
-    expect(summary.totalCents).toBe(6000);
+    expect(summary.totalCents).toBe(12000);
+  });
+
+  it("never flags a single purchase, however much it cost", () => {
+    // $60 is over alcohol's spend threshold on its own; one bottle is still not a habit.
+    expect(summarizeHabitSpending([history, tx("2026-09-20", "LCBO #217", 6000)], NOW)).toEqual([]);
+  });
+
+  it("does not call a habit rising when there was no earlier spending to compare with", () => {
+    const txs = [history, tx("2026-09-10", "LCBO #217", 3000), tx("2026-09-20", "LCBO #217", 3000)];
+    const [summary] = summarizeHabitSpending(txs, NOW);
+    expect(summary.trend).toBe("steady");
+    expect(habitInsights([summary], moneyFormatter())[0].severity).toBe("medium");
+  });
+
+  it("works out the monthly figure over the history there is, not a full 90 days", () => {
+    // Logging began 45 days before NOW.
+    const txs = [tx("2026-08-11", "Coffee", 500), ...["2026-08-20", "2026-09-05", "2026-09-20"].map((d) => tx(d, "SQDC", 4000))];
+    const [summary] = summarizeHabitSpending(txs, NOW);
+    expect(summary.windowDays).toBe(45);
+    expect(summary.monthlyCents).toBe(Math.round(12000 / (45 / (365.25 / 12))));
+    // Less than a month of history says nothing at all.
+    expect(summarizeHabitSpending(txs.slice(2), NOW)).toEqual([]);
   });
 
   it("produces a neutral insight with a track-separately action", () => {
