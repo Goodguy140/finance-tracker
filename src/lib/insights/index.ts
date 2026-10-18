@@ -41,8 +41,12 @@ export const SECTION_ORDER: InsightSection[] = ["recurring", "habit", "saving", 
 const SEVERITY_ORDER: Record<InsightSeverity, number> = { high: 0, medium: 1, low: 2 };
 
 export function compareInsights(a: Insight, b: Insight): number {
+  return SECTION_ORDER.indexOf(a.section) - SECTION_ORDER.indexOf(b.section) || compareBySeverity(a, b);
+}
+
+/** Most pressing first, then the biggest, then a stable order: the dashboard card's ranking. */
+export function compareBySeverity(a: Insight, b: Insight): number {
   return (
-    SECTION_ORDER.indexOf(a.section) - SECTION_ORDER.indexOf(b.section) ||
     SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] ||
     (b.annualCents ?? 0) - (a.annualCents ?? 0) ||
     a.key.localeCompare(b.key)
@@ -73,7 +77,9 @@ export function isDismissalActive(row: InsightDismissalRow, now: Date, insight?:
 }
 
 export function buildInsights(input: BuildInsightsInput): BuiltInsights {
-  const { txs, rules, budgets, now, fmt, toSavingsByMonth } = input;
+  const { rules, budgets, now, fmt, toSavingsByMonth } = input;
+  // An entry dated ahead (a bill logged before it is due) has not happened yet.
+  const txs = input.txs.filter((tx) => tx.date <= now);
   const candidates = detectRecurringCandidates(txs, rules, now);
   const all = [
     ...recurringCandidateInsights(candidates, fmt),

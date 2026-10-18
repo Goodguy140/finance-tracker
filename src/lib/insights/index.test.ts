@@ -3,7 +3,8 @@ import { NOW, tx } from "./test-fixtures";
 
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-const { buildInsights } = await import("./index");
+const { buildInsights, compareBySeverity } = await import("./index");
+import type { Insight } from "./types";
 const { insightsNow, moneyFormatter } = await import("./util");
 
 const txs = [
@@ -51,6 +52,34 @@ describe("buildInsights", () => {
       dismissals: [{ insightKey: "habit:CANNABIS", snoozedUntil: new Date("2026-09-25T18:00:00.000Z") }],
     });
     expect(visible.some((i) => i.key === "habit:CANNABIS")).toBe(true);
+  });
+});
+
+describe("rows dated ahead", () => {
+  it("are left out until their day comes", () => {
+    const gym = ["2026-06-20", "2026-07-20", "2026-08-20", "2026-09-20"].map((d) => tx(d, "Gymbox", 4500));
+    const logged = (rows: typeof gym) =>
+      buildInsights({ ...base, txs: rows }).visible.find((i) => i.key === "recurring:EXPENSE:gymbox")?.body;
+    expect(logged([...gym, tx("2026-10-20", "Gymbox", 4500)])).toBe(logged(gym));
+    expect(logged(gym)).toContain("4 times so far");
+  });
+});
+
+describe("compareBySeverity", () => {
+  it("puts the most pressing first, then the biggest", () => {
+    const make = (key: string, severity: Insight["severity"], annualCents: number): Insight => ({
+      key,
+      section: "saving",
+      severity,
+      title: key,
+      body: "",
+      annualCents,
+      evidenceTxIds: [],
+    });
+    const sorted = [make("a", "low", 90000), make("b", "medium", 1000), make("c", "medium", 5000), make("d", "high", 10)]
+      .sort(compareBySeverity)
+      .map((i) => i.key);
+    expect(sorted).toEqual(["d", "c", "b", "a"]);
   });
 });
 

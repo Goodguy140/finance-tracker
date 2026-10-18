@@ -1,5 +1,5 @@
 import { OTHER_CATEGORY_ALIASES } from "@/lib/plaid/category-map";
-import { categoryAmounts } from "./savings";
+import { categoryAmounts, categoryRole } from "./facts";
 import type { Insight, InsightBudget, InsightTx } from "./types";
 import {
   daysAgo,
@@ -32,10 +32,11 @@ export type ImprovementsInput = {
 
 /**
  * Money moved to savings or investments is logged as an expense by many users; counting it as
- * spending would make the most careful savers look like the worst ones. Only a fallback: once
- * any account counts as savings, what moved into it by transfer is the measure instead.
+ * spending would make the most careful savers look like the worst ones. So a category named
+ * for savings (`categoryRole`) is set aside — only a fallback: once any account counts as
+ * savings, what moved into it by transfer is the measure instead.
  */
-const SAVINGS_CATEGORY = /saving|invest|transfer|tfsa|rrsp|fhsa|貯金|投資/i;
+const isSavingsCategory = (name: string) => categoryRole(name) === "savings";
 
 export function suggestImprovements(input: ImprovementsInput): Insight[] {
   return [
@@ -55,7 +56,7 @@ function monthlySpendByCategory(txs: InsightTx[], months: Set<string>): MonthlyC
     const ym = ymOf(tx.date);
     if (!months.has(ym)) continue;
     for (const part of categoryAmounts(tx)) {
-      if (SAVINGS_CATEGORY.test(part.categoryName)) continue;
+      if (isSavingsCategory(part.categoryName)) continue;
       let entry = out.get(part.categoryId);
       if (!entry) {
         entry = { name: part.categoryName, byMonth: new Map() };
@@ -85,7 +86,7 @@ function savingsRate({ txs, now, fmt, toSavingsByMonth = null }: ImprovementsInp
     if (tx.type === "INCOME") income += tx.amountCents;
     else {
       for (const part of categoryAmounts(tx)) {
-        if (!toSavingsByMonth && SAVINGS_CATEGORY.test(part.categoryName)) savedExplicitly += part.amountCents;
+        if (!toSavingsByMonth && isSavingsCategory(part.categoryName)) savedExplicitly += part.amountCents;
         else spending += part.amountCents;
       }
     }

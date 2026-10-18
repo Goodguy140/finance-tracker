@@ -1,5 +1,6 @@
 import { endExclusiveOfMonthYm, formatYmShortLabel, shiftYm, startOfMonthYm } from "@/lib/dashboard-period";
 import { dateFromYmd } from "@/lib/date-only";
+import { categoryAmounts } from "@/lib/insights/facts";
 import { merchantKeyFor, merchantLabelFor, mostCommon, ymOf } from "@/lib/insights/util";
 import type { InsightTx } from "@/lib/insights/types";
 
@@ -110,10 +111,7 @@ function isIncome(tx: ReportTx): boolean {
 }
 
 /** Spend per category for one expense, with split parts taking over from the parent's category. */
-function expenseParts(tx: ReportTx): Array<{ categoryId: string; categoryName: string; amountCents: number }> {
-  if (tx.splits.length > 0) return tx.splits;
-  return [{ categoryId: tx.categoryId, categoryName: tx.categoryName, amountCents: tx.amountCents }];
-}
+const expenseParts = categoryAmounts;
 
 export type MonthFlow = {
   ym: string;

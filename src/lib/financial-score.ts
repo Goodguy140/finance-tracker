@@ -1,5 +1,8 @@
 import { AccountType } from "@prisma/client";
+import { selectActiveBudgetsByCategory } from "@/lib/active-budgets";
 import { shiftYm } from "@/lib/dashboard-period";
+import { categoryAmounts } from "@/lib/insights/facts";
+import { MONTHLY_FACTOR } from "@/lib/insights/recurring-detection";
 import { ymOf } from "@/lib/insights/util";
 import type { ReportTx } from "@/lib/reports";
 
@@ -151,15 +154,6 @@ const BASE_WEIGHTS: Record<FinancialScoreFactorId, number> = {
   consistency: 10,
 };
 
-/** Occurrences per month for each cadence, to put every bill on a monthly footing. */
-const PER_MONTH: Record<ScoreRecurringRule["cadence"], number> = {
-  WEEKLY: 52 / 12,
-  BIWEEKLY: 26 / 12,
-  MONTHLY: 1,
-  QUARTERLY: 1 / 3,
-  YEARLY: 1 / 12,
-  BIENNIAL: 1 / 24,
-};
 
 /** Straight-line interpolation through `points` (x ascending), clamped at both ends, to 0–100. */
 function piecewise(x: number, points: ReadonlyArray<readonly [number, number]>): number {
@@ -188,7 +182,7 @@ export function scoreBand(score: number): FinancialScoreBand {
 export function monthlyRecurringCents(rules: readonly ScoreRecurringRule[], type: "EXPENSE" | "INCOME", todayYmd: string) {
   return rules
     .filter((r) => r.enabled && r.type === type && (!r.endDate || r.endDate.toISOString().slice(0, 10) >= todayYmd))
-    .map((r) => ({ name: r.name, cents: Math.round(r.amountCents * PER_MONTH[r.cadence]) }))
+    .map((r) => ({ name: r.name, cents: Math.round(r.amountCents * MONTHLY_FACTOR[r.cadence]) }))
     .sort((a, b) => b.cents - a.cents);
 }
 
@@ -220,8 +214,7 @@ export function computeFinancialScore(input: FinancialScoreInput): FinancialScor
       continue;
     }
     bucket.spending += tx.amountCents;
-    const parts = tx.splits.length ? tx.splits : [{ categoryId: tx.categoryId, categoryName: tx.categoryName, amountCents: tx.amountCents }];
-    for (const part of parts) {
+    for (const part of categoryAmounts(tx)) {
       const key = `${ym}|${part.categoryId}`;
       spendByMonthCategory.set(key, (spendByMonthCategory.get(key) ?? 0) + part.amountCents);
       const byName = spendByCategoryName.get(part.categoryName) ?? { recent: 0, earlier: 0 };
@@ -341,13 +334,8 @@ export function computeFinancialScore(input: FinancialScoreInput): FinancialScor
   let credit = 0;
   const overByCategory = new Map<string, number>();
   for (const ym of budgetMonths) {
-    const active = new Map<string, ScoreBudget>();
-    for (const b of input.budgets) {
-      if (b.periodMonth > ym || b.limitCents <= 0) continue;
-      const existing = active.get(b.categoryId);
-      if (!existing || b.periodMonth > existing.periodMonth) active.set(b.categoryId, b);
-    }
-    for (const budget of active.values()) {
+    for (const budget of selectActiveBudgetsByCategory(input.budgets, ym).values()) {
+      if (budget.limitCents <= 0) continue;
       const spent = spendByMonthCategory.get(`${ym}|${budget.categoryId}`) ?? 0;
       const limit = budget.limitCents + (input.rolloverCarries?.get(`${ym}|${budget.categoryId}`) ?? 0);
       checks++;

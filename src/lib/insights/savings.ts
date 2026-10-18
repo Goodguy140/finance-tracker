@@ -1,5 +1,5 @@
 import type { RecurringCadence } from "@prisma/client";
-import { matchHabitKind } from "./habit-patterns";
+import { categoryAmounts, categoryRole, factsOf, hasHabitSpend, streamingServiceFor } from "./facts";
 import { MONTHLY_FACTOR, type RecurringCandidate } from "./recurring-detection";
 import type { Insight, InsightRecurringRule, InsightTx } from "./types";
 import {
@@ -10,8 +10,6 @@ import {
   historyStartOf,
   median,
   MIN_OBSERVED_DAYS,
-  merchantKeyFor,
-  merchantLabelFor,
   observedDays,
   observedMonths,
   previousFullMonths,
@@ -120,36 +118,9 @@ function priceIncreases({ txs, rules, candidates, now, fmt }: SavingsInput, rota
 
 // --- Streaming and media services ------------------------------------------------------------
 
-export const STREAMING_SERVICES: Array<{ name: string; re: RegExp }> = [
-  { name: "Netflix", re: /\bnetflix\b/ },
-  { name: "Disney+", re: /\bdisney\s*(?:\+|plus)\b|\bdisneyplus\b/ },
-  { name: "Crave", re: /\bcrave\b/ },
-  // Not "Amazon Prime": that is mostly a shipping membership, and would make a stack of one.
-  { name: "Prime Video", re: /\bprime video\b/ },
-  { name: "Apple TV+", re: /\bapple tv\b/ },
-  { name: "Spotify", re: /\bspotify\b/ },
-  { name: "Apple Music", re: /\bapple music\b/ },
-  { name: "YouTube Premium", re: /\byoutube (?:premium|music)\b/ },
-  { name: "Paramount+", re: /\bparamount\b/ },
-  { name: "Max", re: /\bhbo\b|\bmax\.com\b/ },
-  { name: "Hulu", re: /\bhulu\b/ },
-  { name: "Peacock", re: /\bpeacock\b/ },
-  { name: "DAZN", re: /\bdazn\b/ },
-  { name: "Audible", re: /\baudible\b/ },
-  { name: "SiriusXM", re: /\bsirius\s*xm\b/ },
-  { name: "Tidal", re: /\btidal\b/ },
-  { name: "Deezer", re: /\bdeezer\b/ },
-  { name: "BritBox", re: /\bbritbox\b/ },
-];
 const STREAMING_MIN_SERVICES = 3;
 /** Two monthly bills and some slack. */
 const STREAMING_RECENT_DAYS = 75;
-
-export function streamingServiceFor(text: string | null | undefined): string | null {
-  const lower = (text ?? "").toLowerCase();
-  if (!lower) return null;
-  return STREAMING_SERVICES.find((s) => s.re.test(lower))?.name ?? null;
-}
 
 /** Rotating means keeping this many at a time; the saving is what the rest cost. */
 const STREAMING_KEEP = 2;
@@ -174,7 +145,7 @@ function stackedStreaming({ txs, rules, candidates, now, fmt }: SavingsInput, ro
   const recentByService = new Map<string, InsightTx[]>();
   for (const tx of txs) {
     if (tx.type !== "EXPENSE" || tx.date < since || tx.amountCents <= 0) continue;
-    const name = streamingServiceFor(tx.merchantName) ?? streamingServiceFor(tx.title);
+    const name = factsOf(tx).streamingService;
     if (!name) continue;
     recentByService.set(name, [...(recentByService.get(name) ?? []), tx]);
   }
@@ -228,7 +199,7 @@ function possibleDuplicates({ txs, now, fmt }: SavingsInput): Insight[] {
         tx.date >= since &&
         !tx.recurringTransactionId &&
         // Repeat habit purchases have their own insight; two in a day is not a billing error.
-        !matchHabitKind({ texts: [tx.title, tx.merchantName, tx.note], pfcDetailed: tx.pfcDetailed }),
+        !hasHabitSpend(tx),
     )
     .sort((a, b) => a.date.getTime() - b.date.getTime());
   const refunds = txs.filter((tx) => tx.type === "EXPENSE" && tx.amountCents < 0 && tx.date >= since);
@@ -239,12 +210,12 @@ function possibleDuplicates({ txs, now, fmt }: SavingsInput): Insight[] {
   for (let i = 0; i < pool.length; i++) {
     const a = pool[i];
     if (used.has(a.id)) continue;
-    const key = merchantKeyFor(a);
+    const key = factsOf(a).merchantKey;
     if (!key) continue;
     for (let j = i + 1; j < pool.length; j++) {
       const b = pool[j];
       if (daysBetween(a.date, b.date) > DUPLICATE_MAX_GAP_DAYS) break;
-      if (used.has(b.id) || b.amountCents !== a.amountCents || merchantKeyFor(b) !== key) continue;
+      if (used.has(b.id) || b.amountCents !== a.amountCents || factsOf(b).merchantKey !== key) continue;
       used.add(a.id);
       used.add(b.id);
       const refund = refunds.find(
@@ -253,7 +224,7 @@ function possibleDuplicates({ txs, now, fmt }: SavingsInput): Insight[] {
           r.amountCents === -a.amountCents &&
           r.date >= a.date &&
           daysBetween(b.date, r.date) <= DUPLICATE_REFUND_DAYS &&
-          merchantKeyFor(r) === key,
+          factsOf(r).merchantKey === key,
       );
       if (refund) {
         usedRefunds.add(refund.id);
@@ -265,7 +236,7 @@ function possibleDuplicates({ txs, now, fmt }: SavingsInput): Insight[] {
         // Two genuine purchases of the same thing (two transit passes) look exactly like this,
         // so it is worth a look rather than the most pressing thing on the page.
         severity: "medium",
-        title: `Possible double charge at ${merchantLabelFor(a)}`,
+        title: `Possible double charge at ${factsOf(a).merchantLabel}`,
         body:
           `Two charges of ${fmt(a.amountCents)} ${a.date.getTime() === b.date.getTime() ? "on the same day" : "a day apart"}. ` +
           `If you only bought once, ask the merchant or your bank to reverse one.`,
@@ -283,7 +254,6 @@ const SMALL_PURCHASE_MAX_CENTS = 2_500;
 const SMALL_PURCHASE_MIN_PER_MONTH = 4;
 const SMALL_PURCHASE_MIN_MONTHLY_CENTS = 4_000;
 const WINDOW_DAYS = 90;
-const GROCERY_CATEGORY = /grocer|supermarket|食費/i;
 
 /**
  * Days of the trailing window the history covers, or null when that is too little to turn
@@ -304,9 +274,8 @@ function frequentSmallPurchases({ txs, now, fmt }: SavingsInput, counted: Set<st
     if (tx.type !== "EXPENSE" || tx.date < since || tx.recurringTransactionId) continue;
     if (tx.amountCents <= 0 || tx.amountCents > SMALL_PURCHASE_MAX_CENTS) continue;
     // Groceries are necessary; delivery apps and habit purchases have insights of their own.
-    if (GROCERY_CATEGORY.test(tx.categoryName) || isDeliveryApp(tx)) continue;
-    if (matchHabitKind({ texts: [tx.title, tx.merchantName, tx.note], pfcDetailed: tx.pfcDetailed, categoryName: tx.categoryName })) continue;
-    const key = merchantKeyFor(tx);
+    if (categoryRole(tx.categoryName) === "grocery" || factsOf(tx).deliveryApp || hasHabitSpend(tx)) continue;
+    const key = factsOf(tx).merchantKey;
     if (!key) continue;
     const list = groups.get(key);
     if (list) list.push(tx);
@@ -319,7 +288,7 @@ function frequentSmallPurchases({ txs, now, fmt }: SavingsInput, counted: Set<st
     const monthlyCents = Math.round(list.reduce((s, tx) => s + tx.amountCents, 0) / months);
     if (perMonth < SMALL_PURCHASE_MIN_PER_MONTH || monthlyCents < SMALL_PURCHASE_MIN_MONTHLY_CENTS) continue;
     const annualCents = monthlyCents * 12;
-    const label = merchantLabelFor(list[0]);
+    const label = factsOf(list[0]).merchantLabel;
     out.push({
       key: `saving:frequent:${key}`,
       section: "saving",
@@ -342,18 +311,13 @@ function frequentSmallPurchases({ txs, now, fmt }: SavingsInput, counted: Set<st
 
 // --- Delivery apps ---------------------------------------------------------------------------
 
-const DELIVERY_APP = /\buber\s*eats\b|\bubereats\b|\bdoordash\b|\bskip ?the ?dishes\b|\bgrubhub\b|\binstacart\b|\bfantuan\b/;
 const DELIVERY_MIN_MONTHLY_CENTS = 10_000;
-
-function isDeliveryApp(tx: InsightTx): boolean {
-  return [tx.title, tx.merchantName].some((t) => !!t && DELIVERY_APP.test(t.toLowerCase()));
-}
 
 function deliveryApps({ txs, now, fmt }: SavingsInput, counted: Set<string>): Insight[] {
   const windowDays = rateWindowDays(txs, now);
   if (windowDays === null) return [];
   const since = daysAgo(now, WINDOW_DAYS);
-  const hits = txs.filter((tx) => tx.type === "EXPENSE" && tx.date >= since && isDeliveryApp(tx));
+  const hits = txs.filter((tx) => tx.type === "EXPENSE" && tx.date >= since && factsOf(tx).deliveryApp);
   const monthlyCents = Math.round(hits.reduce((s, tx) => s + tx.amountCents, 0) / (windowDays / DAYS_PER_MONTH));
   if (monthlyCents < DELIVERY_MIN_MONTHLY_CENTS) return [];
   const annualCents = monthlyCents * 12;
@@ -378,15 +342,8 @@ function deliveryApps({ txs, now, fmt }: SavingsInput, counted: Set<string>): In
 
 // --- Eating out vs groceries -----------------------------------------------------------------
 
-const DINING_CATEGORY = /dining|eating out|restaurant|take ?out|delivery|fast food|外食/i;
 const DINING_SHARE_THRESHOLD = 0.4;
 const DINING_MIN_MONTHLY_CENTS = 15_000;
-
-/** Spend per category for one transaction, honouring split parts. */
-export function categoryAmounts(tx: InsightTx): Array<{ categoryId: string; categoryName: string; amountCents: number }> {
-  if (tx.splits.length) return tx.splits;
-  return [{ categoryId: tx.categoryId, categoryName: tx.categoryName, amountCents: tx.amountCents }];
-}
 
 function diningShare({ txs, now, fmt }: SavingsInput, counted: ReadonlySet<string>): Insight[] {
   const monthList = observedMonths(previousFullMonths(now, 3), historyStartOf(txs));
@@ -401,11 +358,12 @@ function diningShare({ txs, now, fmt }: SavingsInput, counted: ReadonlySet<strin
   for (const tx of txs) {
     if (tx.type !== "EXPENSE" || !months.has(ymOf(tx.date))) continue;
     for (const part of categoryAmounts(tx)) {
-      if (DINING_CATEGORY.test(part.categoryName)) {
+      const role = categoryRole(part.categoryName);
+      if (role === "dining") {
         dining += part.amountCents;
         if (!counted.has(tx.id)) diningUncounted += part.amountCents;
         if (evidence[evidence.length - 1] !== tx) evidence.push(tx);
-      } else if (GROCERY_CATEGORY.test(part.categoryName)) grocery += part.amountCents;
+      } else if (role === "grocery") grocery += part.amountCents;
     }
   }
   const monthlyDining = Math.round(dining / monthCount);
@@ -436,17 +394,9 @@ function diningShare({ txs, now, fmt }: SavingsInput, counted: ReadonlySet<strin
 
 // --- Bank fees and interest ------------------------------------------------------------------
 
-const FEE_TEXT =
-  /\bnsf\b|non-?sufficient|overdraft|\bmonthly (?:account |plan )?fee\b|service charge|\binterest charge|purchase interest|cash advance (?:fee|interest)|foreign (?:transaction|exchange|currency) fee|\bfx fee\b|\bannual fee\b|\blate (?:payment )?fee\b|\batm fee\b|\bnetwork fee\b/;
-
-export function isBankFee(tx: Pick<InsightTx, "title" | "merchantName" | "pfcPrimary">): boolean {
-  if (tx.pfcPrimary === "BANK_FEES") return true;
-  return [tx.title, tx.merchantName].some((t) => !!t && FEE_TEXT.test(t.toLowerCase()));
-}
-
 function bankFees({ txs, now, fmt }: SavingsInput): Insight[] {
   const since = daysAgo(now, 365);
-  const fees = txs.filter((tx) => tx.type === "EXPENSE" && tx.amountCents > 0 && tx.date >= since && isBankFee(tx));
+  const fees = txs.filter((tx) => tx.type === "EXPENSE" && tx.amountCents > 0 && tx.date >= since && factsOf(tx).bankFee);
   if (fees.length === 0) return [];
   const totalCents = fees.reduce((s, tx) => s + tx.amountCents, 0);
   return [

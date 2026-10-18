@@ -1,13 +1,13 @@
 import type { RecurringCadence, TransactionType } from "@prisma/client";
 import { ymdFromDateUtc } from "@/lib/date-only";
 import { advanceRecurringDate, advanceRecurringDateOnOrAfter } from "@/lib/recurring-transactions";
+import { factsOf } from "./facts";
 import type { Insight, InsightRecurringRule, InsightTx, RecurringPrefill } from "./types";
 import {
   daysBetween,
   evidenceIds,
   median,
   merchantKeyFor,
-  merchantLabelFor,
   mostCommon,
   type MoneyFormatter,
 } from "./util";
@@ -112,7 +112,7 @@ function groupKey(type: TransactionType, merchantKey: string) {
 function coveredGroupKeys(txs: InsightTx[], rules: InsightRecurringRule[]): Set<string> {
   const covered = new Set<string>();
   for (const tx of txs) {
-    if (tx.recurringTransactionId) covered.add(groupKey(tx.type, merchantKeyFor(tx)));
+    if (tx.recurringTransactionId) covered.add(groupKey(tx.type, factsOf(tx).merchantKey));
   }
   for (const rule of rules) {
     if (!rule.enabled) continue;
@@ -130,7 +130,7 @@ export function detectRecurringCandidates(
   const groups = new Map<string, InsightTx[]>();
   for (const tx of txs) {
     if (tx.recurringTransactionId || tx.splits.length > 0 || tx.amountCents <= 0) continue;
-    const merchantKey = merchantKeyFor(tx);
+    const { merchantKey } = factsOf(tx);
     if (!merchantKey) continue;
     const key = groupKey(tx.type, merchantKey);
     if (covered.has(key)) continue;
@@ -173,7 +173,7 @@ function evaluateGroup(unsorted: InsightTx[], now: Date): RecurringCandidate | n
   const last = txs[txs.length - 1];
   if (daysBetween(last.date, now) > band.typicalDays * ACTIVE_GRACE_FACTOR) return null;
 
-  const merchantKey = merchantKeyFor(last);
+  const { merchantKey, merchantLabel } = factsOf(last);
   const categoryId = mostCommon(txs.map((tx) => tx.categoryId)) ?? last.categoryId;
   const accountId = mostCommon(txs.map((tx) => tx.accountId).filter((id): id is string => id != null)) ?? null;
   // Strictly after the last charge — one that landed today is not also the next one.
@@ -182,14 +182,14 @@ function evaluateGroup(unsorted: InsightTx[], now: Date): RecurringCandidate | n
   return {
     key: `recurring:${last.type}:${merchantKey}`,
     merchantKey,
-    label: merchantLabelFor(last),
+    label: merchantLabel,
     type: last.type,
     cadence: band.cadence,
     medianAmountCents,
     txs,
     confidence: Math.round(cadence.regularShare * stableShare * 100) / 100,
     prefill: {
-      name: merchantLabelFor(last).slice(0, 80),
+      name: merchantLabel.slice(0, 80),
       type: last.type,
       // The latest charge, not the median: after a price change the next bill is the new price.
       amountCents: last.amountCents,
