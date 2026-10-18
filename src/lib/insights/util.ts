@@ -84,6 +84,38 @@ export function previousFullMonths(now: Date, count: number): string[] {
   return out;
 }
 
+/** The date of the oldest row: how far back what the user has logged actually goes. */
+export function historyStartOf(txs: ReadonlyArray<Pick<InsightTx, "date">>): Date | null {
+  let start: Date | null = null;
+  for (const tx of txs) if (!start || tx.date < start) start = tx.date;
+  return start;
+}
+
+/**
+ * Those of `months` the user's history covers in full. The month logging began in counts only
+ * when it began on the 1st: a month half logged reads as a month half spent, which would make
+ * every category look like it doubled the month after.
+ */
+export function observedMonths(months: readonly string[], historyStart: Date | null): string[] {
+  if (!historyStart) return [];
+  const firstYm = ymOf(historyStart);
+  const firstIsWhole = historyStart.getUTCDate() === 1;
+  return months.filter((ym) => ym > firstYm || (firstIsWhole && ym === firstYm));
+}
+
+/**
+ * Days of a trailing `windowDays` window that the history covers: whole days since the first
+ * row, so the figure does not shift with the time of day.
+ */
+export function observedDays(now: Date, historyStart: Date | null, windowDays: number): number {
+  if (!historyStart) return 0;
+  const days = Math.floor((now.getTime() - historyStart.getTime()) / DAY_MS);
+  return Math.max(0, Math.min(windowDays, days));
+}
+
+/** A rate over fewer days than this is one or two purchases dressed up as a pattern. */
+export const MIN_OBSERVED_DAYS = 30;
+
 export type MoneyFormatter = (cents: number) => string;
 
 /**

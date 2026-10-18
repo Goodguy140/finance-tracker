@@ -163,7 +163,7 @@ test("habit spending is flagged, and turning it off stops the analysis", async (
   await page.goto("/insights");
   const habitCard = insightCard(page, "habit:CANNABIS");
   await expect(habitCard).toContainText("Cannabis");
-  await expect(habitCard).toContainText("4 purchases in the last 90 days");
+  await expect(habitCard).toContainText("4 purchases in the last 70 days");
 
   await page.getByRole("button", { name: "Turn off habit insights" }).click();
   await expect

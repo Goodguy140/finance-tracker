@@ -1,7 +1,15 @@
 import { OTHER_CATEGORY_ALIASES } from "@/lib/plaid/category-map";
 import { categoryAmounts } from "./savings";
 import type { Insight, InsightBudget, InsightTx } from "./types";
-import { daysAgo, evidenceIds, previousFullMonths, ymOf, type MoneyFormatter } from "./util";
+import {
+  daysAgo,
+  evidenceIds,
+  historyStartOf,
+  observedMonths,
+  previousFullMonths,
+  ymOf,
+  type MoneyFormatter,
+} from "./util";
 
 /**
  * Broader suggestions drawn from the shape of the whole ledger rather than a single merchant:
@@ -54,9 +62,14 @@ function monthlySpendByCategory(txs: InsightTx[], months: Set<string>): MonthlyC
 
 // --- Savings rate ----------------------------------------------------------------------------
 
+/** Fewer fully logged months than this and a monthly comparison is mostly noise. */
+const MIN_OBSERVED_MONTHS = 2;
+
 function savingsRate({ txs, now, fmt }: ImprovementsInput): Insight[] {
-  const monthList = previousFullMonths(now, 3);
+  const monthList = observedMonths(previousFullMonths(now, 3), historyStartOf(txs));
+  if (monthList.length < MIN_OBSERVED_MONTHS) return [];
   const months = new Set(monthList);
+  const monthCount = monthList.length;
   let income = 0;
   let spending = 0;
   let savedExplicitly = 0;
@@ -73,7 +86,7 @@ function savingsRate({ txs, now, fmt }: ImprovementsInput): Insight[] {
   if (income <= 0 || spending <= 0) return [];
   const rate = (income - spending) / income;
   const latest = monthList[monthList.length - 1];
-  const monthlyGap = Math.round((spending - income) / 3);
+  const monthlyGap = Math.round((spending - income) / monthCount);
 
   if (rate < 0) {
     return [
@@ -83,7 +96,7 @@ function savingsRate({ txs, now, fmt }: ImprovementsInput): Insight[] {
         severity: "high",
         title: "Spending ran ahead of income",
         body:
-          `Over the last three months spending was about ${fmt(monthlyGap)} a month more than income. ` +
+          `Over the last ${monthsWord(monthCount)} spending was about ${fmt(monthlyGap)} a month more than income. ` +
           `The rising categories and savings ideas on this page are the quickest places to close the gap.`,
         monthlyCents: monthlyGap,
         evidenceTxIds: [],
@@ -91,8 +104,8 @@ function savingsRate({ txs, now, fmt }: ImprovementsInput): Insight[] {
     ];
   }
   if (rate < 0.1) {
-    const target = Math.round((income * 0.1 - (income - spending)) / 3);
-    const saved = savedExplicitly > 0 ? ` (not counting ${fmt(Math.round(savedExplicitly / 3))} a month you moved to savings)` : "";
+    const target = Math.round((income * 0.1 - (income - spending)) / monthCount);
+    const saved = savedExplicitly > 0 ? ` (not counting ${fmt(Math.round(savedExplicitly / monthCount))} a month you moved to savings)` : "";
     return [
       {
         key: `improve:savings-rate:${latest}`,
@@ -100,7 +113,7 @@ function savingsRate({ txs, now, fmt }: ImprovementsInput): Insight[] {
         severity: "medium",
         title: `About ${Math.max(0, Math.round(rate * 100))}% of income left over`,
         body:
-          `Over the last three months, about ${Math.round(rate * 100)}% of income was left after spending${saved}. ` +
+          `Over the last ${monthsWord(monthCount)}, about ${Math.round(rate * 100)}% of income was left after spending${saved}. ` +
           `A common goal is 10–20%; trimming about ${fmt(target)} a month would reach 10%.`,
         monthlyCents: target,
         evidenceTxIds: [],
@@ -118,8 +131,11 @@ const RISE_MIN_CENTS = 5_000;
 function risingCategories({ txs, now, fmt }: ImprovementsInput): Insight[] {
   const monthList = previousFullMonths(now, 4);
   const latest = monthList[3];
-  const prior = monthList.slice(0, 3);
-  const spend = monthlySpendByCategory(txs, new Set(monthList));
+  // Only months the user was logging in full: an empty or half-logged month in the average
+  // would make steady spending look like it shot up.
+  const prior = observedMonths(monthList.slice(0, 3), historyStartOf(txs));
+  if (prior.length < MIN_OBSERVED_MONTHS) return [];
+  const spend = monthlySpendByCategory(txs, new Set([...prior, latest]));
   const out: Insight[] = [];
   for (const [categoryId, entry] of spend) {
     const current = entry.byMonth.get(latest) ?? 0;
@@ -137,7 +153,7 @@ function risingCategories({ txs, now, fmt }: ImprovementsInput): Insight[] {
       title: `${entry.name} is up ${Math.round((rise / priorAvg) * 100)}%`,
       body:
         `Last month's ${entry.name} spending was ${fmt(current)}, against a ${fmt(Math.round(priorAvg))} average ` +
-        `over the three months before. Worth a look at what changed.`,
+        `over the ${monthsWord(prior.length)} before. Worth a look at what changed.`,
       monthlyCents: Math.round(rise),
       evidenceTxIds: evidenceIds(evidence, 8),
     });
@@ -152,7 +168,8 @@ const UNBUDGETED_MIN_MONTHLY_CENTS = 5_000;
 const FIXED_COST_VARIATION = 0.05;
 
 function unbudgetedCategories({ txs, budgets, now, fmt }: ImprovementsInput): Insight[] {
-  const monthList = previousFullMonths(now, 3);
+  const monthList = observedMonths(previousFullMonths(now, 3), historyStartOf(txs));
+  if (monthList.length < MIN_OBSERVED_MONTHS) return [];
   const budgeted = new Set(budgets.map((b) => b.categoryId));
   const spend = monthlySpendByCategory(txs, new Set(monthList));
   const out: Insight[] = [];
@@ -180,6 +197,10 @@ function unbudgetedCategories({ txs, budgets, now, fmt }: ImprovementsInput): In
     });
   }
   return out.sort((a, b) => (b.monthlyCents ?? 0) - (a.monthlyCents ?? 0)).slice(0, 3);
+}
+
+function monthsWord(count: number): string {
+  return count === 1 ? "month" : count === 2 ? "two months" : "three months";
 }
 
 // --- Data quality ----------------------------------------------------------------------------
