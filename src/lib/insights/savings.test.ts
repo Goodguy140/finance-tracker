@@ -3,7 +3,8 @@ import { NOW, tx } from "./test-fixtures";
 
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-const { detectSavingsOpportunities, isBankFee } = await import("./savings");
+const { detectSavingsOpportunities } = await import("./savings");
+const { isBankFee } = await import("./facts");
 const { detectRecurringCandidates } = await import("./recurring-detection");
 const { moneyFormatter } = await import("./util");
 import type { InsightRecurringRule, InsightTx } from "./types";

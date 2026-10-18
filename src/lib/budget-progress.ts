@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { TransactionType } from "@prisma/client";
 import { endExclusiveOfMonthYm, startOfMonthYm } from "@/lib/dashboard-period";
+import { selectActiveBudgetsByCategory } from "@/lib/active-budgets";
 import { percentUsed } from "@/lib/budget-alerts";
 import { loadRolloverCarries } from "@/lib/budget-rollover";
 import { homeCurrencyOf, inCurrencyWhere } from "@/lib/home-currency";
@@ -51,24 +52,7 @@ export function computeSpendByCategory(expenses: ExpenseForSpend[]): Map<string,
   return spendByCategory;
 }
 
-/**
- * For each category, the most recent budget whose `periodMonth` is on/before `ym`.
- * Budgets carry forward until superseded, matching the dashboard's month view.
- */
-export function selectActiveBudgetsByCategory<T extends { categoryId: string; periodMonth: string }>(
-  budgets: T[],
-  ym: string,
-): Map<string, T> {
-  const active = new Map<string, T>();
-  for (const budget of budgets) {
-    if (budget.periodMonth > ym) continue;
-    const existing = active.get(budget.categoryId);
-    if (!existing || budget.periodMonth > existing.periodMonth) {
-      active.set(budget.categoryId, budget);
-    }
-  }
-  return active;
-}
+export { selectActiveBudgetsByCategory };
 
 type ActiveBudget = {
   id: string;

@@ -79,9 +79,11 @@ Page: `src/app/insights/page.tsx`. Engine: `src/lib/insights/*` (`load.ts` entry
 - **Ways to save** (price increase, streaming overlap, double charge, frequent purchases,
   delivery apps, eating-out share, bank fees; the "could save about $X a year" line adds up
   each idea's `savingCents`, counting shared money once): `savings.ts`
-- **Suggestions** (spending ahead of income, savings rate (by transfers into "Counts as
-  savings" accounts once any is marked, as the score does), category up, no budget, catch-all
-  category, untitled): `improvements.ts`
+- **Suggestions** (the financial score's weakest factors, `score.ts`, listed here instead of on
+  the score card, which keeps them on Reports and under a tag filter; spending ahead of income
+  and savings rate only under a tag, where there is no score (by transfers into "Counts as
+  savings" accounts once any is marked, as the score does); category up last month, no budget,
+  catch-all category, untitled): `improvements.ts`
 - **Dismiss / snooze / restore, tag filter** (a dismissed insight shows again once it is half as
   big again as when dismissed, `InsightDismissal.dismissedCents`): `actions/insights.ts`,
   `src/components/insights/insight-item.tsx`

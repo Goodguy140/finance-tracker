@@ -37,7 +37,7 @@ describe("suggestImprovements", () => {
     ];
     const rising = run(txs).find((i) => i.key.startsWith("improve:rising"));
     expect(rising?.key).toBe("improve:rising:cat-fun:2026-08");
-    expect(rising?.title).toBe("Fun is up 100%");
+    expect(rising?.title).toBe("Fun was up 100% last month");
   });
 
   it("suggests a budget for steady, variable, unbudgeted spend only", () => {
@@ -74,7 +74,7 @@ describe("suggestImprovements", () => {
         tx("2026-08-10", "Store", 30000),
       ];
       const rising = run(txs).find((i) => i.key.startsWith("improve:rising"));
-      expect(rising?.title).toBe("Fun is up 50%");
+      expect(rising?.title).toBe("Fun was up 50% last month");
       expect(rising?.body).toContain("over the two months before");
     });
 

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { loadRolloverCarries } from "@/lib/budget-rollover";
 import { getCountryConfig } from "@/lib/country-config";
@@ -21,11 +22,24 @@ function monthsSince(since: Date, todayYmd: string): string[] {
   return out;
 }
 
-export async function loadFinancialScore(user: {
+export function loadFinancialScore(user: {
   id: string;
   timezone: string | null;
   countryCode: string | null;
 }): Promise<{ score: FinancialScore; currency: string }> {
+  return loadFinancialScoreFor(user.id, user.timezone, user.countryCode);
+}
+
+/**
+ * Cached per request, keyed on plain values (`cache` compares arguments by identity): a page
+ * and the printables built in the same render share one load.
+ */
+const loadFinancialScoreFor = cache(async (
+  userId: string,
+  timezone: string | null,
+  countryCode: string | null,
+): Promise<{ score: FinancialScore; currency: string }> => {
+  const user = { id: userId, timezone, countryCode };
   const todayYmd = currentYmdInTimeZone(user.timezone);
   const since = startOfMonthYm(shiftYm(todayYmd.slice(0, 7), -SCORE_LOOKBACK_MONTHS));
   const currency = getCountryConfig(user.countryCode).defaultCurrency;
@@ -68,4 +82,4 @@ export async function loadFinancialScore(user: {
     ),
   });
   return { score, currency };
-}
+});

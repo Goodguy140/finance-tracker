@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { compareBySeverity } from "@/lib/insights/index";
 import type { Insight, InsightSection } from "@/lib/insights/types";
 
 const SECTION_LABELS: Record<InsightSection, string> = {
@@ -37,8 +38,7 @@ export function InsightsCardBody({ insights, maxItems = 3 }: InsightsCardBodyPro
   const counts = new Map<InsightSection, number>();
   for (const i of insights) counts.set(i.section, (counts.get(i.section) ?? 0) + 1);
   // Most pressing first across every section, unlike the page, which groups by section.
-  const rank = { high: 0, medium: 1, low: 2 } as const;
-  const top = [...insights].sort((a, b) => rank[a.severity] - rank[b.severity]).slice(0, maxItems);
+  const top = [...insights].sort(compareBySeverity).slice(0, maxItems);
 
   return (
     <div className="space-y-3">

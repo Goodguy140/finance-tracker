@@ -1,10 +1,12 @@
 import { TransactionType } from "@prisma/client";
 import { cache } from "react";
+import { loadFinancialScore } from "@/lib/financial-score-data";
 import { homeCurrencyOf, inCurrencyWhere } from "@/lib/home-currency";
 import { prisma } from "@/lib/prisma";
 import { loadSavingsTransfers } from "@/lib/reports/load";
 import { savedByTransferByMonth } from "@/lib/savings-transfers";
 import { buildInsights, type BuiltInsights } from "./index";
+import { scoreInsights } from "./score";
 import type { InsightTx } from "./types";
 import { daysAgo, insightsNow, moneyFormatter, previousFullMonths } from "./util";
 
@@ -41,7 +43,7 @@ export const loadInsights = cache(async (
   const now = insightsNow(timezone, clock);
   const since = daysAgo(now, INSIGHT_HISTORY_DAYS);
   const currency = homeCurrencyOf(countryCode);
-  const [transactions, staged, rules, budgets, preference, dismissals, savings] = await Promise.all([
+  const [transactions, staged, rules, budgets, preference, dismissals, savings, financial] = await Promise.all([
     prisma.transaction.findMany({
       // Transfers are neither spending nor income: no habit, saving or recurring charge
       // should be read off a card payment. Nor is anything in another currency added in.
@@ -82,6 +84,8 @@ export const loadInsights = cache(async (
     prisma.insightDismissal.findMany({ where: { userId }, select: { insightKey: true, snoozedUntil: true, dismissedCents: true } }),
     // What moved into "Counts as savings" accounts: the savings rate the score uses.
     loadSavingsTransfers(userId, since, currency),
+    // The score's suggestions join the list. Not under a tag: the score is of the whole picture.
+    tagId ? null : loadFinancialScore({ id: userId, timezone, countryCode }),
   ]);
 
   const plaidByTx = new Map(staged.map((row) => [row.resolvedTransactionId as string, row]));
@@ -120,6 +124,7 @@ export const loadInsights = cache(async (
     habitsEnabled,
     dismissals,
     toSavingsByMonth,
+    scoreInsights: financial ? scoreInsights(financial.score) : null,
     clock,
   });
 

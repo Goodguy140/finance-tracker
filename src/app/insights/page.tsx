@@ -46,7 +46,7 @@ const SECTIONS: Array<{ id: InsightSection; title: string; description: string; 
   {
     id: "improvement",
     title: "Suggestions",
-    description: "How the last few months compare, and where a budget or a rule would help.",
+    description: "Where your financial score could rise, how the last few months compare, and where a budget or a rule would help.",
     empty: "No suggestions right now.",
   },
 ];
@@ -90,7 +90,12 @@ export default async function InsightsPage({ searchParams }: { searchParams: Sea
         </p>
       </div>
 
-      <FinancialScoreCard score={financial.score} note={tags.length ? "It doesn't change with the tag below" : undefined} />
+      <FinancialScoreCard
+        score={financial.score}
+        note={tags.length ? "It doesn't change with the tag below" : undefined}
+        // Listed with the insights below, except under a tag, which they are not worked out for.
+        showSuggestions={!!tagFilter}
+      />
 
       <SavingsGoalsCard goals={savingsGoals.goals} />
 

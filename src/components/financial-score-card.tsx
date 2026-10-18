@@ -35,7 +35,16 @@ function ScoreRing({ score, band }: { score: number; band: FinancialScoreBand })
  * The overall financial score, shared by Insights and Reports. `note` says how the page's own
  * filters relate to it (Reports has a period and tag picker the score does not follow).
  */
-export function FinancialScoreCard({ score, note }: { score: FinancialScore; note?: string }) {
+export function FinancialScoreCard({
+  score,
+  note,
+  showSuggestions = true,
+}: {
+  score: FinancialScore;
+  note?: string;
+  /** Off on the Insights page, which lists them with the other insights. */
+  showSuggestions?: boolean;
+}) {
   if (score.status === "insufficient") {
     return (
       <section aria-labelledby="financial-score" className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 lg:p-5" data-testid="financial-score">
@@ -96,7 +105,7 @@ export function FinancialScoreCard({ score, note }: { score: FinancialScore; not
         })}
       </ul>
 
-      {score.suggestions.length ? (
+      {showSuggestions && score.suggestions.length ? (
         <div className="mt-4 border-t border-slate-800 pt-3">
           <h3 className="text-sm font-medium text-slate-200">Where to improve</h3>
           <ol className="mt-1.5 list-decimal space-y-1 pl-5 text-sm text-slate-300" data-testid="financial-score-suggestions">

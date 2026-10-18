@@ -3,7 +3,8 @@ import { NOW, tx } from "./test-fixtures";
 
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-const { buildInsights } = await import("./index");
+const { buildInsights, compareBySeverity } = await import("./index");
+import type { Insight } from "./types";
 const { insightsNow, moneyFormatter } = await import("./util");
 
 const txs = [
@@ -54,6 +55,34 @@ describe("buildInsights", () => {
   });
 });
 
+describe("rows dated ahead", () => {
+  it("are left out until their day comes", () => {
+    const gym = ["2026-06-20", "2026-07-20", "2026-08-20", "2026-09-20"].map((d) => tx(d, "Gymbox", 4500));
+    const logged = (rows: typeof gym) =>
+      buildInsights({ ...base, txs: rows }).visible.find((i) => i.key === "recurring:EXPENSE:gymbox")?.body;
+    expect(logged([...gym, tx("2026-10-20", "Gymbox", 4500)])).toBe(logged(gym));
+    expect(logged(gym)).toContain("4 times so far");
+  });
+});
+
+describe("compareBySeverity", () => {
+  it("puts the most pressing first, then the biggest", () => {
+    const make = (key: string, severity: Insight["severity"], annualCents: number): Insight => ({
+      key,
+      section: "saving",
+      severity,
+      title: key,
+      body: "",
+      annualCents,
+      evidenceTxIds: [],
+    });
+    const sorted = [make("a", "low", 90000), make("b", "medium", 1000), make("c", "medium", 5000), make("d", "high", 10)]
+      .sort(compareBySeverity)
+      .map((i) => i.key);
+    expect(sorted).toEqual(["d", "c", "b", "a"]);
+  });
+});
+
 describe("dismissals that come back when an insight grows", () => {
   // Cannabis comes to 12,000 in the window: about 4,058 a month, 48,700 a year.
   const habitSize = () => buildInsights(base).visible.find((i) => i.key === "habit:CANNABIS")!.annualCents!;
@@ -86,5 +115,30 @@ describe("insightsNow", () => {
     const clock = new Date("2026-11-01T01:30:00.000Z");
     expect(insightsNow("America/Toronto", clock).toISOString()).toBe("2026-10-31T12:00:00.000Z");
     expect(insightsNow("UTC", clock).toISOString()).toBe("2026-11-01T12:00:00.000Z");
+  });
+});
+
+describe("score suggestions", () => {
+  const months = ["2026-06", "2026-07", "2026-08"];
+  const overspent = months.flatMap((m) => [
+    tx(`${m}-01`, "Payroll", 300000, { type: "INCOME", categoryId: "s", categoryName: "Salary" }),
+    tx(`${m}-02`, "Rent", 320000, { categoryId: "r", categoryName: "Rent" }),
+  ]);
+  const fromScore: Insight = {
+    key: "score:consistency:2026-09",
+    section: "improvement",
+    severity: "high",
+    title: "Months in the black: 0 of 3 months ended with money left over",
+    body: "Spent more than earned.",
+    evidenceTxIds: [],
+  };
+
+  it("join the list, and stand in for the engine's own savings rate", () => {
+    const own = buildInsights({ ...base, txs: overspent }).visible.map((i) => i.key);
+    expect(own).toContain("improve:savings-rate:2026-08");
+
+    const withScore = buildInsights({ ...base, txs: overspent, scoreInsights: [fromScore] }).visible.map((i) => i.key);
+    expect(withScore).toContain("score:consistency:2026-09");
+    expect(withScore.some((k) => k.startsWith("improve:savings-rate"))).toBe(false);
   });
 });

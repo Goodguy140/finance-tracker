@@ -1,11 +1,11 @@
-import { HABIT_PATTERNS, matchHabit, matchHabitKind } from "./habit-patterns";
+import { factsOf } from "./facts";
+import { HABIT_PATTERNS, matchHabit } from "./habit-patterns";
 import type { HabitKind, Insight, InsightTx } from "./types";
 import {
   DAYS_PER_MONTH,
   daysAgo,
   evidenceIds,
   historyStartOf,
-  merchantLabelFor,
   MIN_OBSERVED_DAYS,
   observedDays,
   type MoneyFormatter,
@@ -43,19 +43,6 @@ export type HabitSummary = {
 
 type HabitHit = { tx: InsightTx; amountCents: number };
 
-/** The part of a transaction that is habit spending, if any. */
-function habitHitsFor(tx: InsightTx): Array<{ kind: HabitKind; hit: HabitHit }> {
-  if (tx.type !== "EXPENSE") return [];
-  const texts = [tx.title, tx.merchantName, tx.note];
-  const whole = matchHabitKind({ texts, pfcDetailed: tx.pfcDetailed, categoryName: tx.splits.length ? null : tx.categoryName });
-  if (whole) return [{ kind: whole, hit: { tx, amountCents: tx.amountCents } }];
-  // A split receipt counts only the parts the user filed under a habit category.
-  return tx.splits.flatMap((part) => {
-    const kind = matchHabitKind({ texts: [], categoryName: part.categoryName });
-    return kind ? [{ kind, hit: { tx, amountCents: part.amountCents } }] : [];
-  });
-}
-
 /**
  * The text a rule should look for to catch this merchant again: the habit words that matched
  * ("lcbo", "tokyo smoke", "fire & flower"), which catch every branch without naming one.
@@ -78,7 +65,8 @@ export function summarizeHabitSpending(txs: InsightTx[], now: Date): HabitSummar
   const byKind = new Map<HabitKind, HabitHit[]>();
   for (const tx of txs) {
     if (tx.date < windowStart || tx.date > now) continue;
-    for (const { kind, hit } of habitHitsFor(tx)) {
+    for (const { kind, amountCents } of factsOf(tx).habitParts) {
+      const hit = { tx, amountCents };
       const list = byKind.get(kind);
       if (list) list.push(hit);
       else byKind.set(kind, [hit]);
@@ -120,7 +108,7 @@ export function summarizeHabitSpending(txs: InsightTx[], now: Date): HabitSummar
       monthlyCents: Math.round(totalCents / (windowDays / DAYS_PER_MONTH)),
       trend,
       windowDays,
-      merchants: rankedDistinct(txList.map((tx) => merchantLabelFor(tx))),
+      merchants: rankedDistinct(txList.map((tx) => factsOf(tx).merchantLabel)),
       rulePatterns: rankedDistinct(txList.map(rulePatternFor)),
       txs: txList,
     });
