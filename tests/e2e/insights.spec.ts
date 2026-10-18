@@ -109,7 +109,8 @@ test("dismissing a suggestion hides it until it is restored", async ({ page }, t
   await insightCard(page, key).getByRole("button", { name: "Not recurring" }).click();
   await expect
     .poll(() => prisma.insightDismissal.findFirst({ where: { userId: user.id, insightKey: key } }), { timeout: 10_000 })
-    .toMatchObject({ snoozedUntil: null });
+    // Its size a year when dismissed, so it can come back if it grows well past that.
+    .toMatchObject({ snoozedUntil: null, dismissedCents: 4500 * 12 });
 
   await page.reload();
   const recurringSection = page.getByRole("region", { name: /Recurring charges we noticed/ });
