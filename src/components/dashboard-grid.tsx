@@ -519,7 +519,9 @@ export function DashboardGrid({
     });
     if (!ok) return;
     mutate(() => JSON.parse(JSON.stringify(DEFAULT_LAYOUT)) as DashboardLayout);
-  }, [askConfirm, mutate]);
+    // The default may bring back a card whose data was not loaded; see onAddCard.
+    void flush().then(() => router.refresh());
+  }, [askConfirm, mutate, flush, router]);
 
   const canAddColumn = stored.columns.length < MAX_COLUMNS;
 
@@ -529,8 +531,13 @@ export function DashboardGrid({
   );
 
   const onAddCard = useCallback(
-    (cardId: DashboardCardId, target: AddCardTarget) => mutate((current) => addCard(current, cardId, target)),
-    [mutate],
+    (cardId: DashboardCardId, target: AddCardTarget) => {
+      mutate((current) => addCard(current, cardId, target));
+      // A card off the dashboard may not have had its data loaded (Insights is skipped), so
+      // save now and re-render, as a setting change does.
+      void flush().then(() => router.refresh());
+    },
+    [mutate, flush, router],
   );
 
   const removedCards = useMemo(

@@ -516,3 +516,35 @@ test("a removed card stays off across a reload and can be added back as a tab", 
     )
     .toEqual({ hidden: [], stacked: true });
 });
+
+test("Insights taken off the dashboard is not worked out, and shows its insights once added back", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const user = await signInFreshUser(page, "insights-off");
+  expect((await columnCards(page)).flat()).toContain("insights+investments");
+
+  await page.getByRole("button", { name: "Edit layout" }).click();
+  await page.getByRole("button", { name: "Remove Insights" }).click();
+  await page.getByRole("button", { name: "Done" }).click();
+  await expect
+    .poll(
+      async () => {
+        const row = await prisma.dashboardLayout.findUnique({ where: { userId: user.id } });
+        return row ? (JSON.parse(row.layoutJson) as { hidden?: string[] }).hidden ?? null : null;
+      },
+      { timeout: 10_000 },
+    )
+    .toEqual(["insights"]);
+
+  // Reloaded with the card off, the page does not load insights; adding it back has to fetch
+  // them rather than show the placeholder it was rendered with.
+  await page.reload();
+  await expectDashboardHome(page);
+  await page.getByRole("button", { name: "Edit layout" }).click();
+  await page.getByRole("button", { name: "Add card (1)" }).click();
+  await page.getByRole("button", { name: "Add Insights" }).click();
+  const card = page.locator('[data-card-id="insights"]');
+  await expect(card).toContainText("Nothing needs your attention", { timeout: 10_000 });
+  await expect(card).not.toContainText("Loading insights");
+});

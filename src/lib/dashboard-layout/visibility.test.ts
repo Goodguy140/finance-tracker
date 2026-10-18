@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_LAYOUT } from "./cards";
 import { filterToAvailable, reconcileDashboardLayout } from "./normalize";
 import { CARD_IDS, type DashboardCardId, type DashboardLayout } from "./schema";
-import { addCard, canAddCardTo, canRemoveCard, hiddenCards, removeCard, removedCardsInOrder } from "./visibility";
+import { addCard, canAddCardTo, canRemoveCard, hiddenCards, isCardPlaced, removeCard, removedCardsInOrder } from "./visibility";
 
 const ALL: readonly DashboardCardId[] = CARD_IDS;
 
@@ -183,5 +183,16 @@ describe("reconciling removed cards", () => {
   it("lists removed cards in registry order", () => {
     const layout = removeCard(removeCard(fresh(), "recurring"), "budgets");
     expect(removedCardsInOrder(layout)).toEqual(["budgets", "recurring"]);
+  });
+});
+
+describe("isCardPlaced", () => {
+  it("is true for a card on the dashboard, a tab included, and false once removed", () => {
+    // Investments is a tab beside Insights in the default layout.
+    expect(isCardPlaced(fresh(), "insights")).toBe(true);
+    expect(isCardPlaced(fresh(), "investments")).toBe(true);
+    const removed = removeCard(fresh(), "insights");
+    expect(isCardPlaced(removed, "insights")).toBe(false);
+    expect(isCardPlaced(reconcileDashboardLayout(JSON.stringify(removed), ALL).stored, "insights")).toBe(false);
   });
 });
