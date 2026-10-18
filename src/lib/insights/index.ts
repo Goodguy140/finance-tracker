@@ -1,4 +1,5 @@
 import { detectAhead, type AheadInput } from "./ahead";
+import { detectChanges } from "./changes";
 import { habitInsights, summarizeHabitSpending } from "./habits";
 import { suggestImprovements } from "./improvements";
 import { detectRecurringCandidates, recurringCandidateInsights } from "./recurring-detection";
@@ -94,6 +95,7 @@ export function buildInsights(input: BuildInsightsInput): BuiltInsights {
   const all = [
     ...detectAhead({ projection: input.projection ?? null, budgets: input.budgetProgress ?? null, rules, now, fmt }),
     ...recurringCandidateInsights(candidates, fmt),
+    ...detectChanges({ txs, rules, now, fmt }),
     // Turned off means not computed at all, not merely hidden.
     ...(input.habitsEnabled ? habitInsights(summarizeHabitSpending(txs, now), fmt) : []),
     ...detectSavingsOpportunities({ txs, rules, candidates, now, fmt }),

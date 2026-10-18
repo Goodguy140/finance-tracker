@@ -20,7 +20,7 @@ import {
  * cadence, at a steady amount, and still be happening.
  */
 
-type CadenceBand = { cadence: RecurringCadence; minDays: number; maxDays: number; typicalDays: number; minCount: number };
+export type CadenceBand = { cadence: RecurringCadence; minDays: number; maxDays: number; typicalDays: number; minCount: number };
 
 /** Ordered shortest first; bands do not overlap. BIENNIAL is out of reach of a year of history. */
 export const CADENCE_BANDS: CadenceBand[] = [
@@ -32,7 +32,7 @@ export const CADENCE_BANDS: CadenceBand[] = [
 ];
 
 /** Share of gaps that must fall in the band, and of amounts that must sit near the median. */
-const MIN_REGULAR_SHARE = 0.75;
+export const MIN_REGULAR_SHARE = 0.75;
 const AMOUNT_TOLERANCE_PCT = 0.15;
 const AMOUNT_TOLERANCE_MIN_CENTS = 200;
 /** A series is over once it has missed half a cycle beyond its next due date. */
@@ -127,27 +127,29 @@ export function detectRecurringCandidates(
   now: Date,
 ): RecurringCandidate[] {
   const covered = coveredGroupKeys(txs, rules);
-  const groups = new Map<string, InsightTx[]>();
-  for (const tx of txs) {
-    if (tx.recurringTransactionId || tx.splits.length > 0 || tx.amountCents <= 0) continue;
-    const { merchantKey } = factsOf(tx);
-    if (!merchantKey) continue;
-    const key = groupKey(tx.type, merchantKey);
-    if (covered.has(key)) continue;
-    const list = groups.get(key);
-    if (list) list.push(tx);
-    else groups.set(key, [tx]);
-  }
-
   const candidates: RecurringCandidate[] = [];
-  for (const list of groups.values()) {
+  for (const [key, list] of merchantGroups(txs.filter((tx) => !tx.recurringTransactionId))) {
+    if (covered.has(key)) continue;
     const candidate = evaluateGroup(list, now);
     if (candidate) candidates.push(candidate);
   }
   return candidates.sort((a, b) => b.confidence - a.confidence || a.label.localeCompare(b.label));
 }
 
-function evaluateGroup(unsorted: InsightTx[], now: Date): RecurringCandidate | null {
+/**
+ * A run of transactions from one merchant on one cadence at a steady amount, whether or not a
+ * rule covers it and whether or not it is still going: what the recurring prompt and the
+ * "something changed" insights both start from.
+ */
+export type RecurringSeries = {
+  band: CadenceBand;
+  medianAmountCents: number;
+  /** Oldest first. */
+  txs: InsightTx[];
+  confidence: number;
+};
+
+export function seriesOf(unsorted: readonly InsightTx[]): RecurringSeries | null {
   if (unsorted.length < 2) return null;
   const txs = [...unsorted].sort((a, b) => a.date.getTime() - b.date.getTime());
   const gaps: number[] = [];
@@ -169,6 +171,28 @@ function evaluateGroup(unsorted: InsightTx[], now: Date): RecurringCandidate | n
     medianAmountCents = changed;
     stableShare = PRICE_CHANGE_CONFIDENCE;
   }
+  return { band, medianAmountCents, txs, confidence: Math.round(cadence.regularShare * stableShare * 100) / 100 };
+}
+
+/** Rows by type and merchant, as series are looked for: positive, unsplit, with a merchant. */
+export function merchantGroups(txs: readonly InsightTx[]): Map<string, InsightTx[]> {
+  const groups = new Map<string, InsightTx[]>();
+  for (const tx of txs) {
+    if (tx.splits.length > 0 || tx.amountCents <= 0) continue;
+    const { merchantKey } = factsOf(tx);
+    if (!merchantKey) continue;
+    const key = groupKey(tx.type, merchantKey);
+    const list = groups.get(key);
+    if (list) list.push(tx);
+    else groups.set(key, [tx]);
+  }
+  return groups;
+}
+
+function evaluateGroup(unsorted: InsightTx[], now: Date): RecurringCandidate | null {
+  const series = seriesOf(unsorted);
+  if (!series) return null;
+  const { band, medianAmountCents, txs } = series;
 
   const last = txs[txs.length - 1];
   if (daysBetween(last.date, now) > band.typicalDays * ACTIVE_GRACE_FACTOR) return null;
@@ -187,7 +211,7 @@ function evaluateGroup(unsorted: InsightTx[], now: Date): RecurringCandidate | n
     cadence: band.cadence,
     medianAmountCents,
     txs,
-    confidence: Math.round(cadence.regularShare * stableShare * 100) / 100,
+    confidence: series.confidence,
     prefill: {
       name: merchantLabel.slice(0, 80),
       type: last.type,
@@ -201,7 +225,7 @@ function evaluateGroup(unsorted: InsightTx[], now: Date): RecurringCandidate | n
   };
 }
 
-const CADENCE_WORDS: Record<RecurringCadence, string> = {
+export const CADENCE_WORDS: Record<RecurringCadence, string> = {
   WEEKLY: "every week",
   BIWEEKLY: "every two weeks",
   MONTHLY: "every month",

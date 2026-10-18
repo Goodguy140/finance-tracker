@@ -77,12 +77,15 @@ Page: `src/app/insights/page.tsx`. Engine: `src/lib/insights/*` (`load.ts` entry
 - **Coming up** (an account the recurring bills take below zero, from `projectBalances` and a
   balance read in the last month; a budget over, on pace to go over or nearly used this month,
   left off the dashboard card, which has the budget alerts panel; a yearly charge due within 30
-  days): `ahead.ts`
-- **Recurring charges we noticed** (track as recurring): `recurring-detection.ts`
+  days; pay that is late or came in short, `changes.ts`): `ahead.ts`
+- **Recurring charges we noticed** (track as recurring): `recurring-detection.ts`; a new
+  streaming subscription or a trial turned paid, and a recurring entry with no charge for 1.5
+  cycles: `changes.ts`
 - **Spending habits** (track separately, on/off): `habits.ts`, `habit-patterns.ts`
 - **Ways to save** (price increase, streaming overlap, double charge, frequent purchases,
-  delivery apps, eating-out share, bank fees; the "could save about $X a year" line adds up
-  each idea's `savingCents`, counting shared money once): `savings.ts`
+  delivery apps, eating-out share, bank fees, a scheduled bill far above its usual
+  (`changes.ts`); the "could save about $X a year" line adds up each idea's `savingCents`,
+  counting shared money once): `savings.ts`
 - **Suggestions** (the financial score's weakest factors, `score.ts`, listed here instead of on
   the score card, which keeps them on Reports and under a tag filter; spending ahead of income
   and savings rate only under a tag, where there is no score (by transfers into "Counts as
