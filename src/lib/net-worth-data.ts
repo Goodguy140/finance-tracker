@@ -65,6 +65,7 @@ export async function loadProjectionRules(userId: string): Promise<ProjectableRu
     where: { userId, enabled: true, type: { in: ["EXPENSE", "INCOME"] } },
     select: {
       accountId: true,
+      name: true,
       type: true,
       amountCents: true,
       cadence: true,

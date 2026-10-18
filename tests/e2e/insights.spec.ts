@@ -206,3 +206,44 @@ test("tracking a habit separately creates its category and a rule ahead of the o
   await page.reload();
   await expect(insightCard(page, "habit:ALCOHOL")).toContainText("Tracked in Alcohol");
 });
+
+test("Coming up lists a budget gone over and a yearly charge due soon; the dashboard card leaves budgets to its own panel", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+  const { user, login } = await seedUser(page, "ahead");
+  const [account, dining] = await Promise.all([
+    prisma.account.findFirstOrThrow({ where: { userId: user.id } }),
+    prisma.category.findFirstOrThrow({ where: { userId: user.id, kind: CategoryKind.EXPENSE, name: "Fun" } }),
+  ]);
+  // The user's own today, so the spend lands in the month the budget is checked for.
+  const today = new Date(`${new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto" }).format(new Date())}T00:00:00.000Z`);
+  const renewsOn = new Date(today.getTime() + 10 * 24 * 60 * 60 * 1000);
+  const ym = today.toISOString().slice(0, 7);
+  await prisma.budget.create({ data: { userId: user.id, categoryId: dining.id, periodMonth: "2020-01", limitCents: 10_000 } });
+  await prisma.transaction.create({
+    data: { userId: user.id, accountId: account.id, categoryId: dining.id, type: TransactionType.EXPENSE, amountCents: 15_000, title: "Bistro", date: today },
+  });
+  const renewal = await prisma.recurringTransaction.create({
+    data: {
+      userId: user.id,
+      accountId: account.id,
+      categoryId: dining.id,
+      type: TransactionType.EXPENSE,
+      name: "Warehouse club",
+      amountCents: 12_000,
+      cadence: "YEARLY",
+      nextExpectedDate: renewsOn,
+    },
+  });
+  const budgetKey = `ahead:budget:${dining.id}:${ym}:over`;
+  const renewalKey = `ahead:renewal:${renewal.id}:${renewsOn.toISOString().slice(0, 10)}`;
+
+  await login();
+  const card = page.getByRole("region", { name: "Insights" });
+  await expect(card).toContainText("Warehouse club is due in 10 days");
+  await expect(card).not.toContainText("Fun is $50.00 over budget");
+
+  await page.goto("/insights");
+  const section = page.getByRole("region", { name: /Coming up/ });
+  await expect(section.locator(`[data-insight-key="${budgetKey}"]`)).toContainText("Fun is $50.00 over budget");
+  await expect(section.locator(`[data-insight-key="${renewalKey}"]`)).toContainText("$120 on");
+});

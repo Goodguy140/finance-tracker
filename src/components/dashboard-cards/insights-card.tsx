@@ -3,6 +3,7 @@ import { compareBySeverity } from "@/lib/insights/index";
 import type { Insight, InsightSection } from "@/lib/insights/types";
 
 const SECTION_LABELS: Record<InsightSection, string> = {
+  ahead: "Coming up",
   recurring: "Recurring",
   habit: "Habits",
   saving: "Savings",

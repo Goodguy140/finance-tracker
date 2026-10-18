@@ -25,6 +25,12 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 const SECTIONS: Array<{ id: InsightSection; title: string; description: string; empty: string }> = [
   {
+    id: "ahead",
+    title: "Coming up",
+    description: "Balances your recurring bills could run low, budgets running ahead this month, and yearly charges due soon.",
+    empty: "Nothing coming up that needs a look.",
+  },
+  {
     id: "recurring",
     title: "Recurring charges we noticed",
     description: "Transactions that repeat on a schedule but have no recurring entry yet.",

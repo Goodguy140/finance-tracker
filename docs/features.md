@@ -74,6 +74,10 @@ Page: `src/app/insights/page.tsx`. Engine: `src/lib/insights/*` (`load.ts` entry
   months in the black): `financial-score-card.tsx`, `src/lib/financial-score.ts`,
   `financial-score-data.ts`
 - **Savings goals card**: `savings-goals-card.tsx`, `src/lib/savings-goals.ts`
+- **Coming up** (an account the recurring bills take below zero, from `projectBalances` and a
+  balance read in the last month; a budget over, on pace to go over or nearly used this month,
+  left off the dashboard card, which has the budget alerts panel; a yearly charge due within 30
+  days): `ahead.ts`
 - **Recurring charges we noticed** (track as recurring): `recurring-detection.ts`
 - **Spending habits** (track separately, on/off): `habits.ts`, `habit-patterns.ts`
 - **Ways to save** (price increase, streaming overlap, double charge, frequent purchases,

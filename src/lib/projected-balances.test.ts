@@ -76,3 +76,14 @@ describe("projectBalances", () => {
     expect(result.netCents).toEqual([100_000, 100_000, 100_000, 100_000]);
   });
 });
+
+describe("projectBalances belowZero", () => {
+  it("names the rule whose occurrence first takes the account below zero", () => {
+    const result = projectBalances({
+      ...TODAY,
+      accounts: [account("chq", 100_000)],
+      rules: [{ ...rule("chq", "2026-10-20", 40_000), name: "Hydro" }, { ...rule("chq", "2026-11-01", 90_000), name: "Rent" }],
+    });
+    expect(result.accounts[0].belowZero).toMatchObject({ cause: "Rent" });
+  });
+});

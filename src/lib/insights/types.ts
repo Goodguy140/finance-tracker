@@ -34,11 +34,13 @@ export type InsightRecurringRule = {
   cadence: RecurringCadence;
   enabled: boolean;
   categoryId: string;
+  /** When it is next due; only the "Coming up" renewals read it. */
+  nextExpectedDate?: Date;
 };
 
 export type InsightBudget = { categoryId: string; periodMonth: string };
 
-export type InsightSection = "recurring" | "habit" | "saving" | "improvement";
+export type InsightSection = "ahead" | "recurring" | "habit" | "saving" | "improvement";
 export type InsightSeverity = "high" | "medium" | "low";
 
 export type HabitKind = "TOBACCO_VAPE" | "CANNABIS" | "ALCOHOL" | "GAMBLING" | "GAMING_PURCHASES";

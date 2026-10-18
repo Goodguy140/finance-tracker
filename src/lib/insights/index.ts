@@ -1,3 +1,4 @@
+import { detectAhead, type AheadInput } from "./ahead";
 import { habitInsights, summarizeHabitSpending } from "./habits";
 import { suggestImprovements } from "./improvements";
 import { detectRecurringCandidates, recurringCandidateInsights } from "./recurring-detection";
@@ -29,6 +30,9 @@ export type BuildInsightsInput = {
    * black factors say the same, measured the same way.
    */
   scoreInsights?: Insight[] | null;
+  /** See `AheadInput`; left out, nothing about balances or budgets is said. */
+  projection?: AheadInput["projection"];
+  budgetProgress?: AheadInput["budgets"];
   /**
    * The actual time, for whether a snooze has run out. `now` is the user's local date at noon
    * UTC, so the calendar months the detectors work in are the user's own.
@@ -43,7 +47,7 @@ export type BuiltInsights = {
   dismissed: Array<Insight & { snoozedUntil: Date | null }>;
 };
 
-export const SECTION_ORDER: InsightSection[] = ["recurring", "habit", "saving", "improvement"];
+export const SECTION_ORDER: InsightSection[] = ["ahead", "recurring", "habit", "saving", "improvement"];
 const SEVERITY_ORDER: Record<InsightSeverity, number> = { high: 0, medium: 1, low: 2 };
 
 export function compareInsights(a: Insight, b: Insight): number {
@@ -88,6 +92,7 @@ export function buildInsights(input: BuildInsightsInput): BuiltInsights {
   const txs = input.txs.filter((tx) => tx.date <= now);
   const candidates = detectRecurringCandidates(txs, rules, now);
   const all = [
+    ...detectAhead({ projection: input.projection ?? null, budgets: input.budgetProgress ?? null, rules, now, fmt }),
     ...recurringCandidateInsights(candidates, fmt),
     // Turned off means not computed at all, not merely hidden.
     ...(input.habitsEnabled ? habitInsights(summarizeHabitSpending(txs, now), fmt) : []),

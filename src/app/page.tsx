@@ -1146,7 +1146,11 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     insights: {
       subtitle: "From your last year of transactions",
       body: insights ? (
-        <InsightsCardBody insights={insights.visible} maxItems={cardSettings.insights?.maxItems} />
+        <InsightsCardBody
+          // The budget alerts panel on this page already says how each budget is going.
+          insights={insights.visible.filter((i) => !i.key.startsWith("ahead:budget:"))}
+          maxItems={cardSettings.insights?.maxItems}
+        />
       ) : (
         <p className="text-sm text-slate-400">Insights could not be loaded right now.</p>
       ),
