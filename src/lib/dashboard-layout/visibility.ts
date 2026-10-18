@@ -35,6 +35,11 @@ function placedCards(layout: DashboardLayout): DashboardCardId[] {
   return layout.columns.flatMap((column) => column.slots.flatMap((slot) => slot.cards));
 }
 
+/** Whether a card is on the dashboard: in a slot, as its own card or a tab of a stack. */
+export function isCardPlaced(layout: DashboardLayout, cardId: DashboardCardId): boolean {
+  return placedCards(layout).includes(cardId);
+}
+
 /** The last card on the dashboard cannot be removed: an empty dashboard has no way back. */
 export function canRemoveCard(layout: DashboardLayout, cardId: DashboardCardId): boolean {
   const placed = placedCards(layout);

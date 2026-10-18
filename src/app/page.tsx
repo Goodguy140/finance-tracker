@@ -20,8 +20,10 @@ import { loadContributionRoomData } from "@/lib/contribution-room-data";
 import { isRegisteredAccountType } from "@/lib/contribution-room";
 import { InvestmentsCardBody, type InvestmentActivityItem } from "@/components/dashboard-cards/investments-card";
 import { RefreshLinkedAccountsButton } from "@/components/refresh-linked-accounts";
-import { readDashboardLayout } from "@/lib/dashboard-layout/read";
-import type { DashboardCardId } from "@/lib/dashboard-layout/schema";
+import { reconcileDashboardLayout } from "@/lib/dashboard-layout/normalize";
+import { readDashboardLayoutJson } from "@/lib/dashboard-layout/read";
+import { CARD_IDS, type DashboardCardId } from "@/lib/dashboard-layout/schema";
+import { isCardPlaced } from "@/lib/dashboard-layout/visibility";
 import {
   budgetPeriodMonthInYtd,
   describeDashboardPeriod,
@@ -79,7 +81,7 @@ import {
   recurringOccurrenceInMonth,
 } from "@/lib/recurring-transactions";
 import { currentYmdInTimeZone, currentYmInTimeZone } from "@/lib/period-month";
-import { loadInsights } from "@/lib/insights/load";
+import { loadInsights, type LoadedInsights } from "@/lib/insights/load";
 import { prisma } from "@/lib/prisma";
 import { resolveTagFilter } from "@/lib/tags";
 import { listTags } from "@/lib/tags-server";
@@ -145,12 +147,23 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   } catch (err) {
     console.error("[recurring] auto-post on dashboard load failed", err);
   }
-  // Started now, awaited with the layout: it reads its own year of history, independent of
-  // the period on screen. A failure costs the card, never the dashboard.
-  const insightsPromise = loadInsights(user.id, user.countryCode, user.timezone).catch((err) => {
-    console.error("[insights] loading failed", err);
-    return null;
-  });
+  // The layout is read first: the insights card is the costliest on the page (a year of
+  // history, balances, budgets, the score), and a user who took it off the dashboard should
+  // not pay for it. Every card id counts as available here, so a card this render happens not
+  // to produce still counts as placed.
+  const layoutJsonPromise = readDashboardLayoutJson(user.id);
+  // Started now, awaited with the rest: it reads its own year of history, independent of the
+  // period on screen. A failure costs the card, never the dashboard.
+  const insightsPromise = layoutJsonPromise
+    .then<LoadedInsights | "not-shown">((json) =>
+      isCardPlaced(reconcileDashboardLayout(json, CARD_IDS).stored, "insights")
+        ? loadInsights(user.id, user.countryCode, user.timezone)
+        : ("not-shown" as const),
+    )
+    .catch((err) => {
+      console.error("[insights] loading failed", err);
+      return null;
+    });
   const anchorYm = currentYmInTimeZone(user.timezone, now);
   // Every total is in this currency. Entries on accounts in another one are still listed, at
   // their own currency, but kept out of the sums: there is no conversion to add them with.
@@ -908,7 +921,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   // a card is harmless — there is no need to write the repaired version back from here, and
   // a render is the wrong place for a write in any case. It is persisted the next time the
   // user changes anything.
-  const { stored: storedLayout } = await readDashboardLayout(user.id, availableCardIds);
+  const { stored: storedLayout } = reconcileDashboardLayout(await layoutJsonPromise, availableCardIds);
   const cardSettings = storedLayout.settings;
   // Built after the layout is read, since the card's settings pick the comparison. The
   // comparison months are the last one or three before the viewed month — the same window
@@ -1145,7 +1158,10 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     },
     insights: {
       subtitle: "From your last year of transactions",
-      body: insights ? (
+      // Not loaded while the card is off the dashboard; adding it back refreshes the page.
+      body: insights === "not-shown" ? (
+        <p className="text-sm text-slate-400">Loading insights…</p>
+      ) : insights ? (
         <InsightsCardBody
           // The budget alerts panel and the Expense Log's "Owed to you" list on this page
           // already say these.
