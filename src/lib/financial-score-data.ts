@@ -37,7 +37,8 @@ export async function loadFinancialScore(user: {
       select: { categoryId: true, periodMonth: true, limitCents: true, category: { select: { name: true } } },
     }),
     prisma.recurringTransaction.findMany({
-      where: { userId: user.id, enabled: true },
+      // A bill on an account in another currency can't be weighed against home-currency income.
+      where: { userId: user.id, enabled: true, account: { currency } },
       select: { name: true, type: true, amountCents: true, cadence: true, enabled: true, endDate: true },
     }),
     loadBalanceInputs(user.id),

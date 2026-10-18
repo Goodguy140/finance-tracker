@@ -2,9 +2,11 @@ import { TransactionType } from "@prisma/client";
 import { cache } from "react";
 import { homeCurrencyOf, inCurrencyWhere } from "@/lib/home-currency";
 import { prisma } from "@/lib/prisma";
+import { loadSavingsTransfers } from "@/lib/reports/load";
+import { savedByTransferByMonth } from "@/lib/savings-transfers";
 import { buildInsights, type BuiltInsights } from "./index";
 import type { InsightTx } from "./types";
-import { daysAgo, moneyFormatter } from "./util";
+import { daysAgo, insightsNow, moneyFormatter, previousFullMonths } from "./util";
 
 /**
  * A little over a year, so a yearly charge can be seen twice and every monthly comparison has
@@ -26,12 +28,20 @@ export type LoadedInsights = BuiltInsights & {
  *
  * With `tagId`, everything is worked out from the transactions carrying that tag alone, as if
  * they were the whole history: the Insights page's `?tag=` filter.
+ *
+ * The detectors work in the user's own calendar (`insightsNow`), as the financial score does.
  */
-export const loadInsights = cache(async (userId: string, countryCode: string, tagId: string | null = null): Promise<LoadedInsights> => {
-  const now = new Date();
+export const loadInsights = cache(async (
+  userId: string,
+  countryCode: string,
+  timezone: string | null,
+  tagId: string | null = null,
+): Promise<LoadedInsights> => {
+  const clock = new Date();
+  const now = insightsNow(timezone, clock);
   const since = daysAgo(now, INSIGHT_HISTORY_DAYS);
   const currency = homeCurrencyOf(countryCode);
-  const [transactions, staged, rules, budgets, preference, dismissals] = await Promise.all([
+  const [transactions, staged, rules, budgets, preference, dismissals, savings] = await Promise.all([
     prisma.transaction.findMany({
       // Transfers are neither spending nor income: no habit, saving or recurring charge
       // should be read off a card payment. Nor is anything in another currency added in.
@@ -70,6 +80,8 @@ export const loadInsights = cache(async (userId: string, countryCode: string, ta
     prisma.budget.findMany({ where: { userId }, select: { categoryId: true, periodMonth: true } }),
     prisma.insightPreference.findUnique({ where: { userId }, select: { habitDetectionEnabled: true } }),
     prisma.insightDismissal.findMany({ where: { userId }, select: { insightKey: true, snoozedUntil: true } }),
+    // What moved into "Counts as savings" accounts: the savings rate the score uses.
+    loadSavingsTransfers(userId, since, currency),
   ]);
 
   const plaidByTx = new Map(staged.map((row) => [row.resolvedTransactionId as string, row]));
@@ -94,6 +106,11 @@ export const loadInsights = cache(async (userId: string, countryCode: string, ta
   });
 
   const habitsEnabled = preference?.habitDetectionEnabled ?? true;
+  const savingsTxs = tagId ? savings.txs.filter((tx) => tx.tagIds?.includes(tagId)) : savings.txs;
+  const toSavingsByMonth =
+    savings.savingsAccountIds.size > 0
+      ? savedByTransferByMonth(savingsTxs, savings.savingsAccountIds, previousFullMonths(now, 3))
+      : null;
   const built = buildInsights({
     txs,
     rules,
@@ -102,6 +119,8 @@ export const loadInsights = cache(async (userId: string, countryCode: string, ta
     fmt: moneyFormatter(currency),
     habitsEnabled,
     dismissals,
+    toSavingsByMonth,
+    clock,
   });
 
   const byId = new Map(txs.map((tx) => [tx.id, tx]));

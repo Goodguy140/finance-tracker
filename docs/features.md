@@ -77,8 +77,10 @@ Page: `src/app/insights/page.tsx`. Engine: `src/lib/insights/*` (`load.ts` entry
 - **Recurring charges we noticed** (track as recurring): `recurring-detection.ts`
 - **Spending habits** (track separately, on/off): `habits.ts`, `habit-patterns.ts`
 - **Ways to save** (price increase, streaming overlap, double charge, frequent purchases,
-  delivery apps, eating-out share, bank fees): `savings.ts`
-- **Suggestions** (spending ahead of income, left-over share, category up, no budget, catch-all
+  delivery apps, eating-out share, bank fees; the "could save about $X a year" line adds up
+  each idea's `savingCents`, counting shared money once): `savings.ts`
+- **Suggestions** (spending ahead of income, savings rate (by transfers into "Counts as
+  savings" accounts once any is marked, as the score does), category up, no budget, catch-all
   category, untitled): `improvements.ts`
 - **Dismiss / snooze / restore, tag filter**: `actions/insights.ts`,
   `src/components/insights/insight-item.tsx`

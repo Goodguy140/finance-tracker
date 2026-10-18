@@ -1,4 +1,6 @@
+import { dateFromYmd } from "@/lib/date-only";
 import { normalizeExpenseTitleKey } from "@/lib/expense-title-suggestions";
+import { currentYmdInTimeZone } from "@/lib/period-month";
 import { normalizeMerchant, titleCaseMerchant } from "@/lib/plaid/merchant-text";
 import type { InsightTx } from "./types";
 
@@ -8,6 +10,15 @@ export const DAYS_PER_MONTH = 365.25 / 12;
 
 export function daysBetween(a: Date, b: Date): number {
   return Math.round((b.getTime() - a.getTime()) / DAY_MS);
+}
+
+/**
+ * What the detectors take as "now": noon UTC on the user's own calendar date. Rows are stored
+ * as UTC midnight of their day, so this makes "last month" the user's last month rather than
+ * UTC's, which flips on the evening of the 31st anywhere west of Greenwich.
+ */
+export function insightsNow(timezone: string | null, clock: Date = new Date()): Date {
+  return new Date(dateFromYmd(currentYmdInTimeZone(timezone, clock)).getTime() + DAY_MS / 2);
 }
 
 export function daysAgo(now: Date, days: number): Date {

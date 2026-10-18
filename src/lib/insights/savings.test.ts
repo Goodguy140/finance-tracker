@@ -40,6 +40,45 @@ describe("detectSavingsOpportunities", () => {
     expect(run(txs.slice(0, 2)).some((i) => i.key.startsWith("saving:streaming"))).toBe(false);
   });
 
+  describe("what each idea would save", () => {
+    it("counts money two ideas share once: delivery orders filed under dining", () => {
+      // Every meal out is an Uber Eats order, so cooking more saves nothing the delivery idea
+      // has not already counted.
+      const txs = ["2026-06", "2026-07", "2026-08", "2026-09"].flatMap((m) =>
+        ["03", "08", "13", "18", "23"].map((d) => tx(`${m}-${d}`, "UBER EATS", 4900, { categoryName: "Restaurants" })),
+      );
+      const found = run(txs);
+      const delivery = found.find((i) => i.key === "saving:delivery-apps");
+      const dining = found.find((i) => i.key === "saving:dining-share");
+      expect(delivery?.savingCents).toBe(Math.round((delivery?.annualCents ?? 0) * 0.2));
+      expect(dining?.savingCents).toBe(0);
+      expect(dining?.body).toContain("on top of the ideas above");
+    });
+
+    it("saves what rotating drops, and does not count a price rise on a dropped service again", () => {
+      const rule = { id: "r1", name: "Spotify", type: "EXPENSE", amountCents: 1299, cadence: "MONTHLY", enabled: true, categoryId: "c" } as const;
+      const txs = [
+        ...["2026-06-02", "2026-07-02", "2026-08-02"].map((d) => tx(d, "Spotify", 1099, { recurringTransactionId: "r1" })),
+        tx("2026-09-02", "Spotify", 1299, { recurringTransactionId: "r1" }),
+        tx("2026-09-01", "Netflix", 1899),
+        tx("2026-09-03", "Crave", 2199),
+      ];
+      const found = run(txs, [rule]);
+      // Keep the two dearest (Crave, Netflix); Spotify is the one rotated out.
+      expect(found.find((i) => i.key.startsWith("saving:streaming"))?.savingCents).toBe(1299 * 12);
+      const rise = found.find((i) => i.key.startsWith("saving:price-increase"));
+      expect(rise?.annualCents).toBe(200 * 12);
+      expect(rise?.savingCents).toBe(0);
+    });
+
+    it("leaves a one-off double charge out of the yearly total", () => {
+      const txs = [tx("2026-09-10", "Best Buy", 12999), tx("2026-09-10", "Best Buy", 12999)];
+      const dup = run(txs).find((i) => i.key.startsWith("saving:duplicate"));
+      expect(dup).toBeDefined();
+      expect(dup?.savingCents).toBeUndefined();
+    });
+  });
+
   it("flags the same amount at the same merchant twice within a day", () => {
     const a = tx("2026-09-10", "Best Buy #12", 12999);
     const b = tx("2026-09-11", "BEST BUY #12", 12999);

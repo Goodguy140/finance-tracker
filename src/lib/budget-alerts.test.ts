@@ -80,6 +80,23 @@ describe("computeBudgetWarnings", () => {
     expect(alerts[0].remainingCents).toBe(-300);
     expect(alerts[0].message).toBe(formatBudgetOverBudgetMessage("Dining", 300));
   });
+
+  it("writes amounts in the user's home currency, not always dollars", () => {
+    const rows = [
+      { categoryId: "c1", categoryName: "Dining", spentCents: 1030000, limitCents: 1000000 },
+      { categoryId: "c2", categoryName: "Fun", spentCents: 900000, limitCents: 1000000 },
+    ];
+    const alerts = computeBudgetWarnings(rows, { ym: "2025-05", reference: mayRef, currency: "JPY" });
+    expect(alerts[0].message).toBe(`Dining is over budget by ${formatCurrency(30000, "JPY")}.`);
+    expect(alerts[1].message).toContain(formatCurrency(100000, "JPY"));
+    expect(alerts.map((a) => a.message).join(" ")).not.toContain("$");
+
+    const pace = computeOverBudgetTrends(
+      [{ categoryId: "c1", categoryName: "Dining", spentCents: 900000, limitCents: 1000000 }],
+      { ym: "2025-05", reference: mayRef, currency: "JPY" },
+    );
+    expect(pace[0].message).toContain(formatCurrency(pace[0].projectedOverCents, "JPY"));
+  });
 });
 
 describe("computeOverBudgetTrends", () => {

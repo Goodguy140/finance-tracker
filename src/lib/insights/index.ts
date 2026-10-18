@@ -21,6 +21,13 @@ export type BuildInsightsInput = {
   fmt: MoneyFormatter;
   habitsEnabled: boolean;
   dismissals: InsightDismissalRow[];
+  /** See `ImprovementsInput.toSavingsByMonth`. */
+  toSavingsByMonth?: ReadonlyMap<string, number> | null;
+  /**
+   * The actual time, for whether a snooze has run out. `now` is the user's local date at noon
+   * UTC, so the calendar months the detectors work in are the user's own.
+   */
+  clock?: Date;
 };
 
 export type BuiltInsights = {
@@ -48,18 +55,18 @@ export function isDismissalActive(row: InsightDismissalRow, now: Date): boolean 
 }
 
 export function buildInsights(input: BuildInsightsInput): BuiltInsights {
-  const { txs, rules, budgets, now, fmt } = input;
+  const { txs, rules, budgets, now, fmt, toSavingsByMonth } = input;
   const candidates = detectRecurringCandidates(txs, rules, now);
   const all = [
     ...recurringCandidateInsights(candidates, fmt),
     // Turned off means not computed at all, not merely hidden.
     ...(input.habitsEnabled ? habitInsights(summarizeHabitSpending(txs, now), fmt) : []),
     ...detectSavingsOpportunities({ txs, rules, candidates, now, fmt }),
-    ...suggestImprovements({ txs, budgets, now, fmt }),
+    ...suggestImprovements({ txs, budgets, now, fmt, toSavingsByMonth }),
   ].sort(compareInsights);
 
   const activeDismissals = new Map(
-    input.dismissals.filter((row) => isDismissalActive(row, now)).map((row) => [row.insightKey, row]),
+    input.dismissals.filter((row) => isDismissalActive(row, input.clock ?? now)).map((row) => [row.insightKey, row]),
   );
   const visible: Insight[] = [];
   const dismissed: BuiltInsights["dismissed"] = [];

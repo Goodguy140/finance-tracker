@@ -8,7 +8,8 @@ const { moneyFormatter } = await import("./util");
 import type { InsightBudget, InsightTx } from "./types";
 
 const fmt = moneyFormatter();
-const run = (txs: InsightTx[], budgets: InsightBudget[] = []) => suggestImprovements({ txs, budgets, now: NOW, fmt });
+const run = (txs: InsightTx[], budgets: InsightBudget[] = [], toSavingsByMonth: Map<string, number> | null = null) =>
+  suggestImprovements({ txs, budgets, now: NOW, fmt, toSavingsByMonth });
 const salary = (d: string, amount: number) => tx(d, "Payroll", amount, { type: "INCOME", categoryId: "s", categoryName: "Salary" });
 
 describe("suggestImprovements", () => {
@@ -85,6 +86,40 @@ describe("suggestImprovements", () => {
         tx("2026-08-02", "Rent", 320000, { categoryId: "r", categoryName: "Rent" }),
       ];
       expect(run(txs).some((i) => i.key.startsWith("improve:savings-rate"))).toBe(false);
+    });
+  });
+
+  describe("with accounts marked Counts as savings", () => {
+    const months = ["2026-06", "2026-07", "2026-08"];
+    // $4,000 in, $3,800 spent: 5% left over, but $800 a month moved to a TFSA.
+    const txs = months.flatMap((m) => [
+      salary(`${m}-01`, 400000),
+      tx(`${m}-02`, "Rent", 380000, { categoryId: "r", categoryName: "Rent" }),
+    ]);
+
+    it("measures the savings rate by transfers, as the financial score does", () => {
+      const saved = new Map(months.map((m) => [m, 80000]));
+      // Without accounts marked this is "About 5% of income left over".
+      expect(run(txs).find((i) => i.key.startsWith("improve:savings-rate"))?.title).toBe("About 5% of income left over");
+      // 20% moved to savings: nothing to suggest, in agreement with the score's 20%.
+      expect(run(txs, [], saved).some((i) => i.key.startsWith("improve:savings-rate"))).toBe(false);
+    });
+
+    it("suggests moving more when little went into savings", () => {
+      const saved = new Map(months.map((m) => [m, 20000]));
+      const rate = run(txs, [], saved).find((i) => i.key.startsWith("improve:savings-rate"));
+      expect(rate?.title).toBe("About 5% of income moved to savings");
+      expect(rate?.body).toContain("went into your savings accounts");
+      expect(rate?.monthlyCents).toBe(20000);
+    });
+
+    it("no longer sets aside a category named like savings", () => {
+      // The transfers are the measure now; a "TFSA" expense counts as spending, as in the score.
+      const withTfsa = [...txs, ...months.map((m) => tx(`${m}-05`, "To TFSA", 50000, { categoryId: "t", categoryName: "TFSA" }))];
+      const saved = new Map(months.map((m) => [m, 80000]));
+      expect(run(withTfsa, [], saved).find((i) => i.key.startsWith("improve:savings-rate"))?.title).toBe(
+        "Spending ran ahead of income",
+      );
     });
   });
 });

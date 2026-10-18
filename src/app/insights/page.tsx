@@ -58,7 +58,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Sea
   // `?tag=`, as on the dashboard and Reports: every insight is worked out from tagged rows only.
   const tagFilter = resolveTagFilter(sp.tag, tags);
   const [loaded, accounts, categories, financial, savingsGoals] = await Promise.all([
-    loadInsights(user.id, user.countryCode, tagFilter?.id ?? null),
+    loadInsights(user.id, user.countryCode, user.timezone, tagFilter?.id ?? null),
     prisma.account.findMany({ where: { userId: user.id, archived: false }, orderBy: { createdAt: "asc" } }),
     prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true } }),
     loadFinancialScore(user),
@@ -72,9 +72,9 @@ export default async function InsightsPage({ searchParams }: { searchParams: Sea
     expenseCategoryNames: categories.filter((c) => c.kind === CategoryKind.EXPENSE).map((c) => c.name),
     currency: loaded.currency,
   };
-  const potentialAnnual = visible
-    .filter((i) => i.section === "saving" || i.section === "habit")
-    .reduce((sum, i) => sum + (i.annualCents ?? 0), 0);
+  // What the suggestions would save, not what the flagged spending costs: each idea saves a
+  // share of its spending, and the detectors leave out money another idea already counts.
+  const potentialAnnual = visible.reduce((sum, i) => sum + (i.savingCents ?? 0), 0);
 
   const bySection = new Map<InsightSection, InsightItemView[]>();
   for (const insight of visible) bySection.set(insight.section, [...(bySection.get(insight.section) ?? []), insight]);
@@ -114,7 +114,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Sea
 
       {potentialAnnual > 0 ? (
         <p className="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3 text-sm text-slate-300" data-testid="insights-summary">
-          The spending flagged below comes to about{" "}
+          The ideas below could save about{" "}
           <span className="font-semibold text-slate-100">{formatCurrency(potentialAnnual, loaded.currency)}</span> a year.
         </p>
       ) : null}

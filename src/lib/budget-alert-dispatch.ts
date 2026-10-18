@@ -5,6 +5,7 @@ import { sendBudgetAlertEmail, isBudgetAlertEmailConfigured } from "@/lib/budget
 import { computeBudgetWarnings, type BudgetWarning } from "@/lib/budget-alerts";
 import { buildMonthlyBudgetProgress } from "@/lib/budget-progress";
 import { formatYmLongLabel } from "@/lib/dashboard-period";
+import { homeCurrencyOf } from "@/lib/home-currency";
 import { currentYmInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
 
@@ -47,7 +48,7 @@ export async function dispatchBudgetAlertEmails(
 ): Promise<BudgetAlertDispatchResult> {
   const user = await client.user.findUnique({
     where: { id: userId },
-    select: { email: true, timezone: true, budgetAlertEmailEnabled: true },
+    select: { email: true, timezone: true, countryCode: true, budgetAlertEmailEnabled: true },
   });
   if (!user?.budgetAlertEmailEnabled) return { sent: 0, skipped: "disabled" };
   if (!isBudgetAlertEmailConfigured()) return { sent: 0, skipped: "smtp" };
@@ -61,7 +62,7 @@ export async function dispatchBudgetAlertEmails(
       spentCents: row.spentCents,
       limitCents: row.limitCents,
     })),
-    { ym, reference: now },
+    { ym, reference: now, currency: homeCurrencyOf(user.countryCode) },
   );
 
   const monthLabel = formatYmLongLabel(ym);

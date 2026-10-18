@@ -22,11 +22,18 @@ export type ImprovementsInput = {
   budgets: InsightBudget[];
   now: Date;
   fmt: MoneyFormatter;
+  /**
+   * Net cents moved into accounts marked "Counts as savings", per `YYYY-MM`
+   * (`savedByTransferByMonth`); null when no account is marked. The same figure the
+   * financial score's savings rate uses, so the two never disagree.
+   */
+  toSavingsByMonth?: ReadonlyMap<string, number> | null;
 };
 
 /**
  * Money moved to savings or investments is logged as an expense by many users; counting it as
- * spending would make the most careful savers look like the worst ones.
+ * spending would make the most careful savers look like the worst ones. Only a fallback: once
+ * any account counts as savings, what moved into it by transfer is the measure instead.
  */
 const SAVINGS_CATEGORY = /saving|invest|transfer|tfsa|rrsp|fhsa|貯金|投資/i;
 
@@ -65,7 +72,7 @@ function monthlySpendByCategory(txs: InsightTx[], months: Set<string>): MonthlyC
 /** Fewer fully logged months than this and a monthly comparison is mostly noise. */
 const MIN_OBSERVED_MONTHS = 2;
 
-function savingsRate({ txs, now, fmt }: ImprovementsInput): Insight[] {
+function savingsRate({ txs, now, fmt, toSavingsByMonth = null }: ImprovementsInput): Insight[] {
   const monthList = observedMonths(previousFullMonths(now, 3), historyStartOf(txs));
   if (monthList.length < MIN_OBSERVED_MONTHS) return [];
   const months = new Set(monthList);
@@ -78,7 +85,7 @@ function savingsRate({ txs, now, fmt }: ImprovementsInput): Insight[] {
     if (tx.type === "INCOME") income += tx.amountCents;
     else {
       for (const part of categoryAmounts(tx)) {
-        if (SAVINGS_CATEGORY.test(part.categoryName)) savedExplicitly += part.amountCents;
+        if (!toSavingsByMonth && SAVINGS_CATEGORY.test(part.categoryName)) savedExplicitly += part.amountCents;
         else spending += part.amountCents;
       }
     }
@@ -103,6 +110,7 @@ function savingsRate({ txs, now, fmt }: ImprovementsInput): Insight[] {
       },
     ];
   }
+  if (toSavingsByMonth) return transferSavingsRate(monthList, income, toSavingsByMonth, fmt);
   if (rate < 0.1) {
     const target = Math.round((income * 0.1 - (income - spending)) / monthCount);
     const saved = savedExplicitly > 0 ? ` (not counting ${fmt(Math.round(savedExplicitly / monthCount))} a month you moved to savings)` : "";
@@ -121,6 +129,37 @@ function savingsRate({ txs, now, fmt }: ImprovementsInput): Insight[] {
     ];
   }
   return [];
+}
+
+/** The savings rate as the score reads it: what moved into savings accounts, against income. */
+function transferSavingsRate(
+  monthList: string[],
+  income: number,
+  toSavingsByMonth: ReadonlyMap<string, number>,
+  fmt: MoneyFormatter,
+): Insight[] {
+  const monthCount = monthList.length;
+  const saved = monthList.reduce((sum, ym) => sum + (toSavingsByMonth.get(ym) ?? 0), 0);
+  const rate = saved / income;
+  if (rate >= 0.1) return [];
+  const target = Math.round((income * 0.1 - saved) / monthCount);
+  const moved =
+    saved >= 0
+      ? `about ${Math.round(rate * 100)}% of income went into your savings accounts`
+      : `about ${fmt(Math.round(-saved / monthCount))} a month more came out of your savings accounts than went in`;
+  return [
+    {
+      key: `improve:savings-rate:${monthList[monthCount - 1]}`,
+      section: "improvement",
+      severity: "medium",
+      title: `About ${Math.max(0, Math.round(rate * 100))}% of income moved to savings`,
+      body:
+        `Over the last ${monthsWord(monthCount)}, ${moved}. ` +
+        `A common goal is 10–20%; moving about ${fmt(target)} more a month would reach 10%.`,
+      monthlyCents: target,
+      evidenceTxIds: [],
+    },
+  ];
 }
 
 // --- Categories trending up ------------------------------------------------------------------
