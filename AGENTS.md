@@ -14,6 +14,12 @@ Everything below sits outside the `next dev` block above, which is regenerated i
 leaves surrounding content alone (`upsertAgentRulesBlock` in
 `node_modules/next/dist/server/lib/generate-agent-files.js` splices between the markers).
 
+## Where features live
+
+`docs/features.md` maps every feature to its page, card or settings section and the files
+behind it. Check it before building something new (several requested features already exist),
+and update it in the same PR when you add, move or remove one.
+
 ## Database and migrations
 
 **The migration history was broken and is now guarded.** `20260503220000` adds
