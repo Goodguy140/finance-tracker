@@ -228,7 +228,7 @@ export type UserBackupPayload = {
    * which restore re-issues; those dismissals simply stop matching and the insight may
    * reappear once, which is the harmless direction to fail in.
    */
-  insightDismissals?: Array<{ insightKey: string; snoozedUntil: IsoString | null }>;
+  insightDismissals?: Array<{ insightKey: string; snoozedUntil: IsoString | null; dismissedCents?: number | null }>;
   /** Insight settings. Optional; absent means the defaults. */
   insightPreference?: { habitDetectionEnabled: boolean } | null;
   /** Yearly TFSA/RRSP/FHSA room figures copied from CRA. Optional: older backups predate them. */
@@ -491,6 +491,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
     insightDismissals: user.insightDismissals.map((row) => ({
       insightKey: row.insightKey,
       snoozedUntil: row.snoozedUntil?.toISOString() ?? null,
+      dismissedCents: row.dismissedCents,
     })),
     insightPreference: user.insightPreference
       ? { habitDetectionEnabled: user.insightPreference.habitDetectionEnabled }

@@ -296,7 +296,13 @@ export const userBackupSchema = z.object({
     .optional()
     .default([]),
   insightDismissals: z
-    .array(z.object({ insightKey: z.string().min(1).max(300), snoozedUntil: isoDate.nullable() }))
+    .array(
+      z.object({
+        insightKey: z.string().min(1).max(300),
+        snoozedUntil: isoDate.nullable(),
+        dismissedCents: z.number().int().nullable().optional(),
+      }),
+    )
     .max(5000)
     .optional()
     .default([]),

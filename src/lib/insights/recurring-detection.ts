@@ -65,6 +65,26 @@ export function isWithinAmountTolerance(amountCents: number, medianCents: number
   return Math.abs(amountCents - medianCents) <= tolerance;
 }
 
+/** Confidence for a series that is steady only on each side of one price change. */
+const PRICE_CHANGE_CONFIDENCE = 0.9;
+
+/**
+ * The latest price when `amounts` (oldest first) hold steady at one level, then at another
+ * from some charge on, with at least two charges before the change; null otherwise.
+ */
+export function steadyAcrossOneChange(amounts: readonly number[]): number | null {
+  const steady = (part: readonly number[]) => {
+    const mid = median([...part]);
+    return part.every((a) => isWithinAmountTolerance(a, mid));
+  };
+  for (let k = amounts.length - 1; k >= 2; k--) {
+    const before = amounts.slice(0, k);
+    const after = amounts.slice(k);
+    if (steady(before) && steady(after)) return median(after);
+  }
+  return null;
+}
+
 export function classifyCadence(gapsDays: number[]): { band: CadenceBand; regularShare: number } | null {
   if (gapsDays.length === 0) return null;
   const mid = median(gapsDays);
@@ -139,9 +159,16 @@ function evaluateGroup(unsorted: InsightTx[], now: Date): RecurringCandidate | n
   if (txs.length < band.minCount) return null;
 
   const amounts = txs.map((tx) => tx.amountCents);
-  const medianAmountCents = median(amounts);
-  const stableShare = amounts.filter((a) => isWithinAmountTolerance(a, medianAmountCents)).length / amounts.length;
-  if (stableShare < MIN_REGULAR_SHARE) return null;
+  let medianAmountCents = median(amounts);
+  let stableShare = amounts.filter((a) => isWithinAmountTolerance(a, medianAmountCents)).length / amounts.length;
+  if (stableShare < MIN_REGULAR_SHARE) {
+    // A subscription whose price went up once is still a subscription — and exactly the one a
+    // "went up" insight needs to see. Steady before, steady after, and the current price counts.
+    const changed = steadyAcrossOneChange(amounts);
+    if (changed === null) return null;
+    medianAmountCents = changed;
+    stableShare = PRICE_CHANGE_CONFIDENCE;
+  }
 
   const last = txs[txs.length - 1];
   if (daysBetween(last.date, now) > band.typicalDays * ACTIVE_GRACE_FACTOR) return null;

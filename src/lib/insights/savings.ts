@@ -62,6 +62,19 @@ const PRICE_INCREASE_RECENT_DAYS = 60;
 
 type Series = { id: string; label: string; cadence: RecurringCadence; txs: InsightTx[] };
 
+/** Charges this close to the latest are the same price: tax rounding, a cent of exchange. */
+const SAME_PRICE_PCT = 0.02;
+/** The old price is the median of this many charges before the step, so one odd bill can't set it. */
+const PRICE_BEFORE_CHARGES = 3;
+
+/** Index of the first charge in the run at the latest price, oldest first; 0 when it never changed. */
+export function currentPriceStart(sorted: readonly InsightTx[]): number {
+  const latest = sorted[sorted.length - 1].amountCents;
+  let i = sorted.length - 1;
+  while (i > 0 && Math.abs(sorted[i - 1].amountCents - latest) <= latest * SAME_PRICE_PCT) i--;
+  return i;
+}
+
 function priceIncreases({ txs, rules, candidates, now, fmt }: SavingsInput, rotatedServices: ReadonlySet<string>): Insight[] {
   const series: Series[] = [];
   for (const rule of rules) {
@@ -79,8 +92,11 @@ function priceIncreases({ txs, rules, candidates, now, fmt }: SavingsInput, rota
     const sorted = [...s.txs].filter((tx) => tx.amountCents > 0).sort((a, b) => a.date.getTime() - b.date.getTime());
     if (sorted.length < 3) continue;
     const last = sorted[sorted.length - 1];
-    if (daysBetween(last.date, now) > PRICE_INCREASE_RECENT_DAYS) continue;
-    const before = median(sorted.slice(0, -1).map((tx) => tx.amountCents));
+    // The charges at today's price, and the step up to it: a rise is news while the step is
+    // recent, not for as long as the old price still outnumbers the new one in the history.
+    const step = currentPriceStart(sorted);
+    if (step === 0 || daysBetween(sorted[step].date, now) > PRICE_INCREASE_RECENT_DAYS) continue;
+    const before = median(sorted.slice(Math.max(0, step - PRICE_BEFORE_CHARGES), step).map((tx) => tx.amountCents));
     const diff = last.amountCents - before;
     if (diff < PRICE_INCREASE_MIN_CENTS || diff < before * PRICE_INCREASE_MIN_PCT) continue;
     const annualCents = Math.round(diff * MONTHLY_FACTOR[s.cadence] * 12);
@@ -108,7 +124,8 @@ export const STREAMING_SERVICES: Array<{ name: string; re: RegExp }> = [
   { name: "Netflix", re: /\bnetflix\b/ },
   { name: "Disney+", re: /\bdisney\s*(?:\+|plus)\b|\bdisneyplus\b/ },
   { name: "Crave", re: /\bcrave\b/ },
-  { name: "Prime Video", re: /\bprime video\b|\bamazon prime\b/ },
+  // Not "Amazon Prime": that is mostly a shipping membership, and would make a stack of one.
+  { name: "Prime Video", re: /\bprime video\b/ },
   { name: "Apple TV+", re: /\bapple tv\b/ },
   { name: "Spotify", re: /\bspotify\b/ },
   { name: "Apple Music", re: /\bapple music\b/ },
@@ -125,6 +142,8 @@ export const STREAMING_SERVICES: Array<{ name: string; re: RegExp }> = [
   { name: "BritBox", re: /\bbritbox\b/ },
 ];
 const STREAMING_MIN_SERVICES = 3;
+/** Two monthly bills and some slack. */
+const STREAMING_RECENT_DAYS = 75;
 
 export function streamingServiceFor(text: string | null | undefined): string | null {
   const lower = (text ?? "").toLowerCase();
@@ -149,14 +168,22 @@ function stackedStreaming({ txs, rules, candidates, now, fmt }: SavingsInput, ro
       monthlyByService.set(name, Math.round(c.medianAmountCents * MONTHLY_FACTOR[c.cadence]));
     }
   }
-  // Anything charged in the last ~6 weeks that neither a rule nor a detection covered.
-  const since = daysAgo(now, 45);
+  // A service neither a rule nor a detection covered counts once it has billed twice lately:
+  // one charge is as likely a meal at Crave Burger as a Crave subscription.
+  const since = daysAgo(now, STREAMING_RECENT_DAYS);
+  const recentByService = new Map<string, InsightTx[]>();
   for (const tx of txs) {
     if (tx.type !== "EXPENSE" || tx.date < since || tx.amountCents <= 0) continue;
     const name = streamingServiceFor(tx.merchantName) ?? streamingServiceFor(tx.title);
     if (!name) continue;
-    evidence.push(tx);
-    if (!monthlyByService.has(name)) monthlyByService.set(name, tx.amountCents);
+    recentByService.set(name, [...(recentByService.get(name) ?? []), tx]);
+  }
+  for (const [name, charges] of recentByService) {
+    if (!monthlyByService.has(name)) {
+      if (charges.length < 2) continue;
+      monthlyByService.set(name, median(charges.map((tx) => tx.amountCents)));
+    }
+    evidence.push(...charges);
   }
   if (monthlyByService.size < STREAMING_MIN_SERVICES) return [];
 
@@ -188,6 +215,8 @@ const DUPLICATE_MIN_CENTS = 2_000;
 /** Same or next day: a card authorisation and its re-post. Further apart is usually two trips. */
 const DUPLICATE_MAX_GAP_DAYS = 1;
 const DUPLICATE_LOOKBACK_DAYS = 60;
+/** A refund this soon after the pair means the merchant already put it right. */
+const DUPLICATE_REFUND_DAYS = 30;
 
 function possibleDuplicates({ txs, now, fmt }: SavingsInput): Insight[] {
   const since = daysAgo(now, DUPLICATE_LOOKBACK_DAYS);
@@ -202,6 +231,8 @@ function possibleDuplicates({ txs, now, fmt }: SavingsInput): Insight[] {
         !matchHabitKind({ texts: [tx.title, tx.merchantName, tx.note], pfcDetailed: tx.pfcDetailed }),
     )
     .sort((a, b) => a.date.getTime() - b.date.getTime());
+  const refunds = txs.filter((tx) => tx.type === "EXPENSE" && tx.amountCents < 0 && tx.date >= since);
+  const usedRefunds = new Set<string>();
 
   const out: Insight[] = [];
   const used = new Set<string>();
@@ -216,10 +247,24 @@ function possibleDuplicates({ txs, now, fmt }: SavingsInput): Insight[] {
       if (used.has(b.id) || b.amountCents !== a.amountCents || merchantKeyFor(b) !== key) continue;
       used.add(a.id);
       used.add(b.id);
+      const refund = refunds.find(
+        (r) =>
+          !usedRefunds.has(r.id) &&
+          r.amountCents === -a.amountCents &&
+          r.date >= a.date &&
+          daysBetween(b.date, r.date) <= DUPLICATE_REFUND_DAYS &&
+          merchantKeyFor(r) === key,
+      );
+      if (refund) {
+        usedRefunds.add(refund.id);
+        break;
+      }
       out.push({
         key: `saving:duplicate:${a.id}:${b.id}`,
         section: "saving",
-        severity: "high",
+        // Two genuine purchases of the same thing (two transit passes) look exactly like this,
+        // so it is worth a look rather than the most pressing thing on the page.
+        severity: "medium",
         title: `Possible double charge at ${merchantLabelFor(a)}`,
         body:
           `Two charges of ${fmt(a.amountCents)} ${a.date.getTime() === b.date.getTime() ? "on the same day" : "a day apart"}. ` +

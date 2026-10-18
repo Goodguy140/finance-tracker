@@ -1063,8 +1063,11 @@ model InsightDismissal {
   userId       String
   insightKey   String
   /// NULL means dismissed for good; otherwise shown again once this passes.
-  snoozedUntil DateTime?
-  createdAt    DateTime  @default(now())
+  snoozedUntil   DateTime?
+  /// The insight's size when dismissed, in cents a year; it shows again once half as big again.
+  /// NULL when it had no amount (or was dismissed before this was kept): hidden as before.
+  dismissedCents Int?
+  createdAt      DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

@@ -1,5 +1,5 @@
 /** Keep in sync with SCHEMA_REPAIR_VERSION in src/lib/migration-health.ts */
-const SCHEMA_REPAIR_VERSION = "13";
+const SCHEMA_REPAIR_VERSION = "14";
 const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
 
@@ -129,6 +129,11 @@ const COLUMN_REPAIRS = [
     table: "Category",
     column: "rolloverSinceMonth",
     ddl: 'ALTER TABLE "Category" ADD COLUMN "rolloverSinceMonth" TEXT',
+  },
+  {
+    table: "InsightDismissal",
+    column: "dismissedCents",
+    ddl: 'ALTER TABLE "InsightDismissal" ADD COLUMN "dismissedCents" INTEGER',
   },
 ];
 
