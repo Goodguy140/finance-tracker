@@ -4,7 +4,7 @@ import { NOW, tx } from "./test-fixtures";
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
 const { buildInsights } = await import("./index");
-const { moneyFormatter } = await import("./util");
+const { insightsNow, moneyFormatter } = await import("./util");
 
 const txs = [
   ...["2026-06-15", "2026-07-15", "2026-08-15", "2026-09-15"].map((d) => tx(d, "Netflix", 1899)),
@@ -40,5 +40,25 @@ describe("buildInsights", () => {
       dismissals: [{ insightKey: "habit:CANNABIS", snoozedUntil: new Date("2026-09-01T00:00:00Z") }],
     });
     expect(expired.visible.some((i) => i.key === "habit:CANNABIS")).toBe(true);
+  });
+
+  it("checks snoozes against the real clock, not the noon the detectors work from", () => {
+    // The detectors' "now" is noon on the user's date; the snooze ran out at 18:00 UTC, before
+    // the clock but after that noon.
+    const { visible } = buildInsights({
+      ...base,
+      clock: new Date("2026-09-25T20:00:00.000Z"),
+      dismissals: [{ insightKey: "habit:CANNABIS", snoozedUntil: new Date("2026-09-25T18:00:00.000Z") }],
+    });
+    expect(visible.some((i) => i.key === "habit:CANNABIS")).toBe(true);
+  });
+});
+
+describe("insightsNow", () => {
+  it("is the user's own date, so the 31st in Toronto is still the 31st", () => {
+    // 21:30 on 31 October in Toronto is already 1 November in UTC.
+    const clock = new Date("2026-11-01T01:30:00.000Z");
+    expect(insightsNow("America/Toronto", clock).toISOString()).toBe("2026-10-31T12:00:00.000Z");
+    expect(insightsNow("UTC", clock).toISOString()).toBe("2026-11-01T12:00:00.000Z");
   });
 });

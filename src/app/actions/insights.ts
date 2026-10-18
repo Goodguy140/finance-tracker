@@ -66,7 +66,7 @@ export const setHabitDetectionAction = formAction(async (formData: FormData) => 
 export const trackHabitSeparatelyAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const { habit } = trackHabitSchema.parse({ habit: getFormValue(formData, "habit") });
-  const insights = await loadInsights(user.id, user.countryCode);
+  const insights = await loadInsights(user.id, user.countryCode, user.timezone);
   if (!insights.habitsEnabled) throw new Error("Habit spending insights are turned off.");
   const insight = [...insights.visible, ...insights.dismissed].find((i) => i.key === `habit:${habit}`);
   if (insight?.action?.kind !== "track-habit") throw new Error("There is no recent spending to track for that.");

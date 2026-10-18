@@ -35,13 +35,21 @@ export type SavingsInput = {
 };
 
 export function detectSavingsOpportunities(input: SavingsInput): Insight[] {
+  // Several ideas can reach the same money: an Uber Eats order filed under Dining is both a
+  // delivery order and a meal out. Each records what it already counts toward its saving, so
+  // the next leaves that out and the page's total adds every dollar once.
+  const counted = new Set<string>();
+  const rotatedServices = new Set<string>();
+  const streaming = stackedStreaming(input, rotatedServices);
+  const frequent = frequentSmallPurchases(input, counted);
+  const delivery = deliveryApps(input, counted);
   return [
-    ...priceIncreases(input),
-    ...stackedStreaming(input),
+    ...priceIncreases(input, rotatedServices),
+    ...streaming,
     ...possibleDuplicates(input),
-    ...frequentSmallPurchases(input),
-    ...deliveryApps(input),
-    ...diningShare(input),
+    ...frequent,
+    ...delivery,
+    ...diningShare(input, counted),
     ...bankFees(input),
   ];
 }
@@ -54,7 +62,7 @@ const PRICE_INCREASE_RECENT_DAYS = 60;
 
 type Series = { id: string; label: string; cadence: RecurringCadence; txs: InsightTx[] };
 
-function priceIncreases({ txs, rules, candidates, now, fmt }: SavingsInput): Insight[] {
+function priceIncreases({ txs, rules, candidates, now, fmt }: SavingsInput, rotatedServices: ReadonlySet<string>): Insight[] {
   const series: Series[] = [];
   for (const rule of rules) {
     if (!rule.enabled || rule.type !== "EXPENSE") continue;
@@ -86,6 +94,8 @@ function priceIncreases({ txs, rules, candidates, now, fmt }: SavingsInput): Ins
         `The latest charge was ${fmt(last.amountCents)}, up from ${fmt(before)} — ${fmt(annualCents)} more a year. ` +
         `Worth checking for a cheaper plan, an annual option, or whether you still use it.`,
       annualCents,
+      // A service the streaming idea already suggests dropping saves its whole price there.
+      savingCents: rotatedServices.has(streamingServiceFor(s.label) ?? "") ? 0 : annualCents,
       evidenceTxIds: evidenceIds(sorted, 6),
     });
   }
@@ -122,7 +132,10 @@ export function streamingServiceFor(text: string | null | undefined): string | n
   return STREAMING_SERVICES.find((s) => s.re.test(lower))?.name ?? null;
 }
 
-function stackedStreaming({ txs, rules, candidates, now, fmt }: SavingsInput): Insight[] {
+/** Rotating means keeping this many at a time; the saving is what the rest cost. */
+const STREAMING_KEEP = 2;
+
+function stackedStreaming({ txs, rules, candidates, now, fmt }: SavingsInput, rotatedServices: Set<string>): Insight[] {
   const monthlyByService = new Map<string, number>();
   const evidence: InsightTx[] = [];
   for (const rule of rules) {
@@ -149,6 +162,8 @@ function stackedStreaming({ txs, rules, candidates, now, fmt }: SavingsInput): I
 
   const names = [...monthlyByService.keys()].sort();
   const monthlyCents = [...monthlyByService.values()].reduce((a, b) => a + b, 0);
+  const rotated = [...monthlyByService.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(STREAMING_KEEP);
+  for (const [name] of rotated) rotatedServices.add(name);
   return [
     {
       key: `saving:streaming:${names.join(",")}`,
@@ -161,6 +176,7 @@ function stackedStreaming({ txs, rules, candidates, now, fmt }: SavingsInput): I
         `is an easy way to trim this.`,
       monthlyCents,
       annualCents: monthlyCents * 12,
+      savingCents: rotated.reduce((sum, [, cents]) => sum + cents, 0) * 12,
       evidenceTxIds: evidenceIds(evidence, 8),
     },
   ];
@@ -233,7 +249,7 @@ function rateWindowDays(txs: InsightTx[], now: Date): number | null {
   return days >= MIN_OBSERVED_DAYS ? days : null;
 }
 
-function frequentSmallPurchases({ txs, now, fmt }: SavingsInput): Insight[] {
+function frequentSmallPurchases({ txs, now, fmt }: SavingsInput, counted: Set<string>): Insight[] {
   const windowDays = rateWindowDays(txs, now);
   if (windowDays === null) return [];
   const since = daysAgo(now, WINDOW_DAYS);
@@ -252,7 +268,7 @@ function frequentSmallPurchases({ txs, now, fmt }: SavingsInput): Insight[] {
     else groups.set(key, [tx]);
   }
 
-  const out: Insight[] = [];
+  const out: Array<Insight & { txs: InsightTx[] }> = [];
   for (const [key, list] of groups) {
     const perMonth = list.length / months;
     const monthlyCents = Math.round(list.reduce((s, tx) => s + tx.amountCents, 0) / months);
@@ -269,10 +285,14 @@ function frequentSmallPurchases({ txs, now, fmt }: SavingsInput): Insight[] {
         `${fmt(annualCents)} a year. Cutting back by a quarter would save about ${fmt(Math.round(annualCents / 4))} a year.`,
       monthlyCents,
       annualCents,
+      savingCents: Math.round(annualCents / 4),
       evidenceTxIds: evidenceIds(list),
+      txs: list,
     });
   }
-  return out.sort((a, b) => (b.annualCents ?? 0) - (a.annualCents ?? 0)).slice(0, 3);
+  const top = out.sort((a, b) => (b.annualCents ?? 0) - (a.annualCents ?? 0)).slice(0, 3);
+  for (const { txs: list } of top) for (const tx of list) counted.add(tx.id);
+  return top.map(({ txs: _txs, ...insight }) => insight);
 }
 
 // --- Delivery apps ---------------------------------------------------------------------------
@@ -284,7 +304,7 @@ function isDeliveryApp(tx: InsightTx): boolean {
   return [tx.title, tx.merchantName].some((t) => !!t && DELIVERY_APP.test(t.toLowerCase()));
 }
 
-function deliveryApps({ txs, now, fmt }: SavingsInput): Insight[] {
+function deliveryApps({ txs, now, fmt }: SavingsInput, counted: Set<string>): Insight[] {
   const windowDays = rateWindowDays(txs, now);
   if (windowDays === null) return [];
   const since = daysAgo(now, WINDOW_DAYS);
@@ -292,6 +312,8 @@ function deliveryApps({ txs, now, fmt }: SavingsInput): Insight[] {
   const monthlyCents = Math.round(hits.reduce((s, tx) => s + tx.amountCents, 0) / (windowDays / DAYS_PER_MONTH));
   if (monthlyCents < DELIVERY_MIN_MONTHLY_CENTS) return [];
   const annualCents = monthlyCents * 12;
+  const savingCents = Math.round(annualCents * 0.2);
+  for (const tx of hits) counted.add(tx.id);
   return [
     {
       key: "saving:delivery-apps",
@@ -300,9 +322,10 @@ function deliveryApps({ txs, now, fmt }: SavingsInput): Insight[] {
       title: `Delivery apps: about ${fmt(monthlyCents)} a month`,
       body:
         `${hits.length} orders in the last ${windowDays} days. Service fees, delivery fees and menu mark-ups ` +
-        `often add 20–30%; picking up the same order yourself would save roughly ${fmt(Math.round(annualCents * 0.2))} a year.`,
+        `often add 20–30%; picking up the same order yourself would save roughly ${fmt(savingCents)} a year.`,
       monthlyCents,
       annualCents,
+      savingCents,
       evidenceTxIds: evidenceIds(hits),
     },
   ];
@@ -320,12 +343,14 @@ export function categoryAmounts(tx: InsightTx): Array<{ categoryId: string; cate
   return [{ categoryId: tx.categoryId, categoryName: tx.categoryName, amountCents: tx.amountCents }];
 }
 
-function diningShare({ txs, now, fmt }: SavingsInput): Insight[] {
+function diningShare({ txs, now, fmt }: SavingsInput, counted: ReadonlySet<string>): Insight[] {
   const monthList = observedMonths(previousFullMonths(now, 3), historyStartOf(txs));
   if (monthList.length < 2) return [];
   const months = new Set(monthList);
   const monthCount = monthList.length;
   let dining = 0;
+  /** Dining no other idea has already counted: what cooking more would save on. */
+  let diningUncounted = 0;
   let grocery = 0;
   const evidence: InsightTx[] = [];
   for (const tx of txs) {
@@ -333,6 +358,7 @@ function diningShare({ txs, now, fmt }: SavingsInput): Insight[] {
     for (const part of categoryAmounts(tx)) {
       if (DINING_CATEGORY.test(part.categoryName)) {
         dining += part.amountCents;
+        if (!counted.has(tx.id)) diningUncounted += part.amountCents;
         if (evidence[evidence.length - 1] !== tx) evidence.push(tx);
       } else if (GROCERY_CATEGORY.test(part.categoryName)) grocery += part.amountCents;
     }
@@ -342,6 +368,9 @@ function diningShare({ txs, now, fmt }: SavingsInput): Insight[] {
   const share = dining / (dining + Math.max(grocery, 0));
   if (share < DINING_SHARE_THRESHOLD) return [];
   const annualCents = monthlyDining * 12;
+  // Swap a quarter of the meals; the extra groceries eat about 40% of what that saves.
+  const savingCents = Math.round((Math.round(diningUncounted / monthCount) * 12) / 4 * 0.6);
+  const alsoCounted = diningUncounted < dining ? " on top of the ideas above" : "";
   return [
     {
       key: "saving:dining-share",
@@ -351,9 +380,10 @@ function diningShare({ txs, now, fmt }: SavingsInput): Insight[] {
       body:
         `Over the last ${monthCount === 3 ? "three" : "two"} months you spent about ${fmt(monthlyDining)} a month eating out or ordering in, ` +
         `against ${fmt(Math.round(Math.max(grocery, 0) / monthCount))} on groceries. Swapping a quarter of those meals ` +
-        `for cooking would save roughly ${fmt(Math.round((annualCents / 4) * 0.6))} a year after the extra groceries.`,
+        `for cooking would save roughly ${fmt(savingCents)} a year${alsoCounted}, after the extra groceries.`,
       monthlyCents: monthlyDining,
       annualCents,
+      savingCents,
       evidenceTxIds: evidenceIds(evidence, 8),
     },
   ];
@@ -385,6 +415,7 @@ function bankFees({ txs, now, fmt }: SavingsInput): Insight[] {
         `Many banks waive monthly fees above a minimum balance or on a no-fee plan, and paying a card's ` +
         `statement balance in full each month avoids interest altogether.`,
       annualCents: totalCents,
+      savingCents: totalCents,
       evidenceTxIds: evidenceIds(fees),
     },
   ];

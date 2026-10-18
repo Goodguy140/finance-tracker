@@ -72,16 +72,17 @@ export function formatBudgetWarningMessage(
   pct: number,
   daysLeft: number,
   remainingCents?: number,
+  currency = "CAD",
 ): string {
   const dayLabel = daysLeft === 1 ? "day" : "days";
   if (remainingCents === undefined) {
     return `${categoryName} is ${pct}% used with ${daysLeft} ${dayLabel} left.`;
   }
-  return `${categoryName} is ${pct}% used — ${formatCurrency(remainingCents)} left, ${daysLeft} ${dayLabel} left.`;
+  return `${categoryName} is ${pct}% used — ${formatCurrency(remainingCents, currency)} left, ${daysLeft} ${dayLabel} left.`;
 }
 
-export function formatBudgetOverBudgetMessage(categoryName: string, overCents: number): string {
-  return `${categoryName} is over budget by ${formatCurrency(overCents)}.`;
+export function formatBudgetOverBudgetMessage(categoryName: string, overCents: number, currency = "CAD"): string {
+  return `${categoryName} is over budget by ${formatCurrency(overCents, currency)}.`;
 }
 
 const SEVERITY_RANK: Record<BudgetWarningSeverity, number> = { critical: 1, warning: 0 };
@@ -92,9 +93,12 @@ export function computeBudgetWarnings(
     ym: string;
     reference?: Date;
     warningThresholdPct?: number;
+    /** The home currency the amounts are in; budgets are never in any other. */
+    currency?: string;
   },
 ): BudgetWarning[] {
   const reference = options.reference ?? new Date();
+  const currency = options.currency ?? "CAD";
   const warningThreshold = options.warningThresholdPct ?? 80;
   const daysLeft = daysLeftInMonthYm(reference, options.ym);
 
@@ -123,8 +127,8 @@ export function computeBudgetWarnings(
         severity,
         message:
           severity === "critical"
-            ? formatBudgetOverBudgetMessage(row.categoryName, -remainingCents)
-            : formatBudgetWarningMessage(row.categoryName, pct, daysLeft, remainingCents),
+            ? formatBudgetOverBudgetMessage(row.categoryName, -remainingCents, currency)
+            : formatBudgetWarningMessage(row.categoryName, pct, daysLeft, remainingCents, currency),
       };
     })
     .filter((row): row is BudgetWarning => row !== null)
@@ -142,9 +146,11 @@ export function computeOverBudgetTrends(
     reference?: Date;
     paceThreshold?: number;
     minElapsedDays?: number;
+    currency?: string;
   },
 ): BudgetTrendAlert[] {
   const reference = options.reference ?? new Date();
+  const currency = options.currency ?? "CAD";
   const paceThreshold = options.paceThreshold ?? 1.05;
   const minElapsedDays = options.minElapsedDays ?? 3;
   const totalDays = daysInMonthYm(options.ym);
@@ -175,7 +181,7 @@ export function computeOverBudgetTrends(
         projectedOverCents,
         message:
           projectedOverCents > 0
-            ? `${row.categoryName} is on track to exceed its budget by ${formatCurrency(projectedOverCents)} (${pctOverPace}% ahead of pace).`
+            ? `${row.categoryName} is on track to exceed its budget by ${formatCurrency(projectedOverCents, currency)} (${pctOverPace}% ahead of pace).`
             : `${row.categoryName} is spending ${pctOverPace}% faster than the month-to-date pace.`,
       };
     })

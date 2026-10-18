@@ -147,7 +147,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   }
   // Started now, awaited with the layout: it reads its own year of history, independent of
   // the period on screen. A failure costs the card, never the dashboard.
-  const insightsPromise = loadInsights(user.id, user.countryCode).catch((err) => {
+  const insightsPromise = loadInsights(user.id, user.countryCode, user.timezone).catch((err) => {
     console.error("[insights] loading failed", err);
     return null;
   });
@@ -507,8 +507,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       limitCents: row.limitCents,
     }));
 
-    budgetWarnings = computeBudgetWarnings(progressInputs, { ym: period.ym, reference: now });
-    budgetPaceTrends = computeOverBudgetTrends(progressInputs, { ym: period.ym, reference: now });
+    budgetWarnings = computeBudgetWarnings(progressInputs, { ym: period.ym, reference: now, currency: homeCurrency });
+    budgetPaceTrends = computeOverBudgetTrends(progressInputs, { ym: period.ym, reference: now, currency: homeCurrency });
 
     const priorYm = shiftYm(period.ym, -1);
     const priorExpenses = await prisma.transaction.findMany({

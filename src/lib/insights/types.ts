@@ -68,7 +68,14 @@ export type Insight = {
   title: string;
   body: string;
   monthlyCents?: number;
+  /** What this costs over a year: the spending the insight is about. */
   annualCents?: number;
+  /**
+   * What following the suggestion would realistically save in a year, with money another
+   * insight already counts left out, so these add up to a total without counting twice.
+   * Absent where there is nothing to add up: a one-off double charge, a habit.
+   */
+  savingCents?: number;
   /** Newest first. */
   evidenceTxIds: string[];
   action?: InsightAction;
