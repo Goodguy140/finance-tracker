@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { loadRolloverCarries } from "@/lib/budget-rollover";
 import { getCountryConfig } from "@/lib/country-config";
 import { shiftYm, startOfMonthYm } from "@/lib/dashboard-period";
-import { computeFinancialScore, emergencyFundCents, SCORE_LOOKBACK_MONTHS, type FinancialScore } from "@/lib/financial-score";
+import { TransactionType } from "@prisma/client";
+import { computeFinancialScore, emergencyFundCents, isEmergencyFundAccount, SCORE_LOOKBACK_MONTHS, type FinancialScore } from "@/lib/financial-score";
 import { formatCurrency } from "@/lib/money";
 import { computeNetWorth } from "@/lib/net-worth";
 import { loadBalanceInputs } from "@/lib/net-worth-data";
@@ -43,7 +44,7 @@ const loadFinancialScoreFor = cache(async (
   const todayYmd = currentYmdInTimeZone(user.timezone);
   const since = startOfMonthYm(shiftYm(todayYmd.slice(0, 7), -SCORE_LOOKBACK_MONTHS));
   const currency = getCountryConfig(user.countryCode).defaultCurrency;
-  const [txs, savings, budgets, recurring, balances] = await Promise.all([
+  const [txs, savings, budgets, recurring, balances, otherCurrencyUsed] = await Promise.all([
     loadReportTxs(user.id, since, currency),
     loadSavingsTransfers(user.id, since, currency),
     prisma.budget.findMany({
@@ -56,6 +57,17 @@ const loadFinancialScoreFor = cache(async (
       select: { name: true, type: true, amountCents: true, cadence: true, enabled: true, endDate: true },
     }),
     loadBalanceInputs(user.id),
+    // Accounts in another currency with entries in the scored months: left out, and named.
+    prisma.transaction.findMany({
+      where: {
+        userId: user.id,
+        type: { in: [TransactionType.EXPENSE, TransactionType.INCOME] },
+        date: { gte: since, lt: startOfMonthYm(todayYmd.slice(0, 7)) },
+        account: { currency: { not: currency } },
+      },
+      select: { accountId: true },
+      distinct: ["accountId"],
+    }),
   ]);
   const scoreBudgets = budgets.map((b) => ({ categoryId: b.categoryId, categoryName: b.category.name, periodMonth: b.periodMonth, limitCents: b.limitCents }));
   // Rollover carries into the full months the score looks back over.
@@ -65,6 +77,16 @@ const loadFinancialScoreFor = cache(async (
   const latest = new Map(
     computeNetWorth({ ...balances, months: [], todayYmd, currency }).accounts.map((row) => [row.accountId, row.latest?.cents ?? null]),
   );
+  const usedIds = new Set(otherCurrencyUsed.map((row) => row.accountId));
+  const otherCurrencyAccounts = balances.accounts
+    .filter(
+      (a) =>
+        !a.archived &&
+        a.currency.toUpperCase() !== currency.toUpperCase() &&
+        (usedIds.has(a.id) || (isEmergencyFundAccount(a) && latest.get(a.id) != null)),
+    )
+    .map((a) => ({ name: a.name, currency: a.currency.toUpperCase() }))
+    .sort((a, b) => a.name.localeCompare(b.name));
   const score = computeFinancialScore({
     txs,
     budgets: scoreBudgets,
@@ -80,6 +102,7 @@ const loadFinancialScoreFor = cache(async (
       balances.accounts.map((a) => ({ ...a, latestCents: latest.get(a.id) ?? null })),
       currency,
     ),
+    otherCurrencyAccounts,
   });
   return { score, currency };
 });

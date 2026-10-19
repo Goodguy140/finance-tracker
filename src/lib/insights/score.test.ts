@@ -20,6 +20,7 @@ const scored = (factors: FinancialScoreFactor[]): FinancialScore => ({
   suggestions: [],
   omitted: [],
   cushion: null,
+  otherCurrencyAccounts: [],
 });
 
 describe("scoreInsights", () => {

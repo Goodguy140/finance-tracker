@@ -70,4 +70,34 @@ describe("loadFinancialScore", () => {
     const bills = score.status === "scored" ? score.factors.find((f) => f.id === "bills") : undefined;
     expect(bills?.detail).toBe("25% of income goes to recurring bills");
   });
+
+  it("names the accounts in another currency it leaves out", async () => {
+    const userId = (await db.user.create({ data: { email: "score-fx@example.test", displayName: "Test", countryCode: "CA" } })).id;
+    const [cad, usdCard, usdSavings] = await Promise.all([
+      db.account.create({ data: { userId, name: "Chequing", type: "CHEQUING", currency: "CAD" } }),
+      db.account.create({ data: { userId, name: "US card", type: "CREDIT_CARD", currency: "USD" } }),
+      db.account.create({ data: { userId, name: "US savings", type: "SAVINGS", currency: "USD" } }),
+      // Another currency but unused and with no balance: nothing is left out of the score.
+      db.account.create({ data: { userId, name: "Euro card", type: "CREDIT_CARD", currency: "EUR" } }),
+    ]);
+    const [food, salary] = await Promise.all([
+      db.category.create({ data: { userId, name: "Food", kind: "EXPENSE" } }),
+      db.category.create({ data: { userId, name: "Salary", kind: "INCOME" } }),
+    ]);
+    const lastYm = shiftYm(currentYmdInTimeZone(null).slice(0, 7), -1);
+    const date = new Date(`${lastYm}-01T00:00:00Z`);
+    await db.transaction.createMany({
+      data: [
+        { userId, accountId: cad.id, categoryId: salary.id, type: "INCOME" as const, amountCents: 400000, date },
+        { userId, accountId: usdCard.id, categoryId: food.id, type: "EXPENSE" as const, amountCents: 5000, date },
+      ],
+    });
+    await db.accountBalanceSnapshot.create({ data: { userId, accountId: usdSavings.id, date, balanceCents: 900000, source: "MANUAL" } });
+
+    const { score } = await loadFinancialScore({ id: userId, timezone: null, countryCode: "CA" });
+    expect(score.status === "scored" ? score.otherCurrencyAccounts : null).toEqual([
+      { name: "US card", currency: "USD" },
+      { name: "US savings", currency: "USD" },
+    ]);
+  });
 });

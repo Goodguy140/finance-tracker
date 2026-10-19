@@ -34,7 +34,7 @@ const SECTIONS: Array<{ id: InsightSection; title: string; description: string; 
     id: "gap",
     title: "Possible gaps in your data",
     description:
-      "Pay, savings transfers and card payments that skipped a beat, months with no income, and busy accounts that went quiet.",
+      "Pay, savings transfers and card payments that skipped a beat, months with no income, busy accounts that went quiet, and anything that would make your financial score read wrong.",
     empty: "Nothing looks missing.",
   },
   {
@@ -114,6 +114,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Sea
         note={tags.length ? "It doesn't change with the tag below" : undefined}
         // Listed with the insights below, except under a tag, which they are not worked out for.
         showSuggestions={!!tagFilter}
+        gapCount={tagFilter ? 0 : visible.filter((i) => i.section === "gap").length}
       />
 
       <SavingsGoalsCard goals={savingsGoals.goals} />

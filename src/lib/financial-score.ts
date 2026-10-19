@@ -70,8 +70,12 @@ export type FinancialScore =
       omitted: FinancialScoreOmission[];
       /** What chequing and savings hold, and average monthly spending; null with no balances. */
       cushion: { fundCents: number; monthlySpendingCents: number } | null;
+      /** Accounts in another currency whose entries or balance the score leaves out. */
+      otherCurrencyAccounts: OtherCurrencyAccount[];
     }
   | { status: "insufficient"; reason: string };
+
+export type OtherCurrencyAccount = { name: string; currency: string };
 
 export type ScoreBudget = { categoryId: string; categoryName: string; periodMonth: string; limitCents: number };
 
@@ -107,6 +111,8 @@ export type FinancialScoreInput = {
    * of them has a balance yet, and the factor is then left out.
    */
   emergencyFundCents?: number | null;
+  /** Accounts in another currency with entries in the scored months or a balance; see `otherCurrencyAccounts`. */
+  otherCurrencyAccounts?: readonly OtherCurrencyAccount[];
 };
 
 /** Never part of the emergency fund: retirement savings, things owned, and what is owed. */
@@ -429,5 +435,6 @@ export function computeFinancialScore(input: FinancialScoreInput): FinancialScor
     suggestions,
     omitted: left,
     cushion: fund === null ? null : { fundCents: fund, monthlySpendingCents: Math.round(avgSpending) },
+    otherCurrencyAccounts: [...(input.otherCurrencyAccounts ?? [])],
   };
 }

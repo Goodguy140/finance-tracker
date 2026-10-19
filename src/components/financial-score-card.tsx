@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { EMERGENCY_FUND_TARGET_MONTHS, scoreBand, type FinancialScore, type FinancialScoreBand } from "@/lib/financial-score";
 import { formatYmShortLabel } from "@/lib/dashboard-period";
 
@@ -39,9 +40,15 @@ export function FinancialScoreCard({
   score,
   note,
   showSuggestions = true,
+  gapCount = 0,
 }: {
   score: FinancialScore;
   note?: string;
+  /**
+   * Possible gaps in the data the score reads, still showing on Insights. Said under the
+   * headline, linked to that list, so a low number is read with them in mind.
+   */
+  gapCount?: number;
   /** Off on the Insights page, which lists them with the other insights. */
   showSuggestions?: boolean;
 }) {
@@ -84,6 +91,13 @@ export function FinancialScoreCard({
             Based on {span}
             {note ? `. ${note}` : ""}.
           </p>
+          {gapCount > 0 ? (
+            <p className="mt-0.5 text-sm text-amber-200" data-testid="financial-score-gaps">
+              <Link href="/insights#insights-gap" className="underline-offset-2 hover:underline">
+                {gapCount === 1 ? "1 possible gap" : `${gapCount} possible gaps`} in your data could change this
+              </Link>
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -133,6 +147,13 @@ export function FinancialScoreCard({
               </li>
             ))}
           </ul>
+          {score.otherCurrencyAccounts.length ? (
+            <p data-testid="financial-score-other-currency">
+              Left out as another currency:{" "}
+              {score.otherCurrencyAccounts.map((a) => `${a.name} (${a.currency})`).join(", ")}. Their entries and balances
+              aren&apos;t in any figure here.
+            </p>
+          ) : null}
           {score.omitted.length ? (
             <p>
               Not counted:{" "}

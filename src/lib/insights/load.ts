@@ -163,6 +163,11 @@ export const loadInsights = cache(async (
     paired: t.transferPeerId !== null || t.transferPeerOf !== null,
   }));
 
+  // Each account's latest balance, as the score's emergency fund reads it.
+  const latestBalance = new Map(
+    (ahead?.[0].accounts ?? []).flatMap((row) => (row.latest ? [[row.accountId, { cents: row.latest.cents, date: row.latest.date }] as const] : [])),
+  );
+
   const habitsEnabled = preference?.habitDetectionEnabled ?? true;
   const savingsTxs = tagId ? savings.txs.filter((tx) => tx.tagIds?.includes(tagId)) : savings.txs;
   const toSavingsByMonth =
@@ -200,6 +205,7 @@ export const loadInsights = cache(async (
     // Goals in another currency are not in the home-currency figures these are worded in.
     goals: standing ? standing[2].goals.filter((goal) => goal.currency === currency) : null,
     gaps: gapData ? { transfers: transferTxs, accounts: gapData[1] } : null,
+    scoreGapAccounts: gapData && ahead ? gapData[1].map((a) => ({ ...a, latest: latestBalance.get(a.id) ?? null })) : null,
     clock,
   });
 

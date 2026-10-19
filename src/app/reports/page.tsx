@@ -9,6 +9,7 @@ import { loadNetWorth, loadProjectionInputs } from "@/lib/net-worth-data";
 import { PROJECTION_DAYS, projectBalances, type ProjectedBalances } from "@/lib/projected-balances";
 import { getCountryConfig } from "@/lib/country-config";
 import { loadFinancialScore } from "@/lib/financial-score-data";
+import { loadInsights } from "@/lib/insights/load";
 import { ymdFromDateUtc } from "@/lib/date-only";
 import { formatCurrency } from "@/lib/money";
 import { currentYmdInTimeZone } from "@/lib/period-month";
@@ -62,7 +63,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   const currency = getCountryConfig(user.countryCode).defaultCurrency;
   const fmt = (cents: number) => formatCurrency(cents, currency);
 
-  const [loaded, savings, activityYears, tags, financial, netWorth, projectionInputs] = await Promise.all([
+  const [loaded, savings, activityYears, tags, financial, netWorth, projectionInputs, insights] = await Promise.all([
     loadReportTxs(user.id, previousYearWindow(period).start, currency),
     loadSavingsTransfers(user.id, period.start, currency),
     loadActivityBounds(user.id),
@@ -70,6 +71,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
     loadFinancialScore(user),
     loadNetWorth(user),
     loadProjectionInputs(user.id),
+    // For the score card's count of possible gaps in the data, as Insights lists them.
+    loadInsights(user.id, user.countryCode, user.timezone),
   ]);
   const projection = projectBalances({
     accounts: netWorth.accounts,
@@ -141,7 +144,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
         </p>
       </div>
 
-      <FinancialScoreCard score={financial.score} note="It doesn't change with the period or tag below" />
+      <FinancialScoreCard
+        score={financial.score}
+        note="It doesn't change with the period or tag below"
+        gapCount={insights.visible.filter((i) => i.section === "gap").length}
+      />
 
       <NetWorthSection netWorth={netWorth} fmt={fmt} />
 
