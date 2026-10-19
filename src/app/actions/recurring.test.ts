@@ -8,6 +8,7 @@ const mockPrisma = vi.hoisted(() => ({
   },
   category: {
     findFirst: vi.fn(),
+    findMany: vi.fn(),
   },
   recurringTransaction: {
     create: vi.fn(),
@@ -103,6 +104,108 @@ describe("recurring transaction actions", () => {
         amountCents: 250_000,
         cadence: "BIWEEKLY",
         note: "Net pay",
+      }),
+    });
+  });
+
+  it("creates a recurring transfer in the Transfers category, naming both accounts", async () => {
+    mockPrisma.category.findMany.mockResolvedValue([{ id: "transfers", name: "Transfers", kind: CategoryKind.TRANSFER }]);
+
+    await createRecurringTransactionAction(
+      form({
+        type: "TRANSFER",
+        accountId: "account-1",
+        transferAccountId: "account-2",
+        name: "To savings",
+        amount: "200",
+        cadence: "MONTHLY",
+        nextExpectedDate: "2026-05-01",
+      }),
+    );
+
+    expect(mockPrisma.account.findFirst).toHaveBeenCalledWith({
+      where: { id: "account-2", userId: "user-1", archived: false },
+      select: { id: true },
+    });
+    expect(mockPrisma.category.findFirst).not.toHaveBeenCalled();
+    expect(mockPrisma.recurringTransaction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: TransactionType.TRANSFER,
+        accountId: "account-1",
+        transferAccountId: "account-2",
+        categoryId: "transfers",
+        amountCents: 20_000,
+      }),
+    });
+  });
+
+  it("refuses a recurring transfer without a second account", async () => {
+    const base = { type: "TRANSFER", accountId: "account-1", name: "To savings", amount: "200", cadence: "MONTHLY", nextExpectedDate: "2026-05-01" };
+    expect(await createRecurringTransactionAction(form(base))).toEqual({
+      ok: false,
+      error: "Choose the account the transfer goes to.",
+    });
+    expect(await createRecurringTransactionAction(form({ ...base, transferAccountId: "account-1" }))).toEqual({
+      ok: false,
+      error: "Choose two different accounts.",
+    });
+    expect(mockPrisma.recurringTransaction.create).not.toHaveBeenCalled();
+  });
+
+  it("does not save the other account on a bill", async () => {
+    mockPrisma.category.findFirst.mockResolvedValue({ id: "category-1" });
+    await createRecurringTransactionAction(
+      form({
+        type: "EXPENSE",
+        accountId: "account-1",
+        categoryId: "category-1",
+        transferAccountId: "account-2",
+        name: "Rent",
+        amount: "1500",
+        cadence: "MONTHLY",
+        nextExpectedDate: "2026-05-01",
+      }),
+    );
+    expect(mockPrisma.recurringTransaction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ type: TransactionType.EXPENSE, transferAccountId: null }),
+    });
+  });
+
+  it("posting a recurring transfer books it to both accounts", async () => {
+    const tx = {
+      recurringTransaction: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "rule-2",
+          userId: "user-1",
+          accountId: "account-1",
+          transferAccountId: "account-2",
+          categoryId: "transfers",
+          type: TransactionType.TRANSFER,
+          name: "To savings",
+          amountCents: 20_000,
+          cadence: "MONTHLY",
+          nextExpectedDate: dateFromYmd("2026-05-01"),
+          endDate: null,
+          note: null,
+          enabled: true,
+          account: { id: "account-1", archived: false },
+          category: { id: "transfers", kind: CategoryKind.TRANSFER },
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      transaction: { findFirst: vi.fn(), create: vi.fn() },
+      subscriptionShareStatus: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+    mockPrisma.$transaction.mockImplementation(async (callback: (arg: typeof tx) => Promise<void>) => callback(tx));
+
+    await postRecurringTransactionAction(form({ recurringTransactionId: "rule-2", expectedDate: "2026-05-01" }));
+
+    expect(tx.transaction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: TransactionType.TRANSFER,
+        accountId: "account-1",
+        transferAccountId: "account-2",
+        amountCents: 20_000,
       }),
     });
   });

@@ -16,12 +16,15 @@ import { MOBILE_OVERLAY_ROOT_Z_CLASS } from "@/lib/mobile-z-index";
 
 export type RecurringTransactionListItem = {
   id: string;
-  type: "EXPENSE" | "INCOME";
+  type: "EXPENSE" | "INCOME" | "TRANSFER";
   typeLabel: string;
   name: string;
   amountCents: number;
   accountId: string;
   accountLabel: string;
+  /** A transfer rule's other side, the account the money goes to. */
+  transferAccountId: string | null;
+  transferAccountLabel: string | null;
   categoryId: string;
   categoryLabel: string;
   cadence: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL";
@@ -98,10 +101,12 @@ function RecurringCard({
           className={`shrink-0 rounded-full border px-2.5 py-1 text-sm font-semibold tabular-nums ${
             item.type === "INCOME"
               ? "border-emerald-500/35 bg-emerald-500/15 text-emerald-100"
-              : "border-blue-500/35 bg-blue-500/15 text-blue-100"
+              : item.type === "TRANSFER"
+                ? "border-slate-500/35 bg-slate-500/15 text-slate-100"
+                : "border-blue-500/35 bg-blue-500/15 text-blue-100"
           }`}
         >
-          {item.type === "INCOME" ? "+" : "-"}
+          {item.type === "INCOME" ? "+" : item.type === "TRANSFER" ? "" : "-"}
           {formatCurrency(item.amountCents)}
         </span>
       </div>
@@ -110,8 +115,17 @@ function RecurringCard({
           {statusLabel(item.status)}
         </span>
         <MetaChip label="Type">{item.typeLabel}</MetaChip>
-        <MetaChip label="Category">{item.categoryLabel}</MetaChip>
-        <MetaChip label="Account">{item.accountLabel}</MetaChip>
+        {item.type === "TRANSFER" ? (
+          <>
+            <MetaChip label="From">{item.accountLabel}</MetaChip>
+            <MetaChip label="To">{item.transferAccountLabel ?? "Not set"}</MetaChip>
+          </>
+        ) : (
+          <>
+            <MetaChip label="Category">{item.categoryLabel}</MetaChip>
+            <MetaChip label="Account">{item.accountLabel}</MetaChip>
+          </>
+        )}
         <MetaChip label="Cadence">{item.cadenceLabel}</MetaChip>
         <MetaChip label="Next">{item.occurrenceDateDisplay}</MetaChip>
         {item.missedSinceDisplay ? <MetaChip label="Unposted since">{item.missedSinceDisplay}</MetaChip> : null}
@@ -268,7 +282,10 @@ export function RecurringTransactionsPanel({
         ? createPortal(
             <SkipModal
               item={skippingItem}
-              recentExpenses={skippingItem.type === "INCOME" ? recentIncomes : recentExpenses}
+              // Transfers are matched by title only; there is no list of recent ones to pick from.
+              recentExpenses={
+                skippingItem.type === "INCOME" ? recentIncomes : skippingItem.type === "TRANSFER" ? [] : recentExpenses
+              }
               onClose={() => setSkippingId(null)}
             />,
             document.body,
@@ -279,6 +296,12 @@ export function RecurringTransactionsPanel({
 }
 
 type SkipReason = "skip_once" | "already_logged" | "canceled";
+
+function kindLabel(type: RecurringTransactionListItem["type"], plural = false) {
+  if (type === "INCOME") return plural ? "income entries" : "income entry";
+  if (type === "TRANSFER") return plural ? "transfers" : "transfer";
+  return plural ? "expenses" : "expense";
+}
 
 function SkipModal({
   item,
@@ -342,7 +365,7 @@ function SkipModal({
               <span>
                 Auto-match by title
                 <span className="mt-0.5 block text-xs text-slate-400">
-                  Finds an unlinked {item.type === "INCOME" ? "income entry" : "expense"} titled “{item.name}” near{" "}
+                  Finds an unlinked {kindLabel(item.type)} titled “{item.name}” near{" "}
                   {item.occurrenceDateDisplay}.
                 </span>
               </span>
@@ -375,7 +398,7 @@ function SkipModal({
             </label>
             {recentExpenses.length === 0 ? (
               <p className="text-xs text-slate-500">
-                No recent unlinked {item.type === "INCOME" ? "income entries" : "expenses"} found to pick from.
+                No recent unlinked {kindLabel(item.type, true)} found to pick from.
               </p>
             ) : null}
           </div>

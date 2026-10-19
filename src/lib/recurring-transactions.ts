@@ -183,9 +183,10 @@ export function computeRecurringCashFlowSummary(
     let guard = 0;
     while (ymdFromDateUtc(occurrence) < periodEndYmd && guard < 1040) {
       if (rule.endDate && ymdFromDateUtc(occurrence) > ymdFromDateUtc(rule.endDate)) break;
+      // A transfer moves money between the user's own accounts: neither income nor a bill.
       if (rule.type === "INCOME") {
         incomeFromRulesCents += rule.amountCents;
-      } else {
+      } else if (rule.type === "EXPENSE") {
         expenseCents += rule.amountCents;
       }
       occurrence = advanceRecurringDate(occurrence, rule.cadence, anchorDay);

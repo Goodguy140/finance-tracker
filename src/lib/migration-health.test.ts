@@ -46,7 +46,8 @@ async function createMinimalSchema(prisma: PrismaClient) {
       "budgetAlertEmailEnabled" BOOLEAN NOT NULL DEFAULT false,
       "disabledAt" DATETIME,
       "dashboardTextVisiblePct" INTEGER NOT NULL DEFAULT 95,
-      "dashboardBudgetNameVisiblePct" INTEGER NOT NULL DEFAULT 90
+      "dashboardBudgetNameVisiblePct" INTEGER NOT NULL DEFAULT 90,
+      "projectionIncludesTransfers" BOOLEAN NOT NULL DEFAULT false
     )
   `);
   await prisma.$executeRawUnsafe(`
@@ -80,7 +81,8 @@ async function createMinimalSchema(prisma: PrismaClient) {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE "RecurringTransaction" (
       "id" TEXT NOT NULL PRIMARY KEY,
-      "anchorDay" INTEGER
+      "anchorDay" INTEGER,
+      "transferAccountId" TEXT
     )
   `);
 

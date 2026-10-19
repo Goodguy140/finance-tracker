@@ -38,3 +38,13 @@ export const updateDashboardReadabilityAction = formAction(async (formData: Form
   revalidatePath("/settings", "layout");
   revalidatePath("/");
 });
+
+/** Whether projected balances apply recurring transfers between the user's accounts. */
+export const setProjectionIncludesTransfersAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const enabled = getFormValue(formData, "enabled") === "true";
+  await prisma.user.update({ where: { id: user.id }, data: { projectionIncludesTransfers: enabled } });
+  revalidatePath("/reports", "layout");
+  revalidatePath("/insights");
+  revalidatePath("/");
+});

@@ -141,6 +141,18 @@ describe("computeRecurringCashFlowSummary", () => {
     });
   });
 
+  it("counts a recurring transfer as neither income nor a bill", () => {
+    const monthly = { cadence: "MONTHLY" as const, nextExpectedDate: dateFromYmd("2026-05-01"), endDate: null, enabled: true };
+    const summary = computeRecurringCashFlowSummary(
+      [
+        { ...monthly, type: "EXPENSE", amountCents: 2_000 },
+        { ...monthly, type: "TRANSFER", amountCents: 50_000 },
+      ],
+      { start: dateFromYmd("2026-05-01"), endExclusive: dateFromYmd("2026-06-01") },
+    );
+    expect(summary).toEqual({ incomeCents: 0, expenseCents: 2_000, netCents: -2_000 });
+  });
+
   it("sums enabled recurring income and expenses inside the dashboard period", () => {
     const summary = computeRecurringCashFlowSummary(
       [
