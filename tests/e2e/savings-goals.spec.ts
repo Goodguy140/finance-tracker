@@ -110,3 +110,56 @@ test("savings goals follow an account's balance or a hand-kept amount, and show 
   await expect(trip).toHaveCount(0);
   await expect.poll(async () => prisma.savingsGoal.count({ where: { userId: user.id } })).toBe(1);
 });
+
+test("a goal with no date gets an estimated completion date from transfers into its account", async ({ page }) => {
+  const email = `e2e-goals-eta-${uniqueStamp()}@example.com`;
+  const password = "e2e-password-123";
+  const user = await prisma.user.create({
+    data: {
+      email,
+      passwordHash: await hash(password, 12),
+      displayName: "E2E Goals User",
+      countryCode: "CA",
+      timezone: "America/Toronto",
+      role: "USER",
+    },
+  });
+  await ensureDefaultDataForUser(user);
+  const [chequing, transfers] = await Promise.all([
+    prisma.account.findFirstOrThrow({ where: { userId: user.id } }),
+    prisma.category.create({ data: { userId: user.id, name: "Transfers", kind: "TRANSFER" } }),
+  ]);
+  const savings = await prisma.account.create({
+    data: { userId: user.id, name: "Rainy day", type: AccountType.SAVINGS, countsAsSavings: true },
+  });
+  // One balance reading is not enough for a pace; $500 a month moved in is.
+  await prisma.accountBalanceSnapshot.create({
+    data: { userId: user.id, accountId: savings.id, date: daysAgo(1), balanceCents: 200_000, source: "MANUAL" },
+  });
+  await prisma.transaction.createMany({
+    data: [75, 45, 15].map((age) => ({
+      userId: user.id,
+      accountId: chequing.id,
+      transferAccountId: savings.id,
+      categoryId: transfers.id,
+      type: "TRANSFER" as const,
+      amountCents: 50_000,
+      title: "To savings",
+      date: daysAgo(age),
+    })),
+  });
+  await prisma.savingsGoal.create({
+    data: { userId: user.id, name: "New roof", targetCents: 700_000, accountId: savings.id },
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("Email").fill(email);
+  await page.getByPlaceholder("Password").fill(password);
+  await page.getByRole("button", { name: "Login" }).click();
+  await expectDashboardHome(page);
+
+  await page.goto("/insights");
+  const advice = page.getByTestId("savings-goals-card").getByTestId("goal-advice");
+  await expect(advice).toContainText("you've transferred about");
+  await expect(advice).toContainText("At that rate of transfers, you'd reach it around");
+});

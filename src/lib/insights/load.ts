@@ -13,6 +13,7 @@ import { loadSavingsGoals } from "@/lib/savings-goals-data";
 import { savedByTransferByMonth } from "@/lib/savings-transfers";
 import { buildInsights, type BuiltInsights } from "./index";
 import { scoreInsights } from "./score";
+import type { GapTransferTx } from "./gaps";
 import type { InsightTx } from "./types";
 import { daysAgo, insightsNow, moneyFormatter, previousFullMonths } from "./util";
 
@@ -51,7 +52,20 @@ export const loadInsights = cache(async (
   const currency = homeCurrencyOf(countryCode);
   const user = { id: userId, timezone, countryCode };
   const ym = now.toISOString().slice(0, 7);
-  const [transactions, staged, rules, budgets, preference, dismissals, savings, financial, ahead, standing] = await Promise.all([
+  const txSelect = {
+    id: true,
+    type: true,
+    amountCents: true,
+    date: true,
+    title: true,
+    note: true,
+    categoryId: true,
+    accountId: true,
+    recurringTransactionId: true,
+    category: { select: { name: true } },
+    splitParts: { select: { categoryId: true, amountCents: true, category: { select: { name: true } } } },
+  } as const;
+  const [transactions, staged, rules, budgets, preference, dismissals, savings, financial, ahead, standing, gapData] = await Promise.all([
     prisma.transaction.findMany({
       // Transfers are neither spending nor income: no habit, saving or recurring charge
       // should be read off a card payment. Nor is anything in another currency added in.
@@ -62,19 +76,7 @@ export const loadInsights = cache(async (
         ...inCurrencyWhere(currency),
         ...(tagId ? { tags: { some: { tagId } } } : {}),
       },
-      select: {
-        id: true,
-        type: true,
-        amountCents: true,
-        date: true,
-        title: true,
-        note: true,
-        categoryId: true,
-        accountId: true,
-        recurringTransactionId: true,
-        category: { select: { name: true } },
-        splitParts: { select: { categoryId: true, amountCents: true, category: { select: { name: true } } } },
-      },
+      select: txSelect,
       orderBy: { date: "asc" },
     }),
     // Plaid's merchant name and category live on the staged row only; they sharpen merchant
@@ -118,10 +120,24 @@ export const loadInsights = cache(async (
           countryCode === "CA" ? loadContributionRoomData(userId) : null,
           loadSavingsGoals(user),
         ]),
+    // Transfers and active accounts, for gaps in the log: not under a tag, which has them by design.
+    tagId
+      ? null
+      : Promise.all([
+          prisma.transaction.findMany({
+            where: { userId, date: { gte: since }, type: TransactionType.TRANSFER, ...inCurrencyWhere(currency) },
+            select: { ...txSelect, transferAccountId: true, transferPeerId: true, transferPeerOf: { select: { id: true } } },
+            orderBy: { date: "asc" },
+          }),
+          prisma.account.findMany({
+            where: { userId, archived: false, currency },
+            select: { id: true, name: true, type: true, countsAsSavings: true },
+          }),
+        ]),
   ]);
 
   const plaidByTx = new Map(staged.map((row) => [row.resolvedTransactionId as string, row]));
-  const txs: InsightTx[] = transactions.map((t) => {
+  const toInsightTx = (t: (typeof transactions)[number]): InsightTx => {
     const plaid = plaidByTx.get(t.id);
     return {
       id: t.id,
@@ -139,7 +155,13 @@ export const loadInsights = cache(async (
       pfcPrimary: plaid?.pfcPrimary ?? null,
       pfcDetailed: plaid?.pfcDetailed ?? null,
     };
-  });
+  };
+  const txs = transactions.map(toInsightTx);
+  const transferTxs: GapTransferTx[] = (gapData?.[0] ?? []).map((t) => ({
+    ...toInsightTx(t),
+    transferAccountId: t.transferAccountId,
+    paired: t.transferPeerId !== null || t.transferPeerOf !== null,
+  }));
 
   const habitsEnabled = preference?.habitDetectionEnabled ?? true;
   const savingsTxs = tagId ? savings.txs.filter((tx) => tx.tagIds?.includes(tagId)) : savings.txs;
@@ -177,10 +199,11 @@ export const loadInsights = cache(async (
         : null,
     // Goals in another currency are not in the home-currency figures these are worded in.
     goals: standing ? standing[2].goals.filter((goal) => goal.currency === currency) : null,
+    gaps: gapData ? { transfers: transferTxs, accounts: gapData[1] } : null,
     clock,
   });
 
-  const byId = new Map(txs.map((tx) => [tx.id, tx]));
+  const byId = new Map([...txs, ...transferTxs].map((tx) => [tx.id, tx]));
   const evidence = new Map<string, InsightTx>();
   for (const insight of [...built.visible, ...built.dismissed]) {
     for (const id of insight.evidenceTxIds) {

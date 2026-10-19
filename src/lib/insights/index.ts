@@ -1,5 +1,6 @@
 import { detectAhead, type AheadInput } from "./ahead";
 import { detectChanges } from "./changes";
+import { detectDataGaps, type GapAccount, type GapTransferTx } from "./gaps";
 import { detectStanding, type StandingInput } from "./standing";
 import { habitInsights, summarizeHabitSpending } from "./habits";
 import { suggestImprovements } from "./improvements";
@@ -41,6 +42,11 @@ export type BuildInsightsInput = {
   score?: StandingInput["score"];
   goals?: StandingInput["goals"];
   /**
+   * Transfers and accounts for spotting gaps in the log. Left out, gap detection is skipped: a
+   * tagged subset of the history is incomplete by design.
+   */
+  gaps?: { transfers: GapTransferTx[]; accounts: GapAccount[] } | null;
+  /**
    * The actual time, for whether a snooze has run out. `now` is the user's local date at noon
    * UTC, so the calendar months the detectors work in are the user's own.
    */
@@ -54,7 +60,7 @@ export type BuiltInsights = {
   dismissed: Array<Insight & { snoozedUntil: Date | null }>;
 };
 
-export const SECTION_ORDER: InsightSection[] = ["ahead", "recurring", "habit", "saving", "improvement", "good"];
+export const SECTION_ORDER: InsightSection[] = ["ahead", "gap", "recurring", "habit", "saving", "improvement", "good"];
 const SEVERITY_ORDER: Record<InsightSeverity, number> = { high: 0, medium: 1, low: 2 };
 
 export function compareInsights(a: Insight, b: Insight): number {
@@ -100,6 +106,7 @@ export function buildInsights(input: BuildInsightsInput): BuiltInsights {
   const candidates = detectRecurringCandidates(txs, rules, now);
   const all = [
     ...detectAhead({ projection: input.projection ?? null, budgets: input.budgetProgress ?? null, rules, now, fmt }),
+    ...(input.gaps ? detectDataGaps({ txs, transfers: input.gaps.transfers, accounts: input.gaps.accounts, now, fmt }) : []),
     ...recurringCandidateInsights(candidates, fmt),
     ...detectChanges({ txs, rules, now, fmt }),
     // Turned off means not computed at all, not merely hidden.

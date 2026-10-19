@@ -30,16 +30,37 @@ export function formatGoalDate(ymd: string, withDay = true) {
   });
 }
 
+/** The pace the goal is judged by, as a clause; null when there is none. */
+function paceClause(goal: SavingsGoalView): string | null {
+  const fmt = (cents: number) => formatCurrency(cents, goal.currency);
+  const p = goal.progress;
+  if (p.paceSource === "balance" && p.monthlyPaceCents !== null) {
+    return p.monthlyPaceCents > 0
+      ? `the balance has grown about ${fmt(p.monthlyPaceCents)} a month lately`
+      : "the balance hasn't grown lately";
+  }
+  if (p.paceSource === "transfers" && p.monthlyTransferCents !== null) {
+    return p.monthlyTransferCents > 0
+      ? `you've transferred about ${fmt(p.monthlyTransferCents)} a month into it lately`
+      : "more has been transferred out of it than in lately";
+  }
+  return null;
+}
+
+/** When the goal would be reached at its pace, as a sentence; null when it never would be. */
+function estimate(goal: SavingsGoalView): string | null {
+  const p = goal.progress;
+  if (!p.projectedYmd) return null;
+  const how = p.paceSource === "transfers" ? "At that rate of transfers" : "At that pace";
+  return `${how}, you'd reach it around ${formatGoalDate(p.projectedYmd, false)}.`;
+}
+
 /** One sentence on what the goal needs next, from its status. */
 function goalAdvice(goal: SavingsGoalView): ReactNode {
   const fmt = (cents: number) => formatCurrency(cents, goal.currency);
   const p = goal.progress;
-  const pace =
-    p.monthlyPaceCents === null
-      ? null
-      : p.monthlyPaceCents > 0
-        ? `the balance has grown about ${fmt(p.monthlyPaceCents)} a month lately`
-        : "the balance hasn't grown lately";
+  const pace = paceClause(goal);
+  const eta = estimate(goal);
   switch (p.status) {
     case "reached":
       return "You've saved the full amount.";
@@ -54,16 +75,14 @@ function goalAdvice(goal: SavingsGoalView): ReactNode {
         </>
       );
     case "overdue":
-      return `${fmt(p.remainingCents)} still to go.`;
+      return [`${fmt(p.remainingCents)} still to go.`, eta].filter(Boolean).join(" ");
     case "open":
-      return p.projectedYmd
-        ? `${fmt(p.remainingCents)} to go; at the recent pace, about ${formatGoalDate(p.projectedYmd, false)}.`
-        : `${fmt(p.remainingCents)} to go.`;
+      return [`${fmt(p.remainingCents)} to go${pace ? `; ${pace}` : ""}.`, eta].filter(Boolean).join(" ");
     case "needs":
     case "on-track":
     case "behind": {
       const needed = `Needs ${fmt(p.monthlyNeededCents ?? 0)} a month to make ${formatGoalDate(goal.targetYmd ?? "")}`;
-      return pace ? `${needed}; ${pace}.` : `${needed}.`;
+      return [pace ? `${needed}; ${pace}.` : `${needed}.`, eta].filter(Boolean).join(" ");
     }
   }
 }
