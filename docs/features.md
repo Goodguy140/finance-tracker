@@ -76,7 +76,9 @@ a `?tag=` filter only what is worked out from transactions shows (no score, bala
 owed money, room, goals or gaps).
 
 - **Financial score** (savings rate, emergency fund, fixed bills, budgets kept, spending trend,
-  months in the black): `financial-score-card.tsx`, `src/lib/financial-score.ts`,
+  months in the black; a "possible gaps in your data could change this" line linking to Possible
+  gaps, here and on Reports; accounts in another currency it leaves out, named under "How this is
+  worked out"): `financial-score-card.tsx`, `src/lib/financial-score.ts`,
   `financial-score-data.ts`
 - **Savings goals card** (progress, what a dated goal needs a month, and an estimated completion
   date with or without a target date: from the linked balance's growth, or from net transfers
@@ -90,7 +92,11 @@ owed money, room, goals or gaps).
 - **Possible gaps in your data** (pay, savings transfers, card payments and other transfers that
   skipped an occurrence, or are past due, leaving pay that is late right now to Coming up; recent
   months with no income for someone who usually has some; an account used about weekly that went
-  quiet for three weeks or more): `gaps.ts`
+  quiet for three weeks or more): `gaps.ts`; what would move the financial score (an emergency-fund
+  balance older than the account's latest entries, or none; bills noticed but not set up as
+  recurring; card payments and moves between accounts booked as spending or income; transfers
+  that name no destination, or keep going into an account not marked "Counts as savings"):
+  `score-gaps.ts`
 - **Recurring charges we noticed** (track as recurring): `recurring-detection.ts`; a new
   streaming subscription or a trial turned paid, and a recurring entry with no charge for 1.5
   cycles: `changes.ts`

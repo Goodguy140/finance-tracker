@@ -59,6 +59,7 @@ const scored = (factors: FinancialScoreFactor[], cushion: { fundCents: number; m
   suggestions: [],
   omitted: [],
   cushion,
+  otherCurrencyAccounts: [],
 });
 
 describe("idle cash", () => {

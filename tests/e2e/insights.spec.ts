@@ -316,3 +316,56 @@ test("a paycheque missing from the log shows as a possible gap", async ({ page }
   await expect(card).toContainText("one looks missing");
   await expect(card).toContainText("every two weeks");
 });
+
+test("gaps that would move the score show with the others, and the score card points to them", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+  const { user, login } = await seedUser(page, "score-gap");
+  const [chequing, salary, fun] = await Promise.all([
+    prisma.account.create({ data: { userId: user.id, name: "Everyday", type: "CHEQUING", currency: "CAD" } }),
+    prisma.category.findFirstOrThrow({ where: { userId: user.id, kind: CategoryKind.INCOME } }),
+    prisma.category.findFirstOrThrow({ where: { userId: user.id, kind: CategoryKind.EXPENSE, name: "Fun" } }),
+  ]);
+  // The first of each of the last three full months: inside what the score reads.
+  const today = dateFromYmd(currentYmdInTimeZone(TIMEZONE));
+  const monthStart = (back: number) => new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - back, 1));
+  await prisma.transaction.createMany({
+    data: [
+      ...[1, 2, 3].map((back) => ({
+        userId: user.id,
+        accountId: chequing.id,
+        categoryId: salary.id,
+        type: TransactionType.INCOME,
+        amountCents: 400_000,
+        title: "Salary",
+        date: monthStart(back),
+      })),
+      // A card payment booked as spending.
+      {
+        userId: user.id,
+        accountId: chequing.id,
+        categoryId: fun.id,
+        type: TransactionType.EXPENSE,
+        amountCents: 90_000,
+        title: "PAYMENT - THANK YOU",
+        date: monthStart(1),
+      },
+    ],
+  });
+  // Read four months ago; the account has been used since.
+  await prisma.accountBalanceSnapshot.create({
+    data: { userId: user.id, accountId: chequing.id, date: daysAgo(120), balanceCents: 250_000, source: "MANUAL" },
+  });
+
+  await login();
+  await page.goto("/insights");
+  const section = page.getByRole("region", { name: /Possible gaps in your data/ });
+  await expect(section.locator('[data-insight-key^="gap:score-balance:"]')).toContainText("Everyday's balance is from");
+  await expect(section.locator('[data-insight-key^="gap:score-transfer-like:"]')).toContainText("$900 counted as spending");
+  const count = await section.locator('[data-testid="insight"]').count();
+  expect(count).toBeGreaterThanOrEqual(2);
+  const line = page.getByTestId("financial-score-gaps");
+  await expect(line).toHaveText(`${count} possible gaps in your data could change this`);
+
+  await page.goto("/reports");
+  await expect(page.getByTestId("financial-score-gaps")).toHaveText(`${count} possible gaps in your data could change this`);
+});

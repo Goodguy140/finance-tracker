@@ -1,6 +1,7 @@
 import { detectAhead, type AheadInput } from "./ahead";
 import { detectChanges } from "./changes";
 import { detectDataGaps, type GapAccount, type GapTransferTx } from "./gaps";
+import { detectScoreGaps, type ScoreGapAccount } from "./score-gaps";
 import { detectStanding, type StandingInput } from "./standing";
 import { habitInsights, summarizeHabitSpending } from "./habits";
 import { suggestImprovements } from "./improvements";
@@ -46,6 +47,11 @@ export type BuildInsightsInput = {
    * tagged subset of the history is incomplete by design.
    */
   gaps?: { transfers: GapTransferTx[]; accounts: GapAccount[] } | null;
+  /**
+   * Accounts with their latest balance, for gaps that would move the financial score
+   * (`score-gaps.ts`). Needs `score` and `gaps` too; left out, nothing is said.
+   */
+  scoreGapAccounts?: ScoreGapAccount[] | null;
   /**
    * The actual time, for whether a snooze has run out. `now` is the user's local date at noon
    * UTC, so the calendar months the detectors work in are the user's own.
@@ -107,6 +113,17 @@ export function buildInsights(input: BuildInsightsInput): BuiltInsights {
   const all = [
     ...detectAhead({ projection: input.projection ?? null, budgets: input.budgetProgress ?? null, rules, now, fmt }),
     ...(input.gaps ? detectDataGaps({ txs, transfers: input.gaps.transfers, accounts: input.gaps.accounts, now, fmt }) : []),
+    ...(input.gaps && input.score && input.scoreGapAccounts
+      ? detectScoreGaps({
+          score: input.score,
+          txs,
+          transfers: input.gaps.transfers,
+          accounts: input.scoreGapAccounts,
+          candidates,
+          now,
+          fmt,
+        })
+      : []),
     ...recurringCandidateInsights(candidates, fmt),
     ...detectChanges({ txs, rules, now, fmt }),
     // Turned off means not computed at all, not merely hidden.
