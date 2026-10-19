@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { dateFromYmd } from "@/lib/date-only";
-import { computeGoalProgress, monthlyPaceCents, monthsUntil } from "./savings-goals";
+import { computeGoalProgress, monthlyPaceCents, monthlyTransferPaceCents, monthsUntil } from "./savings-goals";
 
 const r = (ymd: string, cents: number) => ({ date: dateFromYmd(ymd), cents });
 const TODAY = "2026-10-12";
@@ -43,7 +43,73 @@ describe("monthlyPaceCents", () => {
   });
 });
 
+describe("monthlyTransferPaceCents", () => {
+  it("averages net transfers over the last three months", () => {
+    // 500 a month for a year; only the last ~90 days count, and one withdrawal comes off.
+    const monthly = Array.from({ length: 12 }, (_, i) => r(`2026-${String(i + 1).padStart(2, "0")}-01`, 50_000).date);
+    const transfers = [...monthly.map((date) => ({ date, cents: 50_000 })), r("2026-09-15", -30_000)];
+    // Jul 14 – Oct 12: Aug, Sep and Oct's 500s, less 300.
+    const pace = monthlyTransferPaceCents(transfers, TODAY);
+    expect(pace).toBeGreaterThan(40_000);
+    expect(pace).toBeLessThan(41_000);
+  });
+  it("measures from the first transfer when that is more recent", () => {
+    const pace = monthlyTransferPaceCents([r("2026-08-12", 60_000), r("2026-09-12", 60_000)], TODAY);
+    // 1,200 over the ~61 days since Aug 12.
+    expect(pace).toBeGreaterThan(59_000);
+    expect(pace).toBeLessThan(61_000);
+  });
+  it("says nothing from a single transfer or under four weeks of them", () => {
+    expect(monthlyTransferPaceCents([r("2026-07-01", 60_000)], TODAY)).toBeNull();
+    expect(monthlyTransferPaceCents([r("2026-09-20", 60_000), r("2026-10-05", 60_000)], TODAY)).toBeNull();
+  });
+  it("ignores transfers dated after today", () => {
+    expect(monthlyTransferPaceCents([r("2026-08-12", 60_000), r("2026-10-20", 60_000)], TODAY)).toBeNull();
+  });
+});
+
 describe("computeGoalProgress", () => {
+  const sparseBalance = [r("2026-10-01", 200_000)];
+  const transfers = [r("2026-07-15", 50_000), r("2026-08-15", 50_000), r("2026-09-15", 50_000)];
+
+  it("estimates a completion date from transfers when the balance has too few readings, with no target date", () => {
+    const p = computeGoalProgress({ ...linked, targetCents: 700_000, targetDate: null }, sparseBalance, TODAY, transfers);
+    expect(p.status).toBe("open");
+    expect(p.monthlyPaceCents).toBeNull();
+    expect(p.paceSource).toBe("transfers");
+    // 5,000 to go at about 500 a month: about ten months out.
+    expect(p.projectedYmd! > "2027-07-01").toBe(true);
+    expect(p.projectedYmd! < "2027-09-01").toBe(true);
+  });
+
+  it("judges a dated goal by the transfer pace when that is all there is", () => {
+    const p = computeGoalProgress(
+      { ...linked, targetCents: 700_000, targetDate: dateFromYmd("2027-04-12") },
+      sparseBalance,
+      TODAY,
+      transfers,
+    );
+    // 5,000 over 6 months needs ~834 a month; ~500 a month is behind.
+    expect(p.status).toBe("behind");
+  });
+
+  it("prefers the balance's growth over transfers when it has enough readings", () => {
+    const p = computeGoalProgress(
+      { ...linked, targetCents: 1_000_000, targetDate: null },
+      [r("2026-07-12", 100_000), r("2026-10-12", 400_000)],
+      TODAY,
+      transfers,
+    );
+    expect(p.paceSource).toBe("balance");
+    expect(p.monthlyTransferCents).not.toBeNull();
+  });
+
+  it("gives no estimate for a hand-tracked goal", () => {
+    const p = computeGoalProgress({ targetCents: 200_000, targetDate: null, accountId: null, savedCents: 50_000 }, [], TODAY, transfers);
+    expect(p.paceSource).toBeNull();
+    expect(p.projectedYmd).toBeNull();
+  });
+
   it("uses the linked account's latest balance, not the hand-recorded amount", () => {
     const p = computeGoalProgress(
       { targetCents: 1_000_000, targetDate: null, accountId: "a1", savedCents: 999_999 },

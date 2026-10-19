@@ -16,7 +16,7 @@ export function SavingsGoalsCard({ goals }: { goals: SavingsGoalView[] }) {
             Savings goals
             {goals.length ? <span className="ml-2 text-sm font-normal text-slate-500">{goals.length}</span> : null}
           </h2>
-          <p className="mt-0.5 text-sm text-slate-400">How far along you are, and what each needs a month to make its date.</p>
+          <p className="mt-0.5 text-sm text-slate-400">How far along you are, what each needs a month to make its date, and when you would get there at your recent pace.</p>
         </div>
         <Link href="/settings/goals" className="text-sm text-sky-300 underline-offset-2 hover:underline">
           {goals.length ? "Manage" : "Set one up"}

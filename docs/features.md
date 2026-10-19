@@ -71,19 +71,26 @@ Code: `src/lib/plaid/*`, `actions/plaid.ts`. Read the Plaid section of `AGENTS.m
 Page: `src/app/insights/page.tsx`. Engine: `src/lib/insights/*` (`load.ts` loads, `index.ts`
 builds and orders the sections, `facts.ts` works out each transaction's merchant, habit,
 delivery, fee, streaming service and category role once for every detector). Sections, in
-order: Coming up, Recurring, Habits, Ways to save, Suggestions, Going well. Under a `?tag=`
-filter only what is worked out from transactions shows (no score, balances, budgets, owed
-money, room or goals).
+order: Coming up, Possible gaps, Recurring, Habits, Ways to save, Suggestions, Going well. Under
+a `?tag=` filter only what is worked out from transactions shows (no score, balances, budgets,
+owed money, room, goals or gaps).
 
 - **Financial score** (savings rate, emergency fund, fixed bills, budgets kept, spending trend,
   months in the black): `financial-score-card.tsx`, `src/lib/financial-score.ts`,
   `financial-score-data.ts`
-- **Savings goals card**: `savings-goals-card.tsx`, `src/lib/savings-goals.ts`
+- **Savings goals card** (progress, what a dated goal needs a month, and an estimated completion
+  date with or without a target date: from the linked balance's growth, or from net transfers
+  into the account when the balance has too few readings): `savings-goals-card.tsx`,
+  `savings-goal-progress.tsx`, `src/lib/savings-goals.ts`, `savings-goals-data.ts`
 - **Coming up** (an account the recurring bills take below zero, from `projectBalances` and a
   balance read in the last month; a budget over, on pace to go over or nearly used this month,
   left off the dashboard card, which has the budget alerts panel; a yearly charge due within 30
   days; pay that is late or came in short, `changes.ts`; RRSP room left in the first 60 days of
   the year and FHSA room that will not carry over, Canada only, `standing.ts`): `ahead.ts`
+- **Possible gaps in your data** (pay, savings transfers, card payments and other transfers that
+  skipped an occurrence, or are past due, leaving pay that is late right now to Coming up; recent
+  months with no income for someone who usually has some; an account used about weekly that went
+  quiet for three weeks or more): `gaps.ts`
 - **Recurring charges we noticed** (track as recurring): `recurring-detection.ts`; a new
   streaming subscription or a trial turned paid, and a recurring entry with no charge for 1.5
   cycles: `changes.ts`

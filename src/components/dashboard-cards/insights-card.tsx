@@ -4,6 +4,7 @@ import type { Insight, InsightSection } from "@/lib/insights/types";
 
 const SECTION_LABELS: Record<InsightSection, string> = {
   ahead: "Coming up",
+  gap: "Gaps",
   recurring: "Recurring",
   habit: "Habits",
   saving: "Savings",

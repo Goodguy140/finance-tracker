@@ -162,11 +162,21 @@ function idleCash({ score, fmt }: StandingInput): Insight[] {
 
 // --- Savings goals behind --------------------------------------------------------------------
 
+/** How the goal has been moving, from whichever pace its progress was judged by. */
+function goalPaceClause(cents: number | null, source: GoalProgress["paceSource"], fmt: MoneyFormatter): string {
+  if (source === "transfers") {
+    return cents !== null && cents > 0
+      ? `; lately about ${fmt(cents)} a month has been transferred in`
+      : "; lately more has been transferred out than in";
+  }
+  return cents !== null && cents > 0 ? `; lately it has grown about ${fmt(cents)} a month` : "; lately it has not grown";
+}
+
 function goalsBehind({ goals, now, fmt }: StandingInput): Insight[] {
   if (!goals) return [];
   const ym = ymOf(now);
   return goals.flatMap((goal): Insight[] => {
-    const { status, monthlyNeededCents, monthlyPaceCents, remainingCents } = goal.progress;
+    const { status, monthlyNeededCents, monthlyPaceCents, monthlyTransferCents, paceSource, remainingCents } = goal.progress;
     if (status !== "behind" || monthlyNeededCents === null || !goal.targetYmd) return [];
     const by = longDate.format(new Date(`${goal.targetYmd}T00:00:00.000Z`));
     return [
@@ -177,7 +187,7 @@ function goalsBehind({ goals, now, fmt }: StandingInput): Insight[] {
         title: `${goal.name} is behind`,
         body:
           `${fmt(remainingCents)} to go by ${by} takes about ${fmt(monthlyNeededCents)} a month` +
-          `${monthlyPaceCents !== null && monthlyPaceCents > 0 ? `; lately it has grown about ${fmt(monthlyPaceCents)} a month` : "; lately it has not grown"}. ` +
+          `${goalPaceClause(paceSource === "transfers" ? monthlyTransferCents : monthlyPaceCents, paceSource, fmt)}. ` +
           `Putting more aside, or moving the date, would bring it back on track.`,
         monthlyCents: monthlyNeededCents,
         evidenceTxIds: [],

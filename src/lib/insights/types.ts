@@ -40,7 +40,7 @@ export type InsightRecurringRule = {
 
 export type InsightBudget = { categoryId: string; periodMonth: string };
 
-export type InsightSection = "ahead" | "recurring" | "habit" | "saving" | "improvement" | "good";
+export type InsightSection = "ahead" | "gap" | "recurring" | "habit" | "saving" | "improvement" | "good";
 export type InsightSeverity = "high" | "medium" | "low";
 
 export type HabitKind = "TOBACCO_VAPE" | "CANNABIS" | "ALCOHOL" | "GAMBLING" | "GAMING_PURCHASES";

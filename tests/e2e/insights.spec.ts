@@ -286,3 +286,33 @@ test("money owed for over a month is a suggestion on Insights, left to the Expen
   await expect(suggestions.locator(`[data-insight-key="${key}"]`)).toContainText("Sam owes you $60.00");
   await expect(suggestions.locator(`[data-insight-key="${key}"]`)).toContainText("for Concert tickets, is from");
 });
+
+test("a paycheque missing from the log shows as a possible gap", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+  const { user, login } = await seedUser(page, "gap");
+  const [account, salary] = await Promise.all([
+    prisma.account.findFirstOrThrow({ where: { userId: user.id } }),
+    prisma.category.findFirstOrThrow({ where: { userId: user.id, kind: CategoryKind.INCOME } }),
+  ]);
+  const payer = uniqueMerchant("Payroll");
+  // Every two weeks for 22 weeks, but the one six weeks ago was never logged.
+  await prisma.transaction.createMany({
+    data: [3, 17, 31, 59, 73, 87, 101, 115, 129, 143, 157].map((age) => ({
+      userId: user.id,
+      accountId: account.id,
+      categoryId: salary.id,
+      type: TransactionType.INCOME,
+      amountCents: 210_000,
+      title: payer,
+      date: daysAgo(age),
+    })),
+  });
+
+  await login();
+  await page.goto("/insights");
+  const section = page.getByRole("region", { name: /Possible gaps in your data/ });
+  const card = section.locator(`[data-insight-key^="gap:income:${normalizeMerchant(payer)}:"]`);
+  await expect(card).toHaveCount(1);
+  await expect(card).toContainText("one looks missing");
+  await expect(card).toContainText("every two weeks");
+});

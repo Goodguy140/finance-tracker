@@ -31,6 +31,13 @@ const SECTIONS: Array<{ id: InsightSection; title: string; description: string; 
     empty: "Nothing coming up that needs a look.",
   },
   {
+    id: "gap",
+    title: "Possible gaps in your data",
+    description:
+      "Pay, savings transfers and card payments that skipped a beat, months with no income, and busy accounts that went quiet.",
+    empty: "Nothing looks missing.",
+  },
+  {
     id: "recurring",
     title: "Recurring charges we noticed",
     description: "Transactions that repeat on a schedule but have no recurring entry yet, new subscriptions, and entries whose charges stopped.",
@@ -138,6 +145,8 @@ export default async function InsightsPage({ searchParams }: { searchParams: Sea
 
       {SECTIONS.map((section) => {
         if (section.id === "habit" && !loaded.habitsEnabled) return null;
+        // A tagged subset of the log has gaps by design.
+        if (section.id === "gap" && tagFilter) return null;
         const items = bySection.get(section.id) ?? [];
         return (
           <section

@@ -78,7 +78,9 @@ describe("savings goals", () => {
     monthsLeft: 4,
     monthlyNeededCents: 100_000,
     monthlyPaceCents: 20_000,
+    monthlyTransferCents: null,
     projectedYmd: null,
+    paceSource: "balance",
     ...overrides,
   });
   const goal = (p: Partial<GoalProgress>) => ({ id: "g1", name: "Trip", targetCents: 500_000, targetYmd: "2027-01-31", progress: progress(p) });

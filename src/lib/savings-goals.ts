@@ -10,7 +10,10 @@ import { dateFromYmd } from "@/lib/date-only";
  * hand: the user records what they have put aside.
  *
  * The pace is how fast the linked balance has grown, measured over about the last three
- * months of readings. With a date, it decides whether the goal is on track.
+ * months of readings. Without enough readings for that (an account whose balance is entered
+ * by hand now and then, say), it falls back to what has been transferred into the account
+ * over the same window. With a date, the pace decides whether the goal is on track; with or
+ * without one, it gives an estimated completion date.
  */
 
 export const MAX_GOAL_NAME_LENGTH = 80;
@@ -60,8 +63,12 @@ export type GoalProgress = {
   monthlyNeededCents: number | null;
   /** Recent growth of the linked balance per month; null without enough history. */
   monthlyPaceCents: number | null;
+  /** Recent net transfers into the linked account per month; null without enough history. */
+  monthlyTransferCents: number | null;
   /** When the goal is reached at the current pace (`YYYY-MM-DD`); null when it never would be. */
   projectedYmd: string | null;
+  /** Which pace `projectedYmd` and the on-track judgement use. */
+  paceSource: "balance" | "transfers" | null;
 };
 
 function addDaysYmd(ymd: string, days: number): string {
@@ -83,6 +90,26 @@ export function monthlyPaceCents(readings: readonly GoalReading[], todayYmd: str
   const days = (latest.date.getTime() - baseline.date.getTime()) / DAY_MS;
   if (days < PACE_MIN_DAYS) return null;
   return Math.round(((latest.cents - baseline.cents) / days) * AVG_MONTH_DAYS);
+}
+
+/**
+ * Monthly net transfers into an account: what arrived less what left over the last
+ * {@link PACE_WINDOW_DAYS}, or since the first transfer when that is more recent. Null with
+ * fewer than two transfers in the window or less than {@link PACE_MIN_DAYS} of history.
+ *
+ * `transfers` carries cents moved in (negative for moved out), as `savingsCentsFor` gives them.
+ */
+export function monthlyTransferPaceCents(transfers: readonly GoalReading[], todayYmd: string): number | null {
+  const today = dateFromYmd(todayYmd).getTime();
+  const past = transfers.filter((t) => t.date.getTime() <= today && t.cents !== 0);
+  if (past.length === 0) return null;
+  const first = Math.min(...past.map((t) => t.date.getTime()));
+  const start = Math.max(first, today - PACE_WINDOW_DAYS * DAY_MS);
+  const days = (today - start) / DAY_MS;
+  const inWindow = past.filter((t) => t.date.getTime() >= start);
+  if (days < PACE_MIN_DAYS || inWindow.length < 2) return null;
+  const net = inWindow.reduce((sum, t) => sum + t.cents, 0);
+  return Math.round((net / days) * AVG_MONTH_DAYS);
 }
 
 /** The latest reading on or before today. */
@@ -110,10 +137,16 @@ export function computeGoalProgress(
   goal: SavingsGoalInput,
   readings: readonly GoalReading[],
   todayYmd: string,
+  /** Cents transferred into the linked account, by date; see {@link monthlyTransferPaceCents}. */
+  transfers: readonly GoalReading[] = [],
 ): GoalProgress {
   const linked = goal.accountId !== null;
   const saved = linked ? (latestReading(readings, todayYmd)?.cents ?? null) : goal.savedCents;
-  const pace = linked ? monthlyPaceCents(readings, todayYmd) : null;
+  const balancePace = linked ? monthlyPaceCents(readings, todayYmd) : null;
+  const transferPace = linked ? monthlyTransferPaceCents(transfers, todayYmd) : null;
+  // The balance is the truth when there is enough of it; transfers are the fallback.
+  const paceSource: GoalProgress["paceSource"] = balancePace !== null ? "balance" : transferPace !== null ? "transfers" : null;
+  const pace = balancePace ?? transferPace;
   const target = Math.max(goal.targetCents, 1);
   const have = saved ?? 0;
   const remaining = Math.max(0, goal.targetCents - have);
@@ -125,7 +158,15 @@ export function computeGoalProgress(
       ? addDaysYmd(todayYmd, Math.ceil((remaining / pace) * AVG_MONTH_DAYS))
       : null;
 
-  const base = { savedCents: saved, remainingCents: remaining, fraction, monthlyPaceCents: pace, projectedYmd };
+  const base = {
+    savedCents: saved,
+    remainingCents: remaining,
+    fraction,
+    monthlyPaceCents: balancePace,
+    monthlyTransferCents: transferPace,
+    projectedYmd,
+    paceSource,
+  };
   if (saved === null) return { ...base, status: "no-balance", monthsLeft, monthlyNeededCents: null };
   if (remaining === 0) return { ...base, status: "reached", monthsLeft, monthlyNeededCents: null, projectedYmd: null };
   if (!targetYmd) return { ...base, status: "open", monthsLeft: null, monthlyNeededCents: null };

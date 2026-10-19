@@ -1,9 +1,14 @@
+import { TransactionType } from "@prisma/client";
 import { getCountryConfig } from "@/lib/country-config";
 import { ymdFromDateUtc } from "@/lib/date-only";
 import { isLiabilityType } from "@/lib/net-worth";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
 import { computeGoalProgress, type GoalProgress, type GoalReading } from "@/lib/savings-goals";
+import { savingsCentsFor } from "@/lib/savings-transfers";
+
+/** How far back transfers are read for the transfer pace: enough to tell a new habit from an old one. */
+const TRANSFER_HISTORY_DAYS = 400;
 
 export type SavingsGoalView = {
   id: string;
@@ -41,7 +46,8 @@ export async function loadSavingsGoals(user: {
   ]);
 
   const linkedIds = [...new Set(goals.flatMap((g) => (g.accountId ? [g.accountId] : [])))];
-  const [balances, portfolio] = linkedIds.length
+  const transferSince = new Date(Date.now() - TRANSFER_HISTORY_DAYS * 24 * 60 * 60 * 1000);
+  const [balances, portfolio, transfers] = linkedIds.length
     ? await Promise.all([
         prisma.accountBalanceSnapshot.findMany({
           where: { userId: user.id, accountId: { in: linkedIds } },
@@ -51,8 +57,25 @@ export async function loadSavingsGoals(user: {
           where: { userId: user.id, accountId: { in: linkedIds } },
           select: { accountId: true, date: true, totalValueCents: true },
         }),
+        prisma.transaction.findMany({
+          where: {
+            userId: user.id,
+            type: TransactionType.TRANSFER,
+            date: { gte: transferSince },
+            OR: [{ accountId: { in: linkedIds } }, { transferAccountId: { in: linkedIds } }],
+          },
+          select: {
+            date: true,
+            amountCents: true,
+            accountId: true,
+            transferAccountId: true,
+            transferPeerId: true,
+            transferPeerOf: { select: { id: true } },
+            account: { select: { currency: true } },
+          },
+        }),
       ])
-    : [[], []];
+    : [[], [], []];
   const readings = new Map<string, GoalReading[]>();
   const add = (accountId: string, reading: GoalReading) => readings.set(accountId, [...(readings.get(accountId) ?? []), reading]);
   // Same precedence as net worth: on a day with both, the balance wins over a portfolio value.
@@ -60,6 +83,25 @@ export async function loadSavingsGoals(user: {
   for (const b of balances) add(b.accountId, { date: b.date, cents: b.balanceCents });
   for (const p of portfolio) {
     if (!balanceDays.has(`${p.accountId}:${p.date.getTime()}`)) add(p.accountId, { date: p.date, cents: p.totalValueCents });
+  }
+
+  // What each linked account received by transfer, counted as savings totals count it: each
+  // movement once, whichever legs are in the log.
+  const accountCurrency = new Map(goals.flatMap((g) => (g.account ? [[g.account.id, g.account.currency] as const] : [])));
+  const transfersIn = new Map<string, GoalReading[]>();
+  for (const accountId of linkedIds) {
+    const only = new Set([accountId]);
+    const rows: GoalReading[] = [];
+    for (const t of transfers) {
+      // A leg booked in another currency is not this account's amount.
+      if (t.account && t.account.currency !== accountCurrency.get(accountId)) continue;
+      const cents = savingsCentsFor(
+        { ...t, paired: t.transferPeerId !== null || t.transferPeerOf !== null },
+        only,
+      );
+      if (cents !== 0) rows.push({ date: t.date, cents });
+    }
+    transfersIn.set(accountId, rows);
   }
 
   return {
@@ -76,7 +118,12 @@ export async function loadSavingsGoals(user: {
       manualSavedCents: goal.savedCents,
       account: goal.account ? { id: goal.account.id, name: goal.account.name, archived: goal.account.archived } : null,
       currency: goal.account?.currency ?? currency,
-      progress: computeGoalProgress(goal, goal.accountId ? (readings.get(goal.accountId) ?? []) : [], todayYmd),
+      progress: computeGoalProgress(
+        goal,
+        goal.accountId ? (readings.get(goal.accountId) ?? []) : [],
+        todayYmd,
+        goal.accountId ? (transfersIn.get(goal.accountId) ?? []) : [],
+      ),
     })),
   };
 }
