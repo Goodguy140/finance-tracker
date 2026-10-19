@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import { hash } from "bcryptjs";
 import { CategoryKind, TransactionType } from "@prisma/client";
+import { dateFromYmd } from "../../src/lib/date-only";
+import { currentYmdInTimeZone } from "../../src/lib/period-month";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { normalizeMerchant } from "../../src/lib/plaid/merchant-text";
@@ -20,10 +22,16 @@ function uniqueMerchant(prefix: string) {
   return `${prefix} ${letters}`;
 }
 
-/** UTC midnight `days` ago — how date-only values are stored. */
+const TIMEZONE = "America/Toronto";
+
+/**
+ * UTC midnight of the date `days` before the user's today — how date-only values are stored.
+ * Counted from the user's calendar, as `insightsNow` does: from UTC's, every evening in
+ * Toronto would put each row a day further back than the engine counts it.
+ */
 function daysAgo(days: number) {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days));
+  const today = dateFromYmd(currentYmdInTimeZone(TIMEZONE));
+  return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - days));
 }
 
 async function seedUser(page: Page, label: string) {
@@ -35,7 +43,7 @@ async function seedUser(page: Page, label: string) {
       passwordHash: await hash(password, 12),
       displayName: "E2E Insights User",
       countryCode: "CA",
-      timezone: "America/Toronto",
+      timezone: TIMEZONE,
       role: "USER",
     },
   });
@@ -215,7 +223,7 @@ test("Coming up lists a budget gone over and a yearly charge due soon; the dashb
     prisma.category.findFirstOrThrow({ where: { userId: user.id, kind: CategoryKind.EXPENSE, name: "Fun" } }),
   ]);
   // The user's own today, so the spend lands in the month the budget is checked for.
-  const today = new Date(`${new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto" }).format(new Date())}T00:00:00.000Z`);
+  const today = new Date(`${new Intl.DateTimeFormat("en-CA", { timeZone: TIMEZONE }).format(new Date())}T00:00:00.000Z`);
   const renewsOn = new Date(today.getTime() + 10 * 24 * 60 * 60 * 1000);
   const ym = today.toISOString().slice(0, 7);
   await prisma.budget.create({ data: { userId: user.id, categoryId: dining.id, periodMonth: "2020-01", limitCents: 10_000 } });
