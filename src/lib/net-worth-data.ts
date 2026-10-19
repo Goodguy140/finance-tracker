@@ -59,20 +59,30 @@ export async function loadNetWorth(user: {
   return computeNetWorth({ accounts, readings, months, todayYmd, currency });
 }
 
-/** The recurring rules a balance projection applies; `projectBalances` picks the ones it can. */
-export async function loadProjectionRules(userId: string): Promise<ProjectableRule[]> {
-  return prisma.recurringTransaction.findMany({
-    where: { userId, enabled: true, type: { in: ["EXPENSE", "INCOME"] } },
-    select: {
-      accountId: true,
-      name: true,
-      type: true,
-      amountCents: true,
-      cadence: true,
-      nextExpectedDate: true,
-      anchorDay: true,
-      endDate: true,
-      enabled: true,
-    },
-  });
+/**
+ * What a balance projection applies: the user's recurring rules (`projectBalances` picks the
+ * ones it can) and whether they asked for transfers to be included.
+ */
+export async function loadProjectionInputs(
+  userId: string,
+): Promise<{ rules: ProjectableRule[]; includeTransfers: boolean }> {
+  const [rules, user] = await Promise.all([
+    prisma.recurringTransaction.findMany({
+      where: { userId, enabled: true, type: { in: ["EXPENSE", "INCOME", "TRANSFER"] } },
+      select: {
+        accountId: true,
+        transferAccountId: true,
+        name: true,
+        type: true,
+        amountCents: true,
+        cadence: true,
+        nextExpectedDate: true,
+        anchorDay: true,
+        endDate: true,
+        enabled: true,
+      },
+    }),
+    prisma.user.findUnique({ where: { id: userId }, select: { projectionIncludesTransfers: true } }),
+  ]);
+  return { rules, includeTransfers: user?.projectionIncludesTransfers ?? false };
 }

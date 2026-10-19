@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { Prisma, RecurringPostMode, TransactionType } from "@prisma/client";
+import { CategoryKind, Prisma, RecurringPostMode, TransactionType } from "@prisma/client";
 import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
+import { ensureFallbackCategoryFor } from "@/lib/fallback-categories";
 import { toCents } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { dateFromYmd } from "@/lib/date-only";
@@ -22,12 +23,40 @@ import {
   categoryKindForTransactionType,
   formAction,
 } from "./_helpers";
+/**
+ * The category and other account a rule saves with, checked against the user. A bill or
+ * income rule names its own category; a transfer goes to the Transfers category and names the
+ * account the money goes to, which must be another of the user's active accounts.
+ */
+async function resolveRuleSides(
+  userId: string,
+  payload: { type: TransactionType; accountId: string; categoryId?: string; transferAccountId?: string },
+): Promise<{ categoryId: string; transferAccountId: string | null }> {
+  if (payload.type === TransactionType.TRANSFER) {
+    if (!payload.transferAccountId) throw new Error("Choose the account the transfer goes to.");
+    if (payload.transferAccountId === payload.accountId) throw new Error("Choose two different accounts.");
+    await Promise.all([
+      assertUserOwnsActiveAccount(userId, payload.accountId),
+      assertUserOwnsActiveAccount(userId, payload.transferAccountId),
+    ]);
+    const categoryId = await ensureFallbackCategoryFor(prisma, userId, CategoryKind.TRANSFER);
+    return { categoryId, transferAccountId: payload.transferAccountId };
+  }
+  if (!payload.categoryId) throw new Error("Choose a category.");
+  await Promise.all([
+    assertUserOwnsActiveAccount(userId, payload.accountId),
+    assertUserOwnsCategory(userId, payload.categoryId, categoryKindForTransactionType(payload.type)),
+  ]);
+  return { categoryId: payload.categoryId, transferAccountId: null };
+}
+
 export const createRecurringTransactionAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = recurringTransactionSchema.parse({
     type: getFormValue(formData, "type"),
     accountId: getFormValue(formData, "accountId"),
-    categoryId: getFormValue(formData, "categoryId"),
+    categoryId: getFormValue(formData, "categoryId") || undefined,
+    transferAccountId: getFormValue(formData, "transferAccountId") || undefined,
     name: getFormValue(formData, "name"),
     amount: getFormValue(formData, "amount"),
     cadence: getFormValue(formData, "cadence"),
@@ -37,10 +66,7 @@ export const createRecurringTransactionAction = formAction(async (formData: Form
     postMode: getFormValue(formData, "postMode") || undefined,
   });
   const type = payload.type as TransactionType;
-  await Promise.all([
-    assertUserOwnsActiveAccount(user.id, payload.accountId),
-    assertUserOwnsCategory(user.id, payload.categoryId, categoryKindForTransactionType(type)),
-  ]);
+  const sides = await resolveRuleSides(user.id, { ...payload, type });
   const nextExpectedDate = dateFromYmd(payload.nextExpectedDate);
   const endDate = payload.endDate ? dateFromYmd(payload.endDate) : null;
   if (endDate && endDate.getTime() < nextExpectedDate.getTime()) {
@@ -51,7 +77,8 @@ export const createRecurringTransactionAction = formAction(async (formData: Form
     data: {
       userId: user.id,
       accountId: payload.accountId,
-      categoryId: payload.categoryId,
+      categoryId: sides.categoryId,
+      transferAccountId: sides.transferAccountId,
       type,
       name: payload.name,
       amountCents: toCents(payload.amount),
@@ -72,7 +99,8 @@ export const updateRecurringTransactionAction = formAction(async (formData: Form
     recurringTransactionId: getFormValue(formData, "recurringTransactionId"),
     type: getFormValue(formData, "type"),
     accountId: getFormValue(formData, "accountId"),
-    categoryId: getFormValue(formData, "categoryId"),
+    categoryId: getFormValue(formData, "categoryId") || undefined,
+    transferAccountId: getFormValue(formData, "transferAccountId") || undefined,
     name: getFormValue(formData, "name"),
     amount: getFormValue(formData, "amount"),
     cadence: getFormValue(formData, "cadence"),
@@ -86,10 +114,7 @@ export const updateRecurringTransactionAction = formAction(async (formData: Form
   }
   const payload = parsed.data;
   const type = payload.type as TransactionType;
-  await Promise.all([
-    assertUserOwnsActiveAccount(user.id, payload.accountId),
-    assertUserOwnsCategory(user.id, payload.categoryId, categoryKindForTransactionType(type)),
-  ]);
+  const sides = await resolveRuleSides(user.id, { ...payload, type });
   const nextExpectedDate = dateFromYmd(payload.nextExpectedDate);
   const endDate = payload.endDate ? dateFromYmd(payload.endDate) : null;
   if (endDate && endDate.getTime() < nextExpectedDate.getTime()) {
@@ -111,7 +136,8 @@ export const updateRecurringTransactionAction = formAction(async (formData: Form
         ? {}
         : { anchorDay: nextExpectedDate.getUTCDate() }),
       accountId: payload.accountId,
-      categoryId: payload.categoryId,
+      categoryId: sides.categoryId,
+      transferAccountId: sides.transferAccountId,
       type,
       name: payload.name.trim(),
       amountCents: toCents(payload.amount),

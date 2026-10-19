@@ -193,7 +193,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     prisma.budget.findMany({ where: { userId: user.id }, include: { category: true }, orderBy: { updatedAt: "desc" } }),
     prisma.recurringTransaction.findMany({
       where: { userId: user.id },
-      include: { category: true, account: true },
+      include: { category: true, account: true, transferAccount: true },
       orderBy: [{ enabled: "desc" }, { nextExpectedDate: "asc" }],
     }),
     // The queue follows the period on screen, like the log it sits above.
@@ -824,7 +824,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   // A single month lists only the rules that fall in it: due there, or already posted there
   // (the log for the month holds those). YTD and lifetime list them all, at their next date.
   const recurringIdsPostedInPeriod = new Set(
-    [...periodExpenses, ...periodIncomes].map((txn) => txn.recurringTransactionId).filter(Boolean),
+    [...periodExpenses, ...periodIncomes, ...periodTransfers].map((txn) => txn.recurringTransactionId).filter(Boolean),
   );
   const periodRecurringRules = recurringTransactions.flatMap((rule) => {
     if (period.range !== "month") return [{ rule, occurrence: rule.nextExpectedDate }];
@@ -834,13 +834,17 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   });
   const toRecurringListItem = ({ rule, occurrence }: (typeof periodRecurringRules)[number]) => ({
     id: rule.id,
-    // Recurring rules are only ever expenses or income (`recurringTransactionSchema`).
-    type: rule.type === TransactionType.INCOME ? ("INCOME" as const) : ("EXPENSE" as const),
-    typeLabel: rule.type === TransactionType.INCOME ? "Income" : "Expense",
+    type: rule.type,
+    typeLabel: rule.type === TransactionType.INCOME ? "Income" : rule.type === TransactionType.TRANSFER ? "Transfer" : "Expense",
     name: rule.name,
     amountCents: rule.amountCents,
     accountId: rule.accountId,
     accountLabel: `${rule.account.name} (${formatAccountTypeLabel(rule.account.type)})`,
+    transferAccountId: rule.type === TransactionType.TRANSFER ? rule.transferAccountId : null,
+    transferAccountLabel:
+      rule.type === TransactionType.TRANSFER && rule.transferAccount
+        ? `${rule.transferAccount.name} (${formatAccountTypeLabel(rule.transferAccount.type)})`
+        : null,
     categoryId: rule.categoryId,
     categoryLabel: rule.category.name,
     cadence: rule.cadence,

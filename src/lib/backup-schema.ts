@@ -150,6 +150,8 @@ export const userBackupSchema = z.object({
         nextExpectedDate: isoDate,
         /** Absent in files exported before rules stored the day they fall on. */
         anchorDay: z.number().int().min(1).max(31).nullable().optional(),
+        /** Absent in files exported before transfer rules named their other side. */
+        transferAccountId: z.string().min(1).nullable().optional(),
         endDate: isoDate.nullable(),
         postMode: z.enum(["REVIEW", "AUTO"]),
         enabled: z.boolean(),

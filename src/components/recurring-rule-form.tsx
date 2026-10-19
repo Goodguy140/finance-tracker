@@ -29,7 +29,7 @@ import {
  * added to a rule had to be added four times; here it is added once.
  */
 
-export type RecurringRuleType = "EXPENSE" | "INCOME";
+export type RecurringRuleType = "EXPENSE" | "INCOME" | "TRANSFER";
 
 export type RecurringRuleCadence = "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL";
 
@@ -50,6 +50,8 @@ export type RecurringRuleValues = {
   amountCents: number;
   accountId: string;
   categoryId: string;
+  /** A transfer rule's other side, the account the money goes to. */
+  transferAccountId?: string | null;
   cadence: RecurringRuleCadence;
   nextExpectedDateYmd: string;
   endDateYmd: string | null;
@@ -89,6 +91,7 @@ export function RecurringRuleForm({
 }) {
   const fieldIds = useId();
   const [type, setType] = useState<RecurringRuleType>(fixedType ?? rule?.type ?? "EXPENSE");
+  const transfer = type === "TRANSFER";
   const categories = type === "INCOME" ? incomeCategories : expenseCategories;
   // Switching type swaps the category list; the rule's category only applies to its own type.
   const categoryDefault = rule && rule.type === type ? rule.categoryId : categories[0]?.id;
@@ -117,7 +120,7 @@ export function RecurringRuleForm({
       </LabeledField>
 
       {fixedType ? null : (
-        <LabeledField label="Type" hint="Whether this repeats as income or an expense.">
+        <LabeledField label="Type" hint="Income, an expense, or money moved between your own accounts.">
           <select
             id={`${fieldIds}-type`}
             name="type"
@@ -128,12 +131,19 @@ export function RecurringRuleForm({
           >
             <option value="EXPENSE">Expense</option>
             <option value="INCOME">Income</option>
+            <option value="TRANSFER">Transfer</option>
           </select>
         </LabeledField>
       )}
 
-      <LabeledField label="Account">
-        <select id={`${fieldIds}-account`} name="accountId" aria-label="Account" className={selectClass} defaultValue={accountDefault}>
+      <LabeledField label={transfer ? "From account" : "Account"}>
+        <select
+          id={`${fieldIds}-account`}
+          name="accountId"
+          aria-label={transfer ? "From account" : "Account"}
+          className={selectClass}
+          defaultValue={accountDefault}
+        >
           {accounts.map((account) => (
             <option key={account.id} value={account.id}>
               {account.name}
@@ -142,23 +152,42 @@ export function RecurringRuleForm({
         </select>
       </LabeledField>
 
-      <LabeledField label="Category" hint={type === "INCOME" ? "Income category for this deposit." : "Expense category for budgeting."}>
-        <select
-          // Remounted on a type switch so the default category follows the new list.
-          key={type}
-          id={`${fieldIds}-category`}
-          name="categoryId"
-          aria-label="Category"
-          className={selectClass}
-          defaultValue={categoryDefault}
-        >
-          {categories.map((category) => (
-            <option key={category.id} value={category.id}>
-              {category.name}
-            </option>
-          ))}
-        </select>
-      </LabeledField>
+      {transfer ? (
+        <LabeledField label="To account" hint="Where the money goes. Transfers stay out of income and spending.">
+          <select
+            id={`${fieldIds}-transfer-account`}
+            name="transferAccountId"
+            aria-label="To account"
+            className={selectClass}
+            defaultValue={rule?.transferAccountId ?? accounts.find((a) => a.id !== accountDefault)?.id}
+            required
+          >
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+        </LabeledField>
+      ) : (
+        <LabeledField label="Category" hint={type === "INCOME" ? "Income category for this deposit." : "Expense category for budgeting."}>
+          <select
+            // Remounted on a type switch so the default category follows the new list.
+            key={type}
+            id={`${fieldIds}-category`}
+            name="categoryId"
+            aria-label="Category"
+            className={selectClass}
+            defaultValue={categoryDefault}
+          >
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </LabeledField>
+      )}
 
       <CurrencyAmountInput
         name="amount"

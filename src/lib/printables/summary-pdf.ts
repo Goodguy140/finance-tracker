@@ -259,7 +259,9 @@ export async function renderSummaryPdf(data: SummaryData): Promise<Uint8Array> {
   if (projection.accounts.length > 0) {
     doc.section(
       "Projected balances",
-      "Latest balances with the upcoming recurring bills and income applied to the account each one books to.",
+      projection.includesTransfers
+        ? "Latest balances with the upcoming recurring bills, income and transfers applied to the accounts they book to."
+        : "Latest balances with the upcoming recurring bills and income applied to the account each one books to.",
     );
     const horizons = ["Today", ...PROJECTION_DAYS.map((d) => `In ${d} days`)];
     doc.table({

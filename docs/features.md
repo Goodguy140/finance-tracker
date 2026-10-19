@@ -43,7 +43,7 @@ Cards (`src/components/dashboard-cards/`), with their gear settings:
 | Budgets (`budgets`) `budgets-card.tsx` | progress per category, rollover (`src/lib/budget-rollover.ts`), reallocate (`budget-reallocate-dialog.tsx`) | per row, hide zero spend, period note |
 | Spending by category (`spending-by-category`) `spending-by-category-card.tsx`, `category-spend-pie.tsx` | pie with colors shared with the log (`src/lib/category-colors.ts`), optional savings slice (`src/lib/savings-transfers.ts`) | chart height, slices shown, show savings |
 | Cumulative spending (`cumulative-spend`) `cumulative-spend-card.tsx`, `src/lib/cumulative-spend.ts` | running total, expected line, compare with last month / 3-month avg | chart height, expected line, compare with |
-| Recurring (`recurring`) `recurring-card.tsx`, `recurring-transactions-panel.tsx`, `recurring-rule-form.tsx` | rules due in the month, overdue carry ("Unposted since"), Post/Skip, auto-post, new/edit/pause/delete, cash-flow summary; `src/lib/recurring-transactions.ts`, `recurring-post.ts` | cash-flow summary, rules shown |
+| Recurring (`recurring`) `recurring-card.tsx`, `recurring-transactions-panel.tsx`, `recurring-rule-form.tsx` | rules due in the month, overdue carry ("Unposted since"), Post/Skip, auto-post, new/edit/pause/delete, recurring transfers (from/to account, `RecurringTransaction.transferAccountId`, kept out of income and bills), cash-flow summary; `src/lib/recurring-transactions.ts`, `recurring-post.ts` | cash-flow summary, rules shown |
 | Insights (`insights`) `insights-card.tsx` | count per section and the most pressing few, link to `/insights`; leaves out budget and money-owed insights, which this page already shows | insights shown |
 | Upcoming bills (`bills-forecast`) `bills-forecast-card.tsx`, `src/lib/bills-forecast.ts` | bills and income due by day, running net | days ahead (30/60/90) |
 | Investments (`investments`, tab on Insights) `investments-card.tsx` | contributions/withdrawals, count a transfer toward room, portfolio snapshots, room left (`src/lib/contribution-room.ts`); `actions/investments.ts` | room left, add forms, recent activity |
@@ -119,7 +119,10 @@ Page: `src/app/reports/page.tsx`; data `src/lib/reports/*`; charts
 
 - Period picker (last 12 months, years), tag filter, totals (income, spending, left over, saved)
 - Financial score, **net worth** (`src/lib/net-worth.ts`), **projected balances**
-  (`src/lib/projected-balances.ts`)
+  (`src/lib/projected-balances.ts`); "Include recurring transfers" option
+  (`projection-transfers-toggle.tsx`, `User.projectionIncludesTransfers`, off by default) moves
+  each recurring transfer out of one account and into the other, also in Insights' Coming up and
+  the printable summary
 - Income vs spending by month (table toggle), cash-flow Sankey, year over year, payees
 - **Merchant page** `/reports/merchant`: `src/app/reports/merchant/page.tsx`
 - **Print and templates** `/reports/print`: `printables-panel.tsx`, `src/lib/printables/*`,

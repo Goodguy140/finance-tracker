@@ -4,7 +4,7 @@ import { buildMonthlyBudgetProgress } from "@/lib/budget-progress";
 import { roomFlowsFromData } from "@/lib/contribution-room";
 import { loadContributionRoomData } from "@/lib/contribution-room-data";
 import { loadFinancialScore } from "@/lib/financial-score-data";
-import { loadNetWorth, loadProjectionRules } from "@/lib/net-worth-data";
+import { loadNetWorth, loadProjectionInputs } from "@/lib/net-worth-data";
 import { projectBalances } from "@/lib/projected-balances";
 import { homeCurrencyOf, inCurrencyWhere } from "@/lib/home-currency";
 import { prisma } from "@/lib/prisma";
@@ -108,7 +108,7 @@ export const loadInsights = cache(async (
     // Balances and budgets for "Coming up": neither has a meaning under a tag.
     tagId
       ? null
-      : Promise.all([loadNetWorth(user), loadProjectionRules(userId), buildMonthlyBudgetProgress(userId, ym)]),
+      : Promise.all([loadNetWorth(user), loadProjectionInputs(userId), buildMonthlyBudgetProgress(userId, ym)]),
     // Money owed back, registered-account room (Canada only) and savings goals.
     tagId
       ? null
@@ -180,7 +180,7 @@ export const loadInsights = cache(async (
     toSavingsByMonth,
     scoreInsights: financial ? scoreInsights(financial.score) : null,
     projection: ahead
-      ? projectBalances({ accounts: ahead[0].accounts, rules: ahead[1], todayYmd: now.toISOString().slice(0, 10), currentYm: ym })
+      ? projectBalances({ accounts: ahead[0].accounts, ...ahead[1], todayYmd: now.toISOString().slice(0, 10), currentYm: ym })
       : null,
     budgetProgress: ahead ? ahead[2].budgets : null,
     score: financial?.score ?? null,

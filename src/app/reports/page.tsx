@@ -4,7 +4,8 @@ import { AppNav, APP_TAB_BAR_PAD_CLASS } from "@/components/app-nav";
 import { TagFilterSelect } from "@/components/expense-log";
 import { FinancialScoreCard } from "@/components/financial-score-card";
 import { CashFlowSankey, IncomeSpendingChart, NetWorthChart } from "@/components/reports/report-charts";
-import { loadNetWorth, loadProjectionRules } from "@/lib/net-worth-data";
+import { ProjectionTransfersToggle } from "@/components/reports/projection-transfers-toggle";
+import { loadNetWorth, loadProjectionInputs } from "@/lib/net-worth-data";
 import { PROJECTION_DAYS, projectBalances, type ProjectedBalances } from "@/lib/projected-balances";
 import { getCountryConfig } from "@/lib/country-config";
 import { loadFinancialScore } from "@/lib/financial-score-data";
@@ -61,18 +62,18 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   const currency = getCountryConfig(user.countryCode).defaultCurrency;
   const fmt = (cents: number) => formatCurrency(cents, currency);
 
-  const [loaded, savings, activityYears, tags, financial, netWorth, projectionRules] = await Promise.all([
+  const [loaded, savings, activityYears, tags, financial, netWorth, projectionInputs] = await Promise.all([
     loadReportTxs(user.id, previousYearWindow(period).start, currency),
     loadSavingsTransfers(user.id, period.start, currency),
     loadActivityBounds(user.id),
     listTags(prisma, user.id),
     loadFinancialScore(user),
     loadNetWorth(user),
-    loadProjectionRules(user.id),
+    loadProjectionInputs(user.id),
   ]);
   const projection = projectBalances({
     accounts: netWorth.accounts,
-    rules: projectionRules,
+    ...projectionInputs,
     todayYmd,
     currentYm: todayYmd.slice(0, 7),
   });
@@ -430,10 +431,13 @@ function ProjectedBalancesSection({
       <h2 id="report-projected-balances" className="text-lg font-semibold">
         Projected balances
       </h2>
-      <p className="mb-3 mt-0.5 text-sm text-slate-400">
+      <p className="mb-2 mt-0.5 text-sm text-slate-400">
         Your latest balances with the upcoming recurring bills and income applied to the account each one books to.
-        Transfers between your accounts don&apos;t change the total and are left out.
+        {projection.includesTransfers
+          ? " Recurring transfers move money from one account to the other, so they change the accounts but not the total."
+          : " Recurring transfers between your accounts don't change the total and are left out."}
       </p>
+      <ProjectionTransfersToggle enabled={projection.includesTransfers} />
       <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3" data-testid="projected-net-worth">
         {columns.map((label, i) => {
           const cents = projection.netCents[i];
@@ -506,6 +510,12 @@ function ProjectedBalancesSection({
           <p className="mt-2 text-xs text-slate-500">
             {projection.rulesLeftOut} recurring rule{projection.rulesLeftOut === 1 ? " is" : "s are"} on an account with no
             balance or in another currency and {projection.rulesLeftOut === 1 ? "is" : "are"} left out.
+          </p>
+        ) : null}
+        {projection.transfersLeftOut > 0 ? (
+          <p className="mt-2 text-xs text-slate-500" data-testid="projected-transfers-left-out">
+            {projection.transfersLeftOut} recurring transfer{projection.transfersLeftOut === 1 ? " is" : "s are"} left out:
+            both accounts need a balance in this currency, and the rule needs an account to transfer to.
           </p>
         ) : null}
       </details>

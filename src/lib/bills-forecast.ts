@@ -33,7 +33,8 @@ export type BillsForecast<T> = {
 
 /**
  * The occurrences of every enabled expense and income rule from the start of the current month through `days`
- * days after today, earliest first.
+ * days after today, earliest first. Transfer rules too with `includeTransfers`, for a projection
+ * that moves money between accounts; they never count toward the income and bill totals.
  *
  * A rule starts from its outstanding occurrence, carried forward to the current month when
  * it is overdue from an earlier one — the same rule the Recurring card follows, where posting
@@ -43,7 +44,7 @@ export type BillsForecast<T> = {
  */
 export function forecastRecurringOccurrences<T extends ForecastableRule>(
   rules: readonly T[],
-  options: { todayYmd: string; currentYm: string; days: number },
+  options: { todayYmd: string; currentYm: string; days: number; includeTransfers?: boolean },
 ): BillsForecast<T> {
   const monthStart = dateFromYmd(`${options.currentYm}-01`);
   const windowEnd = dateFromYmd(options.todayYmd);
@@ -52,8 +53,9 @@ export function forecastRecurringOccurrences<T extends ForecastableRule>(
 
   const occurrences: BillsForecastOccurrence<T>[] = [];
   for (const rule of rules) {
-    // Only bills and income: a transfer rule moves money between the user's own accounts.
-    if (!rule.enabled || (rule.type !== "EXPENSE" && rule.type !== "INCOME")) continue;
+    // Only bills and income, unless asked: a transfer rule moves money between the user's own accounts.
+    const listed = rule.type === "EXPENSE" || rule.type === "INCOME" || (options.includeTransfers && rule.type === "TRANSFER");
+    if (!rule.enabled || !listed) continue;
     const endYmd = rule.endDate ? ymdFromDateUtc(rule.endDate) : null;
     const nextYmd = ymdFromDateUtc(rule.nextExpectedDate);
     const anchorDay = recurringAnchorDay(rule);
