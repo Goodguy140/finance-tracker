@@ -87,3 +87,91 @@ describe("projectBalances belowZero", () => {
     expect(result.accounts[0].belowZero).toMatchObject({ cause: "Rent" });
   });
 });
+
+describe("projectBalances with transfers", () => {
+  function transfer(from: string, to: string | null, next: string, amountCents: number): ProjectableRule {
+    return { ...rule(from, next, amountCents, "TRANSFER"), transferAccountId: to, name: "Move" };
+  }
+  const card = () => account("card", 50_000, { type: "CREDIT_CARD", liability: true });
+
+  it("leaves transfers out unless asked", () => {
+    const result = projectBalances({
+      ...TODAY,
+      accounts: [account("chq", 100_000), account("sav", 0)],
+      rules: [transfer("chq", "sav", "2026-10-20", 20_000)],
+    });
+    expect(result.includesTransfers).toBe(false);
+    expect(result.accounts.map((a) => a.projectedCents[0])).toEqual([100_000, 0]);
+    expect(result.transfersLeftOut).toBe(0);
+  });
+
+  it("moves each transfer out of one account and into the other, leaving net worth alone", () => {
+    const result = projectBalances({
+      ...TODAY,
+      includeTransfers: true,
+      accounts: [account("chq", 100_000), account("sav", 0)],
+      rules: [transfer("chq", "sav", "2026-10-20", 20_000)],
+    });
+    // Oct 20, Nov 20, Dec 20: one, two and three transfers by the 30, 60 and 90 day marks.
+    expect(result.accounts.find((a) => a.accountId === "chq")!.projectedCents).toEqual([80_000, 60_000, 40_000]);
+    expect(result.accounts.find((a) => a.accountId === "sav")!.projectedCents).toEqual([20_000, 40_000, 60_000]);
+    expect(result.netCents).toEqual([100_000, 100_000, 100_000, 100_000]);
+  });
+
+  it("lowers what is owed on a card that a transfer pays, and raises it on one a transfer leaves", () => {
+    const payment = projectBalances({
+      ...TODAY,
+      includeTransfers: true,
+      accounts: [account("chq", 100_000), card()],
+      rules: [transfer("chq", "card", "2026-10-20", 30_000)],
+    });
+    expect(payment.accounts.find((a) => a.accountId === "card")!.projectedCents[0]).toBe(20_000);
+    expect(payment.accounts.find((a) => a.accountId === "chq")!.projectedCents[0]).toBe(70_000);
+    expect(payment.netCents[1]).toBe(payment.netCents[0]);
+
+    const advance = projectBalances({
+      ...TODAY,
+      includeTransfers: true,
+      accounts: [account("chq", 100_000), card()],
+      rules: [transfer("card", "chq", "2026-10-20", 10_000)],
+    });
+    expect(advance.accounts.find((a) => a.accountId === "card")!.projectedCents[0]).toBe(60_000);
+    expect(advance.accounts.find((a) => a.accountId === "chq")!.projectedCents[0]).toBe(110_000);
+  });
+
+  it("flags the account a transfer takes below zero, naming the transfer", () => {
+    const result = projectBalances({
+      ...TODAY,
+      includeTransfers: true,
+      accounts: [account("chq", 10_000), account("sav", 0)],
+      rules: [transfer("chq", "sav", "2026-10-20", 20_000)],
+    });
+    const chq = result.accounts.find((a) => a.accountId === "chq")!;
+    expect(chq.belowZero).toMatchObject({ cause: "Move", lowestCents: -50_000 });
+    expect(result.accounts.find((a) => a.accountId === "sav")!.belowZero).toBeNull();
+  });
+
+  it("applies each side only after that account's own balance was read", () => {
+    const result = projectBalances({
+      ...TODAY,
+      includeTransfers: true,
+      // Savings was read on Oct 25, after the Oct 20 transfer had arrived.
+      accounts: [account("chq", 100_000), account("sav", 20_000, { asOf: "2026-10-25" })],
+      rules: [transfer("chq", "sav", "2026-10-20", 20_000)],
+    });
+    expect(result.accounts.find((a) => a.accountId === "chq")!.projectedCents[0]).toBe(80_000);
+    expect(result.accounts.find((a) => a.accountId === "sav")!.projectedCents[0]).toBe(20_000);
+  });
+
+  it("leaves out and counts a transfer with a side that has no balance or no account", () => {
+    const result = projectBalances({
+      ...TODAY,
+      includeTransfers: true,
+      accounts: [account("chq", 100_000), account("none", null)],
+      rules: [transfer("chq", "none", "2026-10-20", 20_000), transfer("chq", null, "2026-10-20", 5_000), transfer("chq", "chq", "2026-10-20", 5_000)],
+    });
+    expect(result.accounts[0].projectedCents).toEqual([100_000, 100_000, 100_000]);
+    expect(result.transfersLeftOut).toBe(3);
+    expect(result.rulesLeftOut).toBe(0);
+  });
+});

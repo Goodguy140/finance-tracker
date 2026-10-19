@@ -238,6 +238,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
           cadence: row.cadence,
           nextExpectedDate: new Date(row.nextExpectedDate),
           anchorDay: row.anchorDay ?? null,
+          transferAccountId: row.transferAccountId ? (accountIdMap.get(row.transferAccountId) ?? null) : null,
           endDate: row.endDate ? new Date(row.endDate) : null,
           postMode: row.postMode,
           enabled: row.enabled,

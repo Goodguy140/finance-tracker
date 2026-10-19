@@ -92,7 +92,7 @@ function summary(overrides: Partial<SummaryData> = {}): SummaryData {
         },
       ],
     },
-    projection: { netCents: [1_850_000, 1_900_000, 1_950_000, 2_000_000], accounts: [], rulesLeftOut: 0 },
+    projection: { netCents: [1_850_000, 1_900_000, 1_950_000, 2_000_000], accounts: [], rulesLeftOut: 0, includesTransfers: false, transfersLeftOut: 0 },
     goals: [
       {
         id: "g1",

@@ -150,9 +150,13 @@ export const revokeApiTokenSchema = z.object({
 });
 
 export const recurringTransactionSchema = z.object({
-  type: z.enum(["EXPENSE", "INCOME"]),
+  type: z.enum(["EXPENSE", "INCOME", "TRANSFER"]),
+  /** Where the money books to; for a transfer, the account it leaves. */
   accountId: z.string().min(1),
-  categoryId: z.string().min(1),
+  /** Required for bills and income. A transfer goes to the user's Transfers category. */
+  categoryId: z.string().min(1).optional(),
+  /** A transfer's other side: the account the money goes to. Ignored for bills and income. */
+  transferAccountId: z.string().min(1).optional(),
   name: z.string().trim().min(2).max(80),
   amount: positiveAmount,
   cadence: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "BIENNIAL"]),

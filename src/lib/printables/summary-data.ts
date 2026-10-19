@@ -17,7 +17,7 @@ import type { FinancialScore } from "@/lib/financial-score";
 import { loadFinancialScore } from "@/lib/financial-score-data";
 import { describeOtherCurrencies } from "@/lib/home-currency";
 import type { NetWorth } from "@/lib/net-worth";
-import { loadNetWorth, loadProjectionRules } from "@/lib/net-worth-data";
+import { loadNetWorth, loadProjectionInputs } from "@/lib/net-worth-data";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
 import { projectBalances, type ProjectedBalances } from "@/lib/projected-balances";
@@ -102,13 +102,13 @@ export async function loadSummaryData(
   const tagFilter = resolveTagFilter(options.tag ?? undefined, tags);
   const tagId = tagFilter?.id ?? null;
 
-  const [loaded, savings, financial, netWorth, projectionRules, goals, budgets, roomData, categories, recurring, otherCurrency] =
+  const [loaded, savings, financial, netWorth, projectionInputs, goals, budgets, roomData, categories, recurring, otherCurrency] =
     await Promise.all([
       loadReportTxs(user.id, previousYearWindow(period).start, currency),
       loadSavingsTransfers(user.id, period.start, currency),
       loadFinancialScore(user),
       loadNetWorth(user),
-      loadProjectionRules(user.id),
+      loadProjectionInputs(user.id),
       loadSavingsGoals(user),
       buildMonthlyBudgetProgress(user.id, currentYm),
       loadContributionRoomData(user.id),
@@ -192,7 +192,7 @@ export async function loadSummaryData(
     budgets,
     score: financial.score,
     netWorth,
-    projection: projectBalances({ accounts: netWorth.accounts, rules: projectionRules, todayYmd, currentYm }),
+    projection: projectBalances({ accounts: netWorth.accounts, ...projectionInputs, todayYmd, currentYm }),
     goals: goals.goals,
     bills: {
       days: DEFAULT_BILLS_FORECAST_DAYS,

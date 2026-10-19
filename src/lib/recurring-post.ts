@@ -80,6 +80,8 @@ export async function postRecurringOccurrence(
       accountId: rule.accountId,
       categoryId: rule.categoryId,
       type: rule.type,
+      // Transfers carry the expense sign: positive is money leaving `accountId` for this one.
+      transferAccountId: rule.type === "TRANSFER" ? rule.transferAccountId : null,
       amountCents: rule.amountCents,
       title: rule.name,
       date: expectedDate,

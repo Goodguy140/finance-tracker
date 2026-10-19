@@ -13,6 +13,8 @@ function projection(...accounts: Array<Partial<ProjectedAccount>>): ProjectedBal
   return {
     netCents: [],
     rulesLeftOut: 0,
+    includesTransfers: false,
+    transfersLeftOut: 0,
     accounts: accounts.map((a) => ({
       accountId: "chq",
       name: "Chequing",

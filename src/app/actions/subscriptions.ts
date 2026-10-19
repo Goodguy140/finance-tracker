@@ -254,7 +254,8 @@ async function linkAlreadyLoggedTransaction(
 ) {
   // Match the rule's own kind: an income rule links an income entry, not an expense.
   const type = params.rule.type;
-  const kindLabel = type === TransactionType.INCOME ? "income entry" : "expense";
+  const kindLabel =
+    type === TransactionType.INCOME ? "income entry" : type === TransactionType.TRANSFER ? "transfer" : "expense";
   if (params.transactionId) {
     const txn = await tx.transaction.findFirst({
       where: {

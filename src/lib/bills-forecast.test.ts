@@ -109,6 +109,17 @@ describe("forecastRecurringOccurrences", () => {
     expect(result.netCents).toBe(-5_000);
   });
 
+  it("lists transfer rules when asked, still out of the totals", () => {
+    const result = forecastRecurringOccurrences(
+      [rule("To savings", { type: "TRANSFER" as TransactionType, next: "2026-10-15" }), rule("Phone", { next: "2026-10-12", amountCents: 5_000 })],
+      { ...TODAY, days: 30, includeTransfers: true },
+    );
+
+    expect(rows(result).map((r) => r.name)).toEqual(["Phone", "To savings"]);
+    expect(result.expenseCents).toBe(5_000);
+    expect(result.incomeCents).toBe(0);
+  });
+
   it("lists an unposted occurrence from earlier this month as overdue and counts it", () => {
     const result = forecastRecurringOccurrences([rule("Hydro", { next: "2026-10-03" })], { ...TODAY, days: 30 });
 

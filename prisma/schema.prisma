@@ -147,6 +147,9 @@ model User {
    */
   dashboardTextVisiblePct       Int       @default(95)
   dashboardBudgetNameVisiblePct Int       @default(90)
+  /// Projected balances on Reports (and what Insights and the printable summary take from them)
+  /// also apply recurring transfers: out of one account and into the other.
+  projectionIncludesTransfers   Boolean   @default(false)
   createdAt                     DateTime  @default(now())
   updatedAt                     DateTime  @updatedAt
 
@@ -409,6 +412,7 @@ model Account {
   transactions           Transaction[]
   transfersFromOrTo      Transaction[]            @relation("TransactionTransferAccount")
   recurringTransactions  RecurringTransaction[]
+  recurringTransfersTo   RecurringTransaction[]   @relation("RecurringTransferAccount")
   investmentFlows        InvestmentFlow[]
   portfolioSnapshots     PortfolioSnapshot[]
   balanceSnapshots       AccountBalanceSnapshot[]
@@ -561,28 +565,32 @@ model Budget {
 }
 
 model RecurringTransaction {
-  id               String            @id @default(cuid())
-  userId           String
-  accountId        String
-  categoryId       String
-  type             TransactionType
-  name             String
-  amountCents      Int
-  cadence          RecurringCadence
-  nextExpectedDate DateTime
+  id                String            @id @default(cuid())
+  userId            String
+  accountId         String
+  categoryId        String
+  type              TransactionType
+  name              String
+  amountCents       Int
+  cadence           RecurringCadence
+  nextExpectedDate  DateTime
   /// Day of the month (1-31) a month-based rule falls on. nextExpectedDate cannot hold it once
   /// clamped (a rule on the 31st sits on Feb 28). Null on rules saved before it was stored.
-  anchorDay        Int?
-  endDate          DateTime?
-  postMode         RecurringPostMode @default(REVIEW)
-  enabled          Boolean           @default(true)
-  note             String?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  anchorDay         Int?
+  endDate           DateTime?
+  postMode          RecurringPostMode @default(REVIEW)
+  enabled           Boolean           @default(true)
+  note              String?
+  /// A transfer rule's other side: the account the money goes to (`accountId` is where it
+  /// leaves). Copied to each posted transfer. Null on bills, income, and older transfer rules.
+  transferAccountId String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account  Account  @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account         Account  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category        Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  transferAccount Account? @relation("RecurringTransferAccount", fields: [transferAccountId], references: [id], onDelete: SetNull)
 
   subscriptionMembers       SubscriptionMember[]
   subscriptionShareStatuses SubscriptionShareStatus[]
@@ -979,14 +987,14 @@ model TransactionRule {
   minAmountCents  Int?
   maxAmountCents  Int?
 
-  setCategoryId  String?
-  setTitle       String?
-  setAmountCents Int?
-  setAccountId   String?
-  appendNote     String?
+  setCategoryId        String?
+  setTitle             String?
+  setAmountCents       Int?
+  setAccountId         String?
+  appendNote           String?
   /// Added alongside any tags the transaction already has. Unlike the other actions, every
   /// matching rule's tag is added, not only the first.
-  addTagId       String?
+  addTagId             String?
   /// Books the transaction as a transfer between the user's own accounts, which takes it out
   /// of every total. Taken from the first matching rule that sets it, with its other account.
   markAsTransfer       Boolean @default(false)
@@ -997,14 +1005,14 @@ model TransactionRule {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Cascade: a rule scoped to an account that no longer exists would silently broaden.
-  matchAccount Account?  @relation("TransactionRuleMatchAccount", fields: [matchAccountId], references: [id], onDelete: Cascade)
+  matchAccount       Account?  @relation("TransactionRuleMatchAccount", fields: [matchAccountId], references: [id], onDelete: Cascade)
   /// SetNull: a rule must never block deleting a category or an account.
-  setCategory  Category? @relation(fields: [setCategoryId], references: [id], onDelete: SetNull)
-  setAccount   Account?  @relation("TransactionRuleSetAccount", fields: [setAccountId], references: [id], onDelete: SetNull)
-  addTag       Tag?      @relation(fields: [addTagId], references: [id], onDelete: SetNull)
-  setTransferAccount Account? @relation("TransactionRuleSetTransferAccount", fields: [setTransferAccountId], references: [id], onDelete: SetNull)
+  setCategory        Category? @relation(fields: [setCategoryId], references: [id], onDelete: SetNull)
+  setAccount         Account?  @relation("TransactionRuleSetAccount", fields: [setAccountId], references: [id], onDelete: SetNull)
+  addTag             Tag?      @relation(fields: [addTagId], references: [id], onDelete: SetNull)
+  setTransferAccount Account?  @relation("TransactionRuleSetTransferAccount", fields: [setTransferAccountId], references: [id], onDelete: SetNull)
 
   @@index([userId, priority])
 }
@@ -1059,9 +1067,9 @@ model HiddenTitleSuggestion {
 ///
 /// A new table, so it needs no REQUIRED_SCHEMA_COLUMNS / COLUMN_REPAIRS entry.
 model InsightDismissal {
-  id           String    @id @default(cuid())
-  userId       String
-  insightKey   String
+  id             String    @id @default(cuid())
+  userId         String
+  insightKey     String
   /// NULL means dismissed for good; otherwise shown again once this passes.
   snoozedUntil   DateTime?
   /// The insight's size when dismissed, in cents a year; it shows again once half as big again.

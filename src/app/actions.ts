@@ -108,7 +108,11 @@ export {
   removePasskeyAction,
   unlinkSsoProviderAction,
 } from "./actions/mfa";
-export { setBudgetAlertEmailAction, updateDashboardReadabilityAction } from "./actions/preferences";
+export {
+  setBudgetAlertEmailAction,
+  setProjectionIncludesTransfersAction,
+  updateDashboardReadabilityAction,
+} from "./actions/preferences";
 export {
   saveDashboardLayoutAction,
   resetDashboardLayoutAction,
