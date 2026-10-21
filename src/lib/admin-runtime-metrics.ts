@@ -32,7 +32,7 @@ function resolveSqliteFilePath(databaseUrl: string): string | null {
   const raw = databaseUrl.trim();
   const withoutScheme = raw.slice("file:".length).split("?")[0] ?? "";
   if (!withoutScheme) return null;
-  return path.isAbsolute(withoutScheme) ? withoutScheme : path.resolve(process.cwd(), withoutScheme);
+  return path.isAbsolute(withoutScheme) ? withoutScheme : path.resolve(/* turbopackIgnore: true */ process.cwd(), withoutScheme);
 }
 
 export function getAdminRuntimeMetrics(): AdminRuntimeMetrics {
@@ -48,7 +48,7 @@ export function getAdminRuntimeMetrics(): AdminRuntimeMetrics {
   if (filePath) {
     pathLabel = path.basename(filePath);
     try {
-      const stat = fs.statSync(filePath);
+      const stat = fs.statSync(/* turbopackIgnore: true */ filePath);
       sizeMb = bytesToMb(stat.size);
     } catch {
       sizeMb = null;

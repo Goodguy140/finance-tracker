@@ -58,7 +58,7 @@ export class PlaidApiError extends Error {
 
   /**
    * Plaid mutated the item mid-pagination. The documented recovery is to restart the walk
-   * from the last committed cursor rather than to treat it as a failure.
+   * from the cursor it began with rather than to treat it as a failure.
    */
   get isPaginationMutation(): boolean {
     return this.errorCode === "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION";
@@ -123,7 +123,10 @@ export function createPlaidClient(config: PlaidConfig): PlaidClient {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
+    // The deadline covers the body as well as the headers: a server that sends headers and
+    // then stalls would otherwise hold the call (and a sync's lock) open with no limit.
     let response: Response;
+    let text: string;
     try {
       response = await fetch(`${host}${path}`, {
         method: "POST",
@@ -136,8 +139,9 @@ export function createPlaidClient(config: PlaidConfig): PlaidClient {
         signal: controller.signal,
         cache: "no-store",
       });
+      text = await response.text();
     } catch (err) {
-      const aborted = err instanceof Error && err.name === "AbortError";
+      const aborted = controller.signal.aborted || (err instanceof Error && err.name === "AbortError");
       throw new PlaidApiError({
         message: aborted
           ? `Plaid did not respond within ${REQUEST_TIMEOUT_MS / 1000}s.`
@@ -151,7 +155,6 @@ export function createPlaidClient(config: PlaidConfig): PlaidClient {
       clearTimeout(timer);
     }
 
-    const text = await response.text();
     let parsed: unknown = null;
     try {
       parsed = text ? JSON.parse(text) : null;

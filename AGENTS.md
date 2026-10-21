@@ -109,6 +109,12 @@ to undo by accident:
 - The background sweep skips banks nothing could come of: unmapped, lapsed consent, awaiting
   re-authentication, or in failure backoff.
 
+**The stored sync cursor moves only when a walk completes** (the page with `has_more: false`).
+After `TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION` Plaid requires restarting from the
+cursor the walk began with, so a mid-walk cursor is never stored. Rows for unmapped accounts
+are skipped while the cursor moves past them, which is why mapping an account clears the
+cursor (`setPlaidAccountMapping`) and a walk that saw a mapping change mid-way stores none.
+
 **Nullable columns in Prisma `where` clauses need explicit null handling.** `NOT: { col: { lt:
 x } }` excludes rows where `col` is NULL, because the comparison yields NULL rather than
 true. One such clause would have silently disabled the entire sweep. Write

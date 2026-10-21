@@ -74,7 +74,7 @@ Most of these can also be set under **Settings → Server admin**; a value set i
 npm run lint
 npm run typecheck
 npm test            # unit tests
-npm run test:e2e    # Playwright
+npm run test:e2e    # Playwright; uses .data/e2e.db (or E2E_DATABASE_URL inside .data/), never DATABASE_URL
 ```
 
 Contributor notes on migrations, tests and the Plaid integration are in [AGENTS.md](AGENTS.md).

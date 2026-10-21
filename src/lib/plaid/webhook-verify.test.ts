@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FAKE_WEBHOOK_PUBLIC_KEY, signFakePlaidWebhook } from "@/lib/plaid/fake-webhook";
 import {
   clearWebhookKeyCache,
+  FAILED_KEY_LOOKUP_TTL_MS,
   verifyPlaidWebhook,
   WEBHOOK_MAX_AGE_SECONDS,
 } from "@/lib/plaid/webhook-verify";
@@ -50,6 +51,8 @@ describe("verifyPlaidWebhook", () => {
     expect(
       await verifyPlaidWebhook({ body, signedJwt: signFakePlaidWebhook(body, { iat }), fetchKey }),
     ).toEqual({ ok: false, reason: "stale" });
+    // Refused on its face, before any key lookup.
+    expect(fetchKey).not.toHaveBeenCalled();
   });
 
   it("rejects a forged signature", async () => {
@@ -89,4 +92,24 @@ describe("verifyPlaidWebhook", () => {
       await verifyPlaidWebhook({ body, signedJwt: signFakePlaidWebhook(body), fetchKey: unknown }),
     ).toEqual({ ok: false, reason: "unknown key" });
   });
+
+  it("does not ask Plaid again about a kid it just said it does not know", async () => {
+    const unknown = vi.fn(async () => {
+      throw new Error("INVALID_WEBHOOK_VERIFICATION_KEY_ID");
+    });
+    const signed = signFakePlaidWebhook(body);
+    for (let i = 0; i < 5; i++) {
+      expect(await verifyPlaidWebhook({ body, signedJwt: signed, fetchKey: unknown })).toEqual({
+        ok: false,
+        reason: "unknown key",
+      });
+    }
+    expect(unknown).toHaveBeenCalledTimes(1);
+
+    // After the wait, a kid Plaid has since published is looked up again.
+    const later = new Date(Date.now() + FAILED_KEY_LOOKUP_TTL_MS + 1000);
+    const resigned = signFakePlaidWebhook(body, { iat: Math.floor(later.getTime() / 1000) });
+    expect(await verifyPlaidWebhook({ body, signedJwt: resigned, fetchKey, now: later })).toEqual({ ok: true });
+  });
+
 });

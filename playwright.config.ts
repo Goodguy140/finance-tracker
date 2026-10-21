@@ -1,4 +1,3 @@
-import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 // `localhost`, not 127.0.0.1: Chromium refuses an IP literal as a WebAuthn RP ID, and
@@ -11,21 +10,16 @@ const DEFAULT_NEXTAUTH_SECRET =
 const DEFAULT_SERVER_SETTINGS_KEY =
   "e2e-default-server-settings-encryption-key-32ch";
 
-function absolutizeSqliteUrl(url: string, cwd: string): string {
-  const t = url.trim();
-  if (!t.startsWith("file:")) return t;
-  const rest = t.slice("file:".length);
-  if (rest.startsWith("/") && !rest.startsWith("//")) return t.replace(/\\/g, "/");
-  if (rest.startsWith("//")) return t.replace(/\\/g, "/");
-  return `file:${path.resolve(cwd, rest)}`.replace(/\\/g, "/");
-}
+// E2E_DATABASE_URL, not DATABASE_URL: the web server deletes this file before every run, so
+// it must never pick up a developer's real database from the environment. Throws unless the
+// file is inside .data/.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { resolveE2eDatabase } = require("./scripts/e2e-database.cjs") as {
+  resolveE2eDatabase: (root: string) => { url: string; filePath: string };
+};
 
 function resolveE2eDatabaseUrl(): string {
-  const raw = process.env.DATABASE_URL?.trim();
-  if (!raw) {
-    return `file:${path.join(repoRoot, ".data", "e2e.db")}`.replace(/\\/g, "/");
-  }
-  return absolutizeSqliteUrl(raw, repoRoot);
+  return resolveE2eDatabase(repoRoot).url;
 }
 
 /**

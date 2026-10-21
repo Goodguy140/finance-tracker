@@ -76,6 +76,13 @@ const productionOnlyHeaders =
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Never trace secrets or data into .next/standalone. A dynamic path in server code makes
+  // Turbopack trace the whole project, which copied a local .env and prisma/dev.db into the
+  // build output; admin-runtime-metrics.ts now opts out with turbopackIgnore, and this keeps
+  // the next such call from doing the same.
+  outputFileTracingExcludes: {
+    "/*": [".env*", "**/*.db", "**/*.db-journal", "**/*.db-wal", "**/*.db-shm", ".data/**"],
+  },
   poweredByHeader: false,
   // Keep Prisma out of the Turbopack server bundle so the client always matches
   // `schema.prisma` (avoids stale embedded enums after `prisma generate`).

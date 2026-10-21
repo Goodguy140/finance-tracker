@@ -40,6 +40,9 @@ export const createFinancialAccountAction = formAction(async (formData: FormData
       type: payload.type as AccountType,
       countsAsSavings: defaultCountsAsSavings(payload.type),
       countryCode: user.countryCode,
+      // Not the schema default: that is CAD whatever the user's country, which would move a
+      // US or Japanese user's new account out of their home-currency totals.
+      currency: homeCurrencyOf(user.countryCode),
       archived: false,
     },
     select: { id: true },

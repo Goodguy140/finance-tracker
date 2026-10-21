@@ -2,6 +2,8 @@ import type { PlaidItem } from "@prisma/client";
 import { createPlaidClient, PlaidApiError, type PlaidClient } from "@/lib/plaid/client";
 import { getPlaidConfig } from "@/lib/plaid/config";
 import type { PlaidEnvironment } from "@/lib/plaid/settings";
+import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
+import { prisma } from "@/lib/prisma";
 import { encryptSecret, tryDecryptSecret } from "@/lib/security";
 
 /**
@@ -90,6 +92,18 @@ export function openAccessToken(item: Pick<PlaidItem, "accessTokenEnc">): string
   return token;
 }
 
+async function reportUnrevokableItem(itemId: string): Promise<void> {
+  console.error(
+    `[plaid] item ${itemId} could not be revoked (stored token unreadable); remove it from the Plaid dashboard`,
+  );
+  await recordAuditLog(prisma, {
+    action: AUDIT_ACTIONS.plaid_item_revoke_skipped,
+    targetType: "PlaidItem",
+    targetId: itemId,
+    metadata: { plaidItemId: itemId, reason: "access token could not be decrypted" },
+  });
+}
+
 /**
  * Revokes one item at Plaid, for `revokePlaidItemsForUser`.
  *
@@ -97,12 +111,17 @@ export function openAccessToken(item: Pick<PlaidItem, "accessTokenEnc">): string
  * no longer exists, and refusing to clean up locally because it is *already* gone would
  * leave rows nothing can remove. A token that cannot be decrypted is also treated as
  * revocable-by-deletion — there is no way to call Plaid with it, and blocking forever on
- * a key rotation would make the account undeletable.
+ * a key rotation would make the account undeletable. That case is not silent, though: the
+ * item may still be live (and billing) at Plaid, so it is logged and audited with Plaid's
+ * item_id, which is what the Plaid dashboard needs to remove it by hand.
  */
 export function makePlaidItemRevoker(client: PlaidClient) {
   return async (item: { id: string; itemId: string; accessTokenEnc: string }): Promise<void> => {
     const accessToken = tryDecryptSecret(item.accessTokenEnc);
-    if (!accessToken) return;
+    if (!accessToken) {
+      await reportUnrevokableItem(item.itemId);
+      return;
+    }
     try {
       await client.removeItem(accessToken);
     } catch (err) {
