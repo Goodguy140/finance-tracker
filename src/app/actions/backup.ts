@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { userBackupSchema } from "@/lib/backup-schema";
+import { BACKUP_MAX_BYTES, backupTooLargeMessage } from "@/lib/backup-limits";
 import { assertBackupReferencesResolve, resolveBackupUserProfileFields } from "@/lib/backup-restore";
 import { normalizeTagName, tagNameKey } from "@/lib/tags";
 import { isMappablePlaidCategory } from "@/lib/plaid/category-taxonomy";
@@ -72,6 +73,9 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
   const raw = formData.get("backupJson");
   if (!(raw instanceof File)) {
     throw new Error("Backup file is required.");
+  }
+  if (raw.size > BACKUP_MAX_BYTES) {
+    throw new Error(backupTooLargeMessage(raw.size));
   }
   const content = await raw.text();
   if (!content.trim()) {

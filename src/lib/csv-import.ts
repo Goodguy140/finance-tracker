@@ -46,9 +46,21 @@ export function utcYmd(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-/** The identity of an expense for duplicate detection: day, amount and title (case-insensitive). */
-export function duplicateKey(date: Date, amountCents: number, title: string | null | undefined): string {
-  return `${utcYmd(date)}|${amountCents}|${(title ?? "").trim().toLowerCase()}`;
+/**
+ * The identity of an expense for duplicate detection: account, day, amount and title
+ * (case-insensitive).
+ *
+ * The account is part of it because the same coffee on the same day can honestly appear on
+ * two cards, and importing the second card's statement must not drop it as a copy of the
+ * first. A row with no account only matches another row with no account.
+ */
+export function duplicateKey(
+  accountId: string | null | undefined,
+  date: Date,
+  amountCents: number,
+  title: string | null | undefined,
+): string {
+  return `${accountId ?? ""}|${utcYmd(date)}|${amountCents}|${(title ?? "").trim().toLowerCase()}`;
 }
 
 /**
@@ -61,16 +73,23 @@ export function duplicateKey(date: Date, amountCents: number, title: string | nu
 export class DuplicateMatcher {
   private readonly remaining = new Map<string, number>();
 
-  constructor(existing: Iterable<{ date: Date; amountCents: number; title: string | null }>) {
+  constructor(
+    existing: Iterable<{ accountId: string | null; date: Date; amountCents: number; title: string | null }>,
+  ) {
     for (const row of existing) {
-      const key = duplicateKey(row.date, row.amountCents, row.title);
+      const key = duplicateKey(row.accountId, row.date, row.amountCents, row.title);
       this.remaining.set(key, (this.remaining.get(key) ?? 0) + 1);
     }
   }
 
-  /** True when an unclaimed existing expense matches; that expense is then used up. */
-  claim(date: Date, amountCents: number, title: string | null | undefined): boolean {
-    const key = duplicateKey(date, amountCents, title);
+/** True when an unclaimed existing expense matches; that expense is then used up. */
+  claim(
+    accountId: string | null | undefined,
+    date: Date,
+    amountCents: number,
+    title: string | null | undefined,
+  ): boolean {
+    const key = duplicateKey(accountId, date, amountCents, title);
     const left = this.remaining.get(key) ?? 0;
     if (left === 0) return false;
     this.remaining.set(key, left - 1);

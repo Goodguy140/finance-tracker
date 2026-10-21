@@ -36,7 +36,7 @@ const CSV = [
   "31/31/2026,Mystery charge,9.99",
 ].join("\n");
 
-async function importCsv(page: Page) {
+async function importCsv(page: Page, accountName?: string) {
   await page.goto("/settings/import");
   const form = page.locator("form").filter({ hasText: "Import expenses from CSV" });
   await form.locator('input[type="file"]').setInputFiles({
@@ -45,6 +45,7 @@ async function importCsv(page: Page) {
     buffer: Buffer.from(CSV),
   });
   await expect(form.getByText("Skipped: invalid date")).toBeVisible();
+  if (accountName) await form.locator('select[name="defaultAccountId"]').selectOption({ label: accountName });
   await form.getByRole("button", { name: "Import CSV" }).click();
   return page.getByRole("dialog");
 }
@@ -77,4 +78,38 @@ test("CSV import leaves out unreadable dates and skips rows already imported", a
   await expect(second.getByTestId("csv-import-duplicates")).toContainText("2 skipped: already in your log");
   await page.screenshot({ path: testInfo.outputPath("second-import.png") });
   expect(await titles()).toEqual(["Coffee shop", "Grocery store"]);
+});
+
+test("CSV import does not take the same purchase on another account for a duplicate", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Settings flow is covered by the chromium project");
+  const user = await createUserAndLogin(page);
+
+  const chequing = await importCsv(page, "Main Chequing");
+  await expect(chequing.getByRole("heading", { name: "Imported 2 expenses" })).toBeVisible();
+  await chequing.getByRole("button", { name: "Done" }).click();
+  await expect(chequing).toBeHidden();
+
+  // The same two lines on the card's statement are the card's own spending.
+  const card = await importCsv(page, "Primary Credit Card");
+  await expect(card.getByRole("heading", { name: "Imported 2 expenses" })).toBeVisible();
+  await expect(card.getByTestId("csv-import-duplicates")).toHaveCount(0);
+  await card.getByRole("button", { name: "Done" }).click();
+  await expect(card).toBeHidden();
+
+  const rows = await prisma.transaction.findMany({
+    where: { userId: user.id, type: TransactionType.EXPENSE },
+    select: { title: true, account: { select: { name: true } } },
+  });
+  const byAccount = (name: string) =>
+    rows
+      .filter((row) => row.account?.name === name)
+      .map((row) => row.title)
+      .sort();
+  expect(byAccount("Main Chequing")).toEqual(["Coffee shop", "Grocery store"]);
+  expect(byAccount("Primary Credit Card")).toEqual(["Coffee shop", "Grocery store"]);
+
+  // And a true re-import of the card's statement is still caught.
+  const again = await importCsv(page, "Primary Credit Card");
+  await expect(again.getByRole("heading", { name: "Imported 0 expenses" })).toBeVisible();
+  await expect(again.getByTestId("csv-import-duplicates")).toContainText("2 skipped: already in your log");
 });
