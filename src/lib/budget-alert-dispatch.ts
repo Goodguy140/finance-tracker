@@ -79,15 +79,24 @@ export async function dispatchBudgetAlertEmails(
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") continue;
       throw err;
     }
-    const outcome = await sendBudgetAlertEmail({
-      to: user.email,
-      subject: subjectFor(warning),
-      text: bodyFor(warning, monthLabel, baseUrl),
-    });
-    if (outcome.sent) {
+    // A transport error throws rather than returning `sent: false`. Either way the slot is
+    // released so the next spending change retries, and a throw is logged rather than
+    // propagated so it does not cost the other warnings in this dispatch their email.
+    let delivered = false;
+    try {
+      delivered = (
+        await sendBudgetAlertEmail({
+          to: user.email,
+          subject: subjectFor(warning),
+          text: bodyFor(warning, monthLabel, baseUrl),
+        })
+      ).sent;
+    } catch (err) {
+      console.error(`[budget-alerts] sending the ${warning.categoryName} alert failed`, err);
+    }
+    if (delivered) {
       sent += 1;
     } else {
-      // Release the slot so the next spending change retries the send.
       await client.budgetAlertNotification.deleteMany({
         where: { userId, periodMonth: ym, categoryId: warning.categoryId, severity: warning.severity },
       });

@@ -205,6 +205,7 @@ Nav `src/components/admin/admin-nav.tsx`; actions `actions/admin*.ts`.
 - Schedulers started in `src/instrumentation.ts`: Plaid sweep
   (`src/lib/plaid-sync-scheduler.ts`), recurring auto-post
   (`src/lib/recurring-auto-post-scheduler.ts`)
-- Budget alert emails: `src/lib/budget-alert-dispatch.ts`, `budget-alert-email.ts`
+- Budget alert emails: `src/lib/budget-alert-dispatch.ts`, `budget-alert-email.ts` (sent after any
+  spending change, including automatic recurring posts from `src/lib/recurring-post.ts`)
 - Health check `/api/health`; schema repair on start `scripts/repair-sqlite-schema.cjs`
 - Project website (GitHub Pages): `site/`, `.github/workflows/pages.yml`

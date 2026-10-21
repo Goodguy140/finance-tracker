@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { dateFromYmd, ymdFromDateUtc } from "@/lib/date-only";
 
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
+const scheduleBudgetAlertEmails = vi.fn();
+vi.mock("@/lib/budget-alert-dispatch", () => ({ scheduleBudgetAlertEmails }));
 
 const { autoPostDueRecurringTransactions, postRecurringOccurrence } = await import("./recurring-post");
 
@@ -178,5 +180,17 @@ describe("autoPostDueRecurringTransactions", () => {
     const db = fakeDb(rule({ postMode: "REVIEW", nextExpectedDate: dateFromYmd("2026-01-01") }));
     expect((await autoPostDueRecurringTransactions("u1", new Date("2026-06-15T12:00:00.000Z"), db.client as never)).posted).toBe(0);
     expect(db.client.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("schedules budget alert emails once when it posts, and not when it posts nothing", async () => {
+    const db = fakeDb(rule({ nextExpectedDate: dateFromYmd("2026-04-01") }));
+    await autoPostDueRecurringTransactions("u1", new Date("2026-06-15T12:00:00.000Z"), db.client as never);
+    expect(scheduleBudgetAlertEmails).toHaveBeenCalledTimes(1);
+    expect(scheduleBudgetAlertEmails).toHaveBeenCalledWith("u1");
+
+    scheduleBudgetAlertEmails.mockClear();
+    const review = fakeDb(rule({ postMode: "REVIEW", nextExpectedDate: dateFromYmd("2026-01-01") }));
+    await autoPostDueRecurringTransactions("u1", new Date("2026-06-15T12:00:00.000Z"), review.client as never);
+    expect(scheduleBudgetAlertEmails).not.toHaveBeenCalled();
   });
 });
