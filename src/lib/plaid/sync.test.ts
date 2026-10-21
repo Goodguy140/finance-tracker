@@ -47,14 +47,14 @@ function itemRecord(overrides: Partial<SyncItemRecord> = {}): SyncItemRecord {
 
 /** Records what the walk did, so the commit boundary can be asserted directly. */
 function makeStore(item: SyncItemRecord | null, existing: ExistingStagedRow[] = []) {
-  const commits: Array<{ cursorBefore: string | null; plan: PagePlan }> = [];
+  const commits: Array<{ cursorBefore: string | null; plan: PagePlan; completesWalk: boolean }> = [];
   const store: SyncStore = {
     acquireLock: vi.fn(async () => item),
     releaseLock: vi.fn(async () => {}),
     loadExistingStaged: vi.fn(async () => existing),
     loadApprovedAmounts: vi.fn(async () => new Map<string, number>()),
-    commitPage: vi.fn(async (committedItem, plan) => {
-      commits.push({ cursorBefore: committedItem.cursor, plan });
+    commitPage: vi.fn(async (committedItem, plan, { completesWalk }) => {
+      commits.push({ cursorBefore: committedItem.cursor, plan, completesWalk });
     }),
     finalize: vi.fn(async () => {}),
     matchPendingRows: vi.fn(async () => 0),
@@ -93,6 +93,8 @@ describe("syncPlaidItem: pagination and cursor", () => {
     // cursor it produced is what the commit advances to.
     expect(commits.map((c) => c.cursorBefore)).toEqual([null, "cursor-1", "cursor-2"]);
     expect(commits.map((c) => c.plan.nextCursor)).toEqual(["cursor-1", "cursor-2", "cursor-3"]);
+    // Only the last page stores its cursor: a cursor from mid-walk is never resumed from.
+    expect(commits.map((c) => c.completesWalk)).toEqual([false, false, true]);
   });
 
   it("stops as soon as has_more is false", async () => {
@@ -112,7 +114,7 @@ describe("syncPlaidItem: pagination and cursor", () => {
 });
 
 describe("syncPlaidItem: failure handling", () => {
-  it("restarts the walk from the last committed cursor on a mid-pagination mutation", async () => {
+  it("restarts the walk from the cursor it began with on a mid-pagination mutation", async () => {
     const mutation = new PlaidApiError({
       message: "mutation",
       errorCode: "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION",
@@ -128,18 +130,32 @@ describe("syncPlaidItem: failure handling", () => {
         call += 1;
         if (call === 1) return pageOf([txn("a")], "cursor-1", true);
         if (call === 2) throw mutation;
+        if (call === 3) return pageOf([txn("a")], "cursor-1b", true);
         return pageOf([txn("b")], "cursor-2", false);
       }),
     } as unknown as PlaidClient;
-    const { store, commits } = makeStore(itemRecord());
+    const { store, commits } = makeStore(itemRecord({ cursor: "cursor-0", initialSyncPending: false }));
 
     const summary = await syncPlaidItem({ client, store }, "item-1");
 
-    // Restarted from cursor-1, the last page actually committed — not from the beginning,
-    // and not from the page that failed.
-    expect(calls).toEqual([null, "cursor-1", "cursor-1"]);
-    expect(commits).toHaveLength(2);
+    // Plaid's contract: after a mutation, restart from the cursor the walk BEGAN with
+    // (cursor-0), not from cursor-1, a page the mutated walk produced.
+    expect(calls).toEqual(["cursor-0", "cursor-1", "cursor-0", "cursor-1b"]);
+    // The aborted walk never stored a cursor; the restarted one stores its final cursor.
+    expect(commits.map((c) => c.completesWalk)).toEqual([false, false, true]);
+    expect(commits.at(-1)?.plan.nextCursor).toBe("cursor-2");
+    // Only the walk that finished is counted.
     expect(summary.pages).toBe(2);
+    expect(summary.staged).toBe(2);
+  });
+
+  it("fails rather than storing a mid-walk cursor when has_more never ends", async () => {
+    const { client } = clientWithPages([pageOf([], "cursor-n", true)]);
+    const { store, commits } = makeStore(itemRecord());
+
+    await expect(syncPlaidItem({ client, store }, "item-1")).rejects.toThrow(/more than 200 pages/);
+    expect(commits.some((c) => c.completesWalk)).toBe(false);
+    expect(store.finalize).toHaveBeenCalledWith(expect.objectContaining({ error: expect.any(String) }));
   });
 
   it("gives up after repeated mutations rather than looping", async () => {

@@ -14,7 +14,8 @@ import { resolveHistoryCutoff } from "@/lib/plaid/window";
  * moments (see AGENTS.md, "Plaid integration"):
  *
  *  - exchanging a public token creates a billable Item whether or not it is kept, so every
- *    refusal after an exchange also removes the Item at Plaid (`discardRedundantItem`);
+ *    refusal or failure after an exchange also removes the Item at Plaid
+ *    (`discardRedundantItem`);
  *  - Plaid issues a fresh item_id each time Link completes, so linking the same institution
  *    twice is caught by institution, not by item id;
  *  - ending a connection means `/item/remove` first and deleting second, and nothing is
@@ -64,9 +65,9 @@ export async function upsertPlaidAccounts(
 /**
  * Revokes an item we exchanged but are not going to keep.
  *
- * Without this, refusing a duplicate would create exactly the orphaned, billing-forever
- * connection the refusal exists to prevent, and with no local row nothing would ever point
- * at it again. Best-effort: if the revoke fails the refusal still stands, and the failure is
+ * Without this, refusing a duplicate — or failing to store a new item — would create exactly
+ * the orphaned, billing-forever connection the refusal exists to prevent, and with no local
+ * row nothing would ever point at it again. Best-effort: if the revoke fails the refusal still stands, and the failure is
  * logged so it can be removed from the Plaid dashboard by hand.
  */
 async function discardRedundantItem(client: PlaidClient, accessToken: string): Promise<void> {
@@ -108,17 +109,29 @@ export type LinkBankOutcome =
  */
 export async function linkBank(deps: ConnectionDeps, input: LinkBankInput): Promise<LinkBankOutcome> {
   const { prisma, client } = deps;
-  const { user, days } = input;
+  const { user } = input;
   const exchanged = await client.exchangePublicToken(input.publicToken);
-  const [{ accounts, item }, existing] = await Promise.all([
-    client.getAccounts(exchanged.access_token),
-    prisma.plaidItem.findUnique({ where: { itemId: exchanged.item_id } }),
-  ]);
+
+  // From here on a billable Item exists at Plaid. Until we know whether it is one we
+  // already hold, a failure cannot safely revoke it: that could end the user's working
+  // connection. So the lookup comes first, on its own, and is logged with the item id if
+  // it fails so the item can be found again.
+  let existing;
+  try {
+    existing = await prisma.plaidItem.findUnique({ where: { itemId: exchanged.item_id } });
+  } catch (err) {
+    console.error(
+      `[plaid] could not check item ${exchanged.item_id} after exchange; if it is not linked, remove it from the Plaid dashboard`,
+    );
+    throw err;
+  }
 
   // Re-authentication of an item we already hold: renew the credential and clear what the
   // user was being asked to fix, but leave the history window and cursor exactly as they
   // were. Widening the window here would silently pull history the user never asked for.
+  // A failure here leaves the old connection in place, so nothing is revoked.
   if (existing && existing.userId === user.id) {
+    const { accounts, item } = await client.getAccounts(exchanged.access_token);
     await prisma.plaidItem.update({
       where: { id: existing.id },
       data: {
@@ -143,6 +156,23 @@ export async function linkBank(deps: ConnectionDeps, input: LinkBankInput): Prom
     await discardRedundantItem(client, exchanged.access_token);
     return { kind: "refused", reason: "linked-elsewhere" };
   }
+
+  // A new Item. Anything that fails before it is stored with its accounts would otherwise
+  // leave it live and billing with no row pointing at it, so every failure revokes it.
+  try {
+    return await storeNewItem(deps, input, exchanged);
+  } catch (err) {
+    await discardRedundantItem(client, exchanged.access_token);
+    throw err;
+  }
+}
+
+async function storeNewItem(
+  { prisma, client }: ConnectionDeps,
+  { user, days, now }: LinkBankInput,
+  exchanged: { access_token: string; item_id: string },
+): Promise<LinkBankOutcome> {
+  const { accounts, item } = await client.getAccounts(exchanged.access_token);
 
   // Plaid issues a fresh item_id every time Link completes, so connecting the same bank a
   // second time does NOT collide on `itemId`: it silently creates a second Item, and Plaid
@@ -170,22 +200,26 @@ export async function linkBank(deps: ConnectionDeps, input: LinkBankInput): Prom
     }
   }
 
-  const historyCutoff = resolveHistoryCutoff(days, user.timezone, input.now);
-  const created = await prisma.plaidItem.create({
-    data: {
-      userId: user.id,
-      itemId: exchanged.item_id,
-      accessTokenEnc: sealAccessToken(exchanged.access_token),
-      institutionId: item?.institution_id ?? null,
-      institutionName,
-      requestedDays: days,
-      historyCutoff,
-      webhookUrl: resolvePlaidWebhookUrl(),
-      consentExpiresAt: parseConsentExpiry(item?.consent_expiration_time),
-    },
-    select: { id: true },
+  const historyCutoff = resolveHistoryCutoff(days, user.timezone, now);
+  // One transaction, so a failure part-way leaves no row behind for the revoked Item.
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.plaidItem.create({
+      data: {
+        userId: user.id,
+        itemId: exchanged.item_id,
+        accessTokenEnc: sealAccessToken(exchanged.access_token),
+        institutionId: item?.institution_id ?? null,
+        institutionName,
+        requestedDays: days,
+        historyCutoff,
+        webhookUrl: resolvePlaidWebhookUrl(),
+        consentExpiresAt: parseConsentExpiry(item?.consent_expiration_time),
+      },
+      select: { id: true },
+    });
+    await upsertPlaidAccounts(tx, row.id, user.id, accounts);
+    return row;
   });
-  await upsertPlaidAccounts(prisma, created.id, user.id, accounts);
   return {
     kind: "linked",
     mode: "create",
@@ -194,6 +228,29 @@ export async function linkBank(deps: ConnectionDeps, input: LinkBankInput): Prom
     accountCount: accounts.length,
     historyCutoff,
   };
+}
+
+/**
+ * Points a bank account at an app account, or clears the mapping with null.
+ *
+ * Rows for an account nobody has mapped are skipped by the sync, but the item's cursor still
+ * moves past them, so mapping it later would only ever show new activity. When an account
+ * starts taking rows, the item's cursor is cleared so the next sync walks the history window
+ * again. Rows already in the queue are keyed by transaction, so the re-walk adds only what
+ * was skipped and leaves every decision the user made alone.
+ */
+export async function setPlaidAccountMapping(
+  prisma: PrismaClient,
+  plaidAccount: { id: string; plaidItemId: string; accountId: string | null; syncEnabled: boolean },
+  accountId: string | null,
+): Promise<void> {
+  const startsTakingRows = accountId !== null && plaidAccount.accountId === null && plaidAccount.syncEnabled;
+  await prisma.$transaction(async (tx) => {
+    await tx.plaidAccount.update({ where: { id: plaidAccount.id }, data: { accountId } });
+    if (startsTakingRows) {
+      await tx.plaidItem.update({ where: { id: plaidAccount.plaidItemId }, data: { cursor: null } });
+    }
+  });
 }
 
 /**

@@ -40,21 +40,42 @@ function decodeSegment<T>(segment: string): T | null {
  */
 const keyCache = new Map<string, PlaidWebhookVerificationKey>();
 
+/**
+ * Kids Plaid did not recognise, and when we asked. The endpoint is public and anyone can
+ * put any `kid` in a header, so without this every forged delivery would cost an outbound
+ * call to Plaid. Bounded, because the kids are attacker-chosen.
+ */
+const failedLookups = new Map<string, number>();
+export const FAILED_KEY_LOOKUP_TTL_MS = 10 * 60_000;
+const MAX_FAILED_LOOKUPS = 256;
+
 export function clearWebhookKeyCache() {
   keyCache.clear();
+  failedLookups.clear();
 }
 
 async function resolveKey(
   keyId: string,
   fetchKey: WebhookKeyFetcher,
+  nowMs: number,
 ): Promise<PlaidWebhookVerificationKey | null> {
   const cached = keyCache.get(keyId);
   if (cached && cached.expired_at == null) return cached;
+  const failedAt = failedLookups.get(keyId);
+  if (failedAt !== undefined && nowMs - failedAt < FAILED_KEY_LOOKUP_TTL_MS) return null;
   try {
     const key = await fetchKey(keyId);
     keyCache.set(keyId, key);
+    failedLookups.delete(keyId);
     return key;
   } catch {
+    failedLookups.delete(keyId);
+    if (failedLookups.size >= MAX_FAILED_LOOKUPS) {
+      // Oldest first: a Map iterates in insertion order.
+      const oldest = failedLookups.keys().next().value;
+      if (oldest !== undefined) failedLookups.delete(oldest);
+    }
+    failedLookups.set(keyId, nowMs);
     return null;
   }
 }
@@ -84,7 +105,19 @@ export async function verifyPlaidWebhook(input: {
   if (!header || header.alg !== "ES256") return { ok: false, reason: "unexpected alg" };
   if (typeof header.kid !== "string" || !header.kid) return { ok: false, reason: "missing kid" };
 
-  const key = await resolveKey(header.kid, input.fetchKey);
+  // Also before any fetch. The payload is not trusted yet — the signature check below is
+  // what makes it so — but a delivery that is stale or carries no body hash on its face can
+  // be refused without asking Plaid for a key.
+  const payload = decodeSegment<JwtPayload>(payloadSegment);
+  if (!payload || typeof payload.iat !== "number") return { ok: false, reason: "missing iat" };
+  const now = input.now ?? new Date();
+  const nowSeconds = Math.floor(now.getTime() / 1000);
+  if (nowSeconds - payload.iat > WEBHOOK_MAX_AGE_SECONDS) return { ok: false, reason: "stale" };
+  if (typeof payload.request_body_sha256 !== "string") {
+    return { ok: false, reason: "missing body hash" };
+  }
+
+  const key = await resolveKey(header.kid, input.fetchKey, now.getTime());
   if (!key) return { ok: false, reason: "unknown key" };
   if (key.expired_at != null) return { ok: false, reason: "expired key" };
 
@@ -107,14 +140,6 @@ export async function verifyPlaidWebhook(input: {
   }
   if (!signatureOk) return { ok: false, reason: "bad signature" };
 
-  const payload = decodeSegment<JwtPayload>(payloadSegment);
-  if (!payload || typeof payload.iat !== "number") return { ok: false, reason: "missing iat" };
-  const nowSeconds = Math.floor((input.now ?? new Date()).getTime() / 1000);
-  if (nowSeconds - payload.iat > WEBHOOK_MAX_AGE_SECONDS) return { ok: false, reason: "stale" };
-
-  if (typeof payload.request_body_sha256 !== "string") {
-    return { ok: false, reason: "missing body hash" };
-  }
   const bodyHash = createHash("sha256").update(input.body).digest("hex");
   if (!sameHex(bodyHash, payload.request_body_sha256)) {
     return { ok: false, reason: "body hash mismatch" };

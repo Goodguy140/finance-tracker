@@ -49,6 +49,7 @@ export const AUDIT_ACTIONS = {
   plaid_item_linked: "plaid_item_linked",
   plaid_item_unlinked: "plaid_item_unlinked",
   plaid_item_unlink_failed: "plaid_item_unlink_failed",
+  plaid_item_revoke_skipped: "plaid_item_revoke_skipped",
   plaid_account_mapped: "plaid_account_mapped",
   plaid_item_sync_succeeded: "plaid_item_sync_succeeded",
   plaid_item_sync_failed: "plaid_item_sync_failed",

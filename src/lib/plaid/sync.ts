@@ -16,11 +16,14 @@ import {
 /**
  * Walking /transactions/sync and committing what it returns.
  *
- * The correctness argument is the commit boundary: each page's rows AND the cursor that
- * page produced are written in one database transaction. A crash therefore replays exactly
- * one page, and because every staged row is keyed on (userId, plaidTransactionId) the
- * replay is a no-op. Advancing the cursor outside that transaction would lose a page on
- * any failure; advancing it before the writes would lose it on every failure.
+ * The correctness argument is the cursor boundary. Each page's rows are written in one
+ * database transaction, but the item's stored cursor only moves when the walk is complete:
+ * it is written together with the LAST page (the one with `has_more: false`). Plaid's
+ * contract is that a walk interrupted by TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION must
+ * restart from the cursor the walk *began* with, so a cursor from the middle of a walk is
+ * never one we may resume from — not after a mutation, and not after a crash. Re-applying
+ * pages already written is a no-op, because every staged row is keyed on
+ * (userId, plaidTransactionId) and the user's decisions survive an update.
  */
 
 /** A sync in flight older than this is assumed dead and may be taken over. */
@@ -72,8 +75,12 @@ export type SyncStore = {
    * (`outflowCents`), so they compare with a bank row whatever type the user booked it as.
    */
   loadApprovedAmounts(userId: string, transactionIds: string[]): Promise<Map<string, number>>;
-  /** Applies one page's writes AND its cursor atomically. */
-  commitPage(item: SyncItemRecord, plan: PagePlan): Promise<void>;
+  /**
+   * Applies one page's writes. With `completesWalk`, also stores `plan.nextCursor` in the
+   * same transaction — unless an account was mapped while the walk ran, in which case the
+   * cursor is cleared so the next sync fetches the history this walk skipped for it.
+   */
+  commitPage(item: SyncItemRecord, plan: PagePlan, options: { completesWalk: boolean }): Promise<void>;
   finalize(input: {
     itemId: string;
     now: Date;
@@ -109,15 +116,8 @@ function addSkips(into: SkipCounts, from: SkipCounts): void {
   into.unusable += from.unusable;
 }
 
-export async function syncPlaidItem(deps: SyncDeps, itemId: string): Promise<SyncSummary> {
-  const now = deps.now ?? (() => new Date());
-  const startedAt = now();
-  const staleBefore = new Date(startedAt.getTime() - SYNC_LOCK_STALE_MS);
-
-  const item = await deps.store.acquireLock(itemId, staleBefore, startedAt);
-  if (!item) throw new PlaidSyncBusyError();
-
-  const summary: SyncSummary = {
+function emptySummary(): SyncSummary {
+  return {
     staged: 0,
     superseded: 0,
     removed: 0,
@@ -128,17 +128,31 @@ export async function syncPlaidItem(deps: SyncDeps, itemId: string): Promise<Syn
     needsReauth: false,
     earliestObserved: null,
   };
+}
 
-  // Tracked separately from `item.cursor` so a restart resumes from the last COMMITTED
-  // page rather than from wherever the failed walk had reached.
-  let committedCursor = item.cursor;
+export async function syncPlaidItem(deps: SyncDeps, itemId: string): Promise<SyncSummary> {
+  const now = deps.now ?? (() => new Date());
+  const startedAt = now();
+  const staleBefore = new Date(startedAt.getTime() - SYNC_LOCK_STALE_MS);
+
+  const item = await deps.store.acquireLock(itemId, staleBefore, startedAt);
+  if (!item) throw new PlaidSyncBusyError();
+
+  let summary = emptySummary();
+
+  // Every walk, including a restart, begins from the cursor stored when the last complete
+  // walk ended. Pages fetched since are not resumable: see the comment at the top.
+  const startCursor = item.cursor;
   let restarts = 0;
   // The account list of the walk's last page: the freshest balances Plaid had cached.
   let lastAccounts: PlaidSyncPage["accounts"] = [];
 
   try {
     walk: for (;;) {
-      let cursor = committedCursor;
+      let cursor = startCursor;
+      // A restart re-applies the pages already seen, so count only the walk that finished.
+      summary = emptySummary();
+      lastAccounts = [];
 
       for (let guard = 0; guard < MAX_PAGES; guard++) {
         let page;
@@ -150,8 +164,9 @@ export async function syncPlaidItem(deps: SyncDeps, itemId: string): Promise<Syn
           });
         } catch (err) {
           if (err instanceof PlaidApiError && err.isPaginationMutation) {
-            // Plaid changed the item underneath us. Restart from the last committed
-            // cursor; the unique key makes re-applying already-seen rows a no-op.
+            // Plaid changed the item underneath us. Its documented recovery is to restart
+            // from the cursor the walk began with; the unique key makes re-applying
+            // already-seen rows a no-op.
             if (restarts >= MAX_PAGINATION_RESTARTS) throw err;
             restarts += 1;
             continue walk;
@@ -173,7 +188,7 @@ export async function syncPlaidItem(deps: SyncDeps, itemId: string): Promise<Syn
           plan = keepChangedRevisions(markChangedTransfers(plan, approved), approved);
         }
 
-        await deps.store.commitPage({ ...item, cursor }, plan);
+        await deps.store.commitPage({ ...item, cursor }, plan, { completesWalk: !page.has_more });
 
         summary.pages += 1;
         summary.staged += plan.upserts.length;
@@ -186,13 +201,13 @@ export async function syncPlaidItem(deps: SyncDeps, itemId: string): Promise<Syn
           summary.earliestObserved = plan.earliestSeen;
         }
 
-        committedCursor = plan.nextCursor;
         cursor = plan.nextCursor;
         if (page.accounts.length > 0) lastAccounts = page.accounts;
         if (!page.has_more) break walk;
       }
-      // Ran past MAX_PAGES without has_more going false.
-      break walk;
+      // Ran past MAX_PAGES without has_more going false. The stored cursor has not moved,
+      // so treating this as success would replay the same pages forever; fail visibly.
+      throw new Error(`The bank returned more than ${MAX_PAGES} pages in one sync. Try again later.`);
     }
 
     const readings = balanceReadings(lastAccounts, item.context.accounts);

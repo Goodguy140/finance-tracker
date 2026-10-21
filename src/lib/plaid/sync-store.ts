@@ -1,4 +1,4 @@
-import { CategoryKind, PlaidItemStatus, PlaidStagedStatus } from "@prisma/client";
+import { CategoryKind, PlaidItemStatus, PlaidStagedStatus, type Prisma } from "@prisma/client";
 import { paidCentsOf } from "@/lib/owed-shares";
 import { BALANCE_SOURCE, upsertBalanceSnapshot } from "@/lib/account-balances";
 import { dateFromYmd } from "@/lib/date-only";
@@ -82,6 +82,19 @@ async function loadSyncItemRecord(itemId: string): Promise<SyncItemRecord | null
   };
 }
 
+/** True when an account on the item now takes rows that the walk's snapshot skipped. */
+async function accountsMappedSince(tx: Prisma.TransactionClient, item: SyncItemRecord): Promise<boolean> {
+  const current = await tx.plaidAccount.findMany({
+    where: { plaidItemId: item.id },
+    select: { plaidAccountId: true, accountId: true, syncEnabled: true },
+  });
+  return current.some((account) => {
+    if (!account.accountId || !account.syncEnabled) return false;
+    const seen = item.context.accounts.get(account.plaidAccountId);
+    return !seen || !seen.accountId || !seen.syncEnabled;
+  });
+}
+
 export function createSyncStore(): SyncStore {
   return {
     async acquireLock(itemId, staleBefore, now) {
@@ -131,9 +144,10 @@ export function createSyncStore(): SyncStore {
       return new Map(rows.map((row) => [row.id, outflowCents(row.type, paidCentsOf(row))]));
     },
 
-    async commitPage(item, plan) {
-      // The page's rows and the cursor it produced go in together. A crash replays exactly
-      // one page, and the unique key on (userId, plaidTransactionId) makes that a no-op.
+    async commitPage(item, plan, { completesWalk }) {
+      // A page's rows go in together. The cursor moves only with the walk's last page (see
+      // sync.ts): a crash before then replays the walk from its start, and the unique key on
+      // (userId, plaidTransactionId) makes re-applying a page a no-op.
       await prisma.$transaction(async (tx) => {
         for (const upsert of plan.upserts) {
           const shared = {
@@ -240,10 +254,15 @@ export function createSyncStore(): SyncStore {
           });
         }
 
-        await tx.plaidItem.update({
-          where: { id: item.id },
-          data: { cursor: plan.nextCursor },
-        });
+        if (completesWalk) {
+          const mappedDuringWalk = await accountsMappedSince(tx, item);
+          await tx.plaidItem.update({
+            where: { id: item.id },
+            // An account mapped while this walk ran had its rows skipped as unmapped. Storing
+            // the cursor would put that history behind it for good, so start over instead.
+            data: { cursor: mappedDuringWalk ? null : plan.nextCursor },
+          });
+        }
       }, LONG_TRANSACTION_OPTIONS);
     },
 
