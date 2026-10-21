@@ -1,10 +1,24 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { clearUserFinancialDataAction, deleteAccountAction, importUserBackupAction } from "@/app/actions";
 import { inputClass, primaryBtnClass, secondaryBtnClass } from "@/components/forms/shared";
 import { ServerActionForm } from "@/components/server-action-form";
+import { BACKUP_MAX_BYTES, backupTooLargeMessage } from "@/lib/backup-limits";
 
 export function BackupForms() {
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [tooLarge, setTooLarge] = useState<string | null>(null);
+
+  // Checked here because a body past the server's limit is refused before the action runs,
+  // with nothing it could say about why.
+  function checkSize(): boolean {
+    const file = fileInput.current?.files?.[0];
+    const message = file && file.size > BACKUP_MAX_BYTES ? backupTooLargeMessage(file.size) : null;
+    setTooLarge(message);
+    return message === null;
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -13,7 +27,11 @@ export function BackupForms() {
           Export backup JSON
         </a>
       </div>
-      <ServerActionForm action={importUserBackupAction} className="space-y-3 border-t border-slate-800 pt-4">
+      <ServerActionForm
+        action={importUserBackupAction}
+        beforeSubmit={async () => checkSize()}
+        className="space-y-3 border-t border-slate-800 pt-4"
+      >
         <div>
           <p className="text-sm font-medium text-slate-200">Restore from a backup</p>
           <p className="mt-0.5 max-w-prose text-xs text-slate-500">
@@ -21,7 +39,20 @@ export function BackupForms() {
             bank connections, so reconnect them afterwards. Only a backup of this same account email is accepted.
           </p>
         </div>
-        <input name="backupJson" type="file" accept="application/json,.json" required className={inputClass} />
+        <input
+          ref={fileInput}
+          name="backupJson"
+          type="file"
+          accept="application/json,.json"
+          required
+          className={inputClass}
+          onChange={checkSize}
+        />
+        {tooLarge ? (
+          <p role="alert" className="text-xs text-red-300">
+            {tooLarge}
+          </p>
+        ) : null}
         <button type="submit" className={secondaryBtnClass}>
           Import backup JSON
         </button>

@@ -11,6 +11,7 @@ import { defaultCountsAsSavings } from "@/lib/savings-transfers";
 import { BALANCE_SOURCE, upsertBalanceSnapshot } from "@/lib/account-balances";
 import { dateFromYmd } from "@/lib/date-only";
 import { toCents } from "@/lib/money";
+import { currencyChangeRefusal, foreignAccountDeleteRefusal, loadAccountUsage } from "@/lib/account-currency-guard";
 import { homeCurrencyOf } from "@/lib/home-currency";
 import { mergeAccountDescriptionOnDetach } from "@/lib/transaction-account-detach";
 import {
@@ -67,6 +68,20 @@ export const updateFinancialAccountAction = formAction(async (formData: FormData
     currency: getFormValue(formData, "currency"),
     countsAsSavings: formData.get("countsAsSavings") === "on",
   });
+
+  const existing = await prisma.account.findFirst({
+    where: { id: payload.accountId, userId: user.id },
+    select: { name: true, currency: true },
+  });
+  if (!existing) throw new Error("Account not found.");
+  if (existing.currency !== payload.currency) {
+    const refusal = currencyChangeRefusal(
+      existing,
+      payload.currency,
+      await loadAccountUsage(prisma, user.id, payload.accountId),
+    );
+    if (refusal) throw new Error(refusal);
+  }
 
   const result = await prisma.account.updateMany({
     where: { id: payload.accountId, userId: user.id },
@@ -132,9 +147,15 @@ export const deleteFinancialAccountAction = formAction(async (formData: FormData
 
   const account = await prisma.account.findFirst({
     where: { id: accountId, userId: user.id },
-    select: { id: true, name: true, type: true },
+    select: { id: true, name: true, type: true, currency: true },
   });
   if (!account) throw new Error("Account not found.");
+  const currencyRefusal = foreignAccountDeleteRefusal(
+    account,
+    homeCurrencyOf(user.countryCode),
+    await prisma.transaction.count({ where: { userId: user.id, accountId } }),
+  );
+  if (currencyRefusal) throw new Error(currencyRefusal);
 
   const removedLabel = formatAccountDetachedLabel(account.name, account.type);
 

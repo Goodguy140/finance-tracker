@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { BACKUP_REQUEST_LIMIT_BYTES } from "./src/lib/backup-limits";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -86,6 +87,13 @@ const nextConfig: NextConfig = {
   // Keep Prisma out of the Turbopack server bundle so the client always matches
   // `schema.prisma` (avoids stale embedded enums after `prisma generate`).
   serverExternalPackages: ["@prisma/client", "prisma"],
+  experimental: {
+    // Restoring a backup posts the whole file to a Server Action; the 1 MB default refused
+    // backups of a few years' history. The proxy buffers bodies too, and truncates past its
+    // own limit, so it has to allow the same size. See src/lib/backup-limits.ts.
+    serverActions: { bodySizeLimit: BACKUP_REQUEST_LIMIT_BYTES },
+    proxyClientMaxBodySize: BACKUP_REQUEST_LIMIT_BYTES,
+  },
   // Allow tunnel/local dev hosts so client fetches (including NextAuth CSRF) are not blocked.
   allowedDevOrigins:
     process.env.NODE_ENV === "production"

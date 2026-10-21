@@ -238,7 +238,7 @@ describe("importExpensesCsvAction dates and duplicates", () => {
 
   it("skips a row matching an existing expense's date, amount and title, once per existing expense", async () => {
     mockPrisma.transaction.findMany.mockResolvedValue([
-      { date: new Date("2026-03-02T00:00:00Z"), amountCents: 450, title: "coffee" },
+      { accountId: "acc-default", date: new Date("2026-03-02T00:00:00Z"), amountCents: 450, title: "coffee" },
     ]);
     const result = await importExpensesCsvAction(
       csvForm(
@@ -265,6 +265,18 @@ describe("importExpensesCsvAction dates and duplicates", () => {
         }),
       }),
     );
+  });
+
+  it("does not take the same purchase on another account for a duplicate", async () => {
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      { accountId: "acc-other", date: new Date("2026-03-02T00:00:00Z"), amountCents: 450, title: "coffee" },
+    ]);
+    const result = await importExpensesCsvAction(
+      csvForm([{ Amount: "4.50", Date: "2026-03-02", Desc: "Coffee" }], mapping),
+    );
+    expect(writtenRows()).toHaveLength(1);
+    expect(writtenRows()[0].accountId).toBe("acc-default");
+    expect(result).toMatchObject({ imported: 1, duplicates: [] });
   });
 
   it("counts rows with no readable amount", async () => {

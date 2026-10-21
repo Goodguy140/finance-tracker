@@ -316,7 +316,7 @@ export const importExpensesCsvAction = formActionWithResult(async (formData: For
               lt: new Date(Date.UTC(...ymdParts(new Date(Math.max(...times)))) + 86_400_000),
             },
           },
-          select: { date: true, amountCents: true, title: true },
+          select: { accountId: true, date: true, amountCents: true, title: true },
         })
       : [];
   const duplicates = new DuplicateMatcher(existing);
@@ -349,9 +349,13 @@ export const importExpensesCsvAction = formActionWithResult(async (formData: For
         { learned: ruleContext.learned, hiddenTitleKeys: ruleContext.hiddenTitleKeys },
       );
       const title = rule.title ?? statementTitle;
-      // Compared on the title as it would be saved, so a rule's rename matches its own
-      // earlier import.
-      if (duplicates.claim(transactionDate, toCents(amount), title)) {
+      const ruleAccountId = rule.accountId && activeAccountIds.has(rule.accountId) ? rule.accountId : undefined;
+      const resolvedAccountId = accountName
+        ? accountByName.get(accountName.toLowerCase()) ?? ruleAccountId ?? payload.defaults.accountId
+        : ruleAccountId ?? payload.defaults.accountId;
+      // Compared on the title and account as they would be saved, so a rule's rename matches
+      // its own earlier import, and the same purchase on another card is not taken for a copy.
+      if (duplicates.claim(resolvedAccountId, transactionDate, toCents(amount), title)) {
         summary.duplicates.push({
           row: rowNumber,
           title: title ?? null,
@@ -361,10 +365,6 @@ export const importExpensesCsvAction = formActionWithResult(async (formData: For
         continue;
       }
       const note = appendRuleNote(statementNote, rule.appendNote) ?? undefined;
-      const ruleAccountId = rule.accountId && activeAccountIds.has(rule.accountId) ? rule.accountId : undefined;
-      const resolvedAccountId = accountName
-        ? accountByName.get(accountName.toLowerCase()) ?? ruleAccountId ?? payload.defaults.accountId
-        : ruleAccountId ?? payload.defaults.accountId;
 
       // A rule that marks transfers books the line as one, whatever category the file names:
       // the user said lines like this are not spending.

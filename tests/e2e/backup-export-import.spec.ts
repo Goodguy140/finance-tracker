@@ -162,3 +162,71 @@ test("a verified transaction keeps its badge across an export/import, without ca
     unlinkSync(backupPath);
   }
 });
+
+// Restore is a Server Action, whose body Next caps at 1 MB unless configured. A few years of
+// history is past that, so a backup the app had just exported could not be put back.
+test("a backup over 1 MB can be restored", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Settings flow is covered by the chromium project");
+  test.setTimeout(120_000);
+  const stamp = uniqueStamp();
+  const email = `e2e-backup-large-${stamp}@example.com`;
+  const password = "e2e-password-123";
+  const user = await prisma.user.create({
+    data: {
+      email,
+      passwordHash: await hash(password, 12),
+      displayName: "E2E User",
+      countryCode: "CA",
+      timezone: "America/Toronto",
+      role: "USER",
+    },
+  });
+  await ensureDefaultDataForUser(user);
+  const [account, category] = await Promise.all([
+    prisma.account.findFirstOrThrow({ where: { userId: user.id } }),
+    prisma.category.findFirstOrThrow({ where: { userId: user.id, kind: "EXPENSE" } }),
+  ]);
+  const start = Date.UTC(2023, 0, 1);
+  await prisma.transaction.createMany({
+    data: Array.from({ length: 3000 }, (_, i) => ({
+      userId: user.id,
+      accountId: account.id,
+      categoryId: category.id,
+      type: "EXPENSE" as const,
+      amountCents: 100 + i,
+      title: `Large backup row ${i}`,
+      note: "Padding so the export is the size of a few years of real use",
+      date: new Date(start + i * 8 * 3_600_000),
+    })),
+  });
+
+  await page.goto("/login");
+  await page.getByPlaceholder("Email").fill(email);
+  await page.getByPlaceholder("Password").fill(password);
+  await page.getByRole("button", { name: "Login" }).click();
+  await expectDashboardHome(page);
+
+  const exportRes = await page.request.get("/api/backup/export/me");
+  expect(exportRes.ok()).toBeTruthy();
+  const backup = await exportRes.json();
+  // A title only the file has, so the poll below can only be met by the restore itself.
+  const restoredTitle = `Restored ${stamp}`;
+  backup.transactions[0].title = restoredTitle;
+  const body = JSON.stringify(backup);
+  expect(Buffer.byteLength(body)).toBeGreaterThan(1024 * 1024);
+
+  const backupPath = join(tmpdir(), `backup-large-${stamp}.json`);
+  writeFileSync(backupPath, body);
+  try {
+    await openSettingsAdvancedTab(page);
+    await page.locator('input[name="backupJson"]').setInputFiles(backupPath);
+    await page.getByRole("button", { name: "Import backup JSON" }).click();
+    await expect
+      .poll(() => prisma.transaction.count({ where: { userId: user.id, title: restoredTitle } }), { timeout: 60_000 })
+      .toBe(1);
+    expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(3000);
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  } finally {
+    unlinkSync(backupPath);
+  }
+});

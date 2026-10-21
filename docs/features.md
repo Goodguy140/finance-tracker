@@ -153,7 +153,9 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
 - **Money**
   - Accounts (add/edit/archive/delete, default expense account, currency, balances, counts as
     savings, contribution room): `settings/accounts-manager.tsx`, `account-balances-panel.tsx`,
-    `contribution-room-panel.tsx`, `actions/accounts.ts`
+    `contribution-room-panel.tsx`, `actions/accounts.ts`. Currency is fixed once an account has
+    transactions, recurring rules, balances or a bank mapping, and a non-home-currency account
+    with transactions can only be archived, not deleted (`src/lib/account-currency-guard.ts`)
   - Savings goals: `settings/savings-goals-panel.tsx`, `actions/savings-goals.ts`
   - Connected banks: see Bank sync
   - Categories & budgets (add, rename, merge, delete with reassign, budget, rollover, earlier
@@ -167,9 +169,9 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
   - Subscriptions (shared members, who paid, skip occurrence): `subscriptions-panel.tsx`,
     `actions/subscriptions.ts`
 - **Data**
-  - Import CSV with summary: `forms/expense-forms.tsx`, `forms/csv-import-summary-dialog.tsx`,
-    `src/lib/csv-import.ts`
-  - Backup & export (JSON export, restore, clear data, delete account):
+  - Import CSV with summary (rows already in the log on the same account are skipped):
+    `forms/expense-forms.tsx`, `forms/csv-import-summary-dialog.tsx`, `src/lib/csv-import.ts`
+  - Backup & export (JSON export, restore up to 20 MB, clear data, delete account):
     `settings/data-forms.tsx`, `src/lib/backup*.ts`, `src/app/api/backup/export/me`
   - Developer (API tokens; `GET /api/v1/budgets`): `api-tokens-panel.tsx`,
     `src/lib/api-token.ts`, `src/app/api/v1/budgets/route.ts`
