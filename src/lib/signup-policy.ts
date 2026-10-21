@@ -20,13 +20,26 @@ export async function publicSignupAllowed(): Promise<boolean> {
   return getPublicSignupAllowed();
 }
 
+/** The slice of a Prisma client (or transaction) the role rule reads. */
+type UserCounter = {
+  user: { count(args?: { where?: { role?: UserRole } }): Promise<number> };
+};
+
 /**
  * The first account on a fresh instance becomes SERVER_ADMIN, unless `INITIAL_ADMIN_EMAIL`
- * is set, in which case only that address does. Everyone after the first is a USER.
+ * is set. Then only that address does, and it does whenever it signs up while the instance
+ * has no admin yet, even if other accounts were created first (signup opened early, before
+ * the owner got there). Everyone else is a USER.
+ *
+ * Call it inside the same transaction that creates the user, so two concurrent first
+ * signups cannot both read "no admin yet".
  */
-export function resolveSignupRole(email: string, existingUserCount: number): UserRole {
-  if (existingUserCount > 0) return UserRole.USER;
+export async function resolveSignupRole(db: UserCounter, email: string): Promise<UserRole> {
   const initialAdmin = process.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase();
-  if (!initialAdmin) return UserRole.SERVER_ADMIN;
-  return email.toLowerCase() === initialAdmin ? UserRole.SERVER_ADMIN : UserRole.USER;
+  if (!initialAdmin) {
+    return (await db.user.count()) === 0 ? UserRole.SERVER_ADMIN : UserRole.USER;
+  }
+  if (email.toLowerCase() !== initialAdmin) return UserRole.USER;
+  const admins = await db.user.count({ where: { role: UserRole.SERVER_ADMIN } });
+  return admins === 0 ? UserRole.SERVER_ADMIN : UserRole.USER;
 }

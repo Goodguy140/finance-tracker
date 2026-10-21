@@ -20,18 +20,25 @@ server-administration rights; they do **not** grant access to another user's tra
 
 **How `SERVER_ADMIN` is granted.** The first account created on a fresh deployment becomes
 `SERVER_ADMIN` automatically. Set `INITIAL_ADMIN_EMAIL` before first launch to pin that to a
-specific address — every other signup then becomes `USER` regardless of order. Afterwards,
-only an existing admin can promote someone, from **Settings → Server admin → Users**.
+specific address: that address becomes `SERVER_ADMIN` when it signs up, as long as the
+deployment has no admin yet, even if other accounts were created before it. Every other
+signup becomes `USER`. Afterwards, only an existing admin can promote someone, from
+**Settings → Server admin → Users**.
 
-Set `ALLOW_PUBLIC_SIGNUP=false` on any deployment reachable from the internet. With it unset
-in production, anyone who can load the page can create an account.
+Public signup is closed by default in production and open in development. An admin can open
+it under **Settings → Server admin → Authentication**; `ALLOW_PUBLIC_SIGNUP` overrides that
+switch either way. While it is open, anyone who can load the page can create an account.
 
 ## Authentication
 
 Three ways in, all of which may be active at once:
 
 - **Password** — bcrypt, cost 12. Rate limited to 10 attempts per address and 30 per client
-  IP per 15 minutes (`LOGIN_MAX_PER_IP` raises the second for shared-NAT deployments).
+  IP per 15 minutes (`LOGIN_MAX_PER_IP` raises the second for shared-NAT deployments). The
+  client IP is the `X-Forwarded-For` entry added by the last of `TRUSTED_PROXY_HOPS` reverse
+  proxies (default 1), so it cannot be chosen by the client. The per-IP limit is only as good
+  as that setting: if the app can be reached without going through the proxy, a client can
+  send any address it likes, and the per-address limit is what still holds.
 - **Passkey (WebAuthn)** — user verification required. Works as a passwordless first factor.
 - **SSO** — Google and/or Authentik via OIDC. An SSO identity is never auto-linked to an
   existing account by matching email address; linking requires a signed intent started from
@@ -159,7 +166,8 @@ Three behaviours that surprise reviewers:
 | Variable | Effect on access |
 |----------|------------------|
 | `INITIAL_ADMIN_EMAIL` | Pins the first `SERVER_ADMIN` to one address. |
-| `ALLOW_PUBLIC_SIGNUP` | `false` stops anyone creating their own account. |
+| `ALLOW_PUBLIC_SIGNUP` | `true` or `false` overrides the admin switch for public signup (closed by default in production). |
 | `DISABLE_PASSWORD_LOGIN` | Forces SSO-only on, or `false` forces password login back on, overriding the stored setting. |
 | `AUDIT_LOG_RETENTION_DAYS` | How long audit rows are kept. Default 365. |
 | `LOGIN_MAX_PER_IP` | Per-IP login budget per 15 minutes. Default 30. |
+| `TRUSTED_PROXY_HOPS` | How many reverse proxies append to `X-Forwarded-For` in front of the app. Default 1. Decides which address per-IP limits and the audit log use. |

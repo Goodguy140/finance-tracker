@@ -108,15 +108,15 @@ export async function linkOAuthUser(params: {
 
   if (!(await publicSignupAllowed())) return false;
 
-  // Same role rules as password signup (`INITIAL_ADMIN_EMAIL` included), and count +
-  // create in one transaction so two first sign-ins cannot both become the admin.
+  // Same role rules as password signup (`INITIAL_ADMIN_EMAIL` included), resolved and
+  // created in one transaction so two first sign-ins cannot both become the admin.
   const dbUser = await prisma.$transaction(async (tx) => {
-    const currentCount = await tx.user.count();
+    const role = await resolveSignupRole(tx, email);
     const created = await tx.user.create({
       data: {
         email,
         displayName: user.name?.trim() || defaultDisplayName,
-        role: resolveSignupRole(email, currentCount),
+        role,
         emailVerifiedAt: new Date(),
       },
     });
