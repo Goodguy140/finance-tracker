@@ -27,9 +27,9 @@ describe("scrubAuditMetadata", () => {
 });
 
 describe("clientMetaFromHeaders", () => {
-  it("prefers first x-forwarded-for hop", () => {
+  it("takes the x-forwarded-for hop the proxy appended, not one the client supplied", () => {
     const h = new Headers({
-      "x-forwarded-for": "203.0.113.1, 10.0.0.1",
+      "x-forwarded-for": "10.9.9.9, 203.0.113.1",
       "user-agent": "TestUA/1",
     });
     expect(clientMetaFromHeaders(h)).toEqual({ ipAddress: "203.0.113.1", userAgent: "TestUA/1" });

@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { headers } from "next/headers";
+import { clientIpFromForwardingHeaders } from "@/lib/client-ip";
 import { getAuditRetentionDays, resolveAuditRetention } from "@/lib/ops-settings";
 
 export const AUDIT_ACTIONS = {
@@ -94,15 +95,8 @@ export function scrubAuditMetadata(obj: Record<string, unknown> | undefined | nu
   return scrubValue(obj, 0) as Record<string, unknown>;
 }
 
-function parseForwardedIp(value: string | null): string | undefined {
-  if (!value) return undefined;
-  const first = value.split(",")[0]?.trim();
-  return first || undefined;
-}
-
 export function clientMetaFromHeaders(h: Headers): { ipAddress?: string; userAgent?: string } {
-  const xff = h.get("x-forwarded-for");
-  const ipAddress = parseForwardedIp(xff) || h.get("x-real-ip")?.trim() || undefined;
+  const ipAddress = clientIpFromForwardingHeaders(h.get("x-forwarded-for"), h.get("x-real-ip"));
   const userAgent = h.get("user-agent")?.trim() || undefined;
   return { ipAddress, userAgent };
 }
