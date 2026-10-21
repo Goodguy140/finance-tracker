@@ -1,11 +1,13 @@
 "use server";
 
 import { hash, compare } from "bcryptjs";
+import { UserRole } from "@prisma/client";
 import crypto from "crypto";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { getDefaultTimezone } from "@/lib/country-config";
 import { ensureDefaultDataForUser } from "@/lib/defaults";
+import { countActiveAdmins } from "@/lib/admin-users";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { revokePlaidItemsForUser } from "@/lib/plaid/unlink";
@@ -157,6 +159,14 @@ export const deleteAccountAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const confirmation = getFormValue(formData, "confirmation");
   if (confirmation !== "DELETE") throw new Error("Type DELETE to confirm.");
+  // The admin user list sends admins here to delete themselves, so this path needs the same
+  // last-admin guard: without it the server is left with nobody who can manage it.
+  // `requireUser` refuses suspended users, so an admin reaching here counts as active.
+  if (user.role === UserRole.SERVER_ADMIN && (await countActiveAdmins(prisma)) <= 1) {
+    throw new Error(
+      "You are the only server admin who can sign in. Promote another admin before deleting your account.",
+    );
+  }
   // Before the cascade, not after: deleting the PlaidItem rows does not end the bank
   // connections, and once they are gone there is no record of what to revoke.
   await revokePlaidItemsForUser(prisma, user.id, await tryMakePlaidItemRevoker());

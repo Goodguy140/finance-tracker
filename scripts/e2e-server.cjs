@@ -2,37 +2,21 @@
  * Playwright webServer entry: migrated SQLite DB, production build, then Next standalone.
  * `next start` is not supported with `output: "standalone"`; standalone also `chdir`s
  * into `.next/standalone`, so DATABASE_URL must be an absolute `file:` URL.
+ * The database comes from E2E_DATABASE_URL (see e2e-database.cjs), never DATABASE_URL.
  */
 const { execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { resolveE2eDatabase } = require("./e2e-database.cjs");
 
 const root = path.join(__dirname, "..");
 process.chdir(root);
 
-function absolutizeSqliteUrl(url, cwd) {
-  const t = String(url).trim();
-  if (!t.startsWith("file:")) return t;
-  const rest = t.slice("file:".length);
-  if (rest.startsWith("/") && !rest.startsWith("//")) return t.replace(/\\/g, "/");
-  if (rest.startsWith("//")) return t.replace(/\\/g, "/");
-  return `file:${path.resolve(cwd, rest)}`.replace(/\\/g, "/");
-}
-
-if (!process.env.DATABASE_URL?.trim()) {
-  process.env.DATABASE_URL = `file:${path.join(root, ".data", "e2e.db")}`.replace(/\\/g, "/");
-} else {
-  process.env.DATABASE_URL = absolutizeSqliteUrl(process.env.DATABASE_URL, root);
-}
-
-const { fileURLToPath } = require("url");
-let e2eDbPath = null;
-try {
-  e2eDbPath = fileURLToPath(new URL(process.env.DATABASE_URL));
-} catch {
-  // non-URL datasource; skip targeted reset
-}
-if (e2eDbPath && fs.existsSync(e2eDbPath)) {
+// Resolves E2E_DATABASE_URL (default .data/e2e.db) and refuses anything outside .data/,
+// because the file is deleted below. DATABASE_URL is overwritten, never read.
+const { filePath: e2eDbPath, url: e2eDbUrl } = resolveE2eDatabase(root);
+process.env.DATABASE_URL = e2eDbUrl;
+if (fs.existsSync(e2eDbPath)) {
   fs.unlinkSync(e2eDbPath);
 }
 
