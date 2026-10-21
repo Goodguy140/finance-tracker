@@ -7,8 +7,9 @@ import { markSchedulerStarted, recordSchedulerRun } from "@/lib/scheduler-status
  *
  * The app is a single Node process with no external job runner, so the hourly sweep runs
  * here, started once from `instrumentation.ts`. The dashboard also posts a user's own due
- * rules on load, so this mostly matters for accounts nobody opens for a while (and for
- * budget alert emails, which only fire from a spending change).
+ * rules on load, so this mostly matters for accounts nobody opens for a while. What it
+ * posts schedules budget alert emails (`autoPostDueRecurringTransactions`), so a user who
+ * never opens the app still hears when a bill tips a category over.
  */
 
 const INTERVAL_MS = 60 * 60 * 1000;
