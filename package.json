@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "node scripts/strip-standalone-env.cjs",
     "start": "next start",
     "db:deploy": "prisma migrate deploy",
     "lint": "eslint",
