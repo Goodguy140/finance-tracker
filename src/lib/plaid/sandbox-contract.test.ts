@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createPlaidClient, PlaidApiError } from "@/lib/plaid/client";
 import { PFC_TO_CATEGORY_NAMES } from "@/lib/plaid/category-map";
-import { mapPlaidAmount, normalizePlaidTransaction } from "@/lib/plaid/ingest";
+import { isPlaidTransfer, mapPlaidAmount, normalizePlaidTransaction } from "@/lib/plaid/ingest";
 import type { PlaidApiAccount, PlaidApiTransaction } from "@/lib/plaid/types";
 import { balanceReadings } from "@/lib/plaid/balances";
 
@@ -159,12 +159,14 @@ describe.skipIf(!enabled)("Plaid sandbox contract", () => {
 
         // The category map keys on Plaid's `personal_finance_category.primary`. A value we
         // do not know about silently falls through to "Uncategorized", so surface it.
+        // TRANSFER_IN/OUT are deliberately absent from the map: `isPlaidTransfer` stages those
+        // rows as transfers, which have one category of their own.
         const primaries = new Set(
           collected
             .map((t) => t.personal_finance_category?.primary)
             .filter((p): p is string => Boolean(p)),
         );
-        const unmapped = [...primaries].filter((p) => !(p in PFC_TO_CATEGORY_NAMES));
+        const unmapped = [...primaries].filter((p) => !(p in PFC_TO_CATEGORY_NAMES) && !isPlaidTransfer(p, null));
         notes.push(`personal_finance_category.primary seen: ${[...primaries].join(", ") || "none"}`);
         expect(unmapped, "Plaid categories this app does not map").toEqual([]);
 
