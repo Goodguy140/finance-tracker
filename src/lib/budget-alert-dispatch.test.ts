@@ -96,6 +96,33 @@ describe("dispatchBudgetAlertEmails", () => {
       where: { userId: "u1", periodMonth: "2026-06", categoryId: "c1", severity: "critical" },
     });
   });
+
+  it("releases the slot and carries on to the next warning when the SMTP transport throws", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    buildMonthlyBudgetProgress.mockResolvedValue({
+      periodMonth: "2026-06",
+      currency: "CAD",
+      budgets: [
+        { id: "b1", categoryId: "c1", categoryName: "Groceries", spentCents: 45_000, limitCents: 40_000, progressPct: 100 },
+        { id: "b3", categoryId: "c3", categoryName: "Dining", spentCents: 50_000, limitCents: 40_000, progressPct: 100 },
+      ],
+      totalLimitCents: 80_000,
+      totalSpentCents: 95_000,
+    });
+    // Groceries' send fails whichever order the warnings come in.
+    sendBudgetAlertEmail.mockImplementation(async ({ subject }: { subject: string }) => {
+      if (subject.includes("Groceries")) throw new Error("ECONNREFUSED");
+      return { sent: true };
+    });
+    const db = client();
+    expect(await dispatchBudgetAlertEmails("u1", db as never, now)).toEqual({ sent: 1, skipped: null });
+    expect(sendBudgetAlertEmail).toHaveBeenCalledTimes(2);
+    expect(db.budgetAlertNotification.deleteMany).toHaveBeenCalledTimes(1);
+    expect(db.budgetAlertNotification.deleteMany).toHaveBeenCalledWith({
+      where: { userId: "u1", periodMonth: "2026-06", categoryId: "c1", severity: "critical" },
+    });
+    expect(errorSpy).toHaveBeenCalled();
+  });
 });
 
 describe("scheduleBudgetAlertEmails", () => {

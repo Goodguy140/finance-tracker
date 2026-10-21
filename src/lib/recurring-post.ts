@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { RecurringPostMode } from "@prisma/client";
+import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
 import { dateFromYmd, ymdFromDateUtc } from "@/lib/date-only";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
@@ -106,6 +107,10 @@ export type AutoPostSummary = { posted: number; ruleIds: string[] };
  * for the user's enabled rules in `AUTO` mode. Each occurrence is its own transaction so
  * one bad rule (archived account, category kind mismatch) does not block the others; a
  * rule that throws is left for the dashboard to show as overdue.
+ *
+ * Anything posted is spending like any other, so it schedules the budget alert emails the
+ * manual "Post transaction" button does. Both callers (the hourly sweep and the dashboard
+ * load) come through here, which is what keeps them from forgetting.
  */
 export async function autoPostDueRecurringTransactions(
   userId: string,
@@ -147,6 +152,7 @@ export async function autoPostDueRecurringTransactions(
       expectedDate = fresh.nextExpectedDate;
     }
   }
+  if (posted > 0) scheduleBudgetAlertEmails(userId);
   return { posted, ruleIds };
 }
 
