@@ -5,6 +5,7 @@ import type { JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { SESSION_MAX_AGE_S } from "@/lib/auth-constants";
+import { clientIpFromForwardingHeaders } from "@/lib/client-ip";
 import {
   getAuthentikProvider,
   getGoogleProvider,
@@ -58,11 +59,13 @@ function readRequestHeader(headers: Record<string, unknown> | undefined, name: s
   return undefined;
 }
 
-/** First hop of `x-forwarded-for`, falling back to `x-real-ip`. */
+/** The client address, as `clientIpFromForwardingHeaders` reads it, off a plain header object. */
 function clientIpFromRequestHeaders(headers: Record<string, unknown> | undefined) {
   if (!headers) return undefined;
-  const forwarded = readRequestHeader(headers, "x-forwarded-for")?.split(",")[0]?.trim();
-  return forwarded || readRequestHeader(headers, "x-real-ip")?.trim() || undefined;
+  return clientIpFromForwardingHeaders(
+    readRequestHeader(headers, "x-forwarded-for"),
+    readRequestHeader(headers, "x-real-ip"),
+  );
 }
 
 /**

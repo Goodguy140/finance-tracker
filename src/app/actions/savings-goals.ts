@@ -75,6 +75,39 @@ export const deleteSavingsGoalAction = formAction(async (formData: FormData) => 
   revalidateGoals();
 });
 
+/**
+ * Adds `deltaCents` to a hand-tracked goal's saved amount, clamped at zero. Each write is a
+ * single conditional statement rather than read, add, write back, so two contributions
+ * submitted together both count instead of one overwriting the other.
+ */
+async function applyContribution(goalId: string, deltaCents: number) {
+  const handTracked = { id: goalId, accountId: null };
+  if (deltaCents >= 0) {
+    const { count } = await prisma.savingsGoal.updateMany({
+      where: { ...handTracked, savedCents: { lte: MAX_AMOUNT_CENTS - deltaCents } },
+      data: { savedCents: { increment: deltaCents } },
+    });
+    if (count === 0) throw new Error("That would put the goal over the largest amount allowed.");
+    return;
+  }
+  const taken = -deltaCents;
+  // Either there is enough to take, or taking it empties the goal. A deposit landing
+  // between the two statements can make both miss; going round again sees it.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const decremented = await prisma.savingsGoal.updateMany({
+      where: { ...handTracked, savedCents: { gte: taken } },
+      data: { savedCents: { decrement: taken } },
+    });
+    if (decremented.count > 0) return;
+    const emptied = await prisma.savingsGoal.updateMany({
+      where: { ...handTracked, savedCents: { lt: taken } },
+      data: { savedCents: 0 },
+    });
+    if (emptied.count > 0) return;
+  }
+  throw new Error("The goal changed while saving. Please try again.");
+}
+
 /** Adds to (or takes from) what a hand-tracked goal has saved. Never below zero. */
 export const contributeToSavingsGoalAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
@@ -84,8 +117,6 @@ export const contributeToSavingsGoalAction = formAction(async (formData: FormDat
   });
   const goal = await findOwnedGoal(user.id, payload.goalId);
   if (goal.accountId) throw new Error("This goal follows its account's balance; update the balance instead.");
-  const next = goal.savedCents + toCents(payload.amount);
-  if (next > MAX_AMOUNT_CENTS) throw new Error("That would put the goal over the largest amount allowed.");
-  await prisma.savingsGoal.update({ where: { id: goal.id }, data: { savedCents: Math.max(0, next) } });
+  await applyContribution(goal.id, toCents(payload.amount));
   revalidateGoals();
 });
