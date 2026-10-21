@@ -61,10 +61,10 @@ export const signupAction = formAction(async (formData: FormData) => {
   if (existing) throw new Error("An account with this email already exists.");
 
   const passwordHash = await hash(payload.password, 12);
-  // Count and create in one transaction: two concurrent first signups must not both read
-  // zero users and both become the server admin.
+  // Resolve the role and create in one transaction: two concurrent first signups must not
+  // both read "no admin yet" and both become the server admin.
   const user = await prisma.$transaction(async (tx) => {
-    const count = await tx.user.count();
+    const role = await resolveSignupRole(tx, email);
     return tx.user.create({
       data: {
         email,
@@ -72,7 +72,7 @@ export const signupAction = formAction(async (formData: FormData) => {
         displayName: payload.displayName,
         countryCode: payload.countryCode,
         timezone: payload.timezone,
-        role: resolveSignupRole(email, count),
+        role,
       },
     });
   });
@@ -243,21 +243,27 @@ export const resetPasswordAction = formAction(async (formData: FormData) => {
   }
   if (!matched) throw new Error("Invalid or expired token.");
 
-  await prisma.$transaction([
+  const passwordHash = await hash(newPassword, 12);
+  await prisma.$transaction(async (tx) => {
+    // Claim the matched token first, and only if it is still unused. The match above ran
+    // outside the transaction, so a concurrent reset with the same token may have burned it
+    // since; whichever request claims it first wins and the other changes nothing.
+    const claimed = await tx.passwordResetToken.updateMany({
+      where: { id: matched.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    if (claimed.count !== 1) throw new Error("Invalid or expired token.");
     // Burn every outstanding token, not just the one presented: the others were issued to
     // the same mailbox and stay valid for the rest of their window otherwise.
-    prisma.passwordResetToken.updateMany({
+    await tx.passwordResetToken.updateMany({
       where: { userId: user.id, usedAt: null },
       data: { usedAt: new Date() },
-    }),
-    prisma.user.update({
+    });
+    await tx.user.update({
       where: { id: user.id },
-      data: {
-        passwordHash: await hash(newPassword, 12),
-        tokenVersion: { increment: 1 },
-      },
-    }),
-  ]);
+      data: { passwordHash, tokenVersion: { increment: 1 } },
+    });
+  });
   await recordAuditLog(prisma, {
     userId: user.id,
     action: AUDIT_ACTIONS.user_password_reset,

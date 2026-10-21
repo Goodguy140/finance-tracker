@@ -87,6 +87,36 @@ describe("signupAction", () => {
     );
   });
 
+  it("makes INITIAL_ADMIN_EMAIL the admin even when other accounts signed up first", async () => {
+    process.env.INITIAL_ADMIN_EMAIL = "admin@example.com";
+    // Signup was opened early: an account exists already, but none of them is an admin.
+    mockPrisma.user.count.mockImplementation(async (args?: { where?: { role?: UserRole } }) =>
+      args?.where?.role === UserRole.SERVER_ADMIN ? 0 : 1,
+    );
+    await signupAction(signupForm("Admin@Example.com"));
+    expect(mockPrisma.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: UserRole.SERVER_ADMIN }) }),
+    );
+  });
+
+  it("does not make INITIAL_ADMIN_EMAIL a second admin once one exists", async () => {
+    process.env.INITIAL_ADMIN_EMAIL = "admin@example.com";
+    mockPrisma.user.count.mockResolvedValue(1);
+    await signupAction(signupForm("admin@example.com"));
+    expect(mockPrisma.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: UserRole.USER }) }),
+    );
+  });
+
+  it("makes only the first signup admin when INITIAL_ADMIN_EMAIL is unset", async () => {
+    delete process.env.INITIAL_ADMIN_EMAIL;
+    mockPrisma.user.count.mockResolvedValue(1);
+    await signupAction(signupForm("second@example.com"));
+    expect(mockPrisma.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ role: UserRole.USER }) }),
+    );
+  });
+
   it("audits the new account and the role it was granted", async () => {
     delete process.env.INITIAL_ADMIN_EMAIL;
     await signupAction(signupForm("first@example.com"));
