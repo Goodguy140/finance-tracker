@@ -54,7 +54,8 @@ Code: `src/lib/plaid/*`, `actions/plaid.ts`. Read the Plaid section of `AGENTS.m
 
 - **Connect / map accounts / re-sign-in / unlink** (`/settings/banks`):
   `plaid-connections-panel.tsx`, `plaid-link-button.tsx`, `src/lib/plaid/connections.ts`,
-  `mapping.ts`, `unlink.ts`, `item-state.ts`, `attention.ts`
+  `mapping.ts`, `unlink.ts`, `item-state.ts`, `attention.ts`. Mapping an account after the
+  first sync brings in its earlier history on the next sync (`setPlaidAccountMapping`)
 - **Sync** (one entry point `syncBank` in `sync-bank.ts`; `sync.ts`, `sync-store.ts`,
   `ingest.ts`), background sweep (`src/lib/plaid-sync-scheduler.ts`), webhooks
   (`src/app/api/plaid/webhook/route.ts`, `webhooks.ts`, `webhook-verify.ts`), consent withdrawn

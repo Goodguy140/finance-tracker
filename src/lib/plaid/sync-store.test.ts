@@ -116,3 +116,76 @@ describe("createSyncStore().finalize", () => {
     expect(after.status).toBe("REMOVED");
   });
 });
+
+describe("createSyncStore().commitPage", () => {
+  const emptyPlan = (nextCursor: string) => ({
+    upserts: [],
+    supersede: [],
+    transfers: [],
+    markRemoved: [],
+    flagRemovedOnVerification: [],
+    flagRevised: [],
+    nextCursor,
+    skipped: { beforeCutoff: 0, unmapped: 0, zero: 0, outOfRange: 0, unusable: 0 },
+    earliestSeen: null,
+  });
+
+  async function itemWithAccount(itemId: string) {
+    const user = await db.user.create({ data: { email: `${itemId}@example.test`, displayName: "Test" } });
+    const item = await db.plaidItem.create({
+      data: {
+        userId: user.id,
+        itemId,
+        accessTokenEnc: "unused",
+        requestedDays: 90,
+        historyCutoff: new Date("2026-06-01T00:00:00Z"),
+        cursor: "cursor-0",
+      },
+    });
+    const plaidAccount = await db.plaidAccount.create({
+      data: { userId: user.id, plaidItemId: item.id, plaidAccountId: "acct-1", name: "Card", plaidType: "credit" },
+    });
+    // What the sync read when it took the lock: the account not yet mapped.
+    const record = {
+      id: item.id,
+      userId: user.id,
+      cursor: "cursor-0",
+      accessToken: "unused",
+      initialSyncPending: false,
+      context: {
+        historyCutoff: item.historyCutoff,
+        accounts: new Map([["acct-1", { rowId: plaidAccount.id, accountId: null, syncEnabled: true }]]),
+        categories: [],
+        budgetNames: [],
+        plaidMappings: [],
+        itemDefaultCategoryId: null,
+        fallbackCategoryId: { EXPENSE: "x", INCOME: "x", TRANSFER: "x" },
+      },
+    } as unknown as import("@/lib/plaid/sync").SyncItemRecord;
+    return { user, item, plaidAccount, record };
+  }
+
+  const cursorOf = async (id: string) => (await db.plaidItem.findUniqueOrThrow({ where: { id } })).cursor;
+
+  it("stores the cursor only with the page that completes the walk", async () => {
+    const { item, record } = await itemWithAccount("item-commit-cursor");
+    const store = createSyncStore();
+
+    await store.commitPage(record, emptyPlan("cursor-1"), { completesWalk: false });
+    expect(await cursorOf(item.id)).toBe("cursor-0");
+
+    await store.commitPage(record, emptyPlan("cursor-2"), { completesWalk: true });
+    expect(await cursorOf(item.id)).toBe("cursor-2");
+  });
+
+  it("clears the cursor when an account was mapped while the walk ran", async () => {
+    const { user, item, plaidAccount, record } = await itemWithAccount("item-commit-mapped");
+    const account = await db.account.create({ data: { userId: user.id, name: "Card", type: "CREDIT_CARD" } });
+    await db.plaidAccount.update({ where: { id: plaidAccount.id }, data: { accountId: account.id } });
+
+    await createSyncStore().commitPage(record, emptyPlan("cursor-1"), { completesWalk: true });
+
+    // The walk skipped this account's rows as unmapped; the next sync must fetch them.
+    expect(await cursorOf(item.id)).toBeNull();
+  });
+});

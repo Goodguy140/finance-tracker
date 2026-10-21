@@ -126,6 +126,117 @@ describe("linkBank", () => {
   });
 });
 
+describe("linkBank: failures after the exchange", () => {
+  it("removes the new Item at Plaid when its accounts cannot be read", async () => {
+    const user = await newUser();
+    const failing = {
+      ...client,
+      getAccounts: async () => {
+        throw new Error("Plaid is unavailable");
+      },
+    };
+
+    await expect(
+      connections.linkBank({ prisma: db, client: failing }, { user, publicToken: publicToken(), days: 90 }),
+    ).rejects.toThrow("Plaid is unavailable");
+
+    // Exchanged, so billable: it must not outlive the failure.
+    expect(client.removeItem).toHaveBeenCalledTimes(1);
+    expect(await db.plaidItem.count({ where: { userId: user.id } })).toBe(0);
+  });
+
+  it("removes the Item and leaves no row when storing its accounts fails", async () => {
+    const user = await newUser();
+    const badAccounts = {
+      ...client,
+      getAccounts: async (accessToken: string) => {
+        const real = await client.getAccounts(accessToken);
+        // An account the database refuses (name is required), after the item row is in.
+        return { ...real, accounts: [{ ...real.accounts[0], name: null as unknown as string }] };
+      },
+    };
+
+    await expect(
+      connections.linkBank({ prisma: db, client: badAccounts }, { user, publicToken: publicToken(), days: 90 }),
+    ).rejects.toThrow();
+
+    expect(client.removeItem).toHaveBeenCalledTimes(1);
+    // The item row went in first; the transaction must have taken it back out.
+    expect(await db.plaidItem.count({ where: { userId: user.id } })).toBe(0);
+    expect(await db.plaidAccount.count({ where: { userId: user.id } })).toBe(0);
+  });
+
+  it("does not remove an Item the user already holds when re-authentication fails", async () => {
+    const user = await newUser();
+    await connections.linkBank({ prisma: db, client }, { user, publicToken: publicToken(), days: 90 });
+    const held = await db.plaidItem.findFirstOrThrow({ where: { userId: user.id } });
+    const replaying = {
+      ...client,
+      exchangePublicToken: async () => ({ access_token: `access-sandbox-${held.itemId}`, item_id: held.itemId }),
+      getAccounts: async () => {
+        throw new Error("Plaid is unavailable");
+      },
+    };
+
+    await expect(
+      connections.linkBank({ prisma: db, client: replaying }, { user, publicToken: "x", days: 90 }),
+    ).rejects.toThrow("Plaid is unavailable");
+
+    // This is the user's working connection; revoking it would be the bug, not the fix.
+    expect(client.removeItem).not.toHaveBeenCalled();
+    expect(await db.plaidItem.count({ where: { id: held.id } })).toBe(1);
+  });
+});
+
+describe("setPlaidAccountMapping", () => {
+  async function linkedItem() {
+    const user = await newUser();
+    await connections.linkBank({ prisma: db, client }, { user, publicToken: publicToken(), days: 90 });
+    const item = await db.plaidItem.findFirstOrThrow({ where: { userId: user.id }, include: { plaidAccounts: true } });
+    const account = await db.account.create({ data: { userId: user.id, name: "Chequing", type: "CHEQUING" } });
+    const plaidAccount = (id: string) => item.plaidAccounts.find((a) => a.plaidAccountId === id)!;
+    return { user, item, account, plaidAccount };
+  }
+
+  async function sync(itemId: string) {
+    const { syncPlaidItem } = await import("@/lib/plaid/sync");
+    const { createSyncStore } = await import("@/lib/plaid/sync-store");
+    return syncPlaidItem({ client, store: createSyncStore() }, itemId);
+  }
+
+  it("stages an account's earlier history when it is mapped after the first sync", async () => {
+    const { user, item, account, plaidAccount } = await linkedItem();
+    const savings = await db.account.create({ data: { userId: user.id, name: "Savings", type: "SAVINGS" } });
+    // Map only the savings account, as a user might, and let the first sync run.
+    await connections.setPlaidAccountMapping(db, plaidAccount("fake-acct-unknown-ccy"), savings.id);
+    const first = await sync(item.id);
+    expect(first.skipped.unmapped).toBeGreaterThan(0);
+    const chequing = plaidAccount("fake-acct-chequing");
+    expect(await db.plaidStagedTransaction.count({ where: { plaidAccountRowId: chequing.id } })).toBe(0);
+
+    // Mapping the chequing account later must bring back what that first walk skipped.
+    await connections.setPlaidAccountMapping(db, chequing, account.id);
+    expect((await db.plaidItem.findUniqueOrThrow({ where: { id: item.id } })).cursor).toBeNull();
+    await sync(item.id);
+
+    expect(await db.plaidStagedTransaction.count({ where: { plaidAccountRowId: chequing.id } })).toBe(first.skipped.unmapped);
+  });
+
+  it("keeps the cursor when the mapping only moves to another account, or is cleared", async () => {
+    const { user, item, account, plaidAccount } = await linkedItem();
+    const chequing = plaidAccount("fake-acct-chequing");
+    await connections.setPlaidAccountMapping(db, chequing, account.id);
+    await db.plaidItem.update({ where: { id: item.id }, data: { cursor: "kept" } });
+    const other = await db.account.create({ data: { userId: user.id, name: "Other", type: "CHEQUING" } });
+
+    await connections.setPlaidAccountMapping(db, { ...chequing, accountId: account.id }, other.id);
+    await connections.setPlaidAccountMapping(db, { ...chequing, accountId: other.id }, null);
+
+    expect((await db.plaidItem.findUniqueOrThrow({ where: { id: item.id } })).cursor).toBe("kept");
+    expect((await db.plaidAccount.findUniqueOrThrow({ where: { id: chequing.id } })).accountId).toBeNull();
+  });
+});
+
 describe("completeUpdate", () => {
   it("picks up accounts the user just shared and clears the new-accounts prompt", async () => {
     const user = await newUser();

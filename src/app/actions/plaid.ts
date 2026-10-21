@@ -28,6 +28,7 @@ import {
   endConnection,
   linkBank,
   type PlaidUpdateKind,
+  setPlaidAccountMapping,
 } from "@/lib/plaid/connections";
 import { openAccessToken, requirePlaidClient } from "@/lib/plaid/service";
 import { defaultStagedType, proposeStagedRowAs } from "@/lib/plaid/staged-rules";
@@ -327,10 +328,7 @@ export const mapPlaidAccountAction = formAction(async (formData: FormData) => {
   if (!plaidAccount) throw new Error("That bank account was not found.");
 
   if (!accountId) {
-    await prisma.plaidAccount.update({
-      where: { id: plaidAccount.id },
-      data: { accountId: null },
-    });
+    await setPlaidAccountMapping(prisma, plaidAccount, null);
     revalidatePath(SETTINGS_PATH, "layout");
     return;
   }
@@ -344,10 +342,7 @@ export const mapPlaidAccountAction = formAction(async (formData: FormData) => {
   );
   if (!allowed.ok) throw new Error(allowed.reason);
 
-  await prisma.plaidAccount.update({
-    where: { id: plaidAccount.id },
-    data: { accountId: account.id },
-  });
+  await setPlaidAccountMapping(prisma, plaidAccount, account.id);
   await recordAuditLog(prisma, {
     userId: user.id,
     action: AUDIT_ACTIONS.plaid_account_mapped,
