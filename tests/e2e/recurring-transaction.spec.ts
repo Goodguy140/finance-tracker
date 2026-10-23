@@ -169,6 +169,7 @@ test("desktop: edit a recurring rule from the Recurring card", async ({ page }) 
 
   const recurringPanel = page.getByRole("region", { name: "Recurring transactions" });
   await expect(recurringPanel.getByText(name, { exact: true })).toBeVisible({ timeout: 15_000 });
+  await recurringPanel.getByRole("button", { name: `More actions for ${name}` }).click();
   await recurringPanel.getByRole("button", { name: "Edit", exact: true }).click();
 
   // The shared form opens filled with the rule as stored.

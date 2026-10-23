@@ -63,12 +63,15 @@ function todayUtcDate() {
   return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
 }
 
-function BalanceText({ account }: { account: ManagedAccount }) {
+function BalanceText({ account, showDate = false }: { account: ManagedAccount; showDate?: boolean }) {
   if (!account.latest) return null;
   return (
-    <span className={`text-sm font-medium tabular-nums ${account.liability ? "text-amber-200" : "text-slate-100"}`}>
-      {account.liability ? "Owes " : ""}
-      {formatCurrency(account.latest.cents, account.currency)}
+    <span className="flex shrink-0 flex-col items-end" data-testid="account-row-balance">
+      <span className={`text-sm font-medium tabular-nums ${account.liability ? "text-amber-200" : "text-slate-100"}`}>
+        {account.liability ? "Owes " : ""}
+        {formatCurrency(account.latest.cents, account.currency)}
+      </span>
+      {showDate ? <span className="text-[11px] text-slate-500">as of {formatYmd(account.latest.dateYmd)}</span> : null}
     </span>
   );
 }
@@ -115,7 +118,7 @@ function AccountRow({
             Savings
           </span>
         ) : null}
-        <BalanceText account={account} />
+        <BalanceText account={account} showDate />
         <ChevronRight className="h-4 w-4 shrink-0 text-slate-600 transition group-hover:text-slate-300" aria-hidden />
       </button>
     </li>

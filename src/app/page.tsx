@@ -1035,6 +1035,12 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   // The slot map: card bodies rendered here, on the server, and handed to the client grid as
   // props. The grid arranges them without importing a single card, so none of this page's
   // query-heavy component tree is pulled into the drag-and-drop bundle.
+  const daysLeftInBudgetMonth =
+    period.range === "month" && period.ym === todayYmd.slice(0, 7)
+      ? new Date(Date.UTC(Number(todayYmd.slice(0, 4)), Number(todayYmd.slice(5, 7)), 0)).getUTCDate() -
+        Number(todayYmd.slice(8, 10)) +
+        1
+      : null;
   const cardContent: DashboardCardContentMap = {
     "cumulative-spend": {
       body: (
@@ -1062,6 +1068,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           perRow={cardSettings.budgets?.perRow}
           hideZeroSpend={cardSettings.budgets?.hideZeroSpend}
           showPeriodNote={cardSettings.budgets?.showPeriodNote}
+          daysLeftInMonth={daysLeftInBudgetMonth}
         />
       ),
     },

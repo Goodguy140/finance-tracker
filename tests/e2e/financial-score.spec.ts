@@ -78,7 +78,7 @@ async function seedUser(page: Page) {
   await expectDashboardHome(page);
 }
 
-test("the financial score shows on Insights and Reports with what to improve", async ({ page }, testInfo) => {
+test("the financial score shows on Insights, with a one-line summary on Reports", async ({ page }, testInfo) => {
   await seedUser(page);
   const suggested = [
     "Dining went over budget in 3 of the last 3 months",
@@ -86,23 +86,22 @@ test("the financial score shows on Insights and Reports with what to improve", a
     "Chequing and savings cover 1.0 month of spending. Setting aside about $6,600.00 would build a 3-month emergency fund.",
   ];
 
-  for (const path of ["/insights", "/reports"]) {
-    await page.goto(path);
-    const card = page.getByTestId("financial-score");
-    // Savings 84, emergency fund 40, bills 70, budgets 0, trend 17, months in the black 100,
-    // weighted 35/20/20/20/15/10.
-    await expect(card.getByTestId("financial-score-value")).toHaveText("53");
-    await expect(card.getByTestId("financial-score-band")).toHaveText("Fair");
-    await expect(card.getByTestId("financial-score-factors").getByRole("listitem")).toHaveCount(6);
-    await card.screenshot({ path: testInfo.outputPath(`score${path.replace("/", "-")}.png`) });
-  }
+  await page.goto("/insights");
+  const card = page.getByTestId("financial-score");
+  // Savings 84, emergency fund 40, bills 70, budgets 0, trend 17, months in the black 100,
+  // weighted 35/20/20/20/15/10.
+  await expect(card.getByTestId("financial-score-value")).toHaveText("53");
+  await expect(card.getByTestId("financial-score-band")).toHaveText("Fair");
+  await expect(card.getByTestId("financial-score-factors").getByRole("listitem")).toHaveCount(6);
+  await card.screenshot({ path: testInfo.outputPath("score-insights.png") });
 
-  // Reports lists what to improve on the card.
-  const suggestions = page.getByTestId("financial-score").getByTestId("financial-score-suggestions").getByRole("listitem");
-  await expect(suggestions).toHaveCount(3);
-  await expect(suggestions.nth(0)).toContainText(suggested[0]);
-  await expect(suggestions.nth(1)).toContainText(suggested[1]);
-  await expect(suggestions.nth(2)).toHaveText(suggested[2]);
+  // Reports shows the same score in one line, linking to the full card on Insights.
+  await page.goto("/reports");
+  const chip = page.getByTestId("financial-score-chip");
+  await expect(chip.getByTestId("financial-score-value")).toHaveText("53");
+  await expect(chip.getByTestId("financial-score-band")).toHaveText("Fair");
+  await expect(page.getByTestId("financial-score")).toHaveCount(0);
+  await expect(chip.getByRole("link", { name: /How it.s worked out/ })).toHaveAttribute("href", "/insights");
 
   // Insights lists them once, as insights that can be dismissed like the rest.
   await page.goto("/insights");
