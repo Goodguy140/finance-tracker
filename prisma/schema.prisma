@@ -57,6 +57,12 @@ enum TransactionRuleTextOperator {
   STARTS_WITH
 }
 
+enum DigestFrequency {
+  OFF
+  WEEKLY
+  MONTHLY
+}
+
 enum RecurringCadence {
   WEEKLY
   BIWEEKLY
@@ -152,6 +158,10 @@ model User {
   projectionIncludesTransfers   Boolean   @default(false)
   /// When the user hid the dashboard's "Get started" checklist. It also goes once every step is done.
   getStartedDismissedAt         DateTime?
+  /// The spending summary emailed weekly (Mondays) or monthly (the 1st), or OFF.
+  digestFrequency               DigestFrequency @default(OFF)
+  /// The last period a digest went out for ("W:2026-10-12" or "M:2026-09"), so each is sent once.
+  digestLastPeriodKey           String?
   createdAt                     DateTime  @default(now())
   updatedAt                     DateTime  @updatedAt
 

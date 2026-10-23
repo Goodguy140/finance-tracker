@@ -66,6 +66,7 @@ Most of these can also be set under **Settings → Server admin**; a value set i
 | `PLAID_SYNC_SCHEDULER`, `PLAID_SYNC_INTERVAL_MINUTES` | Turn off the background bank sync, or change its interval (default 60, minimum 15). |
 | `PLAID_WEBHOOK_URL` | Public `https` webhook URL. Defaults to `<NEXTAUTH_URL>/api/plaid/webhook`. |
 | `RECURRING_AUTO_POST_SCHEDULER` | `false` turns off the hourly posting of automatic recurring rules. |
+| `EMAIL_DIGEST_SCHEDULER` | `false` turns off the hourly sweep that sends the weekly or monthly email digests users opt into (needs SMTP). |
 | `AUDIT_LOG_RETENTION_DAYS` | How long audit rows are kept (default 365). |
 
 ## Development

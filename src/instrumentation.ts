@@ -9,7 +9,7 @@ export async function register() {
     }
   }
 
-  // Both sweeps need Prisma, which only exists in the Node runtime; the dynamic imports
+  // The sweeps need Prisma, which only exists in the Node runtime; the dynamic imports
   // keep them out of the edge bundle this file is also compiled into.
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { startRecurringAutoPostScheduler } = await import("@/lib/recurring-auto-post-scheduler");
@@ -17,5 +17,8 @@ export async function register() {
 
     const { startPlaidSyncScheduler } = await import("@/lib/plaid-sync-scheduler");
     startPlaidSyncScheduler();
+
+    const { startEmailDigestScheduler } = await import("@/lib/email-digest-scheduler");
+    startEmailDigestScheduler();
   }
 }
