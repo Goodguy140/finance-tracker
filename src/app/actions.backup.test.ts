@@ -20,6 +20,8 @@ const mockPrisma = vi.hoisted(() => ({
   plaidAccount: { deleteMany: vi.fn() },
   plaidStagedTransaction: { deleteMany: vi.fn() },
   transactionVerification: { deleteMany: vi.fn(), create: vi.fn() },
+  transactionAttachment: { deleteMany: vi.fn() },
+  deletedTransaction: { deleteMany: vi.fn() },
   transactionRule: { deleteMany: vi.fn(), createMany: vi.fn() },
   hiddenTitleSuggestion: { deleteMany: vi.fn(), createMany: vi.fn() },
   tag: { deleteMany: vi.fn(), create: vi.fn() },
@@ -158,6 +160,9 @@ describe("importUserBackupAction", () => {
 
     expect(mockPrisma.passwordResetToken.create).not.toHaveBeenCalled();
     expect(mockPrisma.passwordResetToken.deleteMany).toHaveBeenCalled();
+    // Backups carry no receipts or undo records, so a restore must not leave the old ones behind.
+    expect(mockPrisma.transactionAttachment.deleteMany).toHaveBeenCalledWith({ where: { userId: "user-1" } });
+    expect(mockPrisma.deletedTransaction.deleteMany).toHaveBeenCalledWith({ where: { userId: "user-1" } });
   });
 
   it("restores the link between a posted occurrence and its recurring rule", async () => {

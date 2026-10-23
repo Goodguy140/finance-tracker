@@ -202,6 +202,7 @@ model User {
   tags                      Tag[]
   insightDismissals         InsightDismissal[]
   deletedTransactions       DeletedTransaction[]
+  transactionAttachments    TransactionAttachment[]
   insightPreference         InsightPreference?
 }
 
@@ -509,6 +510,8 @@ model Transaction {
   /// Set when this transfer has been counted toward contribution room.
   investmentFlow  InvestmentFlow?
   tags            TransactionTag[]
+  /// Receipts and other files kept with the entry.
+  attachments     TransactionAttachment[]
 
   @@unique([userId, recurringTransactionId, recurringExpectedDate])
   /// The dashboard runs four `userId + type + date` range queries per page load and the
@@ -767,6 +770,29 @@ model DeletedTransaction {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, deletedAt])
+}
+
+/// A receipt (image or PDF) kept with a transaction, stored in the database so the one SQLite
+/// file stays the whole of a user's data. `transactionId` goes null while its transaction sits
+/// deleted inside the Undo window (src/lib/transaction-undo.ts links it back); unlinked files
+/// are pruned with the expired undo rows. A new table, so no REQUIRED_SCHEMA_COLUMNS /
+/// COLUMN_REPAIRS entry is needed.
+model TransactionAttachment {
+  id            String   @id @default(cuid())
+  userId        String
+  transactionId String?
+  fileName      String
+  /// Read from the file's own bytes on upload, never the browser's claim.
+  contentType   String
+  sizeBytes     Int
+  data          Bytes
+  createdAt     DateTime @default(now())
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@index([transactionId])
+  @@index([userId, createdAt])
 }
 
 model RateLimitEntry {

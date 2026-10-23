@@ -63,7 +63,8 @@ export function BackupForms() {
           <p className="text-sm font-medium text-slate-200">Restore from a backup</p>
           <p className="mt-0.5 max-w-prose text-xs text-slate-500">
             Replaces this account&apos;s data with the file&apos;s, and disconnects any linked banks: backups do not include
-            bank connections, so reconnect them afterwards. Only a backup of this same account email is accepted.
+            bank connections or receipts, so reconnect banks afterwards and keep any receipts you need first. Only a
+            backup of this same account email is accepted.
           </p>
         </div>
         <input

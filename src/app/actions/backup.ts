@@ -56,6 +56,8 @@ export const clearUserFinancialDataAction = formAction(async (formData: FormData
     await tx.transactionVerification.deleteMany({ where: { userId: user.id } });
     await tx.plaidAccount.deleteMany({ where: { userId: user.id } });
     await tx.plaidItem.deleteMany({ where: { userId: user.id } });
+    await tx.transactionAttachment.deleteMany({ where: { userId: user.id } });
+    await tx.deletedTransaction.deleteMany({ where: { userId: user.id } });
     await tx.transaction.deleteMany({ where: { userId: user.id } });
     await tx.account.deleteMany({ where: { userId: user.id } });
     await tx.category.deleteMany({ where: { userId: user.id } });
@@ -133,6 +135,8 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
     await tx.transactionVerification.deleteMany({ where: { userId: user.id } });
     await tx.plaidAccount.deleteMany({ where: { userId: user.id } });
     await tx.plaidItem.deleteMany({ where: { userId: user.id } });
+    await tx.transactionAttachment.deleteMany({ where: { userId: user.id } });
+    await tx.deletedTransaction.deleteMany({ where: { userId: user.id } });
     await tx.transaction.deleteMany({ where: { userId: user.id } });
     await tx.account.deleteMany({ where: { userId: user.id } });
     await tx.category.deleteMany({ where: { userId: user.id } });
