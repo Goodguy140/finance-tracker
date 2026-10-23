@@ -48,3 +48,10 @@ export const setProjectionIncludesTransfersAction = formAction(async (formData: 
   revalidatePath("/insights");
   revalidatePath("/");
 });
+
+/** Hides the dashboard's "Get started" checklist for good. */
+export const dismissGetStartedAction = formAction(async () => {
+  const user = await requireUser();
+  await prisma.user.update({ where: { id: user.id }, data: { getStartedDismissedAt: new Date() } });
+  revalidatePath("/");
+});

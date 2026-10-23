@@ -111,6 +111,7 @@ export {
   unlinkSsoProviderAction,
 } from "./actions/mfa";
 export {
+  dismissGetStartedAction,
   setBudgetAlertEmailAction,
   setProjectionIncludesTransfersAction,
   updateDashboardReadabilityAction,

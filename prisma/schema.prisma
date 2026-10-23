@@ -150,6 +150,8 @@ model User {
   /// Projected balances on Reports (and what Insights and the printable summary take from them)
   /// also apply recurring transfers: out of one account and into the other.
   projectionIncludesTransfers   Boolean   @default(false)
+  /// When the user hid the dashboard's "Get started" checklist. It also goes once every step is done.
+  getStartedDismissedAt         DateTime?
   createdAt                     DateTime  @default(now())
   updatedAt                     DateTime  @updatedAt
 

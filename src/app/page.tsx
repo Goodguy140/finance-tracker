@@ -83,6 +83,9 @@ import {
 import { currentYmdInTimeZone, currentYmInTimeZone } from "@/lib/period-month";
 import { loadInsights, type LoadedInsights } from "@/lib/insights/load";
 import { prisma } from "@/lib/prisma";
+import { loadGetStarted } from "@/lib/get-started";
+import { getPlaidConfig } from "@/lib/plaid/config";
+import { GetStartedCard } from "@/components/get-started-card";
 import { resolveTagFilter } from "@/lib/tags";
 import { listTags } from "@/lib/tags-server";
 import { autoPostDueRecurringTransactions } from "@/lib/recurring-post";
@@ -152,6 +155,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   // not pay for it. Every card id counts as available here, so a card this render happens not
   // to produce still counts as placed.
   const layoutJsonPromise = readDashboardLayoutJson(user.id);
+  // A failure costs the checklist, never the dashboard.
+  const getStartedPromise = getPlaidConfig()
+    .then((config) => loadGetStarted(prisma, user, config !== null))
+    .catch((err) => {
+      console.error("[get-started] loading failed", err);
+      return null;
+    });
   // Started now, awaited with the rest: it reads its own year of history, independent of the
   // period on screen. A failure costs the card, never the dashboard.
   const insightsPromise = layoutJsonPromise
@@ -943,6 +953,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     comparisonPace,
   });
   const insights = await insightsPromise;
+  const getStartedSteps = await getStartedPromise;
 
   // Transfers stay out of every spending total; this slice only draws them beside the
   // categories, so nothing else (Reports' Saved, the score) is counted again.
@@ -1286,6 +1297,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         <DashboardShell
           storedLayout={storedLayout}
           cards={cardContent}
+          banner={getStartedSteps ? <GetStartedCard steps={getStartedSteps} /> : null}
           readability={{
             textVisiblePct: user.dashboardTextVisiblePct,
             budgetNameVisiblePct: user.dashboardBudgetNameVisiblePct,

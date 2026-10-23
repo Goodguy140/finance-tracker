@@ -56,11 +56,12 @@ export function DashboardCard({
     <section
       role="region"
       aria-label={regionLabel}
+      id={`card-${cardId}`}
       data-card-id={cardId}
       style={style}
       // min-w-0 is load-bearing: a grid or flex child defaults to min-width:auto, which is
       // the usual reason a dashboard grows a horizontal scrollbar it cannot be rid of.
-      className={`relative flex min-w-0 flex-col rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg sm:p-4 ${className}`}
+      className={`relative flex min-w-0 scroll-mt-20 flex-col rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg sm:p-4 ${className}`}
     >
       <header className="mb-2 flex min-w-0 items-start justify-between gap-2">
         <div className="min-w-0">
