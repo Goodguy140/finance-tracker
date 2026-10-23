@@ -3,7 +3,8 @@
 import { useEffect, useId, useImperativeHandle, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { ServerActionForm } from "@/components/server-action-form";
 import { CsvImportSummaryDialog } from "./csv-import-summary-dialog";
-import { isCsvImportSummary, type CsvImportSummary } from "@/lib/csv-import";
+import { isCsvImportSummary, statementOutflow, type AmountSign, type CsvImportSummary, type MoneyInAs } from "@/lib/csv-import";
+import { looksLikeOfx, OFX_AMOUNT_SIGN, parseOfx } from "@/lib/ofx";
 import { ExpenseTitleAutocomplete } from "@/components/expense-title-autocomplete";
 import { parseImportedDate } from "@/lib/import-dates";
 import { parseStatementAmount } from "@/lib/money";
@@ -198,10 +199,12 @@ export function ExpenseTitleAndCategoryFields({
 export function ExpenseCsvImportForm({
   accounts,
   expenseCategories,
+  incomeCategories = [],
   defaultExpenseAccountId,
 }: {
   accounts: Option[];
   expenseCategories: Option[];
+  incomeCategories?: Option[];
   defaultExpenseAccountId?: string | null;
 }) {
   const hasHydrated = useSyncExternalStore(noopSubscribe, () => true, () => false);
@@ -221,9 +224,13 @@ export function ExpenseCsvImportForm({
   const [manualCategoryName, setManualCategoryName] = useState("");
   const [previewRowLimit, setPreviewRowLimit] = useState<string>("8");
   const [importSummary, setImportSummary] = useState<CsvImportSummary | null>(null);
+  const [amountSign, setAmountSign] = useState<AmountSign>("spending-positive");
+  const [moneyIn, setMoneyIn] = useState<MoneyInAs>("refund");
+  const [incomeCategoryId, setIncomeCategoryId] = useState(incomeCategories[0]?.id ?? "");
 
   const selectedColumns = {
     amount: headers.find((header) => mapping[header] === "amount") ?? "",
+    amountIn: headers.find((header) => mapping[header] === "amountIn") ?? "",
     date: headers.find((header) => mapping[header] === "date") ?? "",
     postedDate: headers.find((header) => mapping[header] === "postedDate") ?? "",
     title: headers.find((header) => mapping[header] === "title") ?? "",
@@ -234,13 +241,21 @@ export function ExpenseCsvImportForm({
   const defaultAccountName = accounts.find((account) => account.id === defaultAccountId)?.name ?? "Default account";
   const defaultCategoryName =
     expenseCategories.find((category) => category.id === defaultCategoryId)?.name ?? "Default category";
+  const incomeCategoryName = incomeCategories.find((category) => category.id === incomeCategoryId)?.name ?? "Income";
   const effectivePreviewCount =
     previewRowLimit === "all"
       ? Math.min(rows.length, CSV_PREVIEW_ALL_MAX)
       : Math.min(Math.max(1, Number(previewRowLimit) || 8), rows.length);
   const previewRows = rows.slice(0, effectivePreviewCount).map((row, index) => {
-    const amountRaw = selectedColumns.amount ? (row[selectedColumns.amount] ?? "").trim() : "";
-    const amountParsed = amountRaw ? parseStatementAmount(amountRaw) : null;
+    const amountRaw = [selectedColumns.amount, selectedColumns.amountIn]
+      .map((column) => (column ? (row[column] ?? "").trim() : ""))
+      .filter(Boolean)
+      .join(" / ");
+    // Money out of the account, negative for money in: the sign the import books by.
+    const amountParsed = selectedColumns.amount
+      ? statementOutflow(row, selectedColumns, amountSign, parseStatementAmount)
+      : null;
+    const asIncome = moneyIn === "income" && amountParsed !== null && amountParsed < 0;
     const dateRawFromCsv = selectedColumns.date ? (row[selectedColumns.date] ?? "").trim() : "";
     const dateRaw = dateRawFromCsv || manualDate;
     // With a date column or manual date in play, a row without a readable date is skipped
@@ -261,9 +276,11 @@ export function ExpenseCsvImportForm({
     const account = selectedColumns.accountName
       ? (row[selectedColumns.accountName] ?? "").trim() || manualAccountName || defaultAccountName
       : manualAccountName || defaultAccountName;
-    const category = selectedColumns.categoryName
-      ? (row[selectedColumns.categoryName] ?? "").trim() || manualCategoryName || defaultCategoryName
-      : manualCategoryName || defaultCategoryName;
+    const category = asIncome
+      ? `${incomeCategoryName} (income)`
+      : selectedColumns.categoryName
+        ? (row[selectedColumns.categoryName] ?? "").trim() || manualCategoryName || defaultCategoryName
+        : manualCategoryName || defaultCategoryName;
     const hasAmount = amountRaw.length > 0;
     const validAmount = hasAmount && amountParsed !== null;
     let status = "Ready";
@@ -275,7 +292,12 @@ export function ExpenseCsvImportForm({
 
     return {
       key: `preview-row-${index}`,
-      amount: hasAmount && amountParsed !== null ? amountParsed.toFixed(2) : amountRaw || "-",
+      amount:
+        amountParsed === null
+          ? amountRaw || "-"
+          : asIncome
+            ? `+${(-amountParsed).toFixed(2)}`
+            : amountParsed.toFixed(2),
       date: dateRaw || (hasDateSource ? "-" : "Today"),
       postedDate,
       account,
@@ -300,26 +322,30 @@ export function ExpenseCsvImportForm({
         <CsvImportSummaryDialog summary={importSummary} onClose={() => setImportSummary(null)} />
       ) : null}
       <div>
-        <h3 className="font-semibold text-slate-100">Import expenses from CSV</h3>
+        <h3 className="font-semibold text-slate-100">Import transactions from a file</h3>
         <p className="text-xs text-slate-400">
-          Upload any CSV, map each column to a field, and import expenses. Credits (refunds, reversals) may appear as
-          negative amounts or parentheses, e.g. <code className="text-slate-300">-12.34</code> or{" "}
-          <code className="text-slate-300">(12.34)</code> — they use the same columns and reduce category spend in
-          budgets.
+          Upload a CSV, or an OFX or QFX statement from your bank, check how each column is read, and import. Money
+          coming in (refunds, deposits) may appear as negative amounts, parentheses such as{" "}
+          <code className="text-slate-300">(12.34)</code>, or a separate credit column. Choose below whether it
+          lowers spending as a refund or is booked as income.
         </p>
       </div>
 
       <input
         type="file"
-        accept=".csv,text/csv"
+        accept=".csv,text/csv,.ofx,.qfx,application/x-ofx"
+        aria-label="Statement file"
         className={inputClass}
         onChange={async (event) => {
           const file = event.target.files?.[0];
           if (!file) return;
           const text = await file.text();
-          const parsed = parseCsvText(text);
+          const ofx = looksLikeOfx(file.name, text);
+          const parsed = ofx ? parseOfx(text) : parseCsvText(text);
+          // OFX amounts are signed from the account's side: negative is money out.
+          setAmountSign(ofx ? OFX_AMOUNT_SIGN : "spending-positive");
           if (parsed.headers.length === 0 || parsed.rows.length === 0) {
-            setError("CSV needs a header row and at least one data row.");
+            setError(ofx ? "No transactions were found in this statement." : "CSV needs a header row and at least one data row.");
             setHeaders([]);
             setRows([]);
             setMapping({});
@@ -336,7 +362,10 @@ export function ExpenseCsvImportForm({
           for (const header of parsed.headers) {
             const normalized = header.toLowerCase().replace(/[\s_-]/g, "");
             let field = "";
-            if (normalized.includes("amount")) field = "amount";
+            if (normalized.includes("amount") || normalized === "debit" || normalized === "withdrawals") field = "amount";
+            else if (normalized === "credit" || normalized === "deposits" || normalized === "moneyin") field = "amountIn";
+            else if (normalized === "memo" && ofx) field = "note";
+            else if (normalized === "type" || normalized === "id") field = "";
             else if (normalized.includes("posted")) field = "postedDate";
             else if (normalized === "date" || normalized.includes("transactiondate")) field = "date";
             else if (normalized.includes("category")) field = "categoryName";
@@ -386,6 +415,54 @@ export function ExpenseCsvImportForm({
                 ))}
               </select>
             </label>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="block">
+              <span className={floatingFieldLabelClass}>Amounts in the file</span>
+              <select
+                name="amountSign"
+                className={`${selectClass} pt-3`}
+                value={amountSign}
+                disabled={Boolean(selectedColumns.amountIn)}
+                onChange={(event) => setAmountSign(event.target.value as AmountSign)}
+              >
+                <option value="spending-positive">Spending is positive</option>
+                <option value="spending-negative">Spending is negative (most bank exports)</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className={floatingFieldLabelClass}>Money coming in</span>
+              <select
+                name="moneyIn"
+                className={`${selectClass} pt-3`}
+                value={moneyIn}
+                onChange={(event) => setMoneyIn(event.target.value as MoneyInAs)}
+              >
+                <option value="refund">Refunds: lower spending in their category</option>
+                <option value="income" disabled={incomeCategories.length === 0}>
+                  Income: book as income
+                </option>
+              </select>
+            </label>
+            {moneyIn === "income" ? (
+              <label className="block sm:col-span-2">
+                <span className={floatingFieldLabelClass}>Income category</span>
+                <select
+                  name="defaultIncomeCategoryId"
+                  className={`${selectClass} pt-3`}
+                  value={incomeCategoryId}
+                  onChange={(event) => setIncomeCategoryId(event.target.value)}
+                >
+                  {incomeCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {selectedColumns.amountIn ? <input type="hidden" name="amountSign" value={amountSign} /> : null}
           </div>
 
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -460,6 +537,7 @@ export function ExpenseCsvImportForm({
           <input type="hidden" name="rowsJson" value={JSON.stringify(rows)} />
           <input type="hidden" name="fieldSelections" value={JSON.stringify(headers.map((header) => mapping[header] ?? ""))} />
           <input type="hidden" name="map_amount" value={selectedColumns.amount} />
+          <input type="hidden" name="map_amountIn" value={selectedColumns.amountIn} />
           <input type="hidden" name="map_date" value={selectedColumns.date} />
           <input type="hidden" name="map_postedDate" value={selectedColumns.postedDate} />
           <input type="hidden" name="map_title" value={selectedColumns.title} />
@@ -541,7 +619,7 @@ export function ExpenseCsvImportForm({
         disabled={!hasHydrated || headers.length === 0}
         type="submit"
       >
-        Import CSV
+        Import
       </button>
     </ServerActionForm>
   );

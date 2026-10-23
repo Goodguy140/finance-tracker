@@ -258,6 +258,7 @@ export { parseCsvLine, parseCsvText } from "@/lib/csv";
 export const importTargets = [
   { value: "", label: "Ignore this column" },
   { value: "amount", label: "Amount (required)" },
+  { value: "amountIn", label: "Money in (credit column)" },
   { value: "date", label: "Transaction date" },
   { value: "postedDate", label: "Posted date" },
   { value: "title", label: "Transaction title" },

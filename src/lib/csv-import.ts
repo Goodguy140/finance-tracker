@@ -23,7 +23,10 @@ export type CsvImportDuplicateRow = {
 
 export type CsvImportSummary = {
   ok: true;
+  /** Every row booked, income included. */
   imported: number;
+  /** Of those, how many were money in booked as income. */
+  income: number;
   /** Rows with a transaction or posted date that could not be read, or no date at all. */
   unreadableDates: (CsvImportSkippedRow & { field: "date" | "postedDate" })[];
   /** Rows already in the log: same date, amount and title as an existing expense. */
@@ -39,6 +42,39 @@ export function isCsvImportSummary(value: unknown): value is CsvImportSummary {
     (value as { ok?: unknown }).ok === true &&
     typeof (value as { imported?: unknown }).imported === "number"
   );
+}
+
+/** Which way round a single amount column counts: most bank exports show money out as negative. */
+export type AmountSign = "spending-positive" | "spending-negative";
+/** What money coming in becomes: a refund that lowers spending, or income. */
+export type MoneyInAs = "refund" | "income";
+
+/**
+ * Money that left the account on this row, in dollars; negative when money came in. Null when
+ * the row has no amount that can be read.
+ *
+ * With a separate "money in" column (statements with Debit and Credit columns) each column is
+ * read as a size, whatever sign the bank printed, and the row is the difference.
+ */
+export function statementOutflow(
+  row: Record<string, string>,
+  columns: { amount: string; amountIn?: string },
+  sign: AmountSign,
+  parse: (raw: string) => number | null,
+): number | null {
+  const read = (column: string | undefined) => {
+    const raw = column ? row[column]?.trim() : "";
+    return raw ? parse(raw) : null;
+  };
+  const out = read(columns.amount);
+  if (columns.amountIn) {
+    const into = read(columns.amountIn);
+    if (out === null && into === null) return null;
+    const net = Math.abs(out ?? 0) - Math.abs(into ?? 0);
+    return net === 0 ? null : net;
+  }
+  if (out === null) return null;
+  return sign === "spending-negative" ? -out : out;
 }
 
 /** YYYY-MM-DD in UTC, the form transaction dates are stored and compared in. */

@@ -196,7 +196,10 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
   - Subscriptions (shared members, who paid, skip occurrence): `subscriptions-panel.tsx`,
     `actions/subscriptions.ts`
 - **Data**
-  - Import CSV with summary (rows already in the log on the same account are skipped):
+  - Import a CSV, OFX or QFX statement with summary (rows already in the log on the same
+    account are skipped). Amount sign either way round, or separate debit and credit columns
+    (`statementOutflow`); money coming in is a refund (negative expense) or, if chosen, income
+    in a picked category. OFX/QFX is read into the same column table (`src/lib/ofx.ts`):
     `forms/expense-forms.tsx`, `forms/csv-import-summary-dialog.tsx`, `src/lib/csv-import.ts`
   - Backup & export (JSON export, transactions as CSV for all time or a date range
     (`src/lib/transactions-csv.ts`, `src/app/api/export/transactions`), restore up to 20 MB, clear data, delete account):

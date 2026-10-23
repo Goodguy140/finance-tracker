@@ -34,7 +34,7 @@ const CSV = [
 
 async function importCsv(page: Page, accountName?: string) {
   await page.goto("/settings/import");
-  const form = page.locator("form").filter({ hasText: "Import expenses from CSV" });
+  const form = page.locator("form").filter({ hasText: "Import transactions from a file" });
   await form.locator('input[type="file"]').setInputFiles({
     name: "statement.csv",
     mimeType: "text/csv",
@@ -42,7 +42,7 @@ async function importCsv(page: Page, accountName?: string) {
   });
   await expect(form.getByText("Skipped: invalid date")).toBeVisible();
   if (accountName) await form.locator('select[name="defaultAccountId"]').selectOption({ label: accountName });
-  await form.getByRole("button", { name: "Import CSV" }).click();
+  await form.getByRole("button", { name: "Import", exact: true }).click();
   return page.getByRole("dialog");
 }
 
@@ -106,4 +106,53 @@ test("CSV import does not take the same purchase on another account for a duplic
   const again = await importCsv(page, "Primary Credit Card");
   await expect(again.getByRole("heading", { name: "Imported 0 expenses" })).toBeVisible();
   await expect(again.getByTestId("csv-import-duplicates")).toContainText("2 skipped: already in your log");
+});
+
+const OFX = `OFXHEADER:100
+DATA:OFXSGML
+
+<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKTRANLIST>
+<STMTTRN>
+<TRNTYPE>DEBIT
+<DTPOSTED>20260302120000
+<TRNAMT>-4.50
+<FITID>1
+<NAME>Coffee shop
+</STMTTRN>
+<STMTTRN>
+<TRNTYPE>CREDIT
+<DTPOSTED>20260303
+<TRNAMT>2500.00
+<FITID>2
+<NAME>Payroll deposit
+</STMTTRN>
+</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>`;
+
+test("an OFX statement imports spending as expenses and deposits as income", async ({ page }) => {
+  const user = await createUserAndLogin(page);
+  await page.goto("/settings/import");
+  const form = page.locator("form").filter({ hasText: "Import transactions from a file" });
+  await form.getByLabel("Statement file").setInputFiles({
+    name: "statement.qfx",
+    mimeType: "application/x-ofx",
+    buffer: Buffer.from(OFX),
+  });
+  // OFX signs money out as negative; the form reads it that way without being told.
+  await expect(form.locator('select[name="amountSign"]')).toHaveValue("spending-negative");
+  await form.locator('select[name="moneyIn"]').selectOption("income");
+  await expect(form.getByRole("cell", { name: "+2500.00" })).toBeVisible();
+  await expect(form.getByRole("cell", { name: "4.50", exact: true })).toBeVisible();
+  await form.getByRole("button", { name: "Import", exact: true }).click();
+
+  const summary = page.getByRole("dialog");
+  await expect(summary.getByRole("heading", { name: "Imported 1 expense and 1 income entry" })).toBeVisible();
+  const rows = await prisma.transaction.findMany({
+    where: { userId: user.id },
+    select: { title: true, type: true, amountCents: true, category: { select: { kind: true } } },
+    orderBy: { title: "asc" },
+  });
+  expect(rows).toEqual([
+    { title: "Coffee shop", type: TransactionType.EXPENSE, amountCents: 450, category: { kind: "EXPENSE" } },
+    { title: "Payroll deposit", type: TransactionType.INCOME, amountCents: 250000, category: { kind: "INCOME" } },
+  ]);
 });
