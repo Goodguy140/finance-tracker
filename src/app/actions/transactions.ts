@@ -17,6 +17,7 @@ import { appendRuleNote, resolveRuleOutcome } from "@/lib/transaction-rules";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
 import { addTagsToTransaction, replaceTransactionTags, resolveTagIds } from "@/lib/tags-server";
 import { ensureFallbackCategoryFor } from "@/lib/fallback-categories";
+import { deleteTransactionWithUndo, undoDeletedTransaction, type UndoRefusal } from "@/lib/transaction-undo";
 import {
   markAsTransfer,
   setTransferAccount,
@@ -44,6 +45,8 @@ import {
   getOptionalMappedValue,
   parseJsonField,
 } from "./_helpers";
+
+type DeleteResult = { ok: true; undoId: string };
 export const createExpenseAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = expenseBaseSchema.parse({
@@ -183,23 +186,17 @@ export const updateExpenseAction = formAction(async (formData: FormData) => {
   revalidatePath("/");
 });
 
-export const deleteExpenseTransactionAction = formAction(async (formData: FormData) => {
+/** Deletes an expense at once; the result's `undoId` lets "Undo" put it back for a few minutes. */
+export const deleteExpenseTransactionAction = formActionWithResult(async (formData: FormData): Promise<DeleteResult> => {
   const user = await requireUser();
   const transactionId = getFormValue(formData, "transactionId");
   if (!transactionId) throw new Error("Transaction id is required.");
 
-  const existing = await prisma.transaction.findFirst({
-    where: {
-      id: transactionId,
-      userId: user.id,
-      type: TransactionType.EXPENSE,
-    },
-  });
-  if (!existing) throw new Error("Expense not found.");
-
-  await prisma.transaction.delete({ where: { id: existing.id } });
+  const undoId = await deleteTransactionWithUndo(prisma, user.id, transactionId, TransactionType.EXPENSE);
+  if (!undoId) throw new Error("Expense not found.");
   scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
+  return { ok: true, undoId };
 });
 
 export const importExpensesCsvAction = formActionWithResult(async (formData: FormData): Promise<CsvImportSummary> => {
@@ -569,21 +566,32 @@ export const updateIncomeAction = formAction(async (formData: FormData) => {
   revalidatePath("/");
 });
 
-export const deleteIncomeTransactionAction = formAction(async (formData: FormData) => {
+/** Deletes an income entry at once; the result's `undoId` lets "Undo" put it back for a few minutes. */
+export const deleteIncomeTransactionAction = formActionWithResult(async (formData: FormData): Promise<DeleteResult> => {
   const user = await requireUser();
   const transactionId = getFormValue(formData, "transactionId");
   if (!transactionId) throw new Error("Transaction id is required.");
 
-  const existing = await prisma.transaction.findFirst({
-    where: {
-      id: transactionId,
-      userId: user.id,
-      type: TransactionType.INCOME,
-    },
-  });
-  if (!existing) throw new Error("Income entry not found.");
+  const undoId = await deleteTransactionWithUndo(prisma, user.id, transactionId, TransactionType.INCOME);
+  if (!undoId) throw new Error("Income entry not found.");
+  revalidatePath("/");
+  return { ok: true, undoId };
+});
 
-  await prisma.transaction.delete({ where: { id: existing.id } });
+const UNDO_REFUSALS: Record<UndoRefusal, string> = {
+  expired: "Too late to undo: deleted entries can be put back for 15 minutes.",
+  "category-gone": "Its category has been deleted since, so it can't be put back.",
+  conflict: "It's already back in your log.",
+};
+
+/** Puts back an expense or income entry deleted in the last few minutes. */
+export const undoDeleteTransactionAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const undoId = getFormValue(formData, "undoId");
+  if (!undoId) throw new Error("Nothing to undo.");
+  const result = await undoDeletedTransaction(prisma, user.id, undoId);
+  if (!result.ok) throw new Error(UNDO_REFUSALS[result.reason]);
+  if (result.type === TransactionType.EXPENSE) scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
 });
 

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { OfflineBanner } from "@/components/pwa/offline-banner";
 import { ServiceWorkerRegistrar } from "@/components/pwa/service-worker-registrar";
+import { UndoToastHost } from "@/components/undo-toast";
 import { PWA_BACKGROUND_COLOR } from "@/lib/pwa-theme";
 import "./globals.css";
 
@@ -36,6 +37,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-slate-950 text-slate-100">
         <OfflineBanner />
         {children}
+        <UndoToastHost />
         <ServiceWorkerRegistrar />
       </body>
     </html>
