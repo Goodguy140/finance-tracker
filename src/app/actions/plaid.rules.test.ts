@@ -3,7 +3,7 @@ import type { RuleContext } from "@/lib/transaction-rules-server";
 
 const mockPrisma = vi.hoisted(() => ({
   plaidStagedTransaction: { findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
-  category: { findMany: vi.fn() },
+  category: { findMany: vi.fn(), findFirst: vi.fn() },
   transaction: { create: vi.fn() },
   transactionVerification: { create: vi.fn() },
   $transaction: vi.fn(),
@@ -136,5 +136,55 @@ describe("bulkAddStagedTransactionsAction with rules", () => {
       }),
       select: { id: true },
     });
+  });
+});
+
+describe("bulkAddStagedTransactionsAction with a chosen category", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<void>) => fn(mockPrisma));
+    mockPrisma.transaction.create.mockResolvedValue({ id: "txn-1" });
+    mockPrisma.plaidStagedTransaction.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.category.findMany.mockResolvedValue([
+      { id: "cat-pfc", kind: "EXPENSE" },
+      { id: "cat-groceries", kind: "EXPENSE" },
+    ]);
+    ruleContext.current = { rules: [], learned: [], hiddenTitleKeys: [] };
+  });
+
+  it("books every row in that category, over what the sync suggested", async () => {
+    mockPrisma.plaidStagedTransaction.findMany.mockResolvedValue([staged({}), staged({ id: "s2", plaidTransactionId: "ptx-2" })]);
+    mockPrisma.category.findFirst.mockResolvedValue({ kind: "EXPENSE" });
+    const data = new FormData();
+    data.set("stagedIdsJson", JSON.stringify(["s1", "s2"]));
+    data.set("categoryId", "cat-groceries");
+
+    expect(await bulkAddStagedTransactionsAction(data)).toBeUndefined();
+    expect(mockPrisma.transaction.create).toHaveBeenCalledTimes(2);
+    for (const [call] of mockPrisma.transaction.create.mock.calls) {
+      expect(call.data).toMatchObject({ categoryId: "cat-groceries", type: "EXPENSE" });
+    }
+  });
+
+  it("refuses a category of the wrong kind and writes nothing", async () => {
+    mockPrisma.plaidStagedTransaction.findMany.mockResolvedValue([staged({})]);
+    mockPrisma.category.findFirst.mockResolvedValue({ kind: "INCOME" });
+    const data = new FormData();
+    data.set("stagedIdsJson", JSON.stringify(["s1"]));
+    data.set("categoryId", "cat-salary");
+
+    expect(await bulkAddStagedTransactionsAction(data)).toMatchObject({ ok: false, error: expect.stringMatching(/not income/) });
+    expect(mockPrisma.transaction.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a category that is not the user's", async () => {
+    mockPrisma.plaidStagedTransaction.findMany.mockResolvedValue([staged({})]);
+    mockPrisma.category.findFirst.mockResolvedValue(null);
+    const data = new FormData();
+    data.set("stagedIdsJson", JSON.stringify(["s1"]));
+    data.set("categoryId", "someone-elses");
+
+    expect(await bulkAddStagedTransactionsAction(data)).toMatchObject({ ok: false });
+    expect(mockPrisma.transaction.create).not.toHaveBeenCalled();
   });
 });

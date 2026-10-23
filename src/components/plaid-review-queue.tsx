@@ -17,6 +17,8 @@ import type { CardDensity } from "@/lib/dashboard-layout/schema";
 import {
   applyBankRevisionAction,
   bulkAddStagedTransactionsAction,
+  bulkIgnoreStagedTransactionsAction,
+  bulkLinkStagedTransactionsAction,
   dismissBankRevisionAction,
   pairStagedTransfersAction,
   resolveStagedTransactionAction,
@@ -111,7 +113,17 @@ const choiceBtnClass =
 const actionBtnClass =
   "shrink-0 touch-manipulation rounded-lg border px-2.5 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40";
 
-function ReviewQueueRow({ row, density }: { row: ReviewRow; density: CardDensity | undefined }) {
+function ReviewQueueRow({
+  row,
+  density,
+  selected,
+  onToggle,
+}: {
+  row: ReviewRow;
+  density: CardDensity | undefined;
+  selected: boolean;
+  onToggle: () => void;
+}) {
   // Pre-selection follows the matcher's confidence: a strong match proposes Link, anything
   // weaker proposes Add and keeps the candidate in view so the user can switch to it.
   // A pair beats a weak match: two bank rows agreeing to the cent on opposite sides is
@@ -141,6 +153,13 @@ function ReviewQueueRow({ row, density }: { row: ReviewRow; density: CardDensity
   return (
     <li className={`space-y-1.5 px-2 ${pad}`} data-testid="review-queue-row">
       <div className="flex items-start gap-2.5">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggle}
+          aria-label={`Select ${row.heading}`}
+          className="mt-1 h-4 w-4 shrink-0 accent-blue-500"
+        />
         <CategoryDot categoryIds={bookedAsTransfer || decision === "link" ? [] : [categoryId]} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium leading-snug text-slate-100">{shown.title}</span>
@@ -321,6 +340,98 @@ function ReviewQueueRow({ row, density }: { row: ReviewRow; density: CardDensity
   );
 }
 
+/**
+ * What to do with the ticked rows: add them (each as the queue proposes, or all in one chosen
+ * category), or ignore them. Shown once anything is ticked; "Select all" ticks every row shown.
+ */
+function ReviewBulkBar({
+  rows,
+  selectedRows,
+  onSelectAll,
+  onClear,
+}: {
+  rows: ReviewRow[];
+  selectedRows: ReviewRow[];
+  onSelectAll: () => void;
+  onClear: () => void;
+}) {
+  const [categoryId, setCategoryId] = useState("");
+  if (rows.length < 2 && selectedRows.length === 0) return null;
+  const ids = JSON.stringify(selectedRows.map((row) => row.id));
+  // One category for all of them only makes sense when they are all spending, or all income.
+  const kinds = new Set(selectedRows.map((row) => row.nonTransferType));
+  const categoryOptions = kinds.size === 1 ? selectedRows[0].categoryOptions : [];
+  const chosen = categoryOptions.some((option) => option.id === categoryId) ? categoryId : "";
+
+  if (selectedRows.length === 0) {
+    return (
+      <button type="button" className="text-xs text-sky-300 hover:text-sky-200" onClick={onSelectAll}>
+        Select all {rows.length} shown
+      </button>
+    );
+  }
+  return (
+    <div
+      className="flex flex-wrap items-center gap-2 rounded-xl border border-blue-500/30 bg-slate-950/70 p-2"
+      role="group"
+      aria-label="Selected bank rows"
+      data-testid="review-bulk-bar"
+    >
+      <span className="text-sm text-slate-200">{selectedRows.length} selected</span>
+      <ServerActionForm action={bulkAddStagedTransactionsAction} onSuccess={onClear}>
+        <input type="hidden" name="stagedIdsJson" value={ids} />
+        <button type="submit" className={`${actionBtnClass} border-blue-400/50 bg-blue-500/15 text-blue-100 hover:bg-blue-500/25`}>
+          Add
+        </button>
+      </ServerActionForm>
+      <ServerActionForm action={bulkIgnoreStagedTransactionsAction} onSuccess={onClear}>
+        <input type="hidden" name="stagedIdsJson" value={ids} />
+        <button type="submit" className={`${actionBtnClass} border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800`}>
+          Ignore
+        </button>
+      </ServerActionForm>
+      {categoryOptions.length > 0 ? (
+        <ServerActionForm action={bulkAddStagedTransactionsAction} onSuccess={onClear} className="flex items-center gap-1.5">
+          <input type="hidden" name="stagedIdsJson" value={ids} />
+          <select
+            name="categoryId"
+            value={chosen}
+            onChange={(e) => setCategoryId(e.target.value)}
+            aria-label="Category for the selected rows"
+            className="h-7 max-w-[11rem] truncate rounded-lg border border-slate-700/80 bg-slate-900/70 px-2 text-xs text-slate-200 focus:border-blue-500 focus:outline-none"
+          >
+            <option value="" disabled>
+              Set category…
+            </option>
+            {categoryOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            disabled={!chosen}
+            className={`${actionBtnClass} border-blue-400/50 bg-blue-500/15 text-blue-100 hover:bg-blue-500/25`}
+          >
+            Add to category
+          </button>
+        </ServerActionForm>
+      ) : null}
+      <span className="ml-auto flex gap-2 text-xs">
+        {selectedRows.length < rows.length ? (
+          <button type="button" className="text-sky-300 hover:text-sky-200" onClick={onSelectAll}>
+            Select all {rows.length}
+          </button>
+        ) : null}
+        <button type="button" className="text-slate-400 hover:text-slate-200" onClick={onClear}>
+          Clear
+        </button>
+      </span>
+    </div>
+  );
+}
+
 export function PlaidReviewQueue({ rows, totalCount, nextLimit, revisions, density }: PlaidReviewQueueProps) {
   const [open, setOpen] = useState(true);
   const router = useRouter();
@@ -333,6 +444,27 @@ export function PlaidReviewQueue({ rows, totalCount, nextLimit, revisions, densi
     [rows],
   );
   const days = useMemo(() => groupTransactionsByDay(rows, (row) => row), [rows]);
+  // Ticked rows, for the bulk bar. Ids no longer on screen (decided, or paged away) drop out.
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const selectedRows = useMemo(() => rows.filter((row) => picked.has(row.id)), [rows, picked]);
+  const toggle = (id: string) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const clearPicked = () => setPicked(new Set());
+  // Strong matches only: the ones the queue already proposes linking. Two rows proposing the
+  // same entry are left to be linked one at a time.
+  const strongLinks = useMemo(() => {
+    const strong = rows.filter((row) => row.match?.tier === "high");
+    const perEntry = new Map<string, number>();
+    for (const row of strong) perEntry.set(row.match!.candidate.id, (perEntry.get(row.match!.candidate.id) ?? 0) + 1);
+    return strong
+      .filter((row) => perEntry.get(row.match!.candidate.id) === 1)
+      .map((row) => ({ stagedId: row.id, transactionId: row.match!.candidate.id }));
+  }, [rows]);
 
   if (rows.length === 0 && revisions.length === 0) return null;
 
@@ -405,14 +537,33 @@ export function PlaidReviewQueue({ rows, totalCount, nextLimit, revisions, densi
             </div>
           ) : null}
 
-          {unmatchedIds.length > 1 ? (
-            <ServerActionForm action={bulkAddStagedTransactionsAction}>
-              <input type="hidden" name="stagedIdsJson" value={JSON.stringify(unmatchedIds)} />
-              <button className={primaryBtnClass} type="submit">
-                Add all {unmatchedIds.length} unmatched{hiddenCount > 0 ? " shown" : ""}
-              </button>
-            </ServerActionForm>
+          {unmatchedIds.length > 1 || strongLinks.length > 1 ? (
+            <div className="flex flex-wrap gap-2">
+              {unmatchedIds.length > 1 ? (
+                <ServerActionForm action={bulkAddStagedTransactionsAction}>
+                  <input type="hidden" name="stagedIdsJson" value={JSON.stringify(unmatchedIds)} />
+                  <button className={primaryBtnClass} type="submit">
+                    Add all {unmatchedIds.length} unmatched{hiddenCount > 0 ? " shown" : ""}
+                  </button>
+                </ServerActionForm>
+              ) : null}
+              {strongLinks.length > 1 ? (
+                <ServerActionForm action={bulkLinkStagedTransactionsAction}>
+                  <input type="hidden" name="linksJson" value={JSON.stringify(strongLinks)} />
+                  <button className={secondaryBtnClass} type="submit">
+                    Link all {strongLinks.length} strong matches
+                  </button>
+                </ServerActionForm>
+              ) : null}
+            </div>
           ) : null}
+
+          <ReviewBulkBar
+            rows={rows}
+            selectedRows={selectedRows}
+            onSelectAll={() => setPicked(new Set(rows.map((row) => row.id)))}
+            onClear={clearPicked}
+          />
 
           <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-1 pb-1 pt-2" data-testid="review-queue-rows">
             {days.map((day) => (
@@ -420,7 +571,13 @@ export function PlaidReviewQueue({ rows, totalCount, nextLimit, revisions, densi
                 <TransactionDayHeader dateDisplay={day.dateDisplay} />
                 <ul className="divide-y divide-slate-800/50">
                   {day.items.map((row) => (
-                    <ReviewQueueRow key={row.id} row={row} density={density} />
+                    <ReviewQueueRow
+                      key={row.id}
+                      row={row}
+                      density={density}
+                      selected={picked.has(row.id)}
+                      onToggle={() => toggle(row.id)}
+                    />
                   ))}
                 </ul>
               </section>
