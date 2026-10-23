@@ -4,7 +4,8 @@ import { Prisma, type PrismaClient, type TransactionType } from "@prisma/client"
  * Undo for a deleted expense or income entry.
  *
  * Deleting takes the row and everything that hangs off it (split lines, owed shares, tags, the
- * bank verification, the contribution it was counted as, its transfer pair) and keeps them in
+ * bank verification, the contribution it was counted as, its transfer pair, its receipts, which
+ * are only unlinked rather than copied) and keeps them in
  * a DeletedTransaction row for UNDO_WINDOW_MS. Undo puts the row back with the same id, so the
  * Plaid review queue's references to it (stored as plain ids) line up again, and re-links
  * whatever is still free to be re-linked. Anything that has since been claimed by something
@@ -50,6 +51,8 @@ type Snapshot = {
     itemRemovedAt: string | null;
   } | null;
   investmentFlowId: string | null;
+  /** Receipts stay in their table, unlinked, until Undo links them back or the record expires. */
+  attachmentIds?: string[];
 };
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
@@ -69,7 +72,14 @@ export async function deleteTransactionWithUndo(
   return db.$transaction(async (tx) => {
     const row = await tx.transaction.findFirst({
       where: { id: transactionId, userId, type },
-      include: { splitParts: true, owedShares: true, tags: true, verification: true, investmentFlow: true },
+      include: {
+        splitParts: true,
+        owedShares: true,
+        tags: true,
+        verification: true,
+        investmentFlow: true,
+        attachments: { select: { id: true } },
+      },
     });
     if (!row) return null;
     const snapshot: Snapshot = {
@@ -116,10 +126,20 @@ export async function deleteTransactionWithUndo(
           }
         : null,
       investmentFlowId: row.investmentFlow?.id ?? null,
+      attachmentIds: row.attachments.map((a) => a.id),
     };
-    await tx.deletedTransaction.deleteMany({
+    const expired = await tx.deletedTransaction.findMany({
       where: { userId, deletedAt: { lt: new Date(now.getTime() - UNDO_WINDOW_MS) } },
+      select: { id: true, payloadJson: true },
     });
+    if (expired.length > 0) {
+      // Their receipts can no longer come back with them.
+      const orphaned = expired.flatMap((e) => (JSON.parse(e.payloadJson) as Snapshot).attachmentIds ?? []);
+      if (orphaned.length > 0) {
+        await tx.transactionAttachment.deleteMany({ where: { id: { in: orphaned }, userId, transactionId: null } });
+      }
+      await tx.deletedTransaction.deleteMany({ where: { id: { in: expired.map((e) => e.id) } } });
+    }
     const kept = await tx.deletedTransaction.create({
       data: { userId, transactionId: row.id, payloadJson: JSON.stringify(snapshot), deletedAt: now },
     });
@@ -242,6 +262,13 @@ export async function undoDeletedTransaction(
             },
           });
         }
+      }
+
+      if (snap.attachmentIds?.length) {
+        await tx.transactionAttachment.updateMany({
+          where: { id: { in: snap.attachmentIds }, userId, transactionId: null },
+          data: { transactionId: t.id },
+        });
       }
 
       if (snap.investmentFlowId) {

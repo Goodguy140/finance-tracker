@@ -234,6 +234,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         verification: true,
         tags: { select: { tagId: true } },
         owedShares: { orderBy: { createdAt: "asc" } },
+        attachments: { select: { id: true, fileName: true, contentType: true }, orderBy: { createdAt: "asc" } },
       },
       orderBy: { date: "desc" },
     }),
@@ -778,6 +779,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       paid: share.paidAt !== null,
     })),
     tags: tagNamesOf(txn),
+    receipts: txn.attachments,
   }));
 
   const owedToYouItems: OwedToYouItem[] = owedShareRows.map((share) => ({

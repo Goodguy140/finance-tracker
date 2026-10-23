@@ -39,6 +39,7 @@ export {
   skipRecurringOccurrenceAction,
 } from "./actions/subscriptions";
 export { setOwedSharePaidAction } from "./actions/owed-shares";
+export { addAttachmentAction, removeAttachmentAction } from "./actions/attachments";
 export {
   createTransactionRuleAction,
   updateTransactionRuleAction,

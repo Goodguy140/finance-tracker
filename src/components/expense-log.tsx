@@ -14,6 +14,7 @@ import { TagInput } from "@/components/tag-input";
 import { useTagOptions } from "@/components/transaction-rules-context";
 import type { TagOption } from "@/lib/tags";
 import { MarkAsTransferSection } from "@/components/transfer-log";
+import { ReceiptsSection, type ReceiptInfo } from "@/components/receipts-section";
 import { EditSheet, EditSheetFooter, editSheetDeleteBtnClass } from "@/components/edit-sheet";
 import { VerifiedBadge, verificationTooltip, type VerificationInfo } from "@/components/verified-badge";
 import {
@@ -80,6 +81,8 @@ export type ExpenseLogEntry = {
   owedShares: ExpenseOwedShare[];
   /** The account's currency when it is not the home one: shown in it, and left out of totals. */
   currency?: string | null;
+  /** Receipts kept with the expense. */
+  receipts?: ReceiptInfo[];
 };
 
 export type ExpenseOwedShare = { id: string; name: string; amountCents: number; paid: boolean };
@@ -184,6 +187,11 @@ function ExpenseRowMeta({ txn, density }: { txn: ExpenseLogEntry; density: Expen
     txn.accountLabel,
     txn.postedDateDisplay ? `Posted ${txn.postedDateDisplay}` : null,
     txn.note,
+    txn.receipts?.length ? (
+      <span key="receipts" data-testid="receipt-indicator">
+        {txn.receipts.length === 1 ? "Receipt" : `${txn.receipts.length} receipts`}
+      </span>
+    ) : null,
   ];
   const fullTitle = [
     txn.isSplit ? `Split: ${splitLinesSummary(txn)}` : hasTitle ? txn.categoryLabel : null,
@@ -789,6 +797,7 @@ function EditExpenseModal({
         </form>
         </FieldHintModeProvider>
 
+        <ReceiptsSection transactionId={entry.id} receipts={entry.receipts ?? []} />
         <MarkAsTransferSection transactionId={entry.id} kind="expense" onDone={onClose} />
     </EditSheet>
   );
