@@ -11,7 +11,7 @@ import { isActionFailure } from "@/lib/action-result";
  * layout and is fed through this small module-level store.
  */
 
-type Toast = { id: number; message: string; undoId: string };
+type Toast = { id: number; message: string; undoIds: string[] };
 
 const SHOW_MS = 8000;
 let current: Toast | null = null;
@@ -22,8 +22,8 @@ function emit() {
   for (const listener of listeners) listener();
 }
 
-export function showUndoToast(message: string, undoId: string) {
-  current = { id: nextId++, message, undoId };
+export function showUndoToast(message: string, undoId: string | string[]) {
+  current = { id: nextId++, message, undoIds: Array.isArray(undoId) ? undoId : [undoId] };
   emit();
 }
 
@@ -75,10 +75,12 @@ export function UndoToastHost() {
             onClick={() =>
               startTransition(async () => {
                 const form = new FormData();
-                form.set("undoId", toast.undoId);
+                for (const undoId of toast.undoIds) form.append("undoId", undoId);
                 const result = await undoDeleteTransactionAction(form);
                 if (isActionFailure(result)) {
                   setFailure({ id: toast.id, message: result.error });
+                  // Some of several may have come back before one could not.
+                  router.refresh();
                   return;
                 }
                 dismiss(toast.id);

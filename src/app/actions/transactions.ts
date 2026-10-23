@@ -17,6 +17,7 @@ import { appendRuleNote, resolveRuleOutcome } from "@/lib/transaction-rules";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
 import { addTagsToTransaction, replaceTransactionTags, resolveTagIds } from "@/lib/tags-server";
 import { ensureFallbackCategoryFor } from "@/lib/fallback-categories";
+import { parseTagNames } from "@/lib/tags";
 import { deleteTransactionWithUndo, undoDeletedTransaction, type UndoRefusal } from "@/lib/transaction-undo";
 import {
   markAsTransfer,
@@ -584,15 +585,87 @@ const UNDO_REFUSALS: Record<UndoRefusal, string> = {
   conflict: "It's already back in your log.",
 };
 
-/** Puts back an expense or income entry deleted in the last few minutes. */
+/** Puts back expense or income entries deleted in the last few minutes (one `undoId` each). */
 export const undoDeleteTransactionAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const undoId = getFormValue(formData, "undoId");
-  if (!undoId) throw new Error("Nothing to undo.");
-  const result = await undoDeletedTransaction(prisma, user.id, undoId);
-  if (!result.ok) throw new Error(UNDO_REFUSALS[result.reason]);
-  if (result.type === TransactionType.EXPENSE) scheduleBudgetAlertEmails(user.id);
+  const undoIds = formData.getAll("undoId").map(String).filter(Boolean);
+  if (undoIds.length === 0) throw new Error("Nothing to undo.");
+  let refusal: UndoRefusal | null = null;
+  let restoredExpense = false;
+  for (const undoId of undoIds) {
+    const result = await undoDeletedTransaction(prisma, user.id, undoId);
+    if (!result.ok) refusal ??= result.reason;
+    else if (result.type === TransactionType.EXPENSE) restoredExpense = true;
+  }
+  if (restoredExpense) scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
+  // Whatever could come back has; say why the rest could not.
+  if (refusal) throw new Error(UNDO_REFUSALS[refusal]);
+});
+
+export type BulkEditResult = { ok: true; changed: number; skipped: number; undoIds: string[] };
+
+const BULK_EDIT_LIMIT = 500;
+
+/**
+ * One change to several expenses picked in the Expense Log: a category, an account, a tag, or
+ * delete (with Undo). Rows that are not the user's expenses are ignored. A split expense keeps
+ * its categories, which live on its lines, and is counted as skipped.
+ */
+export const bulkEditExpensesAction = formActionWithResult(async (formData: FormData): Promise<BulkEditResult> => {
+  const user = await requireUser();
+  const ids = parseJsonField<unknown>(
+    getFormValue(formData, "transactionIdsJson"),
+    [],
+    "The selected expenses could not be read. Reload and try again.",
+  );
+  if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
+    throw new Error("The selected expenses could not be read. Reload and try again.");
+  }
+  if (ids.length > BULK_EDIT_LIMIT) throw new Error(`Pick at most ${BULK_EDIT_LIMIT} expenses at a time.`);
+  const op = getFormValue(formData, "op");
+  const value = getFormValue(formData, "value").trim();
+
+  const rows = await prisma.transaction.findMany({
+    where: { id: { in: ids as string[] }, userId: user.id, type: TransactionType.EXPENSE },
+    select: { id: true, _count: { select: { splitParts: true } } },
+  });
+  const rowIds = rows.map((row) => row.id);
+  let changed = 0;
+  let skipped = 0;
+  const undoIds: string[] = [];
+
+  if (op === "category") {
+    if (!value) throw new Error("Choose a category.");
+    await assertUserOwnsCategory(user.id, value, CategoryKind.EXPENSE);
+    const plain = rows.filter((row) => row._count.splitParts === 0).map((row) => row.id);
+    skipped = rows.length - plain.length;
+    changed = (await prisma.transaction.updateMany({ where: { id: { in: plain }, userId: user.id }, data: { categoryId: value } })).count;
+  } else if (op === "account") {
+    if (!value) throw new Error("Choose an account.");
+    await assertUserOwnsAccount(user.id, value);
+    changed = (await prisma.transaction.updateMany({ where: { id: { in: rowIds }, userId: user.id }, data: { accountId: value } })).count;
+  } else if (op === "tag") {
+    const names = parseTagNames([value]);
+    if (names.length === 0) throw new Error("Type a tag to add.");
+    await prisma.$transaction(async (tx) => {
+      const tagIds = await resolveTagIds(tx, user.id, names);
+      for (const id of rowIds) await addTagsToTransaction(tx, id, tagIds);
+    }, LONG_TRANSACTION_OPTIONS);
+    changed = rowIds.length;
+  } else if (op === "delete") {
+    for (const id of rowIds) {
+      const undoId = await deleteTransactionWithUndo(prisma, user.id, id, TransactionType.EXPENSE);
+      if (undoId) undoIds.push(undoId);
+    }
+    changed = undoIds.length;
+  } else {
+    throw new Error("Choose what to change.");
+  }
+
+  scheduleBudgetAlertEmails(user.id);
+  revalidatePath("/");
+  return { ok: true, changed, skipped, undoIds };
 });
 
 const TRANSFER_MARK_REFUSALS: Record<TransferMarkRefusal, string> = {
