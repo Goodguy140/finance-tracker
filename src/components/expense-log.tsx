@@ -8,6 +8,7 @@ import type { ListHeight } from "@/lib/dashboard-layout/schema";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { showUndoToast } from "@/components/undo-toast";
 import { deleteExpenseTransactionAction, updateExpenseAction } from "@/app/actions";
+import { ExpenseBulkBar } from "@/components/expense-bulk-bar";
 import { InlineTags } from "@/components/meta-chip";
 import { TagInput } from "@/components/tag-input";
 import { useTagOptions } from "@/components/transaction-rules-context";
@@ -814,11 +815,32 @@ function ExpenseLogRow({
   txn,
   density,
   onEdit,
+  selection,
 }: {
   txn: ExpenseLogEntry;
   density: ExpenseLogDensity;
   onEdit: (id: string) => void;
+  /** Set while picking rows for a bulk change: the row ticks instead of opening. */
+  selection?: { selected: boolean; onToggle: (id: string) => void };
 }) {
+  if (selection) {
+    return (
+      <label className={`${transactionRowClass(density, "blue")} cursor-pointer ${selection.selected ? "bg-blue-500/10" : ""}`}>
+        <input
+          type="checkbox"
+          checked={selection.selected}
+          onChange={() => selection.onToggle(txn.id)}
+          aria-label={`Select ${expenseLogHeading(txn)}`}
+          className="h-4 w-4 shrink-0 accent-blue-500"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium leading-snug text-slate-100">{expenseLogHeading(txn)}</span>
+          <ExpenseRowMeta txn={txn} density={density} />
+        </span>
+        <ExpenseAmountBlock txn={txn} />
+      </label>
+    );
+  }
   return (
     <button type="button" onClick={() => onEdit(txn.id)} className={transactionRowClass(density, "blue")}>
       <CategoryDot categoryIds={expenseDotCategories(txn)} />
@@ -967,16 +989,34 @@ export function ExpenseLogPanel({
     if (entries.some((e) => e.id === id)) setEditingId(id);
   });
   const [searchQuery, setSearchQuery] = useState("");
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [bulkMessage, setBulkMessage] = useState("");
   const filteredEntries = useMemo(
     () => entries.filter((e) => expenseLogMatchesQuery(e, searchQuery, formatCurrency)),
     [entries, searchQuery],
   );
   // Consolidate same-day repeats of the same titled purchase on the same account, then
   // put each day's rows under its date. A group's members share a date by construction.
+  // While picking rows every entry stands alone, so each can be ticked.
   const days = useMemo(
-    () => groupTransactionsByDay(groupExpenseLogEntries(filteredEntries), (group) => group.entries[0]),
-    [filteredEntries],
+    () =>
+      groupTransactionsByDay(
+        selecting ? filteredEntries.map((e) => ({ key: e.id, entries: [e] })) : groupExpenseLogEntries(filteredEntries),
+        (group) => group.entries[0],
+      ),
+    [filteredEntries, selecting],
   );
+  // Only rows still shown count: a search narrowed after ticking drops the hidden ones.
+  const shownSelectedIds = filteredEntries.filter((e) => selectedIds.has(e.id)).map((e) => e.id);
+  const toggleSelected = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const selection = (id: string) => (selecting ? { selected: selectedIds.has(id), onToggle: toggleSelected } : undefined);
   const editing = editingId ? entries.find((e) => e.id === editingId) : null;
   const trimmedSearch = searchQuery.trim();
 
@@ -1000,7 +1040,43 @@ export function ExpenseLogPanel({
               {tagFilter && (tagFilter.tags.length > 0 || tagFilter.selectedId) ? (
                 <TagFilterSelect tags={tagFilter.tags} selectedId={tagFilter.selectedId} />
               ) : null}
+              {entries.length > 0 ? (
+                <button
+                  type="button"
+                  aria-pressed={selecting}
+                  onClick={() => {
+                    setSelecting((v) => !v);
+                    setSelectedIds(new Set());
+                    setBulkMessage("");
+                  }}
+                  className={`shrink-0 touch-manipulation rounded-xl border px-3 text-sm font-medium transition ${
+                    selecting
+                      ? "border-blue-400/60 bg-blue-500/20 text-blue-100"
+                      : "border-slate-700 bg-slate-900/60 text-slate-300 hover:bg-slate-800"
+                  }`}
+                >
+                  {selecting ? "Done" : "Select"}
+                </button>
+              ) : null}
             </div>
+            {selecting ? (
+              <ExpenseBulkBar
+                selectedIds={shownSelectedIds}
+                totalShown={filteredEntries.length}
+                categories={categories}
+                accounts={accounts}
+                onSelectAll={() => setSelectedIds(new Set(filteredEntries.map((e) => e.id)))}
+                onDone={(message) => {
+                  setSelectedIds(new Set());
+                  setBulkMessage(message);
+                }}
+              />
+            ) : null}
+            {bulkMessage ? (
+              <p role="status" data-testid="expense-bulk-result" className="text-xs text-emerald-300">
+                {bulkMessage}
+              </p>
+            ) : null}
             <p className="text-xs text-slate-500">
               {trimmedSearch
                 ? `${filteredEntries.length} of ${entries.length} shown`
@@ -1026,7 +1102,13 @@ export function ExpenseLogPanel({
                 <TransactionDay>
                   {day.items.map((group) =>
                     group.entries.length === 1 ? (
-                      <ExpenseLogRow key={group.key} txn={group.entries[0]} density={density} onEdit={setEditingId} />
+                      <ExpenseLogRow
+                        key={group.key}
+                        txn={group.entries[0]}
+                        density={density}
+                        onEdit={setEditingId}
+                        selection={selection(group.entries[0].id)}
+                      />
                     ) : (
                       <ExpenseLogGroupRows
                         key={group.key}

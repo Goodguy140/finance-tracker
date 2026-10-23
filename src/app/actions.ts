@@ -17,6 +17,7 @@ export {
   updateIncomeAction,
   deleteIncomeTransactionAction,
   undoDeleteTransactionAction,
+  bulkEditExpensesAction,
   markAsTransferAction,
   unmarkTransferAction,
   unpairTransferAction,
