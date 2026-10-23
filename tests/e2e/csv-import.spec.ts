@@ -1,10 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 const PASSWORD = "e2e-password-123";
 
@@ -13,7 +12,7 @@ async function createUserAndLogin(page: Page) {
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(PASSWORD, 12),
+      passwordHash: await hashTestPassword(PASSWORD),
       displayName: "E2E CSV User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -21,10 +20,7 @@ async function createUserAndLogin(page: Page) {
     },
   });
   await ensureDefaultDataForUser(user);
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, PASSWORD);
   await expectDashboardHome(page);
   return user;
 }
@@ -51,7 +47,6 @@ async function importCsv(page: Page, accountName?: string) {
 }
 
 test("CSV import leaves out unreadable dates and skips rows already imported", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Settings flow is covered by the chromium project");
   const user = await createUserAndLogin(page);
 
   const first = await importCsv(page);
@@ -80,8 +75,7 @@ test("CSV import leaves out unreadable dates and skips rows already imported", a
   expect(await titles()).toEqual(["Coffee shop", "Grocery store"]);
 });
 
-test("CSV import does not take the same purchase on another account for a duplicate", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Settings flow is covered by the chromium project");
+test("CSV import does not take the same purchase on another account for a duplicate", async ({ page }) => {
   const user = await createUserAndLogin(page);
 
   const chequing = await importCsv(page, "Main Chequing");

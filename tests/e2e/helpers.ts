@@ -1,15 +1,35 @@
 import { randomBytes } from "crypto";
+import { hash } from "bcryptjs";
 import { expect, type Page } from "@playwright/test";
 
 let stampSequence = 0;
+
+export const TEST_PASSWORD = "e2e-password-123";
+
+/**
+ * bcrypt at the minimum cost. Production's cost 12 takes ~0.4s per hash, and checking a
+ * password costs whatever hashing it did, so every seeded user paid that twice: once here and
+ * once more on the server at each sign-in. Nothing in the suite depends on the cost.
+ */
+export function hashTestPassword(password: string = TEST_PASSWORD): Promise<string> {
+  return hash(password, 4);
+}
+
+/** Fills and submits the login form. Callers assert where it lands (dashboard, /mfa, an error). */
+export async function signInWithPassword(page: Page, email: string, password: string = TEST_PASSWORD) {
+  await page.goto("/login");
+  await page.getByPlaceholder("Email").fill(email);
+  await page.getByPlaceholder("Password").fill(password);
+  await page.getByRole("button", { name: "Login", exact: true }).click();
+}
 
 /**
  * A suffix that makes a test-scoped identifier — an email, an expense title, a Plaid id —
  * unique across the whole suite.
  *
- * `Date.now()` on its own is not: every spec runs under both the chromium and
- * mobile-chromium projects, in parallel workers, so two copies of the same `createUser`
- * can land in one millisecond and collide on `User.email`'s unique index. The retry then
+ * `Date.now()` on its own is not: a spec in MOBILE_SPECS (playwright.config.ts) runs under
+ * both the chromium and mobile-chromium projects, in parallel workers, so two copies of the
+ * same `createUser` can land in one millisecond and collide on `User.email`'s unique index. The retry then
  * collides again, this time with the row the first attempt left behind.
  *
  * So the timestamp only orders things for a human reading the database; the pid separates

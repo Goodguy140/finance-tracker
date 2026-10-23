@@ -1,16 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { dateFromYmd } from "../../src/lib/date-only";
 import { shiftYm } from "../../src/lib/dashboard-period";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { currentYmInTimeZone } from "../../src/lib/period-month";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 // The Add card is desktop-only (phones add through the quick-add buttons), and the Recurring
 // card's controls are the same on both, so these run once on desktop.
-const DESKTOP_ONLY = "The Add card only renders above lg; the Recurring card is the same on both";
 
 async function signIn(page: Page, label: string) {
   const stamp = uniqueStamp();
@@ -19,7 +17,7 @@ async function signIn(page: Page, label: string) {
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Card Actions User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -28,10 +26,7 @@ async function signIn(page: Page, label: string) {
   });
   await ensureDefaultDataForUser(user);
   await page.setViewportSize({ width: 1600, height: 1000 });
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
   return { user, stamp };
 }
@@ -53,8 +48,7 @@ async function createRule(userId: string, name: string, nextExpectedYmd: string)
   });
 }
 
-test("income is added from the Add card", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+test("income is added from the Add card", async ({ page }) => {
   const { user, stamp } = await signIn(page, "income");
 
   const card = page.getByRole("region", { name: "Add", exact: true });
@@ -78,8 +72,7 @@ test("income is added from the Add card", async ({ page }, testInfo) => {
   await expect(card.getByRole("button", { name: "Add income" })).toBeVisible();
 });
 
-test("a rule is added from the Recurring card's New rule button", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+test("a rule is added from the Recurring card's New rule button", async ({ page }) => {
   const { user, stamp } = await signIn(page, "new-rule");
 
   const recurring = page.getByRole("region", { name: "Recurring transactions" });
@@ -100,8 +93,7 @@ test("a rule is added from the Recurring card's New rule button", async ({ page 
   await expect(recurring.getByText(name, { exact: true })).toBeVisible();
 });
 
-test("removing a rule asks first, and Keep leaves it alone", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+test("removing a rule asks first, and Keep leaves it alone", async ({ page }) => {
   const { user, stamp } = await signIn(page, "remove");
   // Overdue from last month, so the current month shows it whatever today's date is.
   const currentYm = currentYmInTimeZone("America/Toronto");
@@ -125,8 +117,7 @@ test("removing a rule asks first, and Keep leaves it alone", async ({ page }, te
   await expect.poll(() => prisma.recurringTransaction.count({ where: { id: rule.id } })).toBe(0);
 });
 
-test("rules outside the month on screen can be shown and edited", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+test("rules outside the month on screen can be shown and edited", async ({ page }) => {
   const { user, stamp } = await signIn(page, "others");
   const currentYm = currentYmInTimeZone("America/Toronto");
   const name = `Next quarter ${stamp}`;

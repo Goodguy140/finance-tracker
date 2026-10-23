@@ -66,6 +66,29 @@ for (const [k, v] of Object.entries(getE2eEnv())) {
 }
 process.env.DATABASE_URL = resolveE2eDatabaseUrl();
 
+/**
+ * Specs that also run on a phone. Only these have screens that differ there: the tab bar and
+ * quick add, compact log and review-queue rows, dialogs sized to the screen, the offline page.
+ * Everything else (sign-in, MFA, admin, backup, Plaid webhooks and sweeps, reports, settings)
+ * would run the same server code a second time through a narrower window. Add a spec here
+ * when what it checks is laid out differently below the lg breakpoint.
+ */
+const MOBILE_SPECS = [
+  "category-colors",
+  "edit-dialog",
+  "expense-log-consolidation",
+  "in-page-confirms",
+  "mobile-quick-expense",
+  "plaid-review-queue-pages",
+  "plaid-sync-review",
+  "pwa",
+  "reimbursements",
+  "shared-nav",
+  "split-expenses",
+  "subscriptions",
+  "transfers",
+];
+
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 30_000,
@@ -91,6 +114,7 @@ export default defineConfig({
     {
       name: "mobile-chromium",
       use: { ...devices["Pixel 7"] },
+      testMatch: MOBILE_SPECS.map((name) => `${name}.spec.ts`),
     },
   ],
 });

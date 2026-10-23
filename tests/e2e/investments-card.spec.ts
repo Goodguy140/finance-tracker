@@ -1,14 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { AccountType, CategoryKind, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { dateFromYmd } from "../../src/lib/date-only";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { currentYmdInTimeZone } from "../../src/lib/period-month";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
-const DESKTOP_ONLY = "The card is the same on every viewport; the desktop project covers it";
 
 async function signInWithTfsa(page: Page, label: string) {
   const stamp = uniqueStamp();
@@ -17,7 +15,7 @@ async function signInWithTfsa(page: Page, label: string) {
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Investments User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -29,10 +27,7 @@ async function signInWithTfsa(page: Page, label: string) {
     data: { userId: user.id, name: `Card TFSA ${stamp}`, type: AccountType.TFSA },
   });
   await page.setViewportSize({ width: 1600, height: 1000 });
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
   return { user, tfsa, stamp };
 }
@@ -44,8 +39,7 @@ async function openInvestmentsCard(page: Page) {
   return stack.getByRole("tabpanel");
 }
 
-test("a contribution is recorded, edited and deleted from the Investments card", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+test("a contribution is recorded, edited and deleted from the Investments card", async ({ page }) => {
   const { user, tfsa } = await signInWithTfsa(page, "flow");
 
   const card = await openInvestmentsCard(page);
@@ -81,8 +75,7 @@ test("a contribution is recorded, edited and deleted from the Investments card",
   await expect.poll(() => prisma.investmentFlow.count({ where: { id: flow.id } })).toBe(0);
 });
 
-test("a portfolio value is edited and deleted from the Investments card", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+test("a portfolio value is edited and deleted from the Investments card", async ({ page }) => {
   const { user, tfsa } = await signInWithTfsa(page, "snapshot");
   const snapshot = await prisma.portfolioSnapshot.create({
     data: {
@@ -111,8 +104,7 @@ test("a portfolio value is edited and deleted from the Investments card", async 
   await expect.poll(() => prisma.portfolioSnapshot.count({ where: { id: snapshot.id } })).toBe(0);
 });
 
-test("a transfer into a TFSA counts toward room once", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+test("a transfer into a TFSA counts toward room once", async ({ page }) => {
   const { user, tfsa, stamp } = await signInWithTfsa(page, "transfer");
   const transferCategory = await prisma.category.create({
     data: { userId: user.id, name: `Transfers ${stamp}`, kind: CategoryKind.TRANSFER },

@@ -25,8 +25,7 @@ test("Reports links to the printable summary, which carries the user's own figur
   }
 });
 
-test("templates come filled from the user's data or blank, as PDF or CSV", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Downloads are the same on every viewport");
+test("templates come filled from the user's data or blank, as PDF or CSV", async ({ page }) => {
   await seedPrintablesDemo(page);
   await page.goto("/reports/print");
 
@@ -72,8 +71,7 @@ test("templates come filled from the user's data or blank, as PDF or CSV", async
   expect(missing.status()).toBe(404);
 });
 
-test("the action plan turns the user's figures into steps, for the range chosen", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Downloads are the same on every viewport");
+test("the action plan turns the user's figures into steps, for the range chosen", async ({ page }) => {
   const { displayName } = await seedPrintablesDemo(page);
   await page.goto("/reports/print");
 
@@ -104,8 +102,7 @@ test("the action plan turns the user's figures into steps, for the range chosen"
   expect(blank).not.toMatch(/\d+\.\d\d/);
 });
 
-test("the extra templates carry the user's bills, pay and accounts", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Downloads are the same on every viewport");
+test("the extra templates carry the user's bills, pay and accounts", async ({ page }) => {
   await seedPrintablesDemo(page);
   const csv = async (id: string) => (await page.request.get(`/api/printables/templates/${id}?mode=filled&format=csv`)).text();
 

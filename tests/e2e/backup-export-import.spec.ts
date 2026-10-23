@@ -1,17 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { writeFileSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import {
-  addExpenseOnDashboard,
-  expectExpenseInLog,
-  openSettingsAdvancedTab,
-  uniqueStamp,
-} from "./helpers";
+import { addExpenseOnDashboard, expectExpenseInLog, hashTestPassword, openSettingsAdvancedTab, signInWithPassword, uniqueStamp } from "./helpers";
 
 test("user can export and re-import sanitized backup", async ({ page }, testInfo) => {
   const stamp = uniqueStamp();
@@ -22,7 +16,7 @@ test("user can export and re-import sanitized backup", async ({ page }, testInfo
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -31,10 +25,7 @@ test("user can export and re-import sanitized backup", async ({ page }, testInfo
   });
   await ensureDefaultDataForUser(user);
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
 
   await page.goto("/");
@@ -81,7 +72,7 @@ test("a verified transaction keeps its badge across an export/import, without ca
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -90,10 +81,7 @@ test("a verified transaction keeps its badge across an export/import, without ca
   });
   await ensureDefaultDataForUser(user);
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
   await page.goto("/");
   await addExpenseOnDashboard(page, testInfo.project.name, title, "84.21");
@@ -165,8 +153,7 @@ test("a verified transaction keeps its badge across an export/import, without ca
 
 // Restore is a Server Action, whose body Next caps at 1 MB unless configured. A few years of
 // history is past that, so a backup the app had just exported could not be put back.
-test("a backup over 1 MB can be restored", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Settings flow is covered by the chromium project");
+test("a backup over 1 MB can be restored", async ({ page }) => {
   test.setTimeout(120_000);
   const stamp = uniqueStamp();
   const email = `e2e-backup-large-${stamp}@example.com`;
@@ -174,7 +161,7 @@ test("a backup over 1 MB can be restored", async ({ page }, testInfo) => {
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -200,10 +187,7 @@ test("a backup over 1 MB can be restored", async ({ page }, testInfo) => {
     })),
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
 
   const exportRes = await page.request.get("/api/backup/export/me");

@@ -1,5 +1,4 @@
 import { expect, test, type Page } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { CategoryKind, TransactionType } from "@prisma/client";
 import { dateFromYmd } from "../../src/lib/date-only";
 import { currentYmdInTimeZone } from "../../src/lib/period-month";
@@ -7,9 +6,8 @@ import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { normalizeMerchant } from "../../src/lib/plaid/merchant-text";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
-const DESKTOP_ONLY = "Insight actions are the same on every viewport; the desktop project covers them";
 
 /** A merchant name unique to this run. Digits would be stripped as reference numbers. */
 function uniqueMerchant(prefix: string) {
@@ -40,7 +38,7 @@ async function seedUser(page: Page, label: string) {
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Insights User",
       countryCode: "CA",
       timezone: TIMEZONE,
@@ -66,10 +64,7 @@ async function seedUser(page: Page, label: string) {
     });
 
   const login = async () => {
-    await page.goto("/login");
-    await page.getByPlaceholder("Email").fill(email);
-    await page.getByPlaceholder("Password").fill(password);
-    await page.getByRole("button", { name: "Login" }).click();
+    await signInWithPassword(page, email, password);
     await expectDashboardHome(page);
   };
   return { user, addExpenses, login };
@@ -79,8 +74,7 @@ function insightCard(page: Page, key: string) {
   return page.locator(`[data-testid="insight"][data-insight-key="${key}"]`);
 }
 
-test("a detected recurring charge can be tracked, and then stops being suggested", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+test("a detected recurring charge can be tracked, and then stops being suggested", async ({ page }) => {
   const { user, addExpenses, login } = await seedUser(page, "track");
   const merchant = uniqueMerchant("Zenflix");
   await addExpenses(merchant, 1599, [91, 61, 30, 1]);
@@ -105,8 +99,7 @@ test("a detected recurring charge can be tracked, and then stops being suggested
   await expect(insightCard(page, key)).toHaveCount(0);
 });
 
-test("dismissing a suggestion hides it until it is restored", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+test("dismissing a suggestion hides it until it is restored", async ({ page }) => {
   const { user, addExpenses, login } = await seedUser(page, "dismiss");
   const merchant = uniqueMerchant("Gymbox");
   await addExpenses(merchant, 4500, [92, 61, 31, 2]);
@@ -133,8 +126,7 @@ test("dismissing a suggestion hides it until it is restored", async ({ page }, t
   await expect(recurringSection.locator(`[data-insight-key="${key}"]`)).toHaveCount(1);
 });
 
-test("?tag= narrows insights to tagged entries, and Show all clears it", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+test("?tag= narrows insights to tagged entries, and Show all clears it", async ({ page }) => {
   const { user, addExpenses, login } = await seedUser(page, "tag");
   const tagged = uniqueMerchant("Tripflix");
   const plain = uniqueMerchant("Homeflix");
@@ -163,8 +155,7 @@ test("?tag= narrows insights to tagged entries, and Show all clears it", async (
   await expect(insightCard(page, plainKey)).toHaveCount(1);
 });
 
-test("habit spending is flagged, and turning it off stops the analysis", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+test("habit spending is flagged, and turning it off stops the analysis", async ({ page }) => {
   const { user, addExpenses, login } = await seedUser(page, "habit");
   await addExpenses("SQDC MONTREAL", 4200, [70, 45, 20, 5]);
 
@@ -184,8 +175,7 @@ test("habit spending is flagged, and turning it off stops the analysis", async (
   await expect(insightCard(page, "habit:CANNABIS")).toHaveCount(0);
 });
 
-test("tracking a habit separately creates its category and a rule ahead of the others", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+test("tracking a habit separately creates its category and a rule ahead of the others", async ({ page }) => {
   const { user, addExpenses, login } = await seedUser(page, "habit-track");
   await addExpenses("LCBO #217", 3500, [60, 30, 3]);
   await prisma.transactionRule.create({
@@ -215,8 +205,7 @@ test("tracking a habit separately creates its category and a rule ahead of the o
   await expect(insightCard(page, "habit:ALCOHOL")).toContainText("Tracked in Alcohol");
 });
 
-test("Coming up lists a budget gone over and a yearly charge due soon; the dashboard card leaves budgets to its own panel", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+test("Coming up lists a budget gone over and a yearly charge due soon; the dashboard card leaves budgets to its own panel", async ({ page }) => {
   const { user, login } = await seedUser(page, "ahead");
   const [account, dining] = await Promise.all([
     prisma.account.findFirstOrThrow({ where: { userId: user.id } }),
@@ -256,8 +245,7 @@ test("Coming up lists a budget gone over and a yearly charge due soon; the dashb
   await expect(section.locator(`[data-insight-key="${renewalKey}"]`)).toContainText("$120 on");
 });
 
-test("money owed for over a month is a suggestion on Insights, left to the Expense Log on the dashboard", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+test("money owed for over a month is a suggestion on Insights, left to the Expense Log on the dashboard", async ({ page }) => {
   const { user, login } = await seedUser(page, "owed");
   const [account, category] = await Promise.all([
     prisma.account.findFirstOrThrow({ where: { userId: user.id } }),
@@ -287,8 +275,7 @@ test("money owed for over a month is a suggestion on Insights, left to the Expen
   await expect(suggestions.locator(`[data-insight-key="${key}"]`)).toContainText("for Concert tickets, is from");
 });
 
-test("a paycheque missing from the log shows as a possible gap", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+test("a paycheque missing from the log shows as a possible gap", async ({ page }) => {
   const { user, login } = await seedUser(page, "gap");
   const [account, salary] = await Promise.all([
     prisma.account.findFirstOrThrow({ where: { userId: user.id } }),
@@ -317,8 +304,7 @@ test("a paycheque missing from the log shows as a possible gap", async ({ page }
   await expect(card).toContainText("every two weeks");
 });
 
-test("gaps that would move the score show with the others, and the score card points to them", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
+test("gaps that would move the score show with the others, and the score card points to them", async ({ page }) => {
   const { user, login } = await seedUser(page, "score-gap");
   const [chequing, salary, fun] = await Promise.all([
     prisma.account.create({ data: { userId: user.id, name: "Everyday", type: "CHEQUING", currency: "CAD" } }),

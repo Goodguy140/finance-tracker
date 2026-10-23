@@ -1,10 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { PRIVATE_PAGES_CACHE } from "../../src/lib/pwa-cache";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { addExpenseOnDashboard, expectExpenseInLog, expenseLogLocator, uniqueStamp } from "./helpers";
+import { addExpenseOnDashboard, expectExpenseInLog, expenseLogLocator, hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 test("PWA files are served to a signed-out device", async ({ request }) => {
   // No redirects followed: a bounce to /login is exactly the failure being guarded.
@@ -28,7 +27,7 @@ async function signInFreshUser(page: Page) {
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E PWA User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -37,10 +36,7 @@ async function signInFreshUser(page: Page) {
   });
   await ensureDefaultDataForUser(user);
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
   return { stamp, userId: user.id };
 }

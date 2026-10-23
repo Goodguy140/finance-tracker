@@ -1,10 +1,10 @@
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { currentYmInTimeZone } from "@/lib/period-month";
+import { copyMigratedDatabase } from "@/test-support/migrated-db";
 
 /**
  * Category management against a real SQLite database built from the migrations: merging
@@ -24,15 +24,11 @@ vi.mock("@/lib/session", () => ({
 }));
 
 beforeAll(async () => {
-  execFileSync("npx", ["prisma", "migrate", "deploy"], {
-    cwd: process.cwd(),
-    env: { ...process.env, DATABASE_URL: url },
-    stdio: "ignore",
-  });
+  copyMigratedDatabase(url);
   process.env.DATABASE_URL = url;
   ({ prisma: db } = await import("@/lib/prisma"));
   actions = await import("./categories");
-}, 120_000);
+});
 
 afterAll(async () => {
   await db?.$disconnect();

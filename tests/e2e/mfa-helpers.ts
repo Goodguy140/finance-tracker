@@ -1,8 +1,7 @@
 import { expect, type Page } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 import { resolveLegacySettingsHash } from "../../src/lib/settings-sections";
 
 /**
@@ -32,7 +31,7 @@ export async function seedUser(prefix: string) {
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E MFA User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -44,10 +43,7 @@ export async function seedUser(prefix: string) {
 }
 
 export async function loginWithPassword(page: Page, email: string, password: string) {
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login", exact: true }).click();
+  await signInWithPassword(page, email, password);
   // The form signs in asynchronously; wait for the redirect (dashboard or the /mfa wall)
   // before the caller navigates anywhere else.
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));

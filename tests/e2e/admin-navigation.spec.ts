@@ -1,9 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 const PASSWORD = "e2e-password-123";
 
@@ -11,7 +10,7 @@ async function createUser(email: string, role: "USER" | "SERVER_ADMIN") {
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(PASSWORD, 12),
+      passwordHash: await hashTestPassword(PASSWORD),
       displayName: role === "SERVER_ADMIN" ? "E2E Nav Admin" : "E2E Nav Member",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -23,10 +22,7 @@ async function createUser(email: string, role: "USER" | "SERVER_ADMIN") {
 }
 
 async function signIn(page: Page, email: string) {
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, PASSWORD);
   await expectDashboardHome(page);
 }
 

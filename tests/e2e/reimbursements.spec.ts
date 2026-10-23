@@ -1,5 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { unlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -7,7 +6,7 @@ import { CategoryKind, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { expenseLogLocator, openSettingsAdvancedTab, uniqueStamp } from "./helpers";
+import { expenseLogLocator, hashTestPassword, openSettingsAdvancedTab, signInWithPassword, uniqueStamp } from "./helpers";
 
 test("part of an expense owed by a friend leaves the spend, is listed as owed, and can be marked paid", async ({
   page,
@@ -19,7 +18,7 @@ test("part of an expense owed by a friend leaves the spend, is listed as owed, a
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Owed User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -47,10 +46,7 @@ test("part of an expense owed by a friend leaves the spend, is listed as owed, a
     },
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
 
   const log = expenseLogLocator(page);
@@ -91,7 +87,7 @@ test("what others owe survives a backup export and import", async ({ page }) => 
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Owed Backup",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -118,10 +114,7 @@ test("what others owe survives a backup export and import", async ({ page }) => 
     },
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
 
   const exportRes = await page.request.get("/api/backup/export/me");

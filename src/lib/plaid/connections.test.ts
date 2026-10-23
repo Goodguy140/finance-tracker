@@ -1,10 +1,10 @@
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlaidClient } from "@/lib/plaid/client";
+import { copyMigratedDatabase } from "@/test-support/migrated-db";
 
 /**
  * The billing rules for starting and ending a bank connection, against the fake Plaid and a
@@ -19,17 +19,13 @@ let connections: typeof import("@/lib/plaid/connections");
 let fake: typeof import("@/lib/plaid/fake-client");
 
 beforeAll(async () => {
-  execFileSync("npx", ["prisma", "migrate", "deploy"], {
-    cwd: process.cwd(),
-    env: { ...process.env, DATABASE_URL: url },
-    stdio: "ignore",
-  });
+  copyMigratedDatabase(url);
   // Everything that reaches the app's shared Prisma client is imported after this line.
   process.env.DATABASE_URL = url;
   ({ prisma: db } = await import("@/lib/prisma"));
   connections = await import("@/lib/plaid/connections");
   fake = await import("@/lib/plaid/fake-client");
-}, 120_000);
+});
 
 afterAll(async () => {
   await db?.$disconnect();

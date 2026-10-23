@@ -1,11 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { CategoryKind, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { encryptSecret } from "../../src/lib/security";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 const PASSWORD = "e2e-password-123";
 
@@ -15,7 +14,7 @@ async function createUserAndLogin(page: Page, label: string) {
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(PASSWORD, 12),
+      passwordHash: await hashTestPassword(PASSWORD),
       displayName: "E2E Rules User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -28,10 +27,7 @@ async function createUserAndLogin(page: Page, label: string) {
     prisma.account.findMany({ where: { userId: user.id, archived: false }, orderBy: { createdAt: "asc" } }),
   ]);
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, PASSWORD);
   await expectDashboardHome(page);
   return { user, stamp, categories, accounts };
 }
@@ -40,8 +36,7 @@ function addExpenseCard(page: Page) {
   return page.getByRole("region", { name: "Add", exact: true });
 }
 
-test("a rule fills category and account on the add-expense form", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Desktop form flow is covered by the chromium project");
+test("a rule fills category and account on the add-expense form", async ({ page }) => {
   const { user, stamp, categories, accounts } = await createUserAndLogin(page, "fill");
   // The last category and account, so neither is what the form would pick by default.
   const category = categories[categories.length - 1];
@@ -88,8 +83,7 @@ test("a rule fills category and account on the add-expense form", async ({ page 
     .toEqual({ title: "Renamed by rule", categoryId: category.id, accountId: account.id });
 });
 
-test("learned combos are listed with the rules and can be hidden", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Desktop form flow is covered by the chromium project");
+test("learned combos are listed with the rules and can be hidden", async ({ page }) => {
   const { user, stamp, categories, accounts } = await createUserAndLogin(page, "learned");
   const category = categories[categories.length - 1];
   const learnedTitle = `Learned shop ${stamp}`;
@@ -136,8 +130,7 @@ test("learned combos are listed with the rules and can be hidden", async ({ page
   await expect(categorySelect).toHaveValue(initial);
 });
 
-test("a rule added after a sync applies to the bank row already waiting in the queue", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Desktop queue flow is covered by the chromium project");
+test("a rule added after a sync applies to the bank row already waiting in the queue", async ({ page }) => {
   const { user, stamp, categories, accounts } = await createUserAndLogin(page, "queue");
   const syncGuess = categories[0];
   const ruleCategory = categories[categories.length - 1];
@@ -232,8 +225,7 @@ test("a rule added after a sync applies to the bank row already waiting in the q
   expect(added.tags.map((t) => t.tag.name)).toEqual([tagName]);
 });
 
-test("a rule that marks transfers ticks “transfer” for a queued bank row and names the other account", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Desktop queue flow is covered by the chromium project");
+test("a rule that marks transfers ticks “transfer” for a queued bank row and names the other account", async ({ page }) => {
   const { user, stamp, accounts } = await createUserAndLogin(page, "queue-transfer");
   const chequing = accounts[0];
   const visa = await prisma.account.create({

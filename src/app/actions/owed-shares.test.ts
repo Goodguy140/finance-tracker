@@ -1,10 +1,10 @@
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { OWED_SHARES_FIELD } from "@/lib/owed-shares";
+import { copyMigratedDatabase } from "@/test-support/migrated-db";
 
 /**
  * Reimbursements end to end against a real SQLite database built from the migrations: the
@@ -26,11 +26,7 @@ vi.mock("@/lib/session", () => ({ requireUser: vi.fn(async () => ({ id: session.
 vi.mock("@/lib/budget-alert-dispatch", () => ({ scheduleBudgetAlertEmails: vi.fn() }));
 
 beforeAll(async () => {
-  execFileSync("npx", ["prisma", "migrate", "deploy"], {
-    cwd: process.cwd(),
-    env: { ...process.env, DATABASE_URL: url },
-    stdio: "ignore",
-  });
+  copyMigratedDatabase(url);
   // The actions use the app's shared client, which reads DATABASE_URL when first loaded.
   process.env.DATABASE_URL = url;
   ({ prisma: db } = await import("@/lib/prisma"));
@@ -38,7 +34,7 @@ beforeAll(async () => {
   owedActions = await import("./owed-shares");
   ({ createSyncStore } = await import("@/lib/plaid/sync-store"));
   ({ markAsTransfer } = await import("@/lib/transfer-marking"));
-}, 120_000);
+});
 
 afterAll(async () => {
   await db?.$disconnect();

@@ -84,6 +84,15 @@ every real assertion sat behind an `if`; and a helper that was exported and test
 called by production code. When adding a test, check it fails when the thing it covers is
 broken.
 
+Vitest runs with `expect.requireAssertions`, so a test with no assertion fails. A unit test
+that needs a real database calls `copyMigratedDatabase(url)` (`src/test-support/migrated-db.ts`)
+for a copy of one migrated file built per run, rather than running `prisma migrate deploy` itself.
+
+E2E specs create users with `hashTestPassword` and sign in with `signInWithPassword`
+(`tests/e2e/helpers.ts`); production's bcrypt cost made every seeded user cost ~0.8s. Only the
+specs listed in `MOBILE_SPECS` (`playwright.config.ts`) also run on the phone project: add one
+there when what it checks is laid out differently on a phone.
+
 `npm run lint` must be clean; `.claude/**` is ignored because agent worktrees are full
 checkouts of this repo nested inside it.
 

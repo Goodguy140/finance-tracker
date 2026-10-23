@@ -1,10 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { AccountType, CategoryKind, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { expenseLogLocator, uniqueStamp } from "./helpers";
+import { expenseLogLocator, hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 test("the edit dialog keeps Save and Delete in view while the form grows, and Save still saves", async ({ page }) => {
   const stamp = uniqueStamp();
@@ -13,7 +12,7 @@ test("the edit dialog keeps Save and Delete in view while the form grows, and Sa
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Edit Dialog",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -39,10 +38,7 @@ test("the edit dialog keeps Save and Delete in view while the form grows, and Sa
     },
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
 
   await expenseLogLocator(page).getByRole("button").filter({ hasText: title }).filter({ visible: true }).first().click();

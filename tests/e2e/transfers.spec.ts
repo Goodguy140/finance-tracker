@@ -1,11 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { AccountType, CategoryKind, PlaidStagedStatus, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { encryptSecret } from "../../src/lib/security";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { expenseLogLocator, uniqueStamp } from "./helpers";
+import { expenseLogLocator, hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 test("an expense marked as a transfer leaves the log for the transfers list, and comes back", async ({ page }) => {
   const stamp = uniqueStamp();
@@ -15,7 +14,7 @@ test("an expense marked as a transfer leaves the log for the transfers list, and
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Transfer User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -43,10 +42,7 @@ test("an expense marked as a transfer leaves the log for the transfers list, and
     },
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
 
   const log = expenseLogLocator(page);
@@ -95,7 +91,7 @@ test("a card payment synced from both banks is added as one paired transfer, and
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Transfer Pair User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -141,10 +137,7 @@ test("a card payment synced from both banks is added as one paired transfer, and
   const out = await stageLeg(chequing.id, `pair-chq-${stamp}`, "VISA PAYMENT", 40000, 14);
   const arrived = await stageLeg(visa.id, `pair-visa-${stamp}`, "PAYMENT THANK YOU", -40000, 15);
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
 
   const queue = page.locator("section").filter({ hasText: "From your bank" }).first();
@@ -196,7 +189,7 @@ test("a transfer entered by hand goes to the transfers list, from one account to
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Manual Transfer User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -209,10 +202,7 @@ test("a transfer entered by hand goes to the transfers list, from one account to
     prisma.account.create({ data: { userId: user.id, name: `Savings ${stamp}`, type: AccountType.SAVINGS } }),
   ]);
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
 
   const card = page.getByRole("region", { name: "Add", exact: true });

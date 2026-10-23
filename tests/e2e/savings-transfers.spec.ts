@@ -1,12 +1,11 @@
 import { mkdirSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { AccountType, CategoryKind, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { TRANSFER_CATEGORY_NAME } from "../../src/lib/transfer-type";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 /** The 1st of the month `monthsBack` before this one, as a stored date-only value. */
 function firstOfMonthsAgo(monthsBack: number) {
@@ -22,7 +21,7 @@ test("transfers into a savings account count as saved until it is unmarked", asy
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Savings User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -60,10 +59,7 @@ test("transfers into a savings account count as saved until it is unmarked", asy
     data: { ...base, accountId: chequing.id, transferAccountId: savings.id, transferPeerId: into.id, categoryId: transfers.id, type: TransactionType.TRANSFER, amountCents: 70_000, title: "To savings", date: firstOfMonthsAgo(1) },
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
 
   await page.goto("/reports");

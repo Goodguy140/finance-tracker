@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +5,7 @@ import type { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { OWED_SHARES_FIELD } from "@/lib/owed-shares";
 import { SPLIT_LINES_FIELD } from "@/lib/split-lines";
+import { copyMigratedDatabase } from "@/test-support/migrated-db";
 
 /**
  * Editing an existing split expense through the edit dialog's save, against a real SQLite
@@ -24,15 +24,11 @@ vi.mock("@/lib/session", () => ({ requireUser: vi.fn(async () => ({ id: session.
 vi.mock("@/lib/budget-alert-dispatch", () => ({ scheduleBudgetAlertEmails: vi.fn() }));
 
 beforeAll(async () => {
-  execFileSync("npx", ["prisma", "migrate", "deploy"], {
-    cwd: process.cwd(),
-    env: { ...process.env, DATABASE_URL: url },
-    stdio: "ignore",
-  });
+  copyMigratedDatabase(url);
   process.env.DATABASE_URL = url;
   ({ prisma: db } = await import("@/lib/prisma"));
   actions = await import("./transactions");
-}, 120_000);
+});
 
 afterAll(async () => {
   await db?.$disconnect();

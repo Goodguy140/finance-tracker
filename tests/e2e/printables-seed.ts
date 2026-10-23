@@ -1,11 +1,10 @@
 import type { Page } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { AccountType, CategoryKind, RecurringCadence, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { TRANSFER_CATEGORY_NAME } from "../../src/lib/transfer-type";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 /** The `day` of the month `monthsBack` before this one, as a stored date-only value. */
 function dayOfMonthsAgo(monthsBack: number, day: number) {
@@ -30,7 +29,7 @@ export async function seedPrintablesDemo(page: Page): Promise<{ userId: string; 
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName,
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -192,10 +191,7 @@ export async function seedPrintablesDemo(page: Page): Promise<{ userId: string; 
     data: { userId: user.id, accountType: AccountType.TFSA, year: new Date().getUTCFullYear(), roomCents: 700_000 },
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
   return { userId: user.id, displayName };
 }

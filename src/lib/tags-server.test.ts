@@ -1,10 +1,10 @@
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { addTagsToTransaction, listTags, replaceTransactionTags, resolveTagIds } from "@/lib/tags-server";
+import { copyMigratedDatabase } from "@/test-support/migrated-db";
 
 /** Against a real database built from the migrations: the guarantees here are unique keys and cascades. */
 
@@ -13,13 +13,9 @@ const url = `file:${join(dir, "tags.db")}`;
 let db: PrismaClient;
 
 beforeAll(() => {
-  execFileSync("npx", ["prisma", "migrate", "deploy"], {
-    cwd: process.cwd(),
-    env: { ...process.env, DATABASE_URL: url },
-    stdio: "ignore",
-  });
+  copyMigratedDatabase(url);
   db = new PrismaClient({ datasourceUrl: url });
-}, 120_000);
+});
 
 afterAll(async () => {
   await db?.$disconnect();

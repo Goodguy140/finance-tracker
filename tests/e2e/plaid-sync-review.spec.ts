@@ -1,11 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { currentYmInTimeZone } from "../../src/lib/period-month";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { configurePlaidForTests } from "./plaid-helpers";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 import { addVirtualAuthenticator, enrolFirstPasskey, openSettingsTab } from "./mfa-helpers";
 
 const PASSWORD = "e2e-password-123";
@@ -17,10 +16,7 @@ function daysAgoUtc(days: number): Date {
 }
 
 async function signIn(page: Page, email: string) {
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, PASSWORD);
 }
 
 test("syncing stages transactions for review, links exact matches, and only a reviewed row reaches the log", async ({ page }) => {
@@ -32,7 +28,7 @@ test("syncing stages transactions for review, links exact matches, and only a re
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(PASSWORD, 12),
+      passwordHash: await hashTestPassword(PASSWORD),
       displayName: "E2E Sync User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -262,8 +258,21 @@ test("syncing stages transactions for review, links exact matches, and only a re
 
   // --- a second sync is a no-op: nothing is re-proposed ---
   await openSettingsTab(page, "banks");
+  const manualSyncsBefore = await prisma.auditLog.count({
+    where: { userId: user.id, action: "plaid_item_sync_succeeded" },
+  });
   await page.getByRole("region", { name: "Connected banks" }).getByRole("button", { name: "Sync now" }).click();
-  await page.waitForTimeout(2_000);
+  // Wait for the sync to finish (its audit row is the last thing it writes). A fixed sleep
+  // would let the "nothing changed" checks below pass even if the sync never ran.
+  await expect
+    .poll(
+      async () =>
+        prisma.auditLog.count({
+          where: { userId: user.id, action: "plaid_item_sync_succeeded" },
+        }),
+      { timeout: 15_000 },
+    )
+    .toBe(manualSyncsBefore + 1);
   expect(
     await prisma.plaidStagedTransaction.count({
       where: { userId: user.id, status: "NEEDS_REVIEW" },
