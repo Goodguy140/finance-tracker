@@ -131,7 +131,7 @@ export const monthParamSchema = z
   .string()
   .regex(YM_PATTERN, "month must be a calendar month in YYYY-MM format");
 
-export const API_TOKEN_SCOPES = ["budgets:read"] as const;
+export const API_TOKEN_SCOPES = ["budgets:read", "transactions:read", "transactions:write", "accounts:read"] as const;
 
 /** Selectable token lifetimes, in days. `never` stays available but is not the default. */
 export const API_TOKEN_EXPIRY_CHOICES = ["30", "90", "365", "never"] as const;

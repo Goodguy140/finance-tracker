@@ -192,8 +192,9 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
   - Backup & export (JSON export, transactions as CSV for all time or a date range
     (`src/lib/transactions-csv.ts`, `src/app/api/export/transactions`), restore up to 20 MB, clear data, delete account):
     `settings/data-forms.tsx`, `src/lib/backup*.ts`, `src/app/api/backup/export/me`
-  - Developer (API tokens; `GET /api/v1/budgets`): `api-tokens-panel.tsx`,
-    `src/lib/api-token.ts`, `src/app/api/v1/budgets/route.ts`
+  - Developer (API tokens with chosen scopes; `GET /api/v1/budgets`, `GET`/`POST /api/v1/transactions`,
+    `GET /api/v1/accounts`, `GET /api/v1/categories`): `api-tokens-panel.tsx`, `src/lib/api-token.ts`,
+    `src/lib/api-v1/*`, `src/app/api/v1/*`
 
 ## Admin (`/settings/admin/*`, admins only)
 
