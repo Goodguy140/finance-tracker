@@ -155,6 +155,11 @@ Page: `src/app/reports/page.tsx`; data `src/lib/reports/*`; charts
 - Income vs spending by month from the first month with data (table toggle), cash-flow Sankey, year over
   year (says so instead of zeros when there is no earlier year), payees, and "Who paid you" for income
 - **Merchant page** `/reports/merchant`: `src/app/reports/merchant/page.tsx`
+- **Debt payoff** `/reports/debt` (linked from Net worth when there is a card or loan): each
+  card's and loan's balance, interest rate and minimum (`Account.interestRateBps`,
+  `.minimumPaymentCents`, set on the page), and a plan for a monthly amount comparing highest
+  rate first, smallest balance first and minimums only (debt-free month, interest, payoff order):
+  `src/app/reports/debt/page.tsx`, `src/lib/debt-payoff.ts`, `actions/debt.ts`
 - **Print and templates** `/reports/print`: `printables-panel.tsx`, `src/lib/printables/*`,
   `src/app/api/printables/*`. Financial summary PDF, action plan (3/6/12/24+ months, blank
   version), 10 templates (budget, bills, goals, debt, net worth, subscriptions, sinking funds,

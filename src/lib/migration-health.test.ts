@@ -57,7 +57,9 @@ async function createMinimalSchema(prisma: PrismaClient) {
     CREATE TABLE "Account" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "archived" BOOLEAN NOT NULL DEFAULT false,
-      "countsAsSavings" BOOLEAN NOT NULL DEFAULT false
+      "countsAsSavings" BOOLEAN NOT NULL DEFAULT false,
+      "interestRateBps" INTEGER,
+      "minimumPaymentCents" INTEGER
     )
   `);
 

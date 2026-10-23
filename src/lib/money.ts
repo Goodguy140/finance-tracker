@@ -52,3 +52,10 @@ export function formatCurrency(cents: number, currency = "CAD", locale = "en-CA"
     currency,
   }).format(fromCents(cents));
 }
+
+/** An amount someone typed ("1,234.56", "$25", "0") in cents; null when it is not one. */
+export function parseCentsInput(raw: string | null | undefined): number | null {
+  const s = (raw ?? "").trim().replace(/[$,\s]/g, "");
+  if (!/^\d+(\.\d{1,2})?$/.test(s)) return null;
+  return Math.round(Number(s) * 100);
+}

@@ -419,6 +419,10 @@ model Account {
    * un-saved, in Reports and the financial score's savings rate.
    */
   countsAsSavings Boolean     @default(false)
+  /// For a credit card or loan: the yearly interest rate in basis points (19.99% is 1999), and
+  /// the minimum monthly payment. Both feed the debt payoff plan on Reports; null until set.
+  interestRateBps     Int?
+  minimumPaymentCents Int?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
