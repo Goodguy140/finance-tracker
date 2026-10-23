@@ -27,6 +27,33 @@ export function BackupForms() {
           Export backup JSON
         </a>
       </div>
+      <form
+        method="get"
+        action="/api/export/transactions"
+        className="space-y-3 border-t border-slate-800 pt-4"
+        data-testid="transactions-csv-export"
+      >
+        <div>
+          <p className="text-sm font-medium text-slate-200">Export transactions (CSV)</p>
+          <p className="mt-0.5 max-w-prose text-xs text-slate-500">
+            Every expense, income entry and transfer as a spreadsheet, with category, account, tags and note. Leave the dates
+            empty for everything.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-xs text-slate-400">
+            From
+            <input name="from" type="date" className={`${inputClass} mt-1 block`} />
+          </label>
+          <label className="text-xs text-slate-400">
+            To
+            <input name="to" type="date" className={`${inputClass} mt-1 block`} />
+          </label>
+          <button type="submit" className={secondaryBtnClass}>
+            Download CSV
+          </button>
+        </div>
+      </form>
       <ServerActionForm
         action={importUserBackupAction}
         beforeSubmit={async () => checkSize()}

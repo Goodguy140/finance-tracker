@@ -154,3 +154,27 @@ test("an unknown payee opens the app's own not-found page", async ({ page }) => 
   await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Back to the dashboard" })).toHaveAttribute("href", "/");
 });
+
+test("transactions download as CSV, for everything or the report's period", async ({ page }) => {
+  await seedUser(page);
+
+  await page.goto("/settings/backup");
+  const form = page.getByTestId("transactions-csv-export");
+  const [download] = await Promise.all([page.waitForEvent("download"), form.getByRole("button", { name: "Download CSV" }).click()]);
+  expect(download.suggestedFilename()).toBe("transactions-all.csv");
+  const all = (await (await download.createReadStream()).toArray()).join("").replace(/^﻿/, "").split("\r\n");
+  expect(all[0]).toBe("Date,Posted date,Type,Title,Out,In,Currency,Category,Account,Other account,Split,Owed to you,Tags,Note,Verified");
+  // 11 pay, 11 groceries, a transfer and last year's cinema.
+  expect(all).toHaveLength(1 + 24);
+  expect(all.filter((line) => line.includes(",Income,Acme Payroll,,3000.00,"))).toHaveLength(11);
+  expect(all.filter((line) => line.includes(",Expense,Loblaws,400.00,,"))).toHaveLength(11);
+
+  // Reports' link narrows to its period: the last 12 months leave out the cinema from 13 months back.
+  await page.goto("/reports");
+  const href = await page.getByTestId("reports-csv-link").getAttribute("href");
+  const response = await page.request.get(href!);
+  expect(response.status()).toBe(200);
+  const lines = (await response.text()).replace(/^﻿/, "").split("\r\n");
+  expect(lines).toHaveLength(1 + 23);
+  expect(lines.some((line) => line.includes("Cinema"))).toBe(false);
+});
