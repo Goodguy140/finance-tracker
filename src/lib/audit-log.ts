@@ -31,6 +31,8 @@ export const AUDIT_ACTIONS = {
   api_token_created: "api_token_created",
   api_token_revoked: "api_token_revoked",
   api_budgets_read: "api_budgets_read",
+  api_transactions_read: "api_transactions_read",
+  api_transaction_created: "api_transaction_created",
   passkey_registered: "passkey_registered",
   passkey_renamed: "passkey_renamed",
   passkey_removed: "passkey_removed",

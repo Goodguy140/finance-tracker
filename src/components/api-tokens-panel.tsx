@@ -22,6 +22,13 @@ export type ApiTokensMfaState = { enrolled: boolean; freshUntil: number | null }
 
 const initialState: CreateApiTokenState = { ok: null };
 
+const SCOPE_CHOICES = [
+  { scope: "budgets:read", label: "Read budgets", endpoint: "GET /api/v1/budgets" },
+  { scope: "transactions:read", label: "Read transactions", endpoint: "GET /api/v1/transactions" },
+  { scope: "transactions:write", label: "Add expenses and income", endpoint: "POST /api/v1/transactions" },
+  { scope: "accounts:read", label: "Read accounts and categories", endpoint: "GET /api/v1/accounts, /categories" },
+] as const;
+
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
@@ -82,9 +89,9 @@ export function ApiTokensPanel({ tokens, mfa }: { tokens: ApiTokenRow[]; mfa: Ap
       <header className="space-y-2">
         <h3 id="api-tokens-heading" className="text-base font-semibold text-slate-100 lg:text-lg">API tokens</h3>
         <p className="max-w-prose text-sm leading-relaxed text-slate-400">
-          Connect external apps — like your Life Dashboard — to read your budgets over the API.
-          Tokens are scoped to <code className="rounded bg-slate-800 px-1 py-0.5 text-xs">budgets:read</code>,
-          shown once, and can be revoked anytime.
+          Connect external apps, like your Life Dashboard or a phone shortcut, to your data over the API. Each token
+          can do only what you tick below, is shown once, and can be revoked anytime. Send it as{" "}
+          <code className="rounded bg-slate-800 px-1 py-0.5 text-xs">Authorization: Bearer …</code>.
         </p>
       </header>
 
@@ -154,6 +161,18 @@ export function ApiTokensPanel({ tokens, mfa }: { tokens: ApiTokenRow[]; mfa: Ap
             {verifying ? "Confirming…" : pending ? "Creating…" : "Create token"}
           </button>
         </div>
+        <fieldset className="space-y-1.5">
+          <legend className="text-sm font-medium text-slate-300">What it may do</legend>
+          {SCOPE_CHOICES.map((choice) => (
+            <label key={choice.scope} className="flex items-start gap-2 text-sm text-slate-300">
+              <input type="checkbox" name="scopes" value={choice.scope} defaultChecked={choice.scope === "budgets:read"} className="mt-1" />
+              <span>
+                {choice.label}{" "}
+                <code className="rounded bg-slate-800 px-1 py-0.5 text-xs text-slate-400">{choice.endpoint}</code>
+              </span>
+            </label>
+          ))}
+        </fieldset>
       </form>
 
       <div className="space-y-2">

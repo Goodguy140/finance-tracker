@@ -52,11 +52,12 @@ export async function createApiTokenAction(
   }
   const parsed = createApiTokenSchema.safeParse({
     name: getFormValue(formData, "name"),
-    scopes: ["budgets:read"],
+    // Older forms post no scopes at all; those tokens were always budgets-only.
+    scopes: formData.getAll("scopes").map(String).length ? formData.getAll("scopes").map(String) : ["budgets:read"],
     expiresInDays: getFormValue(formData, "expiresInDays") || undefined,
   });
   if (!parsed.success) {
-    return { ok: false, error: "Enter a name (1–60 characters) for the token." };
+    return { ok: false, error: "Enter a name (1–60 characters) for the token and pick what it may do." };
   }
 
   const activeCount = await prisma.personalAccessToken.count({

@@ -17,6 +17,10 @@ const DISPLAY_PREFIX_LEN = 10;
 
 export const API_SCOPES = {
   budgetsRead: "budgets:read",
+  transactionsRead: "transactions:read",
+  transactionsWrite: "transactions:write",
+  /** Accounts and categories: what a script needs to name them in a new transaction. */
+  accountsRead: "accounts:read",
 } as const;
 
 export type GeneratedToken = { raw: string; hash: string; prefix: string };

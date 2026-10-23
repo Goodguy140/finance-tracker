@@ -85,10 +85,14 @@ External integrations authenticate with personal access tokens (`Authorization: 
 
 - Created per-user under **Settings → Advanced → API tokens**, and only after a passkey step-up.
 - 256 bits of entropy; only a SHA-256 hash is stored. The raw value is shown exactly once.
-- **Scoped** — currently `budgets:read` only. A token carries no rights beyond its scopes.
+- **Scoped** — chosen when the token is made, and a token carries no rights beyond them:
+  `budgets:read` (`GET /api/v1/budgets`), `transactions:read` (`GET /api/v1/transactions`),
+  `transactions:write` (`POST /api/v1/transactions`, expenses and income only) and
+  `accounts:read` (`GET /api/v1/accounts`, `GET /api/v1/categories`). Writes are audit-logged
+  per entry (`api_transaction_created`).
 - **Expiring** — 30, 90, or 365 days, or never. Default 90.
 - Revocable at any time; revocation takes effect on the next request.
-- Rate limited to 60 requests per minute per token.
+- Rate limited to 60 requests per minute per token, per endpoint.
 - Not CORS-enabled, so they cannot be used from a browser.
 
 **Rotation.** Rotate any token older than a year, and immediately on suspicion. Create the
