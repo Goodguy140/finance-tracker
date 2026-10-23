@@ -1,11 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { CategoryKind, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { TRANSFER_CATEGORY_NAME } from "../../src/lib/transfer-type";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 /** The 1st of the month `monthsBack` before this one, as a stored date-only value. */
 function firstOfMonthsAgo(monthsBack: number) {
@@ -24,7 +23,7 @@ async function seedUser(page: Page): Promise<string> {
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Reports User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -83,10 +82,7 @@ async function seedUser(page: Page): Promise<string> {
     ],
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
   return user.id;
 }
@@ -123,8 +119,7 @@ test("reports total income and spending without transfers, and open a payee", as
   await expect(page.getByTestId("merchant-transactions").getByRole("listitem")).toHaveCount(11);
 });
 
-test("the tag filter narrows every report to tagged entries", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Same page on every viewport; the desktop project covers it");
+test("the tag filter narrows every report to tagged entries", async ({ page }) => {
   const userId = await seedUser(page);
   const groceries = await prisma.transaction.findFirstOrThrow({ where: { userId, title: "Loblaws" } });
   const tag = await prisma.tag.create({ data: { userId, name: "Party", nameKey: "party" } });

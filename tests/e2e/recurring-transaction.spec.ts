@@ -1,12 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
 import { dateFromYmd, ymdFromDateUtc } from "../../src/lib/date-only";
 import { shiftYm } from "../../src/lib/dashboard-period";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { currentYmInTimeZone } from "../../src/lib/period-month";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { expectExpenseInLog, uniqueStamp } from "./helpers";
+import { expectExpenseInLog, hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 function recurringExpenseDates(reference = new Date()) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -21,9 +20,7 @@ function recurringExpenseDates(reference = new Date()) {
   return { nextExpectedDate, nextDuePattern };
 }
 
-test("desktop: create and post a recurring expense", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "The Recurring card's New rule flow is covered by the chromium project");
-
+test("desktop: create and post a recurring expense", async ({ page }) => {
   const stamp = uniqueStamp();
   const email = `e2e-recurring-${stamp}@example.com`;
   const password = "e2e-password-123";
@@ -31,7 +28,7 @@ test("desktop: create and post a recurring expense", async ({ page }, testInfo) 
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Recurring User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -40,10 +37,7 @@ test("desktop: create and post a recurring expense", async ({ page }, testInfo) 
   });
   await ensureDefaultDataForUser(user);
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
 
   await expectDashboardHome(page);
 
@@ -71,16 +65,14 @@ test("desktop: create and post a recurring expense", async ({ page }, testInfo) 
   await expect(recurringPanel.getByText(nextDuePattern)).toBeVisible({ timeout: 15_000 });
 });
 
-test("an overdue rule from an earlier month can be posted for the current month", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Dashboard flow is covered by the chromium project");
-
+test("an overdue rule from an earlier month can be posted for the current month", async ({ page }) => {
   const stamp = uniqueStamp();
   const email = `e2e-recurring-overdue-${stamp}@example.com`;
   const password = "e2e-password-123";
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Recurring User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -107,10 +99,7 @@ test("an overdue rule from an earlier month can be posted for the current month"
     },
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
 
   const recurringPanel = page.getByRole("region", { name: "Recurring transactions" });
@@ -141,16 +130,14 @@ test("an overdue rule from an earlier month can be posted for the current month"
   expect(ymdFromDateUtc(advanced.nextExpectedDate)).toBe(`${shiftYm(currentYm, 1)}-10`);
 });
 
-test("desktop: edit a recurring rule from the Recurring card", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "The edit dialog is the same on mobile; covered once");
-
+test("desktop: edit a recurring rule from the Recurring card", async ({ page }) => {
   const stamp = uniqueStamp();
   const email = `e2e-recurring-edit-${stamp}@example.com`;
   const password = "e2e-password-123";
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Recurring User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -177,10 +164,7 @@ test("desktop: edit a recurring rule from the Recurring card", async ({ page }, 
     },
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
 
   const recurringPanel = page.getByRole("region", { name: "Recurring transactions" });

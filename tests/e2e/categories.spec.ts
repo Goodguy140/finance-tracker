@@ -1,12 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { CategoryKind, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { shiftYm } from "../../src/lib/dashboard-period";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { currentYmInTimeZone } from "../../src/lib/period-month";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 const PASSWORD = "e2e-password-123";
 
@@ -16,7 +15,7 @@ async function createUserAndLogin(page: Page) {
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(PASSWORD, 12),
+      passwordHash: await hashTestPassword(PASSWORD),
       displayName: "E2E Categories User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -24,10 +23,7 @@ async function createUserAndLogin(page: Page) {
     },
   });
   await ensureDefaultDataForUser(user);
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, PASSWORD);
   await expectDashboardHome(page);
   return { user, stamp: stamp.replace(/[^a-z0-9]/gi, "") };
 }
@@ -35,7 +31,6 @@ async function createUserAndLogin(page: Page) {
 test("categories can be added with a budget, merged by renaming, and Plaid categories mapped", async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Settings flow is covered by the chromium project");
   const { user, stamp } = await createUserAndLogin(page);
   const name = `Pets ${stamp}`;
 
@@ -102,7 +97,6 @@ test("categories can be added with a budget, merged by renaming, and Plaid categ
 });
 
 test("deleting a category in use asks, in the page, where its transactions and rules go", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Settings flow is covered by the chromium project");
   const { user, stamp } = await createUserAndLogin(page);
   const account = await prisma.account.findFirstOrThrow({ where: { userId: user.id } });
   const fun = await prisma.category.findFirstOrThrow({
@@ -144,7 +138,6 @@ test("deleting a category in use asks, in the page, where its transactions and r
 });
 
 test("budget rollover carries last month's leftover into this month's budget", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Settings flow is covered by the chromium project");
   const { user, stamp } = await createUserAndLogin(page);
   const account = await prisma.account.findFirstOrThrow({ where: { userId: user.id } });
   const thisYm = currentYmInTimeZone("America/Toronto");

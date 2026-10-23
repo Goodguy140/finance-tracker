@@ -1,12 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { encryptSecret } from "../../src/lib/security";
 import { REVIEW_QUEUE_PAGE_SIZE } from "../../src/lib/plaid/review-queue-page";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 test("a review queue longer than a page says how many rows it holds and shows the rest on request", async ({ page }) => {
   const stamp = uniqueStamp();
@@ -17,7 +16,7 @@ test("a review queue longer than a page says how many rows it holds and shows th
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Queue Pages User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -67,10 +66,7 @@ test("a review queue longer than a page says how many rows it holds and shows th
     })),
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
   // The month filter writes the period into the URL once on load; clicking before that
   // lands would have its navigation replaced.

@@ -37,11 +37,15 @@ describe("currentPeriodYm", () => {
     expect(localAprilBoundaryRef.getFullYear()).toBe(2025);
     expect(localAprilBoundaryRef.getMonth()).toBe(3);
     expect(currentPeriodYm(localAprilBoundaryRef)).toBe("2025-04");
+  });
 
-    const utcYm = utcPeriodYm(localAprilBoundaryRef);
-    if (utcYm !== "2025-04") {
-      expect(currentPeriodYm(localAprilBoundaryRef)).not.toBe(utcYm);
-    }
+  it("stays in the local month when UTC has already moved on", () => {
+    // Pinned: on a UTC host (CI) local and UTC agree, and the difference is never tested.
+    withTimezone("America/Toronto", () => {
+      const lateApril30 = new Date(2025, 3, 30, 23, 0, 0);
+      expect(utcPeriodYm(lateApril30)).toBe("2025-05");
+      expect(currentPeriodYm(lateApril30)).toBe("2025-04");
+    });
   });
 });
 

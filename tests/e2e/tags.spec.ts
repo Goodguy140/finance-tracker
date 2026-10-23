@@ -1,10 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { CategoryKind, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { expenseLogLocator, uniqueStamp } from "./helpers";
+import { expenseLogLocator, hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 const PASSWORD = "e2e-password-123";
 
@@ -14,7 +13,7 @@ async function createUserAndLogin(page: Page, label: string) {
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(PASSWORD, 12),
+      passwordHash: await hashTestPassword(PASSWORD),
       displayName: "E2E Tags User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -27,10 +26,7 @@ async function createUserAndLogin(page: Page, label: string) {
     prisma.account.findMany({ where: { userId: user.id, archived: false }, orderBy: { createdAt: "asc" } }),
   ]);
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, PASSWORD);
   await expectDashboardHome(page);
   return { user, stamp: stamp.replace(/[^a-z0-9]/gi, ""), categories, accounts };
 }
@@ -46,8 +42,7 @@ async function tagNamesOf(transactionId: string) {
   return links.map((link) => link.tag.name).sort();
 }
 
-test("a rule adds its tag on the add-expense form, and the log filters by it", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Desktop form flow is covered by the chromium project");
+test("a rule adds its tag on the add-expense form, and the log filters by it", async ({ page }) => {
   const { user, stamp, categories, accounts } = await createUserAndLogin(page, "rule");
   const pattern = `tagmatch${stamp}`;
   const tagName = `Trip ${stamp}`;
@@ -101,8 +96,7 @@ test("a rule adds its tag on the add-expense form, and the log filters by it", a
   await expect(log.getByText(`Hotel ${pattern}`).filter({ visible: true })).toHaveCount(1);
 });
 
-test("tags are added and removed from the edit dialog", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Desktop form flow is covered by the chromium project");
+test("tags are added and removed from the edit dialog", async ({ page }) => {
   const { user, stamp, categories, accounts } = await createUserAndLogin(page, "edit");
   const title = `Dinner ${stamp}`;
   const expense = await prisma.transaction.create({

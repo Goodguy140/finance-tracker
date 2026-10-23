@@ -1,14 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { CategoryKind, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 // The arrangement UI is desktop-only; below lg the dashboard renders its frozen mobile
 // column, which the mobile specs cover.
-const DESKTOP_ONLY = "The arrangement UI only exists above lg; mobile keeps its fixed column";
 
 async function signInFreshUser(page: Page, label: string) {
   const stamp = uniqueStamp();
@@ -18,7 +16,7 @@ async function signInFreshUser(page: Page, label: string) {
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Layout User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -45,10 +43,7 @@ async function signInFreshUser(page: Page, label: string) {
     })),
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
   return user;
 }
@@ -133,9 +128,7 @@ async function dragCardTo(page: Page, handleLabel: string, target: { x: number; 
   await page.mouse.up();
 }
 
-test("a card dragged to another column stays there across a reload", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
-
+test("a card dragged to another column stays there across a reload", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   const user = await signInFreshUser(page, "move");
 
@@ -191,9 +184,7 @@ test("a card dragged to another column stays there across a reload", async ({ pa
   expect(after[0]).not.toContain("add-expense");
 });
 
-test("a per-card setting takes effect and survives a reload", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
-
+test("a per-card setting takes effect and survives a reload", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   const user = await signInFreshUser(page, "settings");
 
@@ -228,9 +219,7 @@ test("a per-card setting takes effect and survives a reload", async ({ page }, t
   expect((await rowsTemplate()).split(" ")).toHaveLength(2);
 });
 
-test("the cumulative card overlays last month's spending and remembers the choice", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
-
+test("the cumulative card overlays last month's spending and remembers the choice", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   const user = await signInFreshUser(page, "compare");
 
@@ -282,9 +271,7 @@ test("the cumulative card overlays last month's spending and remembers the choic
 
 test("narrowing the window never produces horizontal scrolling, and no card disappears", async ({
   page,
-}, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
-
+}) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   const user = await signInFreshUser(page, "narrow");
 
@@ -328,9 +315,7 @@ test("narrowing the window never produces horizontal scrolling, and no card disa
 
 test("a column that clears the pixel minimum but cuts off its text is merged away", async ({
   page,
-}, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
-
+}) => {
   await page.setViewportSize({ width: 1100, height: 1000 });
   const user = await signInFreshUser(page, "cramped");
 
@@ -372,9 +357,7 @@ test("a column that clears the pixel minimum but cuts off its text is merged awa
   expect((await columnCards(page)).flat()).toHaveLength(7);
 });
 
-test("a column is dropped rather than show less than 90% of a budget name", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
-
+test("a column is dropped rather than show less than 90% of a budget name", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   const user = await signInFreshUser(page, "budget-names");
 
@@ -433,9 +416,7 @@ test("a column is dropped rather than show less than 90% of a budget name", asyn
 
 test("columns can be added and removed, and removing one keeps its cards", async ({
   page,
-}, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
-
+}) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   await signInFreshUser(page, "columns");
 
@@ -454,9 +435,7 @@ test("columns can be added and removed, and removing one keeps its cards", async
   expect((await columnCards(page)).flat().sort()).toEqual(before);
 });
 
-test("a removed card stays off across a reload and can be added back as a tab", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
-
+test("a removed card stays off across a reload and can be added back as a tab", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   const user = await signInFreshUser(page, "remove");
 
@@ -517,9 +496,7 @@ test("a removed card stays off across a reload and can be added back as a tab", 
     .toEqual({ hidden: [], stacked: true });
 });
 
-test("Insights taken off the dashboard is not worked out, and shows its insights once added back", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", DESKTOP_ONLY);
-
+test("Insights taken off the dashboard is not worked out, and shows its insights once added back", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   const user = await signInFreshUser(page, "insights-off");
   expect((await columnCards(page)).flat()).toContain("insights+investments");

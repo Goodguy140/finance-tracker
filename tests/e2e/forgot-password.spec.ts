@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { prisma } from "../../src/lib/prisma";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, uniqueStamp } from "./helpers";
 
 test("forgot password creates a reset token", async ({ page }) => {
   const stamp = uniqueStamp();
@@ -10,7 +9,7 @@ test("forgot password creates a reset token", async ({ page }) => {
   await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash("e2e-password-123", 12),
+      passwordHash: await hashTestPassword("e2e-password-123"),
       displayName: "E2E User",
       countryCode: "CA",
       timezone: "America/Toronto",

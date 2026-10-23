@@ -1,13 +1,12 @@
 import { mkdirSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { AccountType, CategoryKind } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { dateFromYmd, ymdFromDateUtc } from "../../src/lib/date-only";
 import { currentYmdInTimeZone } from "../../src/lib/period-month";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 const SCREENSHOT_DIR = process.env.E2E_SCREENSHOT_DIR;
 const TIMEZONE = "America/Toronto";
@@ -18,7 +17,7 @@ test("projected balances apply upcoming bills to the account they book to", asyn
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Projection User",
       countryCode: "CA",
       timezone: TIMEZONE,
@@ -50,10 +49,7 @@ test("projected balances apply upcoming bills to the account they book to", asyn
     },
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
 
   await page.goto("/reports");
@@ -76,13 +72,12 @@ test("projected balances apply upcoming bills to the account they book to", asyn
 });
 
 test("a recurring transfer moves money between accounts in the projection once included", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "The form and the projection are the same on a phone");
   const email = `e2e-projected-transfer-${uniqueStamp()}@example.com`;
   const password = "e2e-password-123";
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Projection Transfer User",
       countryCode: "CA",
       timezone: TIMEZONE,
@@ -105,10 +100,7 @@ test("a recurring transfer moves money between accounts in the projection once i
     ],
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
 
   // Monthly from five days out: once within 30 days, twice within 60, three times within 90.

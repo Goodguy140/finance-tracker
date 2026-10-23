@@ -1,10 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { AccountType, CategoryKind, RecurringCadence, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 /** The 5th of the month `monthsBack` before this one, as a stored date-only value. */
 function fifthOfMonthsAgo(monthsBack: number) {
@@ -24,7 +23,7 @@ async function seedUser(page: Page) {
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Score User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -75,10 +74,7 @@ async function seedUser(page: Page) {
     },
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
 }
 

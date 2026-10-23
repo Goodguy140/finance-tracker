@@ -1,10 +1,9 @@
 import { expect, test, type Locator } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { CategoryKind, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { expenseLogLocator, uniqueStamp } from "./helpers";
+import { expenseLogLocator, hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 /** The swatch colour of a legend entry, normalised to rgb() the way the browser reports it. */
 async function swatchColor(swatch: Locator): Promise<string> {
@@ -26,7 +25,7 @@ test("a category's dot in the log is the colour of its slice in the pie", async 
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Category Colours",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -63,10 +62,7 @@ test("a category's dot in the log is the colour of its slice in the pie", async 
     })),
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
 
   const pieCard = page.getByRole("region", { name: "Spending by category" });

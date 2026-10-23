@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +13,7 @@ import {
   toCommittable,
   type CommittableStagedRow,
 } from "@/lib/plaid/review";
+import { copyMigratedDatabase } from "@/test-support/migrated-db";
 
 /**
  * Against a real SQLite database built from the migrations, because the property that
@@ -26,13 +26,9 @@ const url = `file:${join(dir, "review.db")}`;
 let db: PrismaClient;
 
 beforeAll(() => {
-  execFileSync("npx", ["prisma", "migrate", "deploy"], {
-    cwd: process.cwd(),
-    env: { ...process.env, DATABASE_URL: url },
-    stdio: "ignore",
-  });
+  copyMigratedDatabase(url);
   db = new PrismaClient({ datasourceUrl: url });
-}, 120_000);
+});
 
 afterAll(async () => {
   await db?.$disconnect();

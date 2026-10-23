@@ -1,13 +1,12 @@
 import { mkdirSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { AccountType, CategoryKind, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { SAVINGS_SLICE_COLOR } from "../../src/lib/category-colors";
 import { TRANSFER_CATEGORY_NAME } from "../../src/lib/transfer-type";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 const SCREENSHOT_DIR = process.env.E2E_SCREENSHOT_DIR;
 
@@ -23,7 +22,7 @@ test("the Spending by category pie shows net savings as a slice when its setting
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Pie Savings User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -53,10 +52,7 @@ test("the Spending by category pie shows net savings as a slice when its setting
     ],
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
 
   const pieCard = page.getByRole("region", { name: "Spending by category" });

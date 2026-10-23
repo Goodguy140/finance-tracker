@@ -1,23 +1,21 @@
 import { expect, test } from "@playwright/test";
-import { hash } from "bcryptjs";
 import { AccountType, CategoryKind, TransactionType } from "@prisma/client";
 import { prisma } from "../../src/lib/prisma";
 import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
-import { uniqueStamp } from "./helpers";
+import { hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
 // A transaction's amount means cents in its account's currency, so these two edits would
 // quietly change what recorded history means. Both are refused, and nothing changes.
 test("an account with history keeps its currency, and a USD account with history can't be deleted", async ({
   page,
-}, testInfo) => {
-  test.skip(testInfo.project.name !== "chromium", "Settings flow is covered by the chromium project");
+}) => {
   const email = `e2e-account-currency-${uniqueStamp()}@example.com`;
   const password = "e2e-password-123";
   const user = await prisma.user.create({
     data: {
       email,
-      passwordHash: await hash(password, 12),
+      passwordHash: await hashTestPassword(password),
       displayName: "E2E Account Currency User",
       countryCode: "CA",
       timezone: "America/Toronto",
@@ -46,10 +44,7 @@ test("an account with history keeps its currency, and a USD account with history
     },
   });
 
-  await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
-  await page.getByRole("button", { name: "Login" }).click();
+  await signInWithPassword(page, email, password);
   await expectDashboardHome(page);
 
   await page.goto("/settings/accounts");
