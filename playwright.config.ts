@@ -78,6 +78,7 @@ const MOBILE_SPECS = [
   "edit-dialog",
   "expense-log-consolidation",
   "in-page-confirms",
+  "master-search",
   "mobile-quick-expense",
   "plaid-review-queue-pages",
   "plaid-sync-review",

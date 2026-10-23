@@ -9,6 +9,20 @@ same PR.
 
 - **Navigation** (Dashboard, Insights, Reports, Settings; top bar on desktop, tab bar on phones;
   account menu; `?tag=` carried to Insights/Reports): `src/components/app-nav.tsx`
+- **Master search** (button in the top bar on every signed-in page, Ctrl/⌘ K, or "/"; a full
+  screen on phones): finds pages, every settings section and the things inside them (passkeys,
+  budgets, contribution room…), admin pages for admins, and actions (add expense / income /
+  transfer / recurring rule, sync banks, import, backup, print, log out); and the user's own
+  data from every month: transactions by title, note, bank description or amount, transfers,
+  accounts, categories, tags, rules, recurring rules, savings goals.
+  `src/components/command-palette.tsx`, fixed entries `src/lib/search/commands.ts`, data
+  `src/lib/search/search-data.ts` behind `GET /api/search`. A found transaction or recurring
+  rule opens on the dashboard at its month (`?open=<id>`, read by the expense, income and
+  transfer logs and the Recurring card); an add opens the Add card on desktop or the quick-add
+  sheet on phones (`?add=<kind>`, `src/lib/search/dashboard-requests.ts`)
+- **Search all transactions** (`/search`): every match across months, grouped by month, with
+  type / account / category / tag filters and spent/received totals; where an account,
+  category or tag found by the master search lists its transactions. `src/app/search/page.tsx`
 - **Installable web app**: `src/app/manifest.ts`, `src/components/pwa/*` (install prompt, offline
   banner, private-cache purge on sign-out, service worker), `/offline`
 - **Local notifications** for budget alerts: `src/lib/pwa-notifications.ts`

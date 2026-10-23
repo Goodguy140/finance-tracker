@@ -4,6 +4,7 @@ import { useId, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ExpenseForm, IncomeForm, TransferForm } from "@/components/forms";
 import type { ExpenseTitleSuggestion } from "@/lib/expense-title-suggestions";
+import { hasAddCard, isDesktopViewport, useQuickAddRequest } from "@/lib/search/dashboard-requests";
 import { useOnlineStatus } from "@/lib/use-online-status";
 import {
   MOBILE_FAB_Z_CLASS,
@@ -13,7 +14,14 @@ import {
 
 type Option = { id: string; name: string };
 
-const sheetShellClass = `fixed inset-x-0 bottom-0 ${MOBILE_OVERLAY_SHEET_Z_CLASS} flex max-h-[min(92dvh,calc(100dvh-env(safe-area-inset-top)))] flex-col rounded-t-3xl border border-slate-700 border-b-0 bg-slate-900 shadow-2xl lg:hidden`;
+const sheetShellClass = `fixed inset-x-0 bottom-0 ${MOBILE_OVERLAY_SHEET_Z_CLASS} flex max-h-[min(92dvh,calc(100dvh-env(safe-area-inset-top)))] flex-col rounded-t-3xl border border-slate-700 border-b-0 bg-slate-900 shadow-2xl`;
+
+/**
+ * On a wide screen the sheet only opens for the master search, when the Add card is not on the
+ * dashboard; there it is a centred dialog rather than a sheet from the bottom.
+ */
+const desktopShellClass =
+  "lg:inset-x-auto lg:bottom-auto lg:left-1/2 lg:top-[8vh] lg:max-h-[84vh] lg:w-[min(40rem,92vw)] lg:-translate-x-1/2 lg:rounded-3xl lg:border-b";
 
 const sheetBodyClass =
   "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]";
@@ -22,25 +30,33 @@ function MobileFormSheet({
   open,
   title,
   onClose,
+  desktop,
   children,
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
+  /** Opened from the master search on a wide screen. */
+  desktop: boolean;
   children: ReactNode;
 }) {
   const titleId = useId();
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className={`fixed inset-0 ${MOBILE_OVERLAY_ROOT_Z_CLASS} lg:hidden`} role="presentation">
+    <div className={`fixed inset-0 ${MOBILE_OVERLAY_ROOT_Z_CLASS} ${desktop ? "" : "lg:hidden"}`} role="presentation">
       <button
         type="button"
         className="absolute inset-0 bg-black/65 backdrop-blur-[2px]"
         aria-label="Close sheet"
         onClick={onClose}
       />
-      <div className={sheetShellClass} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div
+        className={`${sheetShellClass} ${desktop ? desktopShellClass : "lg:hidden"}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
         <div className="flex shrink-0 justify-center pt-2 pb-1">
           <span className="h-1 w-10 rounded-full bg-slate-600" aria-hidden />
         </div>
@@ -77,6 +93,16 @@ export function DashboardMobileActions({
   titleSuggestions: ExpenseTitleSuggestion[];
 }) {
   const [open, setOpen] = useState<"expense" | "income" | "transfer" | null>(null);
+  const [desktop, setDesktop] = useState(false);
+  // "Add expense / income / transfer" from the master search: always on a phone, and on a wide
+  // screen when the Add card that would otherwise take it has been taken off the dashboard.
+  useQuickAddRequest((kind) => {
+    if (kind === "recurring") return;
+    const wide = isDesktopViewport();
+    if (wide && hasAddCard()) return;
+    setDesktop(wide);
+    setOpen(kind);
+  });
   // Offline, the dashboard may be a cached copy: nothing can be saved, so don't offer to.
   const online = useOnlineStatus();
 
@@ -119,6 +145,7 @@ export function DashboardMobileActions({
         open={open === "expense"}
         title="Add expense"
         onClose={() => setOpen(null)}
+        desktop={desktop}
       >
         <ExpenseForm
           accounts={accounts}
@@ -134,6 +161,7 @@ export function DashboardMobileActions({
         open={open === "income"}
         title="Add income"
         onClose={() => setOpen(null)}
+        desktop={desktop}
       >
         <IncomeForm
           accounts={accounts}
@@ -143,7 +171,7 @@ export function DashboardMobileActions({
         />
       </MobileFormSheet>
 
-      <MobileFormSheet open={open === "transfer"} title="Add transfer" onClose={() => setOpen(null)}>
+      <MobileFormSheet open={open === "transfer"} title="Add transfer" onClose={() => setOpen(null)} desktop={desktop}>
         <TransferForm accounts={accounts} variant="mobileSheet" onSuccess={() => setOpen(null)} />
       </MobileFormSheet>
     </>

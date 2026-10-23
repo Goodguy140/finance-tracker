@@ -12,6 +12,7 @@ import { ServerActionForm } from "@/components/server-action-form";
 import { VerifiedBadge, type VerificationInfo } from "@/components/verified-badge";
 import { inputClass, secondaryBtnClass } from "@/components/forms/shared";
 import { formatCurrency } from "@/lib/money";
+import { flashElement, useOpenRequest } from "@/lib/search/dashboard-requests";
 
 export type TransferLogEntry = {
   id: string;
@@ -34,12 +35,21 @@ export type TransferLogEntry = {
 
 type AccountOption = { id: string; name: string };
 
+const transferRowId = (id: string) => `transfer-${id}`;
+
 /**
  * The period's transfers, under the expense log. They are kept out of every total, so they
  * are listed apart from the spending rather than mixed into it, collapsed unless asked for.
  */
 export function TransferLog({ entries, accounts }: { entries: TransferLogEntry[]; accounts: AccountOption[] }) {
   const [open, setOpen] = useState(false);
+  // A transfer picked in the master search: show the list and point at its row, where its
+  // controls are (transfers have no edit dialog).
+  useOpenRequest((id) => {
+    if (!entries.some((e) => e.id === id)) return;
+    setOpen(true);
+    flashElement(transferRowId(id));
+  });
   if (entries.length === 0) return null;
 
   return (
@@ -73,7 +83,10 @@ function TransferRow({ entry, accounts }: { entry: TransferLogEntry; accounts: A
   const arrived = entry.amountCents < 0;
   const otherLabel = entry.transferAccountLabel ?? "Not set";
   return (
-    <li className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/50 p-2.5 text-sm">
+    <li
+      id={transferRowId(entry.id)}
+      className="scroll-mt-24 space-y-2 rounded-xl border border-slate-800 bg-slate-950/50 p-2.5 text-sm transition-shadow data-[search-flash]:ring-2 data-[search-flash]:ring-sky-400"
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="font-semibold leading-snug text-slate-100">{entry.title?.trim() || "Transfer"}</p>

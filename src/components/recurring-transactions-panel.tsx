@@ -1,5 +1,6 @@
 "use client";
 
+import { useOpenRequest } from "@/lib/search/dashboard-requests";
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -209,6 +210,10 @@ export function RecurringTransactionsPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const allItems = useMemo(() => [...items, ...otherItems], [items, otherItems]);
   const editingItem = allItems.find((item) => item.id === editingId) ?? null;
+  // A recurring rule picked in the master search opens for editing.
+  useOpenRequest((id) => {
+    if (allItems.some((item) => item.id === id)) setEditingId(id);
+  });
   const [skippingId, setSkippingId] = useState<string | null>(null);
   const skippingItem = allItems.find((item) => item.id === skippingId) ?? null;
   const startEditing = (item: RecurringTransactionListItem) => setEditingId(item.id);
