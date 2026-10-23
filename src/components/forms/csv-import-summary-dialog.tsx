@@ -22,6 +22,8 @@ export function CsvImportSummaryDialog({ summary, onClose }: { summary: CsvImpor
 
   if (typeof document === "undefined") return null;
   const { imported, unreadableDates, duplicates, unreadableAmounts } = summary;
+  const income = summary.income ?? 0;
+  const expenses = imported - income;
   return createPortal(
     <div
       className="fixed inset-0 z-[250] flex items-end justify-center bg-slate-950/80 p-4 sm:items-center"
@@ -36,7 +38,8 @@ export function CsvImportSummaryDialog({ summary, onClose }: { summary: CsvImpor
         className="max-h-[85vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"
       >
         <h2 id={titleId} className="text-base font-semibold text-slate-100">
-          Imported {imported} {imported === 1 ? "expense" : "expenses"}
+          Imported {expenses} {expenses === 1 ? "expense" : "expenses"}
+          {income > 0 ? ` and ${income} income ${income === 1 ? "entry" : "entries"}` : ""}
         </h2>
         {unreadableDates.length === 0 && duplicates.length === 0 && unreadableAmounts === 0 ? (
           <p className="text-sm text-slate-300">Every row in the file was imported.</p>
@@ -67,7 +70,7 @@ export function CsvImportSummaryDialog({ summary, onClose }: { summary: CsvImpor
             <h3 className="text-sm font-medium text-amber-200">
               {duplicates.length} skipped: already in your log
             </h3>
-            <p className="text-xs text-slate-400">Each has the same date, amount and title as an expense you already have.</p>
+            <p className="text-xs text-slate-400">Each has the same date, amount and title as an entry you already have.</p>
             <ul className="space-y-1 text-xs text-slate-300">
               {duplicates.slice(0, LISTED_ROWS).map((entry) => (
                 <li key={entry.row}>

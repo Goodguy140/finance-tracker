@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DuplicateMatcher, duplicateKey } from "./csv-import";
+import { DuplicateMatcher, duplicateKey, statementOutflow } from "./csv-import";
 
 describe("duplicateKey", () => {
   it("ignores title case and surrounding spaces, and the time of day", () => {
@@ -38,5 +38,27 @@ describe("DuplicateMatcher", () => {
     expect(matcher.claim("debit", day, 450, "Coffee")).toBe(false);
     expect(matcher.claim(undefined, day, 450, "Coffee")).toBe(false);
     expect(matcher.claim("visa", day, 450, "Coffee")).toBe(true);
+  });
+});
+
+describe("statementOutflow", () => {
+  const parse = (raw: string) => (raw === "x" ? null : Number(raw.replace(/,/g, "")) || null);
+
+  it("reads one amount column either way round", () => {
+    expect(statementOutflow({ A: "12.5" }, { amount: "A" }, "spending-positive", parse)).toBe(12.5);
+    expect(statementOutflow({ A: "-12.5" }, { amount: "A" }, "spending-negative", parse)).toBe(12.5);
+    expect(statementOutflow({ A: "40" }, { amount: "A" }, "spending-negative", parse)).toBe(-40);
+  });
+
+  it("reads separate debit and credit columns as sizes, whatever sign the bank printed", () => {
+    const columns = { amount: "Debit", amountIn: "Credit" };
+    expect(statementOutflow({ Debit: "-9", Credit: "" }, columns, "spending-negative", parse)).toBe(9);
+    expect(statementOutflow({ Debit: "", Credit: "1,000" }, columns, "spending-positive", parse)).toBe(-1000);
+    expect(statementOutflow({ Debit: "", Credit: "" }, columns, "spending-positive", parse)).toBeNull();
+  });
+
+  it("is null for an amount it cannot read", () => {
+    expect(statementOutflow({ A: "x" }, { amount: "A" }, "spending-positive", parse)).toBeNull();
+    expect(statementOutflow({}, { amount: "A" }, "spending-positive", parse)).toBeNull();
   });
 });

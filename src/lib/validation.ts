@@ -364,6 +364,7 @@ const importFieldOptions = z.enum([
   "note",
   "accountName",
   "categoryName",
+  "amountIn",
 ]);
 
 export const expenseCsvImportSchema = z.object({
@@ -373,6 +374,7 @@ export const expenseCsvImportSchema = z.object({
     .max(MAX_CSV_IMPORT_ROWS, `Import at most ${MAX_CSV_IMPORT_ROWS} rows at a time.`),
   mapping: z.object({
     amount: z.string().min(1),
+    amountIn: z.string().optional(),
     date: z.string().optional(),
     postedDate: z.string().optional(),
     title: z.string().optional(),
@@ -391,7 +393,10 @@ export const expenseCsvImportSchema = z.object({
   defaults: z.object({
     accountId: z.string().min(1),
     categoryId: z.string().min(1),
+    incomeCategoryId: z.string().optional(),
   }),
+  amountSign: z.enum(["spending-positive", "spending-negative"]).default("spending-positive"),
+  moneyIn: z.enum(["refund", "income"]).default("refund"),
   fieldSelections: z.array(importFieldOptions),
 });
 

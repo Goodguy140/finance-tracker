@@ -260,7 +260,7 @@ describe("importExpensesCsvAction dates and duplicates", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           userId: "user-1",
-          type: { in: ["EXPENSE", "TRANSFER"] },
+          type: { in: ["EXPENSE", "TRANSFER", "INCOME"] },
           date: { gte: new Date("2026-03-02T00:00:00Z"), lt: new Date("2026-03-04T00:00:00Z") },
         }),
       }),
@@ -277,6 +277,63 @@ describe("importExpensesCsvAction dates and duplicates", () => {
     expect(writtenRows()).toHaveLength(1);
     expect(writtenRows()[0].accountId).toBe("acc-default");
     expect(result).toMatchObject({ imported: 1, duplicates: [] });
+  });
+
+  it("reads bank-style amounts, where spending is negative", async () => {
+    const data = csvForm([{ Amount: "-4.50", Date: "2026-03-02", Desc: "Coffee" }, { Amount: "12.00", Date: "2026-03-02", Desc: "Refund" }], mapping);
+    data.set("amountSign", "spending-negative");
+    await importExpensesCsvAction(data);
+    expect(writtenRows().map((r) => [r.title, r.type, r.amountCents])).toEqual([
+      ["Coffee", "EXPENSE", 450],
+      // Money in stays a refund (a negative expense) unless the user says it is income.
+      ["Refund", "EXPENSE", -1200],
+    ]);
+  });
+
+  it("books money in as income in the chosen category when asked, and spending as before", async () => {
+    mockPrisma.category.findMany.mockImplementation(async (args: { where: { kind: string } }) =>
+      args.where.kind === "INCOME" ? [{ id: "cat-salary", name: "Salary" }] : [{ id: "cat-default", name: "Other" }],
+    );
+    const data = csvForm(
+      [
+        { Debit: "4.50", Credit: "", Date: "2026-03-02", Desc: "Coffee" },
+        { Debit: "", Credit: "2,500.00", Date: "2026-03-02", Desc: "Payroll" },
+      ],
+      { ...mapping, amount: "Debit", amountIn: "Credit" },
+    );
+    data.set("moneyIn", "income");
+    data.set("defaultIncomeCategoryId", "cat-salary");
+    const result = await importExpensesCsvAction(data);
+    expect(writtenRows().map((r) => [r.title, r.type, r.amountCents, r.categoryId])).toEqual([
+      ["Coffee", "EXPENSE", 450, "cat-default"],
+      ["Payroll", "INCOME", 250_000, "cat-salary"],
+    ]);
+    expect(result).toMatchObject({ imported: 2, income: 1 });
+  });
+
+  it("refuses income without a category to book it in", async () => {
+    const data = csvForm([{ Amount: "-4.50", Date: "2026-03-02", Desc: "x" }], mapping);
+    data.set("moneyIn", "income");
+    expect(await importExpensesCsvAction(data)).toMatchObject({ ok: false });
+  });
+
+  it("compares income with income already logged, not with expenses", async () => {
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      { type: "INCOME", accountId: "acc-default", date: new Date("2026-03-02T00:00:00Z"), amountCents: 250_000, title: "payroll" },
+      { type: "EXPENSE", accountId: "acc-default", date: new Date("2026-03-02T00:00:00Z"), amountCents: 450, title: "gift" },
+    ]);
+    const data = csvForm(
+      [
+        { Amount: "-2500", Date: "2026-03-02", Desc: "Payroll" },
+        { Amount: "-4.50", Date: "2026-03-02", Desc: "Gift" },
+      ],
+      mapping,
+    );
+    data.set("moneyIn", "income");
+    data.set("defaultIncomeCategoryId", "cat-default");
+    const result = await importExpensesCsvAction(data);
+    expect(writtenRows().map((r) => [r.title, r.type])).toEqual([["Gift", "INCOME"]]);
+    expect(result).toMatchObject({ duplicates: [{ title: "Payroll", amountCents: 250_000 }] });
   });
 
   it("counts rows with no readable amount", async () => {
