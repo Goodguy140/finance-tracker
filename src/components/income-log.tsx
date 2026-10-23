@@ -1,5 +1,6 @@
 "use client";
 
+import { useOpenRequest } from "@/lib/search/dashboard-requests";
 import { isActionFailure } from "@/lib/action-result";
 import { useActionState, useEffect, useId, useMemo, useRef, useState } from "react";
 import { COMPACT_LIST_MAX_HEIGHT_CLASS } from "@/lib/dashboard-layout/display";
@@ -362,6 +363,10 @@ export function IncomeLogPanel({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const editing = editingId ? entries.find((e) => e.id === editingId) : null;
+  // An income picked in the master search opens here.
+  useOpenRequest((id) => {
+    if (entries.some((e) => e.id === id)) setEditingId(id);
+  });
 
   const days = useMemo(() => groupTransactionsByDay(entries, (entry) => entry), [entries]);
 

@@ -1,7 +1,8 @@
 "use client";
 
-import { type ComponentProps, useEffect, useState } from "react";
+import { type ComponentProps, useEffect, useRef, useState } from "react";
 import { ExpenseForm, IncomeForm, TransferForm } from "@/components/forms";
+import { isDesktopViewport, useQuickAddRequest } from "@/lib/search/dashboard-requests";
 
 type Option = { id: string; name: string };
 type EntryKind = "expense" | "income" | "transfer";
@@ -25,6 +26,8 @@ export function AddEntryCardBody({
   incomeCategories: Option[];
 }) {
   const [kind, setKind] = useState<EntryKind>("expense");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [focusRequest, setFocusRequest] = useState(0);
 
   // Read after mount: the server renders the expense side, and storage can be unavailable.
   useEffect(() => {
@@ -37,6 +40,23 @@ export function AddEntryCardBody({
     }
   }, []);
 
+  // "Add expense / income / transfer" from the master search. Phones have no Add card; their
+  // quick-add sheet answers there.
+  useQuickAddRequest((requested) => {
+    if (requested === "recurring" || !isDesktopViewport()) return;
+    choose(requested);
+    setFocusRequest((n) => n + 1);
+  });
+
+  // After the chosen form has rendered: bring the card into view and put the cursor in it.
+  useEffect(() => {
+    if (focusRequest === 0) return;
+    const root = rootRef.current;
+    if (!root) return;
+    root.scrollIntoView({ block: "center", behavior: "smooth" });
+    root.querySelector<HTMLElement>("form input:not([type=hidden]), form select, form textarea")?.focus({ preventScroll: true });
+  }, [focusRequest]);
+
   function choose(next: EntryKind) {
     setKind(next);
     try {
@@ -47,7 +67,7 @@ export function AddEntryCardBody({
   }
 
   return (
-    <>
+    <div ref={rootRef}>
       <div role="radiogroup" aria-label="What to add" className="mb-3 inline-flex rounded-lg border border-slate-700 bg-slate-950/60 p-0.5">
         {ENTRY_KINDS.map((option) => (
           <button
@@ -71,6 +91,6 @@ export function AddEntryCardBody({
       ) : (
         <TransferForm accounts={expense.accounts} />
       )}
-    </>
+    </div>
   );
 }

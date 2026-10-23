@@ -1,5 +1,6 @@
 "use client";
 
+import { useOpenRequest } from "@/lib/search/dashboard-requests";
 import { isActionFailure } from "@/lib/action-result";
 import { useActionState, useEffect, useId, useRef, useMemo, useState } from "react";
 import { LIST_MAX_HEIGHT_CLASS } from "@/lib/dashboard-layout/display";
@@ -961,6 +962,10 @@ export function ExpenseLogPanel({
   maxHeight?: ListHeight;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
+  // A transaction picked in the master search opens here when it is one of this log's.
+  useOpenRequest((id) => {
+    if (entries.some((e) => e.id === id)) setEditingId(id);
+  });
   const [searchQuery, setSearchQuery] = useState("");
   const filteredEntries = useMemo(
     () => entries.filter((e) => expenseLogMatchesQuery(e, searchQuery, formatCurrency)),

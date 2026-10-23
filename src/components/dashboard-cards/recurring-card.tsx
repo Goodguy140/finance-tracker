@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useQuickAddRequest } from "@/lib/search/dashboard-requests";
 import { createPortal } from "react-dom";
 import {
   RecurringTransactionsPanel,
@@ -127,6 +128,10 @@ export function RecurringCardActions({
   defaultExpenseAccountId?: string | null;
 }) {
   const [open, setOpen] = useState(false);
+  // "New recurring rule" from the master search.
+  useQuickAddRequest((kind) => {
+    if (kind === "recurring") setOpen(true);
+  });
   return (
     <>
       <button

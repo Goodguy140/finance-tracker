@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { ChartColumn, ChevronDown, LayoutDashboard, Lightbulb, LogOut, Settings, Shield, UserRound, type LucideIcon } from "lucide-react";
+import { CommandPalette } from "@/components/command-palette";
 import { MOBILE_TAB_BAR_Z_CLASS } from "@/lib/mobile-z-index";
 import { signOutOfDevice } from "@/lib/sign-out";
 
@@ -150,7 +151,8 @@ export function AppNav({
               })}
             </ul>
           </nav>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <CommandPalette />
             <AccountMenu displayName={displayName} countryCode={countryCode} />
           </div>
         </div>
