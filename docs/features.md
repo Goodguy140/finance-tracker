@@ -172,6 +172,10 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     `security-panel.tsx`, `actions/mfa.ts`
   - Notifications (budget alert emails): `budget-alert-preferences.tsx`,
     `src/lib/budget-alert-dispatch.ts`
+  - Email digest (off / weekly on Mondays / monthly on the 1st, after 7am local; spent and
+    received, top categories, biggest purchases, budgets over 80%, bills coming up, review
+    queue count; skipped when empty; "Send me one now"): `email-digest-preferences.tsx`,
+    `src/lib/email-digest.ts`, hourly `email-digest-scheduler.ts` (`EMAIL_DIGEST_SCHEDULER`)
   - Appearance (dashboard readability, install app): `src/lib/dashboard-readability.ts`
 - **Money**
   - Accounts (add/edit/archive/delete, default expense account, currency, balances, counts as

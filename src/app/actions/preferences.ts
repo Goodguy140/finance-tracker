@@ -1,7 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { DigestFrequency } from "@prisma/client";
 import { isBudgetAlertEmailConfigured } from "@/lib/budget-alert-email";
+import { latestDigestPeriod, sendDigestPreview } from "@/lib/email-digest";
+import { currentYmdInTimeZone } from "@/lib/period-month";
 import { MIN_BUDGET_NAME_VISIBLE_PCT, MIN_TEXT_VISIBLE_PCT, parseVisiblePct } from "@/lib/dashboard-readability";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
@@ -54,4 +57,29 @@ export const dismissGetStartedAction = formAction(async () => {
   const user = await requireUser();
   await prisma.user.update({ where: { id: user.id }, data: { getStartedDismissedAt: new Date() } });
   revalidatePath("/");
+});
+
+/**
+ * How often the spending digest is emailed. Turning it on marks the period just ended as sent,
+ * so the first digest arrives at the next Monday or 1st rather than straight away.
+ */
+export const setEmailDigestAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const raw = getFormValue(formData, "frequency");
+  if (raw !== "OFF" && raw !== "WEEKLY" && raw !== "MONTHLY") throw new Error("Choose how often to get the digest.");
+  const frequency = raw as DigestFrequency;
+  if (frequency !== "OFF" && !isBudgetAlertEmailConfigured()) {
+    throw new Error("The email digest needs SMTP configured on the server first.");
+  }
+  const digestLastPeriodKey =
+    frequency === "OFF" ? null : latestDigestPeriod(frequency, currentYmdInTimeZone(user.timezone)).key;
+  await prisma.user.update({ where: { id: user.id }, data: { digestFrequency: frequency, digestLastPeriodKey } });
+  revalidatePath("/settings", "layout");
+});
+
+/** Emails the latest digest now, so the user can see what they will get. */
+export const sendEmailDigestPreviewAction = formAction(async () => {
+  const user = await requireUser();
+  const result = await sendDigestPreview(user.id);
+  if (result !== "sent") throw new Error("The email could not be sent. SMTP may not be configured on the server.");
 });

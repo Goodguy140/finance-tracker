@@ -1,5 +1,5 @@
 /** Keep in sync with SCHEMA_REPAIR_VERSION in src/lib/migration-health.ts */
-const SCHEMA_REPAIR_VERSION = "16";
+const SCHEMA_REPAIR_VERSION = "17";
 const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
 
@@ -149,6 +149,16 @@ const COLUMN_REPAIRS = [
     table: "User",
     column: "getStartedDismissedAt",
     ddl: 'ALTER TABLE "User" ADD COLUMN "getStartedDismissedAt" DATETIME',
+  },
+  {
+    table: "User",
+    column: "digestFrequency",
+    ddl: 'ALTER TABLE "User" ADD COLUMN "digestFrequency" TEXT NOT NULL DEFAULT \'OFF\'',
+  },
+  {
+    table: "User",
+    column: "digestLastPeriodKey",
+    ddl: 'ALTER TABLE "User" ADD COLUMN "digestLastPeriodKey" TEXT',
   },
 ];
 

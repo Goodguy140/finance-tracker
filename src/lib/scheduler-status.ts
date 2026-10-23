@@ -7,7 +7,7 @@
  * would be one more thing to prune.
  */
 
-export type SchedulerName = "plaidSync" | "recurringAutoPost";
+export type SchedulerName = "plaidSync" | "recurringAutoPost" | "emailDigest";
 
 export type SchedulerHeartbeat = {
   startedAt: string;

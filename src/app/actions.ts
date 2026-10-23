@@ -112,7 +112,9 @@ export {
 } from "./actions/mfa";
 export {
   dismissGetStartedAction,
+  sendEmailDigestPreviewAction,
   setBudgetAlertEmailAction,
+  setEmailDigestAction,
   setProjectionIncludesTransfersAction,
   updateDashboardReadabilityAction,
 } from "./actions/preferences";

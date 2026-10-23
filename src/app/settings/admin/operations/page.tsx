@@ -7,6 +7,7 @@ import {
   AUDIT_RETENTION_MIN_DAYS,
   getOpsSettingsStatus,
 } from "@/lib/ops-settings";
+import { emailDigestSchedulerEnabled } from "@/lib/email-digest-scheduler";
 import { plaidSyncSchedulerEnabled } from "@/lib/plaid-sync-scheduler";
 import { recurringAutoPostSchedulerEnabled } from "@/lib/recurring-auto-post-scheduler";
 import { getSchedulerHeartbeat, type SchedulerHeartbeat } from "@/lib/scheduler-status";
@@ -89,6 +90,13 @@ export default async function AdminOperationsPage() {
             beat={getSchedulerHeartbeat("plaidSync")}
             envEnabled={plaidSyncSchedulerEnabled()}
             envName="PLAID_SYNC_SCHEDULER"
+          />
+          <SchedulerRow
+            name="Email digest"
+            description="Hourly. Sends each weekly or monthly spending digest that is due, after 7am in the user's time zone."
+            beat={getSchedulerHeartbeat("emailDigest")}
+            envEnabled={emailDigestSchedulerEnabled()}
+            envName="EMAIL_DIGEST_SCHEDULER"
           />
         </ul>
       </AdminSection>
