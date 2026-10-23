@@ -77,7 +77,8 @@ Code: `src/lib/plaid/*`, `actions/plaid.ts`. Read the Plaid section of `AGENTS.m
   (`src/app/api/plaid/webhook/route.ts`, `webhooks.ts`, `webhook-verify.ts`), consent withdrawn
   purge (`purge.ts`)
 - **Review queue** in the Expense Log: `plaid-review-queue.tsx`, `src/lib/plaid/review.ts`,
-  `review-queue-page.ts`. Add, link to existing (verify), add as new, hide, add all, pair as
+  `review-queue-page.ts`. Add, link to existing (verify), add as new, hide, add all, tick rows to add,
+  ignore or add in one category (`ReviewBulkBar`), link all strong matches, pair as
   transfer (`transfer-pairing.ts`), revised rows apply/dismiss, auto-link exact matches
   (`matcher.ts`), rule proposals per row (`staged-rules.ts`)
 - **Bank category mapping**: `category-map.ts`, `category-mapping-view.ts`, in Settings →
