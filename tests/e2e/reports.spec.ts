@@ -114,6 +114,10 @@ test("reports total income and spending without transfers, and open a payee", as
   await expect(yoy.getByRole("row", { name: /Fun/ })).toContainText("$50.00");
   await expect(yoy.getByRole("row", { name: /Fun/ })).toContainText("-100%");
 
+  // Pay is listed under who paid you, not among the payees.
+  await expect(page.getByTestId("report-payers").getByRole("link", { name: /Acme Payroll/ })).toBeVisible();
+  await expect(page.getByTestId("report-merchants").getByRole("link", { name: /Acme Payroll/ })).toHaveCount(0);
+
   await page.getByTestId("report-merchants").getByRole("link", { name: /Loblaws/ }).click();
   await expect(page.getByTestId("merchant-name")).toHaveText("Loblaws");
   await expect(page.getByTestId("merchant-transactions").getByRole("listitem")).toHaveCount(11);
@@ -132,4 +136,21 @@ test("the tag filter narrows every report to tagged entries", async ({ page }) =
   await expect(totals).toContainText("$0.00");
   await expect(totals).toContainText("$400.00");
   await expect(page.getByTestId("report-merchants").getByRole("listitem")).toHaveCount(1);
+});
+
+test("with under a year of history, year over year says so instead of a column of zeros", async ({ page }) => {
+  const userId = await seedUser(page);
+  // Drop the one expense from over a year ago: now nothing comes before this period.
+  await prisma.transaction.deleteMany({ where: { userId, title: "Cinema" } });
+
+  await page.goto("/reports");
+  await expect(page.getByTestId("report-yoy-empty")).toContainText("Nothing to compare yet");
+  await expect(page.getByTestId("report-yoy")).toHaveCount(0);
+});
+
+test("an unknown payee opens the app's own not-found page", async ({ page }) => {
+  await seedUser(page);
+  await page.goto("/reports/merchant?key=nobody-at-all");
+  await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to the dashboard" })).toHaveAttribute("href", "/");
 });

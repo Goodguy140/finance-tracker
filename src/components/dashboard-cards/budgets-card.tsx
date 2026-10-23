@@ -23,7 +23,27 @@ export type BudgetsCardBodyProps = {
   perRow?: 1 | 2 | 3;
   hideZeroSpend?: boolean;
   showPeriodNote?: boolean;
+  /** Days left in the month, counting today; set only when the period is the current month. */
+  daysLeftInMonth?: number | null;
 };
+
+/** "$414 left" or "$1,413 over", or null when there is no limit to measure against. */
+export function budgetRemainingText(spentCents: number, limitCents: number): string | null {
+  if (limitCents <= 0) return null;
+  const remaining = limitCents - spentCents;
+  return remaining >= 0 ? `${formatCurrency(remaining)} left` : `${formatCurrency(-remaining)} over`;
+}
+
+function RemainingLine({ spentCents, limitCents }: { spentCents: number; limitCents: number }) {
+  const text = budgetRemainingText(spentCents, limitCents);
+  if (!text) return null;
+  const over = spentCents > limitCents;
+  return (
+    <span data-testid="budget-remaining" className={`text-xs tabular-nums ${over ? "text-red-300" : "text-slate-400"}`}>
+      {text}
+    </span>
+  );
+}
 
 function BudgetPeriodNote({ periodRange }: { periodRange: DashboardRange }) {
   if (periodRange === "ytd") {
@@ -76,6 +96,7 @@ export function BudgetsCardBody({
   perRow = 1,
   hideZeroSpend = false,
   showPeriodNote = true,
+  daysLeftInMonth = null,
 }: BudgetsCardBodyProps) {
   const items = hideZeroSpend
     ? budgetProgressItems.filter((item) => item.spentCents !== 0)
@@ -88,6 +109,14 @@ export function BudgetsCardBody({
         <p className="text-xs uppercase tracking-wide text-slate-400">{spendVsBudgetLabel}</p>
         <p className="text-base font-semibold">
           {formatCurrency(currentSpendCents)} / {formatCurrency(totalBudgetCents)}
+        </p>
+        <p className="flex flex-wrap gap-x-2 text-xs text-slate-400">
+          <RemainingLine spentCents={currentSpendCents} limitCents={totalBudgetCents} />
+          {daysLeftInMonth != null ? (
+            <span data-testid="budget-days-left">
+              {daysLeftInMonth === 1 ? "Last day of the month" : `${daysLeftInMonth} days left in the month`}
+            </span>
+          ) : null}
         </p>
         {otherCurrencySpending ? (
           <p className="mt-0.5 text-xs text-slate-400" data-testid="budgets-other-currency">
@@ -129,6 +158,9 @@ export function BudgetsCardBody({
                   className={`h-full rounded-full ${item.progressPct >= 100 ? "bg-red-500" : item.progressPct >= 80 ? "bg-amber-400" : "bg-emerald-500"}`}
                   style={{ width: `${item.progressPct}%` }}
                 />
+              </div>
+              <div className="mt-1 flex justify-end">
+                <RemainingLine spentCents={item.spentCents} limitCents={item.limitCents} />
               </div>
               {item.carryCents ? <RolloverNote carryCents={item.carryCents} /> : null}
             </div>

@@ -170,3 +170,41 @@ export function FinancialScoreCard({
     </section>
   );
 }
+
+/**
+ * The score in one line, for Reports: the full card with its factors lives on Insights, so
+ * the two pages no longer open on the same block.
+ */
+export function FinancialScoreChip({ score, gapCount = 0 }: { score: FinancialScore; gapCount?: number }) {
+  return (
+    <section
+      aria-label="Financial score"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-2.5 text-sm"
+      data-testid="financial-score-chip"
+    >
+      {score.status === "insufficient" ? (
+        <span className="text-slate-400">Financial score: {score.reason}</span>
+      ) : (
+        <span className="text-slate-300">
+          Financial score{" "}
+          <span className="font-semibold tabular-nums text-slate-100" data-testid="financial-score-value">
+            {score.score}
+          </span>{" "}
+          <span className={BAND_TONE[score.band].text} data-testid="financial-score-band">
+            {score.band}
+          </span>
+        </span>
+      )}
+      {gapCount > 0 ? (
+        <span className="text-amber-200" data-testid="financial-score-gaps">
+          <Link href="/insights#insights-gap" className="underline-offset-2 hover:underline">
+            {gapCount === 1 ? "1 possible gap" : `${gapCount} possible gaps`} in your data could change this
+          </Link>
+        </span>
+      ) : null}
+      <Link href="/insights" className="ml-auto text-sky-300 hover:text-sky-200">
+        How it&apos;s worked out →
+      </Link>
+    </section>
+  );
+}

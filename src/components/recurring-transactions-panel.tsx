@@ -11,7 +11,6 @@ import {
 } from "@/app/actions";
 import { RecurringRuleForm } from "@/components/recurring-rule-form";
 import { ServerActionForm } from "@/components/server-action-form";
-import { MetaChip } from "@/components/meta-chip";
 import { formatCurrency } from "@/lib/money";
 import { MOBILE_OVERLAY_ROOT_Z_CLASS } from "@/lib/mobile-z-index";
 
@@ -91,6 +90,7 @@ function RecurringCard({
   onSkip: (item: RecurringTransactionListItem) => void;
 }) {
   const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const [showingMore, setShowingMore] = useState(false);
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5 text-left text-sm text-slate-100">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -111,29 +111,27 @@ function RecurringCard({
           {formatCurrency(item.amountCents)}
         </span>
       </div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        <span className={`rounded-full border px-2 py-1 text-xs font-medium ${statusClass(item.status)}`}>
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${statusClass(item.status)}`}>
           {statusLabel(item.status)}
         </span>
-        <MetaChip label="Type">{item.typeLabel}</MetaChip>
-        {item.type === "TRANSFER" ? (
-          <>
-            <MetaChip label="From">{item.accountLabel}</MetaChip>
-            <MetaChip label="To">{item.transferAccountLabel ?? "Not set"}</MetaChip>
-          </>
-        ) : (
-          <>
-            <MetaChip label="Category">{item.categoryLabel}</MetaChip>
-            <MetaChip label="Account">{item.accountLabel}</MetaChip>
-          </>
-        )}
-        <MetaChip label="Cadence">{item.cadenceLabel}</MetaChip>
-        <MetaChip label="Next">{item.occurrenceDateDisplay}</MetaChip>
-        {item.missedSinceDisplay ? <MetaChip label="Unposted since">{item.missedSinceDisplay}</MetaChip> : null}
-        {item.endDateDisplay ? <MetaChip label="Ends">{item.endDateDisplay}</MetaChip> : null}
-        {item.postMode === "AUTO" ? <MetaChip label="Posting">Automatic</MetaChip> : null}
+        {/* One quiet line instead of a chip per field: "Visa · Monthly · Oct 1". */}
+        <span className="min-w-0 text-xs text-slate-400" data-testid="recurring-rule-summary">
+          {[
+            item.type === "TRANSFER"
+              ? `${item.accountLabel} → ${item.transferAccountLabel ?? "Not set"}`
+              : `${item.categoryLabel} · ${item.accountLabel}`,
+            item.cadenceLabel,
+            item.occurrenceDateDisplay,
+          ].join(" · ")}
+          {item.postMode === "AUTO" ? " · Posts automatically" : ""}
+          {item.endDateDisplay ? ` · Ends ${item.endDateDisplay}` : ""}
+        </span>
       </div>
-      <div className="mt-3 flex flex-wrap justify-end gap-2">
+      {item.missedSinceDisplay ? (
+        <p className="mt-1 text-xs text-amber-200">Unposted since {item.missedSinceDisplay}</p>
+      ) : null}
+      <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
         {item.enabled ? (
           <ServerActionForm action={postRecurringTransactionAction}>
             <input type="hidden" name="recurringTransactionId" value={item.id} />
@@ -143,25 +141,38 @@ function RecurringCard({
             </button>
           </ServerActionForm>
         ) : null}
-        {item.enabled ? (
-          <button type="button" className={secondaryBtnClass} onClick={() => onSkip(item)}>
-            Skip
-          </button>
-        ) : null}
-        <button type="button" className={secondaryBtnClass} onClick={() => onEdit(item)}>
-          Edit
-        </button>
-        <ServerActionForm action={setRecurringTransactionEnabledAction}>
-          <input type="hidden" name="recurringTransactionId" value={item.id} />
-          <input type="hidden" name="enabled" value={item.enabled ? "false" : "true"} />
-          <button type="submit" className={secondaryBtnClass}>
-            {item.enabled ? "Disable" : "Enable"}
-          </button>
-        </ServerActionForm>
-        <button type="button" className={secondaryBtnClass} onClick={() => setConfirmingRemove(true)}>
-          Remove
+        <button
+          type="button"
+          className={secondaryBtnClass}
+          aria-expanded={showingMore}
+          aria-label={`More actions for ${item.name}`}
+          onClick={() => setShowingMore((open) => !open)}
+        >
+          ⋯
         </button>
       </div>
+      {showingMore ? (
+        <div className="mt-2 flex flex-wrap justify-end gap-2" role="group" aria-label={`Actions for ${item.name}`}>
+          {item.enabled ? (
+            <button type="button" className={secondaryBtnClass} onClick={() => onSkip(item)}>
+              Skip
+            </button>
+          ) : null}
+          <button type="button" className={secondaryBtnClass} onClick={() => onEdit(item)}>
+            Edit
+          </button>
+          <ServerActionForm action={setRecurringTransactionEnabledAction}>
+            <input type="hidden" name="recurringTransactionId" value={item.id} />
+            <input type="hidden" name="enabled" value={item.enabled ? "false" : "true"} />
+            <button type="submit" className={secondaryBtnClass}>
+              {item.enabled ? "Disable" : "Enable"}
+            </button>
+          </ServerActionForm>
+          <button type="button" className={secondaryBtnClass} onClick={() => setConfirmingRemove(true)}>
+            Remove
+          </button>
+        </div>
+      ) : null}
       {confirmingRemove ? (
         // Removing a rule cannot be undone, so it asks first. Entries it already posted stay.
         <div
