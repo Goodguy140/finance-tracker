@@ -126,7 +126,8 @@ owed money, room, goals or gaps).
 Page: `src/app/reports/page.tsx`; data `src/lib/reports/*`; charts
 `src/components/reports/report-charts.tsx`.
 
-- Period picker (last 12 months, years), tag filter, totals (income, spending, left over, saved)
+- Period picker (last 12 months, years), tag filter, totals (income, spending, left over, saved), "Download
+  CSV" of the period's transactions
 - Financial score as one line linking to Insights (`FinancialScoreChip`), **net worth** (`src/lib/net-worth.ts`), **projected balances**
   (`src/lib/projected-balances.ts`); "Include recurring transfers" option
   (`projection-transfers-toggle.tsx`, `User.projectionIncludesTransfers`, off by default) moves
@@ -174,7 +175,8 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
 - **Data**
   - Import CSV with summary (rows already in the log on the same account are skipped):
     `forms/expense-forms.tsx`, `forms/csv-import-summary-dialog.tsx`, `src/lib/csv-import.ts`
-  - Backup & export (JSON export, restore up to 20 MB, clear data, delete account):
+  - Backup & export (JSON export, transactions as CSV for all time or a date range
+    (`src/lib/transactions-csv.ts`, `src/app/api/export/transactions`), restore up to 20 MB, clear data, delete account):
     `settings/data-forms.tsx`, `src/lib/backup*.ts`, `src/app/api/backup/export/me`
   - Developer (API tokens; `GET /api/v1/budgets`): `api-tokens-panel.tsx`,
     `src/lib/api-token.ts`, `src/app/api/v1/budgets/route.ts`
