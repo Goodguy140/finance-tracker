@@ -145,11 +145,11 @@ export function CommandPalette() {
         aria-haspopup="dialog"
         aria-keyshortcuts="Control+K Meta+K"
         data-testid="open-search"
-        className="touch-manipulation flex min-h-9 items-center gap-2 rounded-full border border-slate-700/80 bg-slate-900 px-2.5 text-sm text-slate-400 transition hover:border-slate-600 hover:bg-slate-800 hover:text-slate-200 sm:w-56 sm:rounded-lg sm:px-3"
+        className="touch-manipulation flex min-h-9 items-center gap-2 rounded-full border border-slate-700/80 bg-slate-900 px-2.5 text-sm text-slate-400 transition hover:border-slate-600 hover:bg-slate-800 hover:text-slate-200 sm:w-40 sm:rounded-lg sm:px-3 xl:w-56"
       >
         <Search className="h-4 w-4 shrink-0" aria-hidden />
         <span className="hidden flex-1 text-left sm:inline">Search…</span>
-        <kbd className="hidden rounded border border-slate-700 px-1.5 py-0.5 font-sans text-[10px] text-slate-500 lg:inline">
+        <kbd className="hidden rounded border border-slate-700 px-1.5 py-0.5 font-sans text-[10px] text-slate-500 xl:inline">
           Ctrl K
         </kbd>
       </button>
