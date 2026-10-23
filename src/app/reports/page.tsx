@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { Printer } from "lucide-react";
+import { ChevronRight, Printer } from "lucide-react";
 import { AppNav, APP_TAB_BAR_PAD_CLASS } from "@/components/app-nav";
 import { TagFilterSelect } from "@/components/expense-log";
-import { FinancialScoreCard } from "@/components/financial-score-card";
+import { FinancialScoreChip } from "@/components/financial-score-card";
 import { CashFlowSankey, IncomeSpendingChart, NetWorthChart } from "@/components/reports/report-charts";
 import { ProjectionTransfersToggle } from "@/components/reports/projection-transfers-toggle";
 import { loadNetWorth, loadProjectionInputs } from "@/lib/net-worth-data";
@@ -104,14 +104,20 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
     (tx) => tx.date >= period.start && tx.date < period.end && (!tagFilter || tx.tagIds?.includes(tagFilter.id)),
   );
   const toSavingsCents = tracksSavings ? totalSavedByTransfer(savingsTxs, savings.savingsAccountIds) : null;
-  const months = incomeVsSpendingByMonth(
+  const allMonths = incomeVsSpendingByMonth(
     inPeriod,
     period.months,
     tracksSavings ? savedByTransferByMonth(savingsTxs, savings.savingsAccountIds, period.months) : null,
   );
+  // Start at the first month with anything in it, so a short history isn't a row of empty bars.
+  const firstActive = allMonths.findIndex((m) => m.incomeCents !== 0 || m.spendingCents !== 0 || (m.toSavingsCents ?? 0) !== 0);
+  const months = firstActive === -1 ? [] : allMonths.slice(firstActive);
   const flow = cashFlow(inPeriod, { toSavingsCents });
   const yoy = yearOverYearByCategory(txs, period);
   const merchants = merchantSummaries(inPeriod);
+  // Who you paid and who paid you are listed apart: an employer is not a payee.
+  const payees = merchants.filter((m) => m.spentCents !== 0);
+  const payers = merchants.filter((m) => m.spentCents === 0 && m.receivedCents !== 0);
   const periodOptions = [
     { key: "12m", label: "Last 12 months" },
     ...yearsWithActivity(activityYears, todayYmd).map((y) => ({ key: y, label: y })),
@@ -144,9 +150,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
         </p>
       </div>
 
-      <FinancialScoreCard
+      <FinancialScoreChip
         score={financial.score}
-        note="It doesn't change with the period or tag below"
         gapCount={insights.visible.filter((i) => i.section === "gap").length}
       />
 
@@ -218,6 +223,10 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
         <p className="mb-3 mt-0.5 text-sm text-slate-400">
           By month, {period.label.toLowerCase()}.{period.toDate ? " This month is still running." : ""}
         </p>
+        {months.length === 0 ? (
+          <p className="text-sm text-slate-500">No income or spending in this period yet.</p>
+        ) : (
+        <>
         <IncomeSpendingChart data={months} currency={currency} />
         <details className="mt-3 text-sm">
           <summary className="cursor-pointer select-none text-slate-400">Show as a table</summary>
@@ -248,6 +257,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
             </tbody>
           </table>
         </details>
+        </>
+        )}
       </section>
 
       <section aria-labelledby="report-cash-flow" className={card}>
@@ -267,7 +278,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
         <p className="mb-3 mt-0.5 text-sm text-slate-400">
           Spending by category, {period.label.toLowerCase()} against {comparisonLabel}.
         </p>
-        {yoy.rows.length ? (
+        {yoy.previousTotalCents === 0 && yoy.rows.length ? (
+          <p className="text-sm text-slate-500" data-testid="report-yoy-empty">
+            Nothing to compare yet: there is no spending from {comparisonLabel}. This fills in once you have a year of history.
+          </p>
+        ) : yoy.rows.length ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm tabular-nums" data-testid="report-yoy">
               <thead className="text-left text-xs text-slate-500">
@@ -336,12 +351,22 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
         <p className="mb-3 mt-0.5 text-sm text-slate-400">
           Who you paid most, {period.label.toLowerCase()}. Open one to see everything from that payee.
         </p>
-        {merchants.length ? (
-          <MerchantList merchants={merchants} fmt={fmt} periodQuery={periodQuery} />
+        {payees.length ? (
+          <MerchantList merchants={payees} fmt={fmt} periodQuery={periodQuery} testId="report-merchants" />
         ) : (
           <p className="text-sm text-slate-500">No payees in this period.</p>
         )}
       </section>
+
+      {payers.length ? (
+        <section aria-labelledby="report-payers" className={card}>
+          <h2 id="report-payers" className="text-lg font-semibold">
+            Who paid you
+          </h2>
+          <p className="mb-3 mt-0.5 text-sm text-slate-400">Where income came from, {period.label.toLowerCase()}.</p>
+          <MerchantList merchants={payers} fmt={fmt} periodQuery={periodQuery} testId="report-payers" />
+        </section>
+      ) : null}
     </main>
     </>
   );
@@ -534,10 +559,12 @@ function MerchantList({
   merchants,
   fmt,
   periodQuery,
+  testId,
 }: {
   merchants: ReturnType<typeof merchantSummaries>;
   fmt: (cents: number) => string;
   periodQuery: string;
+  testId: string;
 }) {
   const row = (m: (typeof merchants)[number]) => (
     <li key={m.key}>
@@ -551,8 +578,9 @@ function MerchantList({
             {m.count} {m.count === 1 ? "entry" : "entries"}
           </span>
         </span>
-        <span className="shrink-0 tabular-nums text-slate-300">
+        <span className="flex shrink-0 items-center gap-1 tabular-nums text-slate-300">
           {m.spentCents !== 0 ? fmt(m.spentCents) : <span className="text-emerald-300">+{fmt(m.receivedCents)}</span>}
+          <ChevronRight className="h-4 w-4 self-center text-slate-500" aria-hidden />
         </span>
       </Link>
     </li>
@@ -561,7 +589,7 @@ function MerchantList({
   const rest = merchants.slice(TOP_MERCHANTS);
   return (
     <>
-      <ul className="-mx-2 text-sm" data-testid="report-merchants">
+      <ul className="-mx-2 text-sm" data-testid={testId}>
         {top.map(row)}
       </ul>
       {rest.length ? (

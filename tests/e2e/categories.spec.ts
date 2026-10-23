@@ -178,5 +178,8 @@ test("budget rollover carries last month's leftover into this month's budget", a
   const budgetRow = card.locator("div.rounded-xl").filter({ hasText: books.name });
   await expect(budgetRow).toContainText("$0.00 / $165.00");
   await expect(budgetRow.getByTestId("budget-rollover-note")).toHaveText("Includes $65.00 left over from earlier months");
+  // Each row says what is left, and the card says how long the month has to go.
+  await expect(budgetRow.getByTestId("budget-remaining")).toHaveText("$165.00 left");
+  await expect(card.getByTestId("budget-days-left")).toContainText(/days? left in the month|Last day of the month/);
   await card.screenshot({ path: testInfo.outputPath("budgets-card.png") });
 });

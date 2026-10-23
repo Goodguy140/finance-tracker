@@ -105,6 +105,7 @@ test("removing a rule asks first, and Keep leaves it alone", async ({ page }) =>
   const recurring = page.getByRole("region", { name: "Recurring transactions" });
   await expect(recurring.getByText(name, { exact: true })).toBeVisible();
 
+  await recurring.getByRole("button", { name: `More actions for ${name}` }).click();
   await recurring.getByRole("button", { name: "Remove", exact: true }).click();
   const confirm = recurring.getByRole("group", { name: `Remove ${name}?` });
   await expect(confirm).toBeVisible();
@@ -131,6 +132,7 @@ test("rules outside the month on screen can be shown and edited", async ({ page 
   await recurring.getByRole("button", { name: "show it" }).click();
   await expect(recurring.getByText("Other months")).toBeVisible();
   await expect(recurring.getByText(name, { exact: true })).toBeVisible();
+  await recurring.getByRole("button", { name: `More actions for ${name}` }).click();
   await recurring.getByRole("button", { name: "Edit", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Edit recurring transaction" }).getByLabel("Name")).toHaveValue(name);
 });
