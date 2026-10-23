@@ -5,7 +5,7 @@ import { ensureDefaultDataForUser } from "../../src/lib/defaults";
 import { expectDashboardHome } from "./expect-dashboard-home";
 import { expenseLogLocator, hashTestPassword, signInWithPassword, uniqueStamp } from "./helpers";
 
-// Deleting an expense or income entry and resetting the layout ask in an in-page dialog. A
+// Resetting the layout asks in an in-page dialog (deleting an entry offers Undo instead). A
 // browser confirm box would fire this listener, and Playwright would otherwise auto-dismiss it
 // and let the test carry on as if nothing happened.
 function failOnBrowserDialog(page: Page) {
@@ -76,31 +76,30 @@ async function signInWithEntries(page: Page, layout?: object) {
   return { user, expense, income, expenseTitle, incomeTitle };
 }
 
-test("deleting an expense asks in the page, and Cancel keeps it", async ({ page }) => {
+test("deleting an expense happens at once and Undo puts it back as it was", async ({ page }) => {
   const { expense, expenseTitle } = await signInWithEntries(page);
+  const tag = await prisma.tag.create({ data: { userId: expense.userId, name: "Keep", nameKey: "keep" } });
+  await prisma.transactionTag.create({ data: { transactionId: expense.id, tagId: tag.id } });
 
   const log = expenseLogLocator(page);
   await log.getByRole("button").filter({ hasText: expenseTitle }).filter({ visible: true }).first().click();
   const editor = page.getByRole("dialog", { name: "Edit expense" });
 
   await editor.getByRole("button", { name: "Delete expense" }).click();
-  const confirm = page.getByRole("dialog", { name: "Delete this expense?" });
-  await confirm.getByRole("button", { name: "Cancel" }).click();
-  await expect(confirm).toBeHidden();
-  // Escape inside the confirmation closes only the confirmation, not the edit dialog under it.
-  await editor.getByRole("button", { name: "Delete expense" }).click();
-  await page.keyboard.press("Escape");
-  await expect(confirm).toBeHidden();
-  await expect(editor).toBeVisible();
-  expect(await prisma.transaction.findUnique({ where: { id: expense.id } })).not.toBeNull();
-
-  await editor.getByRole("button", { name: "Delete expense" }).click();
-  await confirm.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(editor).toBeHidden();
   await expect.poll(() => prisma.transaction.findUnique({ where: { id: expense.id } })).toBeNull();
+  const toast = page.getByTestId("undo-toast");
+  await expect(toast).toContainText("Expense deleted");
+
+  await toast.getByRole("button", { name: "Undo" }).click();
+  await expect(toast).toBeHidden();
+  const back = await prisma.transaction.findUniqueOrThrow({ where: { id: expense.id }, include: { tags: true } });
+  expect(back).toMatchObject({ amountCents: 4200, title: expenseTitle });
+  expect(back.tags.map((t) => t.tagId)).toEqual([tag.id]);
+  await expect(log.getByText(expenseTitle).filter({ visible: true }).first()).toBeVisible();
 });
 
-test("deleting income asks in the page", async ({ page }) => {
+test("deleting income happens at once and offers Undo", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   const { income, incomeTitle } = await signInWithEntries(page);
   // The dashboard adds ?month= to its URL just after load, and that re-render remounts the
@@ -112,15 +111,13 @@ test("deleting income asks in the page", async ({ page }) => {
   const editor = page.getByRole("dialog", { name: "Edit income" });
 
   await editor.getByRole("button", { name: "Delete income" }).click();
-  const confirm = page.getByRole("dialog", { name: "Delete this income entry?" });
-  await confirm.getByRole("button", { name: "Cancel" }).click();
-  await expect(confirm).toBeHidden();
-  expect(await prisma.transaction.findUnique({ where: { id: income.id } })).not.toBeNull();
-
-  await editor.getByRole("button", { name: "Delete income" }).click();
-  await confirm.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(editor).toBeHidden();
   await expect.poll(() => prisma.transaction.findUnique({ where: { id: income.id } })).toBeNull();
+  const toast = page.getByTestId("undo-toast");
+  await expect(toast).toContainText("Income deleted");
+  await toast.getByRole("button", { name: "Undo" }).click();
+  await expect(toast).toBeHidden();
+  expect(await prisma.transaction.findUnique({ where: { id: income.id } })).not.toBeNull();
 });
 
 test("resetting the layout asks in the page", async ({ page }, testInfo) => {

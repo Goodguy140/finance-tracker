@@ -5,6 +5,7 @@ import { useActionState, useEffect, useId, useMemo, useRef, useState } from "rea
 import { COMPACT_LIST_MAX_HEIGHT_CLASS } from "@/lib/dashboard-layout/display";
 import type { ListHeight } from "@/lib/dashboard-layout/schema";
 import { useRouter } from "next/navigation";
+import { showUndoToast } from "@/components/undo-toast";
 import { deleteIncomeTransactionAction, updateIncomeAction } from "@/app/actions";
 import { InlineTags } from "@/components/meta-chip";
 import {
@@ -20,7 +21,6 @@ import { TagInput } from "@/components/tag-input";
 import { useTagOptions } from "@/components/transaction-rules-context";
 import { MarkAsTransferSection } from "@/components/transfer-log";
 import { EditSheet, EditSheetFooter, editSheetDeleteBtnClass } from "@/components/edit-sheet";
-import { useConfirm } from "@/components/settings/dialog";
 import { VerifiedBadge, verificationTooltip, type VerificationInfo } from "@/components/verified-badge";
 import { formatCurrency } from "@/lib/money";
 import {
@@ -58,7 +58,7 @@ export type IncomeLogEntry = {
 
 type UpdateState = { ok: true } | { ok: false; error: string | null };
 
-type DeleteState = { ok: true } | { ok: false; error: string | null };
+type DeleteState = { ok: true; undoId: string } | { ok: false; error: string | null };
 
 type IncomeLogDensity = "expanded" | "compact";
 
@@ -145,16 +145,17 @@ function EditIncomeModal({
     { ok: false, error: null },
   );
 
-  const confirm = useConfirm();
   const deleteFormRef = useRef<HTMLFormElement>(null);
-  const confirmOpen = confirm.dialog !== null;
 
   const [deleteState, deleteFormAction, deletePending] = useActionState(
     async (_prev: DeleteState, formData: FormData): Promise<DeleteState> => {
       try {
         const result = await deleteIncomeTransactionAction(formData);
         if (isActionFailure(result)) return { ok: false, error: result.error };
-        return { ok: true };
+        // Here rather than in the effect below: the deleted row's dialog can unmount as soon
+        // as the refreshed log arrives with the action's response, before any effect runs.
+        showUndoToast("Income deleted", result.undoId);
+        return { ok: true, undoId: result.undoId };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Could not delete.";
         return { ok: false, error: message };
@@ -178,14 +179,12 @@ function EditIncomeModal({
   }, [deleteState, onClose, router]);
 
   useEffect(() => {
-    // While the delete confirmation is open, Escape belongs to it, not to this modal.
-    if (confirmOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, confirmOpen]);
+  }, [onClose]);
 
   const amountDollars = (entry.amountCents / 100).toFixed(2);
 
@@ -213,15 +212,8 @@ function EditIncomeModal({
               type="button"
               disabled={isPending || deletePending}
               className={editSheetDeleteBtnClass}
-              onClick={async () => {
-                const ok = await confirm.ask({
-                  title: "Delete this income entry?",
-                  body: "It comes off your income list and dashboard totals. This cannot be undone.",
-                  confirmLabel: "Delete",
-                  danger: true,
-                });
-                if (ok) deleteFormRef.current?.requestSubmit();
-              }}
+              // Deletes at once: the toast that follows offers Undo instead of asking first.
+              onClick={() => deleteFormRef.current?.requestSubmit()}
             >
               {deletePending ? "Deleting…" : "Delete income"}
             </button>
@@ -350,7 +342,6 @@ function EditIncomeModal({
         </FieldHintModeProvider>
 
         <MarkAsTransferSection transactionId={entry.id} kind="income" onDone={onClose} />
-      {confirm.dialog}
     </EditSheet>
   );
 }

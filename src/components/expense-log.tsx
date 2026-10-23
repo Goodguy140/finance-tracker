@@ -5,6 +5,7 @@ import { useActionState, useEffect, useId, useRef, useMemo, useState } from "rea
 import { LIST_MAX_HEIGHT_CLASS } from "@/lib/dashboard-layout/display";
 import type { ListHeight } from "@/lib/dashboard-layout/schema";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { showUndoToast } from "@/components/undo-toast";
 import { deleteExpenseTransactionAction, updateExpenseAction } from "@/app/actions";
 import { InlineTags } from "@/components/meta-chip";
 import { TagInput } from "@/components/tag-input";
@@ -12,7 +13,6 @@ import { useTagOptions } from "@/components/transaction-rules-context";
 import type { TagOption } from "@/lib/tags";
 import { MarkAsTransferSection } from "@/components/transfer-log";
 import { EditSheet, EditSheetFooter, editSheetDeleteBtnClass } from "@/components/edit-sheet";
-import { useConfirm } from "@/components/settings/dialog";
 import { VerifiedBadge, verificationTooltip, type VerificationInfo } from "@/components/verified-badge";
 import {
   CategoryDot,
@@ -90,7 +90,7 @@ type OwedRowDraft = { key: string; id: string | null; name: string; amount: stri
 
 type UpdateState = { ok: true } | { ok: false; error: string | null };
 
-type DeleteState = { ok: true } | { ok: false; error: string | null };
+type DeleteState = { ok: true; undoId: string } | { ok: false; error: string | null };
 
 type ExpenseLogDensity = "expanded" | "compact";
 
@@ -265,16 +265,17 @@ function EditExpenseModal({
     { ok: false, error: null },
   );
 
-  const confirm = useConfirm();
   const deleteFormRef = useRef<HTMLFormElement>(null);
-  const confirmOpen = confirm.dialog !== null;
 
   const [deleteState, deleteFormAction, deletePending] = useActionState(
     async (_prev: DeleteState, formData: FormData): Promise<DeleteState> => {
       try {
         const result = await deleteExpenseTransactionAction(formData);
         if (isActionFailure(result)) return { ok: false, error: result.error };
-        return { ok: true };
+        // Here rather than in the effect below: the deleted row's dialog can unmount as soon
+        // as the refreshed log arrives with the action's response, before any effect runs.
+        showUndoToast("Expense deleted", result.undoId);
+        return { ok: true, undoId: result.undoId };
       } catch (e) {
         const message = e instanceof Error ? e.message : "Could not delete.";
         return { ok: false, error: message };
@@ -298,14 +299,12 @@ function EditExpenseModal({
   }, [deleteState, onClose, router]);
 
   useEffect(() => {
-    // While the delete confirmation is open, Escape belongs to it, not to this modal.
-    if (confirmOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, confirmOpen]);
+  }, [onClose]);
 
   // The amount field is what the user paid; what others owe comes out of it on save.
   const initialOwedCents = owedTotalCents(entry.owedShares);
@@ -429,15 +428,8 @@ function EditExpenseModal({
               type="button"
               disabled={isPending || deletePending}
               className={editSheetDeleteBtnClass}
-              onClick={async () => {
-                const ok = await confirm.ask({
-                  title: "Delete this expense?",
-                  body: "It comes off your log and category totals. This cannot be undone.",
-                  confirmLabel: "Delete",
-                  danger: true,
-                });
-                if (ok) deleteFormRef.current?.requestSubmit();
-              }}
+              // Deletes at once: the toast that follows offers Undo instead of asking first.
+              onClick={() => deleteFormRef.current?.requestSubmit()}
             >
               {deletePending ? "Deleting…" : "Delete expense"}
             </button>
@@ -796,7 +788,6 @@ function EditExpenseModal({
         </FieldHintModeProvider>
 
         <MarkAsTransferSection transactionId={entry.id} kind="expense" onDone={onClose} />
-      {confirm.dialog}
     </EditSheet>
   );
 }

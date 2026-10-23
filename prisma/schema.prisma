@@ -189,6 +189,7 @@ model User {
   hiddenTitleSuggestions    HiddenTitleSuggestion[]
   tags                      Tag[]
   insightDismissals         InsightDismissal[]
+  deletedTransactions       DeletedTransaction[]
   insightPreference         InsightPreference?
 }
 
@@ -737,6 +738,23 @@ model SavingsGoal {
   account Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+}
+
+/// A just-deleted expense or income entry, kept for a few minutes so "Undo" can put it back
+/// exactly as it was (same id, splits, owed shares, tags, verification, transfer pairing).
+/// `payloadJson` is written and read only by src/lib/transaction-undo.ts. Rows older than the
+/// undo window are pruned whenever another delete happens. A new table, so no
+/// REQUIRED_SCHEMA_COLUMNS / COLUMN_REPAIRS entry is needed.
+model DeletedTransaction {
+  id            String   @id @default(cuid())
+  userId        String
+  transactionId String
+  payloadJson   String
+  deletedAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, deletedAt])
 }
 
 model RateLimitEntry {
