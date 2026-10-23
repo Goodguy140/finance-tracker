@@ -63,6 +63,9 @@ test("the Spending by category pie shows net savings as a slice when its setting
 
   await pieCard.getByRole("button", { name: "Spending by category settings" }).click();
   const popover = page.getByRole("dialog", { name: "Spending by category settings" });
+  // The page moving under it (cards streaming in, or the user scrolling) leaves it open.
+  await page.evaluate(() => window.scrollBy(0, 40));
+  await expect(popover).toBeVisible();
   await popover.getByRole("checkbox", { name: /Show savings/ }).check();
 
   // Saved is the last thing the setting writes; reload only once the row says so.

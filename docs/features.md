@@ -48,6 +48,10 @@ Card registry is `DASHBOARD_CARDS` in `src/lib/dashboard-layout/cards.ts`; per-c
 - **Layout editing**: move cards, resize columns (24-unit grid, max 4 columns), stack cards as
   tabs (`card-stack.tsx`), remove/add back, reset
 - **Phone quick-add** (expense, income, transfer): `dashboard-mobile-actions.tsx`
+- **Get started** checklist above the cards for a new user (connect a bank when Plaid is set up,
+  import or log transactions, set a budget, add a recurring bill, record balances). Each step
+  ticks off from the user's own data; the card goes when all are done or on Hide
+  (`User.getStartedDismissedAt`): `get-started-card.tsx`, `src/lib/get-started.ts`
 
 Cards (`src/components/dashboard-cards/`), with their gear settings:
 

@@ -47,7 +47,8 @@ async function createMinimalSchema(prisma: PrismaClient) {
       "disabledAt" DATETIME,
       "dashboardTextVisiblePct" INTEGER NOT NULL DEFAULT 95,
       "dashboardBudgetNameVisiblePct" INTEGER NOT NULL DEFAULT 90,
-      "projectionIncludesTransfers" BOOLEAN NOT NULL DEFAULT false
+      "projectionIncludesTransfers" BOOLEAN NOT NULL DEFAULT false,
+      "getStartedDismissedAt" DATETIME
     )
   `);
   await prisma.$executeRawUnsafe(`

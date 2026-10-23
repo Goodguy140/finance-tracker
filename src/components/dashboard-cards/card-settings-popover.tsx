@@ -39,9 +39,15 @@ export function CardSettingsPopover({
       if (panelRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
       setOpen(false);
     };
-    // Scrolling moves the anchor out from under an absolutely positioned panel, so close
-    // rather than chase it — the same choice the other popovers here make.
-    const onScroll = () => setOpen(false);
+    // Scrolling or a resize moves the anchor, so the panel follows it rather than closing:
+    // the dashboard's cards stream in above one another, and the scroll anchoring that keeps
+    // the page still while they do fires scroll events nobody made.
+    // The panel's own scrolling (a long one, capped to the screen) is not the page moving.
+    const onScroll = (event: Event) => {
+      if (event.type === "scroll" && panelRef.current?.contains(event.target as Node)) return;
+      const anchor = triggerRef.current?.getBoundingClientRect();
+      if (anchor) setRect(anchor);
+    };
 
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("pointerdown", onPointerDown);
@@ -69,9 +75,9 @@ export function CardSettingsPopover({
             id={panelId}
             role="dialog"
             aria-label={`${title} settings`}
-            className="fixed z-[75] w-[min(92vw,20rem)] rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-2xl"
+            className="fixed z-[75] w-[min(92vw,20rem)] overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-2xl"
             style={{
-              top: Math.min(rect.bottom + 8, window.innerHeight - 16),
+              ...panelVerticalPlacement(rect, window.innerHeight),
               // Keep the panel on screen when the card sits near the right edge.
               left: Math.max(8, Math.min(rect.right - 320, window.innerWidth - 328)),
             }}
@@ -178,4 +184,15 @@ export function SettingToggleRow({
       </span>
     </label>
   );
+}
+
+/**
+ * Below the trigger when there is room, otherwise above it, and never taller than the space it
+ * has: a trigger near the bottom of the screen used to open a panel that hung off it.
+ */
+export function panelVerticalPlacement(rect: { top: number; bottom: number }, viewportHeight: number) {
+  const below = viewportHeight - rect.bottom - 16;
+  const above = rect.top - 16;
+  if (below >= 240 || below >= above) return { top: rect.bottom + 8, maxHeight: Math.max(below, 120) };
+  return { bottom: viewportHeight - rect.top + 8, maxHeight: above };
 }

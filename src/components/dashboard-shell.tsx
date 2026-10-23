@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useState, type ReactNode } from "react";
 import { DashboardGrid, type DashboardCardContentMap } from "@/components/dashboard-grid";
 import type { DashboardLayout } from "@/lib/dashboard-layout/schema";
 import type { DashboardReadability } from "@/lib/dashboard-readability";
@@ -24,10 +24,13 @@ export function DashboardShell({
   storedLayout,
   cards,
   readability,
+  banner,
 }: {
   storedLayout: DashboardLayout;
   cards: DashboardCardContentMap;
   readability: DashboardReadability;
+  /** Above the cards, out of the way while the layout is being arranged (the Get started list). */
+  banner?: ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
   const [columnCount, setColumnCount] = useState(storedLayout.columns.length);
@@ -45,6 +48,7 @@ export function DashboardShell({
 
   return (
     <>
+      {!editing ? banner : null}
       {!editing ? (
         <div className="mb-2 hidden items-center justify-end gap-2 lg:flex">
           <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
