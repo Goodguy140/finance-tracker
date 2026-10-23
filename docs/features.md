@@ -183,6 +183,11 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     `contribution-room-panel.tsx`, `actions/accounts.ts`. Currency is fixed once an account has
     transactions, recurring rules, balances or a bank mapping, and a non-home-currency account
     with transactions can only be archived, not deleted (`src/lib/account-currency-guard.ts`)
+  - Reconcile with a statement (`/settings/accounts/reconcile`, "Reconcile" on Accounts): dates
+    and opening/closing balances in, the log's entries with a running balance and the difference
+    out (cards and loans as amounts owed); "Mark reconciled" keeps an `AccountReconciliation` and
+    the closing balance as a manual balance unless the bank reported that day:
+    `src/lib/reconciliation.ts`, `actions/reconciliation.ts`
   - Savings goals: `settings/savings-goals-panel.tsx`, `actions/savings-goals.ts`
   - Connected banks: see Bank sync
   - Categories & budgets (add, rename, merge, delete with reassign, budget, rollover, earlier

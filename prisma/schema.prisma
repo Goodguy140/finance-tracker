@@ -113,14 +113,14 @@ enum TransactionVerificationSource {
 }
 
 model User {
-  id                            String    @id @default(cuid())
-  email                         String    @unique
+  id                            String          @id @default(cuid())
+  email                         String          @unique
   passwordHash                  String?
   displayName                   String
-  timezone                      String    @default("America/Toronto")
-  countryCode                   String    @default("CA")
+  timezone                      String          @default("America/Toronto")
+  countryCode                   String          @default("CA")
   emailVerifiedAt               DateTime?
-  role                          UserRole  @default(USER)
+  role                          UserRole        @default(USER)
   /**
    * Bumped whenever every existing session should stop working (password change, password
    * reset, explicit sign-out-everywhere). Sessions are stateless JWTs, so this is the only
@@ -128,7 +128,7 @@ model User {
    * it no longer matches. Tokens issued before this column existed carry no version and are
    * treated as 0, so deploying it does not sign everyone out.
    */
-  tokenVersion                  Int       @default(0)
+  tokenVersion                  Int             @default(0)
   /**
    * Set when an admin suspends the account. A suspended user keeps all their financial
    * history but cannot sign in, hold a session, or use a personal access token — the
@@ -145,25 +145,25 @@ model User {
    * threshold. Server-side so the alert can be sent from whichever request pushed the
    * category over, not only from a browser that happens to be open.
    */
-  budgetAlertEmailEnabled       Boolean   @default(false)
+  budgetAlertEmailEnabled       Boolean         @default(false)
   /**
    * How much text the dashboard must keep readable before it merges a column away, as whole
    * percentages. The first applies to each card's text as a whole; the second to each budget
    * name on its own, which is the point of its row and so gets a floor of its own.
    */
-  dashboardTextVisiblePct       Int       @default(95)
-  dashboardBudgetNameVisiblePct Int       @default(90)
+  dashboardTextVisiblePct       Int             @default(95)
+  dashboardBudgetNameVisiblePct Int             @default(90)
   /// Projected balances on Reports (and what Insights and the printable summary take from them)
   /// also apply recurring transfers: out of one account and into the other.
-  projectionIncludesTransfers   Boolean   @default(false)
+  projectionIncludesTransfers   Boolean         @default(false)
   /// When the user hid the dashboard's "Get started" checklist. It also goes once every step is done.
   getStartedDismissedAt         DateTime?
   /// The spending summary emailed weekly (Mondays) or monthly (the 1st), or OFF.
   digestFrequency               DigestFrequency @default(OFF)
   /// The last period a digest went out for ("W:2026-10-12" or "M:2026-09"), so each is sent once.
   digestLastPeriodKey           String?
-  createdAt                     DateTime  @default(now())
-  updatedAt                     DateTime  @updatedAt
+  createdAt                     DateTime        @default(now())
+  updatedAt                     DateTime        @updatedAt
 
   defaultExpenseAccount Account? @relation("UserDefaultExpenseAccount", fields: [defaultExpenseAccountId], references: [id], onDelete: SetNull)
 
@@ -203,6 +203,7 @@ model User {
   insightDismissals         InsightDismissal[]
   deletedTransactions       DeletedTransaction[]
   transactionAttachments    TransactionAttachment[]
+  accountReconciliations    AccountReconciliation[]
   insightPreference         InsightPreference?
 }
 
@@ -435,6 +436,7 @@ model Account {
   rulesMatchingAccount   TransactionRule[]        @relation("TransactionRuleMatchAccount")
   rulesSettingAccount    TransactionRule[]        @relation("TransactionRuleSetAccount")
   rulesSettingTransferTo TransactionRule[]        @relation("TransactionRuleSetTransferAccount")
+  reconciliations        AccountReconciliation[]
 }
 
 model Category {
@@ -535,7 +537,6 @@ model SplitTransactionPart {
 /**
  * Part of a one-off expense that someone else owes the user: their half of a dinner, a
  * friend's share of a trip. The one-off counterpart of SubscriptionMember.
- *
  * The share is taken out of the expense's `amountCents` as soon as it is marked, so every
  * total (budgets, categories, insights, exports) counts only the user's own part without
  * knowing this table exists. What the user actually paid is `amountCents` plus the shares.
@@ -793,6 +794,27 @@ model TransactionAttachment {
 
   @@index([transactionId])
   @@index([userId, createdAt])
+}
+
+/// A statement the user checked the log against: from `startDate` to `endDate` (both inclusive,
+/// date-only) the account went from `openingCents` to `closingCents`, and the log agreed. For a
+/// credit card or loan the balances are what was owed. A new table, so no
+/// REQUIRED_SCHEMA_COLUMNS / COLUMN_REPAIRS entry is needed.
+model AccountReconciliation {
+  id           String   @id @default(cuid())
+  userId       String
+  accountId    String
+  startDate    DateTime
+  endDate      DateTime
+  openingCents Int
+  closingCents Int
+  createdAt    DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, endDate])
+  @@index([userId])
 }
 
 model RateLimitEntry {

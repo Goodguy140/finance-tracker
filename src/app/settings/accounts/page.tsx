@@ -64,12 +64,20 @@ export default async function AccountsSettingsPage() {
     <SettingsPage
       section="accounts"
       actions={
-        <Link
-          href="/settings/import"
-          className="inline-flex items-center rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-200 transition hover:bg-slate-800"
-        >
-          Import CSV
-        </Link>
+        <>
+          <Link
+            href="/settings/accounts/reconcile"
+            className="inline-flex items-center rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-200 transition hover:bg-slate-800"
+          >
+            Reconcile
+          </Link>
+          <Link
+            href="/settings/import"
+            className="inline-flex items-center rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-200 transition hover:bg-slate-800"
+          >
+            Import CSV
+          </Link>
+        </>
       }
     >
       <AccountsManager
