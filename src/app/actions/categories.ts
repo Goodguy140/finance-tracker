@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { CategoryKind, type Prisma } from "@prisma/client";
 import { z } from "zod";
+import { normalizeGroupName } from "@/lib/category-groups";
 import { toCents } from "@/lib/money";
 import { currentYmInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
@@ -261,6 +262,27 @@ export const setCategoryRolloverAction = formAction(async (formData: FormData) =
  * Says which category a Plaid category lands in, or (empty `categoryId`) returns it to the
  * built-in default. Rows still waiting in the review queue are re-suggested at once.
  */
+/**
+ * Files a category under a group, or takes it out of one (an empty name). A group is matched to
+ * an existing one ignoring case, so "food" joins "Food" rather than starting a second group.
+ */
+export const setCategoryGroupAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const category = await findManagedCategory(prisma, user.id, getFormValue(formData, "categoryId"));
+  let groupName = normalizeGroupName(getFormValue(formData, "groupName"));
+  if (groupName) {
+    const existing = await prisma.category.findMany({
+      where: { userId: user.id, groupName: { not: null }, NOT: { id: category.id } },
+      select: { groupName: true },
+    });
+    groupName = existing.find((c) => c.groupName!.toLowerCase() === groupName!.toLowerCase())?.groupName ?? groupName;
+  }
+  await prisma.category.update({ where: { id: category.id }, data: { groupName } });
+  revalidatePath("/");
+  revalidatePath("/reports", "layout");
+  revalidatePath("/settings", "layout");
+});
+
 export const setPlaidCategoryMappingAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const plaidCategory = getFormValue(formData, "plaidCategory").trim().toUpperCase();

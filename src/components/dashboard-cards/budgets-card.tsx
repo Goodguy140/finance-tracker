@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { DashboardRange } from "@/lib/dashboard-period";
+import { hasGroups, sectionByGroup } from "@/lib/category-groups";
 import { formatCurrency } from "@/lib/money";
 
 export type DashboardBudgetProgressItem = {
@@ -10,6 +11,8 @@ export type DashboardBudgetProgressItem = {
   /** Rollover carried in from earlier months, already part of `limitCents`; 0 when none. */
   carryCents?: number;
   progressPct: number;
+  /** The category's group; rows are shown under their groups once any category has one. */
+  groupName?: string | null;
 };
 
 export type BudgetsCardBodyProps = {
@@ -131,42 +134,85 @@ export function BudgetsCardBody({
             : "No budgets set for this period."}
         </p>
       ) : (
-        <div
-          data-budget-rows={perRow}
-          // The count comes from --budgets-per-row, which the card shell sets from the live
-          // client settings. This body is rendered on the server, so reading an inherited
-          // variable is what lets the setting reflow the rows without a server round trip.
-          // Applied unconditionally rather than behind a container-query floor: the count is
-          // an explicit choice, and minmax(0, 1fr) tracks shrink rather than overflow, so a
-          // narrow column makes the rows tighter instead of breaking the layout.
-          className="mt-3 grid gap-2 grid-cols-[repeat(var(--budgets-per-row,1),minmax(0,1fr))]"
-        >
-          {items.map((item) => (
-            <div key={item.id} className="min-w-0 rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
-              <div className="mb-1 flex items-center justify-between gap-2 text-sm">
-                {/* The name is what the row is about: the dashboard drops a column rather than
-                    show less of it than the user's budget-name setting allows. */}
-                <span data-min-visible="budget-name" className="truncate font-medium text-slate-200">
-                  {item.categoryName}
-                </span>
-                <span className="shrink-0 tabular-nums text-slate-300">
-                  {formatCurrency(item.spentCents)} / {formatCurrency(item.limitCents)}
-                </span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
-                <div
-                  className={`h-full rounded-full ${item.progressPct >= 100 ? "bg-red-500" : item.progressPct >= 80 ? "bg-amber-400" : "bg-emerald-500"}`}
-                  style={{ width: `${item.progressPct}%` }}
-                />
-              </div>
-              <div className="mt-1 flex justify-end">
-                <RemainingLine spentCents={item.spentCents} limitCents={item.limitCents} />
-              </div>
-              {item.carryCents ? <RolloverNote carryCents={item.carryCents} /> : null}
-            </div>
-          ))}
-        </div>
+        <BudgetRowSections items={items} perRow={perRow} />
       )}
     </>
+  );
+}
+
+/** The rows as one grid, or under a heading per group with the group's total once any has one. */
+function BudgetRowSections({ items, perRow }: { items: DashboardBudgetProgressItem[]; perRow: 1 | 2 | 3 }) {
+  if (!hasGroups(items, (item) => item.groupName)) return <BudgetRowGrid items={items} perRow={perRow} />;
+  return (
+    <div className="mt-3 space-y-3">
+      {sectionByGroup(items, (item) => item.groupName).map((section) => {
+        const spent = section.items.reduce((sum, item) => sum + item.spentCents, 0);
+        const limit = section.items.reduce((sum, item) => sum + item.limitCents, 0);
+        return (
+          <section key={section.groupName ?? ""} data-testid="budget-group" aria-label={section.groupName ?? "Not grouped"}>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-xs">
+              <h3 className="font-semibold uppercase tracking-wide text-slate-400">{section.groupName ?? "Not grouped"}</h3>
+              {section.groupName ? (
+                <span className="flex gap-2 tabular-nums text-slate-400" data-testid="budget-group-total">
+                  <span>
+                    {formatCurrency(spent)} / {formatCurrency(limit)}
+                  </span>
+                  <RemainingLine spentCents={spent} limitCents={limit} />
+                </span>
+              ) : null}
+            </div>
+            <BudgetRowGrid items={section.items} perRow={perRow} className="mt-1.5" />
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function BudgetRowGrid({
+  items,
+  perRow,
+  className = "mt-3",
+}: {
+  items: DashboardBudgetProgressItem[];
+  perRow: 1 | 2 | 3;
+  className?: string;
+}) {
+  return (
+    <div
+      data-budget-rows={perRow}
+      // The count comes from --budgets-per-row, which the card shell sets from the live
+      // client settings. This body is rendered on the server, so reading an inherited
+      // variable is what lets the setting reflow the rows without a server round trip.
+      // Applied unconditionally rather than behind a container-query floor: the count is
+      // an explicit choice, and minmax(0, 1fr) tracks shrink rather than overflow, so a
+      // narrow column makes the rows tighter instead of breaking the layout.
+      className={`${className} grid gap-2 grid-cols-[repeat(var(--budgets-per-row,1),minmax(0,1fr))]`}
+    >
+      {items.map((item) => (
+        <div key={item.id} className="min-w-0 rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
+          <div className="mb-1 flex items-center justify-between gap-2 text-sm">
+            {/* The name is what the row is about: the dashboard drops a column rather than
+                show less of it than the user's budget-name setting allows. */}
+            <span data-min-visible="budget-name" className="truncate font-medium text-slate-200">
+              {item.categoryName}
+            </span>
+            <span className="shrink-0 tabular-nums text-slate-300">
+              {formatCurrency(item.spentCents)} / {formatCurrency(item.limitCents)}
+            </span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+            <div
+              className={`h-full rounded-full ${item.progressPct >= 100 ? "bg-red-500" : item.progressPct >= 80 ? "bg-amber-400" : "bg-emerald-500"}`}
+              style={{ width: `${item.progressPct}%` }}
+            />
+          </div>
+          <div className="mt-1 flex justify-end">
+            <RemainingLine spentCents={item.spentCents} limitCents={item.limitCents} />
+          </div>
+          {item.carryCents ? <RolloverNote carryCents={item.carryCents} /> : null}
+        </div>
+      ))}
+    </div>
   );
 }

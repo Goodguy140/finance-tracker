@@ -194,6 +194,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
           kind: category.kind,
           isDefault: category.isDefault,
           rolloverSinceMonth: category.rolloverSinceMonth ?? null,
+          groupName: category.groupName ?? null,
           createdAt: new Date(category.createdAt),
           updatedAt: new Date(category.updatedAt),
         },

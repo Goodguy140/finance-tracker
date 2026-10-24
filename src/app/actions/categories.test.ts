@@ -341,3 +341,34 @@ describe("setPlaidCategoryMappingAction", () => {
     expect(await db.plaidCategoryMapping.count({ where: { userId: session.userId } })).toBe(0);
   });
 });
+
+describe("category groups", () => {
+  const groupForm = (categoryId: string, groupName: string) => {
+    const f = new FormData();
+    f.set("categoryId", categoryId);
+    f.set("groupName", groupName);
+    return f;
+  };
+  const groupOf = async (id: string) => (await db.category.findUniqueOrThrow({ where: { id } })).groupName;
+
+  it("files a category under a group, joining an existing one whatever its case, and takes it out again", async () => {
+    const groceries = await category("Groceries");
+    const restaurants = await category("Restaurants");
+    expect(await actions.setCategoryGroupAction(groupForm(groceries.id, "  Food  "))).toBeUndefined();
+    expect(await groupOf(groceries.id)).toBe("Food");
+    await actions.setCategoryGroupAction(groupForm(restaurants.id, "food"));
+    expect(await groupOf(restaurants.id)).toBe("Food");
+    await actions.setCategoryGroupAction(groupForm(restaurants.id, ""));
+    expect(await groupOf(restaurants.id)).toBeNull();
+  });
+
+  it("refuses another user's category and an over-long name", async () => {
+    const mine = await category("Groceries");
+    expect(await actions.setCategoryGroupAction(groupForm(mine.id, "x".repeat(41)))).toMatchObject({
+      error: "Group names can be at most 40 characters.",
+    });
+    session.userId = (await db.user.create({ data: { email: `other${seq}@example.test`, displayName: "Other" } })).id;
+    expect(await actions.setCategoryGroupAction(groupForm(mine.id, "Food"))).toMatchObject({ error: "Category not found." });
+    expect(await groupOf(mine.id)).toBeNull();
+  });
+});

@@ -105,7 +105,8 @@ async function createMinimalSchema(prisma: PrismaClient) {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE "Category" (
       "id" TEXT NOT NULL PRIMARY KEY,
-      "rolloverSinceMonth" TEXT
+      "rolloverSinceMonth" TEXT,
+      "groupName" TEXT
     )
   `);
   await prisma.$executeRawUnsafe(`

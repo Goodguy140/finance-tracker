@@ -455,6 +455,9 @@ model Category {
   /// Budget rollover: from this month (YYYY-MM) on, what is left of each month's budget, or
   /// what went over it, carries into the next. Null when rollover is off.
   rolloverSinceMonth String?
+  /// A heading the user files categories under ("Food" over Groceries and Restaurants), for
+  /// totals on the Budgets card, the category pie and Reports. Null when not grouped.
+  groupName          String?
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 

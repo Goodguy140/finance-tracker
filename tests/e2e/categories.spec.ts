@@ -183,3 +183,57 @@ test("budget rollover carries last month's leftover into this month's budget", a
   await expect(card.getByTestId("budget-days-left")).toContainText(/days? left in the month|Last day of the month/);
   await card.screenshot({ path: testInfo.outputPath("budgets-card.png") });
 });
+
+test("categories filed under a group add up on Settings, the Budgets card and Reports", async ({ page }, testInfo) => {
+  const { user, stamp } = await createUserAndLogin(page);
+  const thisYm = currentYmInTimeZone("America/Toronto");
+  const account = await prisma.account.findFirstOrThrow({ where: { userId: user.id } });
+  const group = `Food ${stamp}`;
+  const made: { id: string; name: string }[] = [];
+  for (const [name, limitCents, spentCents] of [
+    [`Groceries ${stamp}`, 40_000, 12_000],
+    [`Dining ${stamp}`, 10_000, 4_500],
+  ] as const) {
+    const category = await prisma.category.create({ data: { userId: user.id, name, kind: CategoryKind.EXPENSE } });
+    await prisma.budget.create({ data: { userId: user.id, categoryId: category.id, periodMonth: thisYm, limitCents } });
+    await prisma.transaction.create({
+      data: {
+        userId: user.id,
+        accountId: account.id,
+        categoryId: category.id,
+        type: TransactionType.EXPENSE,
+        amountCents: spentCents,
+        date: new Date(`${thisYm}-01T12:00:00Z`),
+        title: `Spend ${name}`,
+      },
+    });
+    made.push(category);
+  }
+
+  await page.goto("/settings/categories");
+  const panel = page.getByRole("region", { name: "Categories & budgets" });
+  for (const category of made) {
+    const row = panel.getByTestId("category-row").filter({ hasText: category.name });
+    await row.locator("summary").click();
+    await row.getByLabel(`Group for ${category.name}`).fill(group);
+    await row.getByRole("button", { name: "Save group" }).click();
+    await expect
+      .poll(async () => (await prisma.category.findUniqueOrThrow({ where: { id: category.id } })).groupName)
+      .toBe(group);
+  }
+  await page.reload();
+  const section = panel.getByTestId("category-group").filter({ hasText: group });
+  await expect(section.getByTestId("category-row")).toHaveCount(2);
+  await expect(section.getByTestId("category-group-total")).toHaveText("$165.00 of $500.00 this month");
+
+  await page.goto("/");
+  const card = page.getByRole("region", { name: "Budgets" });
+  const budgetGroup = card.getByTestId("budget-group").filter({ hasText: group });
+  await expect(budgetGroup.getByTestId("budget-group-total")).toContainText("$165.00 / $500.00");
+  await expect(budgetGroup.getByTestId("budget-group-total")).toContainText("$335.00 left");
+  await card.screenshot({ path: testInfo.outputPath("budgets-card-groups.png") });
+
+  await page.goto("/reports");
+  const groups = page.getByTestId("report-groups");
+  await expect(groups.getByRole("row").filter({ hasText: group })).toContainText("$165.00");
+});

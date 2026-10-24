@@ -73,6 +73,7 @@ const cardSettingsSchema = z
         chartHeight: chartHeightSchema,
         maxSlices: z.union([z.literal(5), z.literal(8), z.literal(12)]).catch(8),
         showSavings: z.boolean().catch(false),
+        groupCategories: z.boolean().catch(true),
       })
       .partial()
       .catch({}),
