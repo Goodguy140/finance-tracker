@@ -55,8 +55,8 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     id: "notifications",
     group: "you",
     label: "Notifications",
-    summary: "Budget alerts, the email digest and bill reminders.",
-    keywords: ["email", "alerts", "budget alert", "digest", "bill reminders", "reminder", "due"],
+    summary: "Budget alerts, the email digest, bill reminders and charge alerts.",
+    keywords: ["email", "alerts", "budget alert", "digest", "bill reminders", "reminder", "due", "large charge", "unusual", "fraud"],
   },
   {
     id: "appearance",

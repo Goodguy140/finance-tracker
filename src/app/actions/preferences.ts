@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { DigestFrequency } from "@prisma/client";
 import { parseBillReminderDays } from "@/lib/bill-reminders";
 import { isBudgetAlertEmailConfigured } from "@/lib/budget-alert-email";
+import { parseChargeAlertThreshold } from "@/lib/charge-alerts";
 import { latestDigestPeriod, sendDigestPreview } from "@/lib/email-digest";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import { MIN_BUDGET_NAME_VISIBLE_PCT, MIN_TEXT_VISIBLE_PCT, parseVisiblePct } from "@/lib/dashboard-readability";
@@ -93,5 +94,28 @@ export const setBillRemindersAction = formAction(async (formData: FormData) => {
     throw new Error("Bill reminders need SMTP configured on the server first.");
   }
   await prisma.user.update({ where: { id: user.id }, data: { billReminderDays } });
+  revalidatePath("/settings", "layout");
+});
+
+/**
+ * Large and unusual charge alerts. Turning them on (from off) starts from now, so the bank rows
+ * already in the queue are not emailed all at once.
+ */
+export const setChargeAlertsAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const thresholdCents = parseChargeAlertThreshold(getFormValue(formData, "threshold"));
+  const unusual = getFormValue(formData, "unusual") === "true";
+  const on = thresholdCents !== null || unusual;
+  if (on && !isBudgetAlertEmailConfigured()) {
+    throw new Error("Charge alerts need SMTP configured on the server first.");
+  }
+  const existing = await prisma.chargeAlertSetting.findUnique({ where: { userId: user.id } });
+  const wasOn = existing !== null && (existing.thresholdCents !== null || existing.unusual);
+  const checkedThrough = wasOn ? existing.checkedThrough : new Date();
+  await prisma.chargeAlertSetting.upsert({
+    where: { userId: user.id },
+    create: { userId: user.id, thresholdCents, unusual, checkedThrough },
+    update: { thresholdCents, unusual, checkedThrough },
+  });
   revalidatePath("/settings", "layout");
 });
