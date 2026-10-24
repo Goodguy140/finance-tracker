@@ -80,6 +80,14 @@ describe("safeNextPath", () => {
     expect(safeNextPath("settings")).toBe("/");
   });
 
+  it("refuses paths a browser would turn into another host", () => {
+    // Browsers strip tabs and newlines, so each of these resolves to https://evil.example/.
+    for (const candidate of ["/\t/evil.example", "/\n/evil.example", "/\r\n/evil.example"]) {
+      expect(new URL(safeNextPath(candidate), "https://app.example").origin).toBe("https://app.example");
+    }
+    expect(safeNextPath("/\t/evil.example")).toBe("/");
+  });
+
   it("never loops back onto the wall or the login page", () => {
     expect(safeNextPath("/mfa")).toBe("/");
     expect(safeNextPath("/mfa?next=%2F")).toBe("/");

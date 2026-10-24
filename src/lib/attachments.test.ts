@@ -6,6 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { copyMigratedDatabase } from "@/test-support/migrated-db";
 import {
   addAttachment,
+  attachmentContentDisposition,
   cleanAttachmentName,
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENTS_PER_TRANSACTION,
@@ -114,5 +115,16 @@ describe("keeping receipts", () => {
     });
     await deleteTransactionWithUndo(db, userId, another.id, "EXPENSE");
     expect(await db.transactionAttachment.count({ where: { id: added.id } })).toBe(0);
+  });
+});
+
+describe("attachmentContentDisposition", () => {
+  it("can be sent as a header for any stored name, keeping the real name in filename*", () => {
+    for (const name of ["收据.pdf", "receipt 🧾.png", "reçu.jpg", "plain.pdf"]) {
+      const value = attachmentContentDisposition(name);
+      // The Response constructor is what threw on the old header: it only takes Latin-1.
+      expect(() => new Response(null, { headers: { "Content-Disposition": value } })).not.toThrow();
+      expect(decodeURIComponent(value.split("filename*=UTF-8''")[1])).toBe(name);
+    }
   });
 });

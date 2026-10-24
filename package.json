@@ -29,15 +29,15 @@
     "@simplewebauthn/server": "^13.3.3",
     "bcryptjs": "^3.0.3",
     "lucide-react": "^1.8.0",
-    "next": "^16.3.8",
+    "next": "^16.4.3",
     "next-auth": "^4.24.15",
-    "nodemailer": "^10.0.9",
+    "nodemailer": "^10.2.1",
     "pdf-lib": "^1.17.1",
     "prisma": "^6.19.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^2.15.4",
-    "zod": "^4.3.6"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
@@ -47,10 +47,10 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "^16.3.8",
+    "eslint-config-next": "^16.4.3",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^4.0.3"
+    "vitest": "^4.1.12"
   },
   "overrides": {
     "deepmerge-ts": "^8.0.2"
