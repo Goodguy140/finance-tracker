@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 import { TransactionType } from "@prisma/client";
 import { ensureDefaultDataForUser } from "@/lib/defaults";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { requireRecentIdentity } from "@/lib/recent-identity";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { userBackupSchema } from "@/lib/backup-schema";
 import { BACKUP_MAX_BYTES, backupTooLargeMessage } from "@/lib/backup-limits";
@@ -21,7 +21,8 @@ import {
   formAction,
 } from "./_helpers";
 export const clearUserFinancialDataAction = formAction(async (formData: FormData) => {
-  const user = await requireUser();
+  // Both wipe the account: a stolen session cookie alone must not be enough.
+  const { user } = await requireRecentIdentity();
   const confirmation = getFormValue(formData, "confirmation").trim();
   if (confirmation !== "RESET FINANCIAL DATA") {
     throw new Error('Type RESET FINANCIAL DATA exactly to confirm.');
@@ -72,7 +73,8 @@ export const clearUserFinancialDataAction = formAction(async (formData: FormData
 });
 
 export const importUserBackupAction = formAction(async (formData: FormData) => {
-  const user = await requireUser();
+  // Both wipe the account: a stolen session cookie alone must not be enough.
+  const { user } = await requireRecentIdentity();
   const raw = formData.get("backupJson");
   if (!(raw instanceof File)) {
     throw new Error("Backup file is required.");

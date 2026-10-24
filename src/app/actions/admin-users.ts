@@ -9,6 +9,7 @@ import {
   type AdminUserGuardTarget,
 } from "@/lib/admin-users";
 import { prisma } from "@/lib/prisma";
+import { requireRecentIdentity } from "@/lib/recent-identity";
 import { requireAdmin } from "@/lib/session";
 import { revokePlaidItemsForUser } from "@/lib/plaid/unlink";
 import { tryMakePlaidItemRevoker } from "@/lib/plaid/service";
@@ -22,9 +23,18 @@ import { formAction, getFormValue } from "./_helpers";
 
 const ADMIN_USERS_PATH = "/settings/admin/users";
 
-/** Loads the target and runs the shared guard rails. Returns the acting admin and target. */
-async function loadTarget(userId: string, intent: "demote" | "disable" | "delete" | null) {
+/**
+ * Loads the target and runs the shared guard rails. Returns the acting admin and target.
+ * Everything but a forced sign-out (recoverable by signing back in) also needs a recent
+ * "it's you", so a stolen admin cookie cannot hand out roles or remove accounts.
+ */
+async function loadTarget(
+  userId: string,
+  intent: "demote" | "disable" | "delete" | null,
+  { confirmIdentity = true }: { confirmIdentity?: boolean } = {},
+) {
   const actor = await requireAdmin();
+  if (confirmIdentity) await requireRecentIdentity();
   const target = await prisma.user.findUnique({
     where: { id: userId },
     select: { id: true, email: true, role: true, disabledAt: true },
@@ -98,7 +108,7 @@ export const forceSignOutUserAction = formAction(async (formData: FormData) => {
   const payload = adminUserIdSchema.parse({ userId: getFormValue(formData, "userId") });
   // No guard rail: revoking sessions is recoverable by signing back in, and an admin
   // signing themselves out everywhere is a legitimate thing to want.
-  const { actor, target } = await loadTarget(payload.userId, null);
+  const { actor, target } = await loadTarget(payload.userId, null, { confirmIdentity: false });
 
   await prisma.user.update({
     where: { id: target.id },

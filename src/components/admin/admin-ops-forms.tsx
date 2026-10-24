@@ -7,6 +7,7 @@ import {
 } from "@/app/actions";
 import { SourceBadge } from "@/components/admin/ui";
 import { inputClass, primaryBtnClass } from "@/components/forms/shared";
+import { useConfirmIdentity } from "@/components/mfa/confirm-identity";
 import { ServerActionForm } from "@/components/server-action-form";
 import type { ResolvedSetting } from "@/lib/ops-settings";
 
@@ -82,8 +83,9 @@ function SettingCard({
 
 export function AdminSignupPolicyForm({ status }: { status: ResolvedSetting<boolean> }) {
   const pinned = status.source === "environment";
+  const confirmIdentity = useConfirmIdentity();
   return (
-    <ServerActionForm action={updatePublicSignupAction}>
+    <ServerActionForm action={updatePublicSignupAction} beforeSubmit={confirmIdentity}>
       <SettingCard title="Account creation" setting={status}>
         <SwitchField
           name="publicSignup"

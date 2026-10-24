@@ -15,10 +15,16 @@ const url = `file:${join(dir, "delete.db")}`;
 let db: PrismaClient;
 let actions: typeof import("./auth");
 
-const session = vi.hoisted(() => ({ user: null as User | null }));
+const session = vi.hoisted(() => ({ user: null as User | null, identityFresh: true }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/headers", () => ({ headers: vi.fn(async () => new Headers()) }));
 vi.mock("@/lib/session", () => ({ requireUser: vi.fn(async () => session.user) }));
+vi.mock("@/lib/recent-identity", () => ({
+  requireRecentIdentity: vi.fn(async () => {
+    if (!session.identityFresh) throw new Error("Confirm it's you, then try again.");
+    return { user: session.user };
+  }),
+}));
 vi.mock("@/lib/plaid/service", () => ({ tryMakePlaidItemRevoker: vi.fn(async () => null) }));
 
 beforeAll(async () => {
@@ -34,6 +40,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  session.identityFresh = true;
   await db.user.deleteMany();
 });
 
@@ -50,6 +57,14 @@ function confirmed() {
 }
 
 describe("deleteAccountAction", () => {
+  it("needs a recent confirmation, not just the session", async () => {
+    session.user = await makeUser("USER");
+    session.identityFresh = false;
+
+    expect(await actions.deleteAccountAction(confirmed())).toEqual({ ok: false, error: "Confirm it's you, then try again." });
+    expect(await db.user.count({ where: { id: session.user.id } })).toBe(1);
+  });
+
   it("refuses the only admin who can sign in", async () => {
     session.user = await makeUser("SERVER_ADMIN");
     // A suspended admin cannot sign in, so does not count as someone left to run the server.

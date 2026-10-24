@@ -12,6 +12,7 @@ import {
   type OpsSettingsStatus,
 } from "@/lib/ops-settings";
 import { prisma } from "@/lib/prisma";
+import { requireRecentIdentity } from "@/lib/recent-identity";
 import { requireAdmin } from "@/lib/session";
 import { setServerSetting } from "@/lib/server-settings";
 import { formAction, getFormValue } from "./_helpers";
@@ -55,6 +56,9 @@ async function saveOpsSettings(changes: Change[], section: string) {
 }
 
 export const updatePublicSignupAction = formAction(async (formData: FormData) => {
+  // Opening sign-up lets anyone in: confirm it's the admin, not a borrowed cookie.
+  await requireAdmin();
+  await requireRecentIdentity();
   const open = getFormValue(formData, "publicSignup") === "true";
   await saveOpsSettings([{ name: "publicSignup", value: open ? "true" : "false" }], "authentication");
   revalidatePath("/signup");

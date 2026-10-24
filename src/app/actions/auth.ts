@@ -9,6 +9,7 @@ import { getDefaultTimezone } from "@/lib/country-config";
 import { ensureDefaultDataForUser } from "@/lib/defaults";
 import { countActiveAdmins } from "@/lib/admin-users";
 import { prisma } from "@/lib/prisma";
+import { requireRecentIdentity } from "@/lib/recent-identity";
 import { requireUser } from "@/lib/session";
 import { revokePlaidItemsForUser } from "@/lib/plaid/unlink";
 import { tryMakePlaidItemRevoker } from "@/lib/plaid/service";
@@ -168,7 +169,7 @@ export const updateProfileAction = formAction(async (formData: FormData) => {
 
 
 export const deleteAccountAction = formAction(async (formData: FormData) => {
-  const user = await requireUser();
+  const { user } = await requireRecentIdentity();
   const confirmation = getFormValue(formData, "confirmation");
   if (confirmation !== "DELETE") throw new Error("Type DELETE to confirm.");
   // The admin user list sends admins here to delete themselves, so this path needs the same

@@ -16,6 +16,7 @@ import { getAuthentikProvider, getGoogleProvider } from "@/lib/oauth-provider-co
 import {
   clearMfaCookie,
   setMfaVerifiedCookie,
+  setReauthCookie,
   setSsoLinkCookie,
   SSO_LINK_MAX_AGE_S,
 } from "@/lib/mfa-session";
@@ -24,10 +25,12 @@ import { clearRateLimit, enforceSlidingWindowRateLimit } from "@/lib/rate-limit"
 import {
   MfaStepUpRequiredError,
   requireFreshMfa,
+  requireLoadedUser,
   requireSessionUser,
   requireUser,
   type MfaStepUpCode,
 } from "@/lib/session";
+import { identityFreshUntil, identityMethodFor, type IdentityPrompt } from "@/lib/recent-identity";
 import {
   beginPasskeyRegistrationSchema,
   passkeyRowIdSchema,
@@ -418,3 +421,30 @@ export const unlinkSsoProviderAction = formAction(async (formData: FormData) => 
   });
   revalidatePath("/settings", "layout");
 });
+
+export type ConfirmIdentityResult = { ok: true; prompt: IdentityPrompt } | MfaActionFailure;
+
+/**
+ * "Confirm it's you" for an account without a passkey: re-enter the password. Accounts with
+ * a passkey confirm with it instead (the ordinary step-up), so a password is refused for them.
+ */
+export async function confirmIdentityWithPasswordAction(input: { password: string }): Promise<ConfirmIdentityResult> {
+  const loaded = await requireLoadedUser();
+  const { user, sid } = loaded;
+  if (identityMethodFor(loaded) !== "password" || !user.passwordHash) {
+    return { ok: false, error: "This account confirms with a passkey or by signing in again." };
+  }
+  try {
+    const key = `reauth:${user.id}`;
+    await enforceSlidingWindowRateLimit(key, ENROLL_PASSWORD_MAX, WINDOW_MS, TOO_MANY);
+    const password = typeof input?.password === "string" ? input.password : "";
+    if (!password || !(await compare(password, user.passwordHash))) {
+      return { ok: false, error: "That password is incorrect." };
+    }
+    await clearRateLimit(key);
+    await setReauthCookie({ userId: user.id, sid });
+    return { ok: true, prompt: { method: "password", freshUntil: identityFreshUntil(Date.now()) } };
+  } catch (err) {
+    return failure(err, "Could not confirm your password.");
+  }
+}
