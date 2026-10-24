@@ -118,6 +118,7 @@ export {
   sendEmailDigestPreviewAction,
   setBillRemindersAction,
   setBudgetAlertEmailAction,
+  setChargeAlertsAction,
   setEmailDigestAction,
   setProjectionIncludesTransfersAction,
   updateDashboardReadabilityAction,
