@@ -96,6 +96,14 @@ describe("keeping receipts", () => {
     expect(await add(PDF)).toEqual({ ok: false, reason: "too-many" });
   });
 
+  it("caps what one account keeps in total", async () => {
+    const add = () =>
+      addAttachment(db, { userId, transactionId: txId, fileName: "r.png", bytes: PNG }, { maxUserBytes: PNG.length * 2 });
+    expect((await add()).ok).toBe(true);
+    expect((await add()).ok).toBe(true);
+    expect(await add()).toEqual({ ok: false, reason: "quota" });
+  });
+
   it("survives delete and Undo, and goes with the undo record once that expires", async () => {
     const added = await addAttachment(db, { userId, transactionId: txId, fileName: "r.pdf", bytes: PDF });
     if (!added.ok) throw new Error(added.reason);

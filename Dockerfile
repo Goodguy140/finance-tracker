@@ -21,21 +21,25 @@ FROM base AS runner
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
-COPY --from=builder --chown=node:node /app/public ./public
-COPY --from=builder --chown=node:node /app/.next/standalone ./
-COPY --from=builder --chown=node:node /app/.next/static ./.next/static
-COPY --from=builder --chown=node:node /app/prisma ./prisma
-COPY --from=builder --chown=node:node /app/prisma.config.ts ./prisma.config.ts
-COPY --from=builder --chown=node:node /app/scripts/repair-sqlite-schema.cjs ./scripts/repair-sqlite-schema.cjs
-COPY --from=builder --chown=node:node /app/scripts/repair-sqlite-schema-lib.cjs ./scripts/repair-sqlite-schema-lib.cjs
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+COPY --from=builder /app/scripts/repair-sqlite-schema.cjs ./scripts/repair-sqlite-schema.cjs
+COPY --from=builder /app/scripts/repair-sqlite-schema-lib.cjs ./scripts/repair-sqlite-schema-lib.cjs
 # Merge pruned production node_modules so Prisma CLI gets hoisted peers (e.g. effect, c12) and full @prisma/*.
-COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder /app/node_modules ./node_modules
 
 # The SQLite database lives here and is written by migrate deploy, the repair script and
 # the app itself, so it must be owned by the runtime user. Declaring the mount point with
 # the right owner up front means a fresh named volume inherits it instead of coming up
 # root-owned and read-only to the app.
-RUN mkdir -p /data && chown -R node:node /data /app
+#
+# Everything else stays root-owned: the server's own code is read-only to the process that
+# runs it, so a compromise cannot rewrite it to persist across restarts. Next's runtime
+# cache is the one other place it writes.
+RUN mkdir -p /data /app/.next/cache && chown -R node:node /data /app/.next/cache
 
 # Drop root: this process holds the finance database, and until now every part of the
 # startup chain -- migrate deploy, the raw-SQL repair script, the Next server -- ran as

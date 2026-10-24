@@ -50,6 +50,11 @@ export function resolveLoginMaxPerIp(raw = process.env.LOGIN_MAX_PER_IP): number
 /** Passkey sign-in has no email to key on; each attempt burns a single-use challenge anyway. */
 const PASSKEY_MAX_PER_IP = 20;
 const LOGIN_RATE_LIMIT_MESSAGE = "Too many login attempts. Please try again later.";
+/**
+ * A bcrypt hash of a random value, at the cost real passwords use (12), compared against
+ * when there is no real hash to check. Nothing can match it; it only spends the same time.
+ */
+const TIMING_EQUALISER_HASH = "$2b$12$p9.cJGIB9a18Hb0iJb3yw.a3zC.3aAs2oEXKLtAffuPfZBtYpHNGa";
 
 /** `authorize` is handed headers as a plain object whose values may be string or string[]. */
 function readRequestHeader(headers: Record<string, unknown> | undefined, name: string) {
@@ -152,15 +157,20 @@ export async function getAuthOptions(): Promise<NextAuthOptions> {
         });
 
       const user = await prisma.user.findUnique({ where: { email } });
+      // Every refusal pays for one bcrypt comparison, so how long the answer takes does not
+      // say whether the address has an account (or a password) here.
       if (!user) {
+        await compare(password, TIMING_EQUALISER_HASH);
         await recordFailure("unknown_email", null);
         return null;
       }
       if (user.disabledAt) {
+        await compare(password, TIMING_EQUALISER_HASH);
         await recordFailure("account_disabled", user.id);
         return null;
       }
       if (!user.passwordHash) {
+        await compare(password, TIMING_EQUALISER_HASH);
         await recordFailure("password_login_unavailable", user.id);
         return null;
       }

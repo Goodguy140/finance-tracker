@@ -8,6 +8,12 @@ import type { PrismaClient } from "@prisma/client";
 
 export const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 export const MAX_ATTACHMENTS_PER_TRANSACTION = 10;
+/**
+ * Everything one account may keep, counted across all its receipts (including ones parked
+ * with a deleted entry's undo record). Receipts live in the database file, so without a cap
+ * any one account could fill the server's disk.
+ */
+export const MAX_ATTACHMENT_BYTES_PER_USER = 500 * 1024 * 1024;
 export const ATTACHMENT_ACCEPT = "image/jpeg,image/png,image/webp,image/gif,image/heic,application/pdf";
 
 function startsWith(bytes: Uint8Array, prefix: number[], offset = 0): boolean {
@@ -53,11 +59,12 @@ export function attachmentContentDisposition(fileName: string): string {
   return `inline; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 
-export type AttachmentRefusal = "empty" | "too-large" | "type" | "too-many" | "not-found";
+export type AttachmentRefusal = "empty" | "too-large" | "type" | "too-many" | "quota" | "not-found";
 
 export async function addAttachment(
   db: PrismaClient,
   input: { userId: string; transactionId: string; fileName: string; bytes: Uint8Array },
+  { maxUserBytes = MAX_ATTACHMENT_BYTES_PER_USER }: { maxUserBytes?: number } = {},
 ): Promise<{ ok: true; id: string } | { ok: false; reason: AttachmentRefusal }> {
   if (input.bytes.length === 0) return { ok: false, reason: "empty" };
   if (input.bytes.length > MAX_ATTACHMENT_BYTES) return { ok: false, reason: "too-large" };
@@ -69,6 +76,8 @@ export async function addAttachment(
   });
   if (!owned) return { ok: false, reason: "not-found" };
   if (owned._count.attachments >= MAX_ATTACHMENTS_PER_TRANSACTION) return { ok: false, reason: "too-many" };
+  const used = await db.transactionAttachment.aggregate({ where: { userId: input.userId }, _sum: { sizeBytes: true } });
+  if ((used._sum.sizeBytes ?? 0) + input.bytes.length > maxUserBytes) return { ok: false, reason: "quota" };
   const row = await db.transactionAttachment.create({
     data: {
       userId: input.userId,
