@@ -59,6 +59,13 @@ function BudgetPeriodNote({ periodRange }: { periodRange: DashboardRange }) {
       </p>
     );
   }
+  if (periodRange === "custom") {
+    return (
+      <p className="mt-1 text-xs text-slate-400">
+        Limits sum the monthly budgets of every month the range touches; spending is the range&apos;s own.
+      </p>
+    );
+  }
   if (periodRange === "lifetime") {
     return (
       <p className="mt-1 text-xs text-slate-400">

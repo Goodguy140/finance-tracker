@@ -7,6 +7,7 @@ import {
   merchantActivity,
   merchantSummaries,
   previousYearWindow,
+  reportPeriodParam,
   resolveReportPeriod,
   yearOverYearByCategory,
   yearsWithActivity,
@@ -247,5 +248,20 @@ describe("filterByTag", () => {
     const plain = expense("2026-08-02", "Store", 5_000);
     expect(filterByTag([tagged, plain], "trip")).toEqual([tagged]);
     expect(filterByTag([tagged, plain], null)).toHaveLength(2);
+  });
+});
+
+describe("a custom report period", () => {
+  it("covers the days picked, by month, with a key that survives a link", () => {
+    const p = resolveReportPeriod("2026-03-15_2026-05-10", "2026-10-06");
+    expect(p.key).toBe("2026-03-15_2026-05-10");
+    expect(p.label).toBe("Mar 15 – May 10, 2026");
+    expect(p.months).toEqual(["2026-03", "2026-04", "2026-05"]);
+    expect(p.start).toEqual(new Date(Date.UTC(2026, 2, 15)));
+    expect(p.end).toEqual(new Date(Date.UTC(2026, 4, 11)));
+    expect(p.toDate).toBe(false);
+    // The form's from/to win over a period already in the URL.
+    expect(reportPeriodParam({ period: "2025", from: "2026-03-15", to: "2026-05-10" })).toBe("2026-03-15_2026-05-10");
+    expect(reportPeriodParam({ period: "2025", from: "2026-05-10", to: "2026-03-15" })).toBe("2025");
   });
 });

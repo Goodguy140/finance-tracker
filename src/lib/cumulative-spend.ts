@@ -33,6 +33,8 @@ type SpendRow = { date: Date; amountCents: number };
 
 type SeriesOptions = {
   range: DashboardRange;
+  /** The days of a custom range. */
+  custom?: { fromYmd: string; toYmd: string };
   /** Viewed month, or the through-month for YTD. */
   ym: string;
   /** Today in the user's timezone (`YYYY-MM-DD`); ends the actual-spend run. */
@@ -136,8 +138,10 @@ function daysInMonthYm(ym: string): number {
  */
 export function buildCumulativeSpendSeries(
   expenses: SpendRow[],
-  { range, ym, todayYmd, monthlyExpected = null, comparisonPace = null }: SeriesOptions,
+  { range, ym, custom, todayYmd, monthlyExpected = null, comparisonPace = null }: SeriesOptions,
 ): CumulativeSpendPoint[] {
+  if (range === "custom" && custom && customRangeIsDaily(custom)) return buildDailyRangeSeries(expenses, custom, todayYmd);
+  const fromYm = custom?.fromYmd.slice(0, 7);
   const buckets = new Map<string, number>();
   for (const row of expenses) {
     const key =
@@ -171,14 +175,15 @@ export function buildCumulativeSpendSeries(
       fullLabels.push(`${monthLabel} ${day}`);
     }
   } else {
-    // YTD runs Jan through the anchor month; lifetime spans the months that actually
+    // YTD runs Jan through the anchor month, a custom range its own months; lifetime spans the months that actually
     // have spend, so an empty log produces an empty chart rather than a bare axis.
     const present = Array.from(buckets.keys()).sort();
     const lastSpendYm = present[present.length - 1];
     let firstYm: string;
     let lastYm: string;
-    if (range === "ytd") {
-      firstYm = `${ym.slice(0, 4)}-01`;
+    if (range === "ytd" || range === "custom") {
+      // A custom range runs from its first month, as YTD runs from January.
+      firstYm = range === "custom" && fromYm ? fromYm : `${ym.slice(0, 4)}-01`;
       // Stop at today so the tail is not a flat line through months that have not
       // happened, but never before a month that already holds spend.
       const throughYm = ymOf(todayYmd) < ym ? ymOf(todayYmd) : ym;
@@ -252,4 +257,58 @@ export function summarizeCumulativeSpend(points: readonly CumulativeSpendPoint[]
     gapCents: expectedCents === null ? null : totalCents - expectedCents,
     comparisonGapCents: comparisonCents === null ? null : totalCents - comparisonCents,
   };
+}
+
+/** Longest custom range drawn day by day; a longer one is drawn by month. */
+export const DAILY_CUSTOM_RANGE_MAX_DAYS = 62;
+
+function ymdOf(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function addDaysYmd(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return ymdOf(d);
+}
+
+export function customRangeIsDaily(custom: { fromYmd: string; toYmd: string }): boolean {
+  const days = (Date.parse(`${custom.toYmd}T00:00:00Z`) - Date.parse(`${custom.fromYmd}T00:00:00Z`)) / 86_400_000 + 1;
+  return days <= DAILY_CUSTOM_RANGE_MAX_DAYS;
+}
+
+/**
+ * A short custom range, one bucket per day. The actual line stops at today (or the last day
+ * with spend, if later), like the month view; there is no expected line, which is a monthly
+ * figure and would not line up with a range starting mid-month.
+ */
+function buildDailyRangeSeries(
+  expenses: SpendRow[],
+  custom: { fromYmd: string; toYmd: string },
+  todayYmd: string,
+): CumulativeSpendPoint[] {
+  const buckets = new Map<string, number>();
+  for (const row of expenses) {
+    const key = ymdOf(row.date);
+    buckets.set(key, (buckets.get(key) ?? 0) + row.amountCents);
+  }
+  const lastSpend = [...buckets.keys()].sort().at(-1) ?? custom.fromYmd;
+  const through = [todayYmd, lastSpend].sort().at(-1)!;
+  const short = new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", timeZone: "UTC" });
+  const points: CumulativeSpendPoint[] = [];
+  let running = 0;
+  for (let day = custom.fromYmd; day <= custom.toYmd; day = addDaysYmd(day, 1)) {
+    const bucketCents = buckets.get(day) ?? 0;
+    running += bucketCents;
+    const label = short.format(new Date(`${day}T00:00:00Z`));
+    points.push({
+      label,
+      fullLabel: label,
+      bucketCents,
+      cumulativeCents: day <= through ? running : null,
+      expectedCents: null,
+      comparisonCents: null,
+    });
+  }
+  return points;
 }

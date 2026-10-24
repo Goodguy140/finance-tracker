@@ -1,7 +1,9 @@
+import { dateFromYmd } from "@/lib/date-only";
+import { dayAfter, formatCustomRange, parseCustomRange, type CustomDateRange } from "@/lib/date-range";
 import { currentYmInTimeZone, isValidYm } from "@/lib/period-month";
 
 /** Calendar month as `YYYY-MM` (UTC-agnostic; aligned with existing month helpers). */
-export type DashboardRange = "month" | "ytd" | "lifetime";
+export type DashboardRange = "month" | "ytd" | "lifetime" | "custom";
 
 export type ParsedDashboardPeriod = {
   range: DashboardRange;
@@ -9,6 +11,8 @@ export type ParsedDashboardPeriod = {
   ym: string;
   /** Spread into Prisma `where` for `Transaction.date` (empty for lifetime = no date filter). */
   transactionDateFilter: { date: { gte: Date; lt: Date } } | Record<string, never>;
+  /** The days picked, for a custom range; `ym` is then the month of its last day. */
+  custom?: CustomDateRange;
 };
 
 type DashboardRelativePreset = "previous-month";
@@ -24,7 +28,7 @@ function firstParam(v: string | string[] | undefined): string | undefined {
 }
 
 export function parseDashboardRangeParam(raw: string | undefined): DashboardRange {
-  if (raw === "ytd" || raw === "lifetime" || raw === "month") return raw;
+  if (raw === "ytd" || raw === "lifetime" || raw === "month" || raw === "custom") return raw;
   return "month";
 }
 
@@ -94,7 +98,13 @@ export function budgetPeriodMonthInYtd(periodMonth: string, anchorYm: string): b
  * it the host clock is used, as before.
  */
 export function parseDashboardSearchParams(
-  params: { month?: string | string[]; range?: string | string[]; preset?: string | string[] },
+  params: {
+    month?: string | string[];
+    range?: string | string[];
+    preset?: string | string[];
+    from?: string | string[];
+    to?: string | string[];
+  },
   reference = new Date(),
   timeZone?: string | null,
 ): ParsedDashboardPeriod {
@@ -129,6 +139,17 @@ export function parseDashboardSearchParams(
   const ym = isValidYm(monthRaw) ? monthRaw : defaultYm;
   const range = parseDashboardRangeParam(rangeRaw);
 
+  // A custom range without two valid, ordered days falls back to the month view.
+  const custom = range === "custom" ? parseCustomRange(firstParam(params.from), firstParam(params.to)) : null;
+  if (custom) {
+    return {
+      range: "custom",
+      ym: custom.toYmd.slice(0, 7),
+      custom,
+      transactionDateFilter: { date: { gte: dateFromYmd(custom.fromYmd), lt: dayAfter(custom.toYmd) } },
+    };
+  }
+
   if (range === "lifetime") {
     return { range, ym, transactionDateFilter: {} };
   }
@@ -158,6 +179,7 @@ export function parseDashboardSearchParams(
 
 export function describeDashboardPeriod(parsed: ParsedDashboardPeriod): string {
   if (parsed.range === "lifetime") return "Lifetime";
+  if (parsed.range === "custom" && parsed.custom) return formatCustomRange(parsed.custom);
   if (parsed.range === "month") {
     return formatYmLongLabel(parsed.ym);
   }

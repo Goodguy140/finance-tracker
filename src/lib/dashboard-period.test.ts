@@ -272,3 +272,21 @@ describe("describeDashboardPeriod", () => {
     });
   });
 });
+
+describe("custom range", () => {
+  it("filters to the days picked, both included, and anchors on the last one's month", () => {
+    const parsed = parseDashboardSearchParams({ range: "custom", from: "2026-09-28", to: "2026-10-04" });
+    expect(parsed.range).toBe("custom");
+    expect(parsed.ym).toBe("2026-10");
+    expect(parsed.transactionDateFilter).toEqual({
+      date: { gte: new Date(Date.UTC(2026, 8, 28)), lt: new Date(Date.UTC(2026, 9, 5)) },
+    });
+    expect(describeDashboardPeriod(parsed)).toBe("Sep 28 – Oct 4, 2026");
+  });
+
+  it("falls back to the month view when the days are missing or backwards", () => {
+    const ref = new Date(2026, 9, 15);
+    expect(parseDashboardSearchParams({ range: "custom", from: "2026-10-04" }, ref).range).toBe("month");
+    expect(parseDashboardSearchParams({ range: "custom", from: "2026-10-04", to: "2026-10-01" }, ref).range).toBe("month");
+  });
+});

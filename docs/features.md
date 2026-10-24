@@ -38,8 +38,10 @@ Card registry is `DASHBOARD_CARDS` in `src/lib/dashboard-layout/cards.ts`; per-c
 `src/components/dashboard-cards/card-settings-forms.tsx`. Layout is saved as JSON on the user
 (`actions/dashboard-layout.ts`), so card settings need no migration.
 
-- **Period filter** (month / YTD / lifetime, prev/next, quick period):
-  `dashboard-month-filter.tsx`, `src/lib/dashboard-period.ts`
+- **Period filter** (month / YTD / lifetime / custom range, prev/next, quick period):
+  `dashboard-month-filter.tsx`, `src/lib/dashboard-period.ts`. Custom is `?range=custom&from=&to=`
+  (both days included, `src/lib/date-range.ts`); budgets sum the months it touches, the
+  cumulative chart goes by day up to 62 days and by month past that
 - **Tag filter** (`?tag=`): `src/lib/tags.ts` (`resolveTagFilter`)
 - **Budget alerts bell** (warnings, over-budget pace, month-over-month trends, dismiss):
   `budget-alerts-panel.tsx`, `src/lib/budget-alerts.ts`
@@ -145,7 +147,8 @@ owed money, room, goals or gaps).
 Page: `src/app/reports/page.tsx`; data `src/lib/reports/*`; charts
 `src/components/reports/report-charts.tsx`.
 
-- Period picker (last 12 months, years), tag filter, totals (income, spending, left over, saved), "Download
+- Period picker (last 12 months, years, or a custom range: a plain GET form sending `from`/`to`,
+  carried in links as `period=from_to`), tag filter, totals (income, spending, left over, saved), "Download
   CSV" of the period's transactions
 - Financial score as one line linking to Insights (`FinancialScoreChip`), **net worth** (`src/lib/net-worth.ts`), **projected balances**
   (`src/lib/projected-balances.ts`); "Include recurring transfers" option

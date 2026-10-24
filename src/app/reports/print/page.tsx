@@ -52,6 +52,8 @@ export default async function PrintPage({ searchParams }: { searchParams: Search
           periods={[
             { value: "12m", label: "Last 12 months" },
             ...yearsWithActivity(activityYears, todayYmd).map((y) => ({ value: y, label: y })),
+            // Arriving from a custom range on Reports offers that range too.
+            ...(period.custom ? [{ value: period.key, label: period.label }] : []),
           ]}
           tags={tags.map((t) => ({ value: t.id, label: t.name }))}
           initialPeriod={period.key}
