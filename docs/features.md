@@ -158,6 +158,11 @@ Page: `src/app/reports/page.tsx`; data `src/lib/reports/*`; charts
 - Income vs spending by month from the first month with data (table toggle), cash-flow Sankey, year over
   year (says so instead of zeros when there is no earlier year), payees, and "Who paid you" for income
 - **Merchant page** `/reports/merchant`: `src/app/reports/merchant/page.tsx`
+- **Year-end summary** `/reports/year` ("Year-end summary" on Reports; last year by default):
+  year totals and comparison with the year before, biggest month, top categories and payees;
+  totals per tag with tax-looking names (donation, medical, deductible…) first and marked "Tax
+  time"; contributions and withdrawals per registered account from the Investments card; Print
+  and a CSV for the year. `src/app/reports/year/page.tsx`, `src/lib/reports/year-summary.ts`
 - **Debt payoff** `/reports/debt` (linked from Net worth when there is a card or loan): each
   card's and loan's balance, interest rate and minimum (`Account.interestRateBps`,
   `.minimumPaymentCents`, set on the page), and a plan for a monthly amount comparing highest

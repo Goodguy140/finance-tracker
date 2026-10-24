@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, Download, Printer } from "lucide-react";
+import { CalendarRange, ChevronRight, Download, Printer } from "lucide-react";
 import { AppNav, APP_TAB_BAR_PAD_CLASS } from "@/components/app-nav";
 import { TagFilterSelect } from "@/components/expense-log";
 import { FinancialScoreChip } from "@/components/financial-score-card";
@@ -147,6 +147,14 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Reports</h1>
           <div className="flex flex-wrap gap-2">
+          <Link
+            href="/reports/year"
+            className="touch-manipulation inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+            data-testid="reports-year-link"
+          >
+            <CalendarRange className="h-4 w-4" aria-hidden />
+            Year-end summary
+          </Link>
           <Link
             href={reportsHref(period.key, tagQuery).replace("/reports", "/reports/print")}
             className="touch-manipulation inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
