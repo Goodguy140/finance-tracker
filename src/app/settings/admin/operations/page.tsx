@@ -92,8 +92,8 @@ export default async function AdminOperationsPage() {
             envName="PLAID_SYNC_SCHEDULER"
           />
           <SchedulerRow
-            name="Email digest"
-            description="Hourly. Sends each weekly or monthly spending digest that is due, after 7am in the user's time zone."
+            name="Email digest and bill reminders"
+            description="Hourly. Sends each weekly or monthly spending digest that is due, and reminders of bills coming up, after 7am in the user's time zone."
             beat={getSchedulerHeartbeat("emailDigest")}
             envEnabled={emailDigestSchedulerEnabled()}
             envName="EMAIL_DIGEST_SCHEDULER"

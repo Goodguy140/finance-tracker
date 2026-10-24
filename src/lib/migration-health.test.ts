@@ -50,7 +50,8 @@ async function createMinimalSchema(prisma: PrismaClient) {
       "projectionIncludesTransfers" BOOLEAN NOT NULL DEFAULT false,
       "getStartedDismissedAt" DATETIME,
       "digestFrequency" TEXT NOT NULL DEFAULT 'OFF',
-      "digestLastPeriodKey" TEXT
+      "digestLastPeriodKey" TEXT,
+      "billReminderDays" INTEGER
     )
   `);
   await prisma.$executeRawUnsafe(`
@@ -87,7 +88,8 @@ async function createMinimalSchema(prisma: PrismaClient) {
     CREATE TABLE "RecurringTransaction" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "anchorDay" INTEGER,
-      "transferAccountId" TEXT
+      "transferAccountId" TEXT,
+      "reminderSentForDate" DATETIME
     )
   `);
 

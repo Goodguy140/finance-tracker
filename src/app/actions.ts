@@ -114,6 +114,7 @@ export {
 export {
   dismissGetStartedAction,
   sendEmailDigestPreviewAction,
+  setBillRemindersAction,
   setBudgetAlertEmailAction,
   setEmailDigestAction,
   setProjectionIncludesTransfersAction,
