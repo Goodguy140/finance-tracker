@@ -126,6 +126,14 @@ const ACTIONS: Command[] = [
     run: { type: "link", href: "/reports/print" },
   },
   {
+    id: "year-end",
+    label: "Year-end summary",
+    hint: "Reports → Year-end summary",
+    section: "Actions",
+    keywords: ["tax", "taxes", "year in review", "annual", "donations", "deductible", "rrsp", "tfsa"],
+    run: { type: "link", href: "/reports/year" },
+  },
+  {
     id: "search-transactions",
     label: "Search all transactions",
     hint: "Every month, with filters",
