@@ -213,6 +213,8 @@ test("categories filed under a group add up on Settings, the Budgets card and Re
   await page.goto("/settings/categories");
   const panel = page.getByRole("region", { name: "Categories & budgets" });
   for (const category of made) {
+    // Saving a group regroups the list, which re-mounts every row: start each one from a fresh page.
+    await page.reload();
     const row = panel.getByTestId("category-row").filter({ hasText: category.name });
     await row.locator("summary").click();
     await row.getByLabel(`Group for ${category.name}`).fill(group);
