@@ -42,12 +42,14 @@ vi.mock("next/headers", () => ({
   headers: vi.fn(async () => new Headers()),
 }));
 
-vi.mock("@/lib/session", () => ({
-  requireUser: vi.fn(async () => ({
-    id: "user-1",
-    email: "user@example.com",
-    role: "USER",
-    passwordHash: "keep-hash",
+vi.mock("@/lib/recent-identity", () => ({
+  requireRecentIdentity: vi.fn(async () => ({
+    user: {
+      id: "user-1",
+      email: "user@example.com",
+      role: "USER",
+      passwordHash: "keep-hash",
+    },
   })),
 }));
 

@@ -40,7 +40,7 @@ export const MFA_COOKIE_MAX_AGE_S = SESSION_MAX_AGE_S;
 /** Placeholder `sid` for tokens issued before the claim existed (they age out in 7 days). */
 export const LEGACY_SID = "legacy";
 
-type SignedPurpose = "mfa" | "sso-link";
+type SignedPurpose = "mfa" | "sso-link" | "reauth";
 
 function getSecret(explicit?: string): string {
   const secret = explicit ?? process.env.NEXTAUTH_SECRET?.trim();
@@ -216,5 +216,46 @@ export async function clearSsoLinkCookie() {
     secure: mfaCookieSecure(),
     path: "/",
     maxAge: 0,
+  });
+}
+
+/**
+ * "Confirmed it's you" by re-entering the password, for accounts with no passkey. Bound to
+ * the login's `sid` like the passkey cookie, and only honoured for a few minutes (see
+ * `src/lib/recent-identity.ts`), so it never outlives the step-up window it exists for.
+ */
+export type ReauthPayload = { sub: string; sid: string; at: number };
+
+export function reauthCookieName(): string {
+  return mfaCookieSecure() ? "__Host-reauth" : "reauth";
+}
+
+/** When the password was re-entered, if the cookie is authentic and belongs to this login. */
+export function verifyReauthPayload(
+  raw: string | undefined,
+  opts: { sub: string; sid: string; now?: number; secret?: string },
+): number | null {
+  const payload = readSignedPayload<Partial<ReauthPayload>>("reauth", raw, opts.secret);
+  if (!payload) return null;
+  const { sub, sid, at } = payload;
+  if (sub !== opts.sub || sid !== opts.sid || typeof at !== "number") return null;
+  if (at > (opts.now ?? Date.now()) + 60_000) return null;
+  return at;
+}
+
+export async function readReauthAt(params: { userId: string; sid: string }): Promise<number | null> {
+  const store = await cookies();
+  return verifyReauthPayload(store.get(reauthCookieName())?.value, { sub: params.userId, sid: params.sid });
+}
+
+export async function setReauthCookie(params: { userId: string; sid: string }) {
+  const store = await cookies();
+  const payload: ReauthPayload = { sub: params.userId, sid: params.sid, at: Date.now() };
+  store.set(reauthCookieName(), signPayload("reauth", payload), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: mfaCookieSecure(),
+    path: "/",
+    maxAge: Math.ceil(MFA_STEP_UP_MAX_AGE_MS / 1000),
   });
 }

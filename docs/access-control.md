@@ -57,6 +57,13 @@ issued at enrolment, shown once, and stored only as hashes; each is single-use.
 requires a passkey assertion from the last five minutes, not merely a valid session. This is
 what stops a stolen session cookie from being turned into permanent access.
 
+**Confirm it's you.** Actions that destroy data or change who can get in also need a recent
+confirmation (`requireRecentIdentity`, `src/lib/recent-identity.ts`): deleting the account,
+clearing or restoring its data, and the admin controls for roles, suspensions, deleting users,
+sign-in providers, password login, public sign-up and Plaid credentials. An account with a
+passkey confirms with it; one without re-enters its password; an SSO-only account must have
+signed in within the last five minutes. One confirmation covers five minutes.
+
 **Break-glass.** A user who has lost every passkey and recovery code is recovered by an
 operator with shell access to the deployment:
 

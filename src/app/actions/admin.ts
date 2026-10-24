@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { encryptSecret, tryDecryptSecret } from "@/lib/security";
+import { requireRecentIdentity } from "@/lib/recent-identity";
 import { requireAdmin } from "@/lib/session";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { PASSWORD_LOGIN_DISABLED_KEY, describeSsoOnlyRefusal } from "@/lib/auth-settings";
@@ -23,6 +24,8 @@ import {
 } from "./_helpers";
 export const updateAdminOauthSettingsAction = formAction(async (formData: FormData) => {
   const user = await requireAdmin();
+  // Who can sign in, and the server's bank credentials: a recent "it's you" for both.
+  await requireRecentIdentity();
   const [googleClientIdRow, googleClientSecretRow, authentikIssuerRow, authentikClientIdRow, authentikClientSecretRow] =
     await Promise.all([
       prisma.serverSetting.findUnique({ where: { key: "oauth.google.clientId" } }),
@@ -98,6 +101,7 @@ export const updateAdminOauthSettingsAction = formAction(async (formData: FormDa
  */
 export const updateAdminPlaidSettingsAction = formAction(async (formData: FormData) => {
   const user = await requireAdmin();
+  await requireRecentIdentity();
   const [clientIdRow, secretRow, envRow] = await Promise.all([
     prisma.serverSetting.findUnique({ where: { key: PLAID_SETTING_KEYS.clientId } }),
     prisma.serverSetting.findUnique({ where: { key: PLAID_SETTING_KEYS.secret } }),
@@ -156,6 +160,7 @@ export const updateAdminPlaidSettingsAction = formAction(async (formData: FormDa
  */
 export const updatePasswordLoginSettingAction = formAction(async (formData: FormData) => {
   const user = await requireAdmin();
+  await requireRecentIdentity();
   const { disabled } = adminSetPasswordLoginDisabledSchema.parse({
     disabled: getFormValue(formData, "passwordLoginDisabled") || "false",
   });

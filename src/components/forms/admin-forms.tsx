@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirmIdentity } from "@/components/mfa/confirm-identity";
 import { ServerActionForm } from "@/components/server-action-form";
 import {
   inputClass,
@@ -27,8 +28,9 @@ export function AdminOauthForm({
   authentikClientId: string;
   authentikConfiguredViaEnv: boolean;
 }) {
+  const confirmIdentity = useConfirmIdentity();
   return (
-    <ServerActionForm action={updateAdminOauthSettingsAction} className="space-y-6">
+    <ServerActionForm action={updateAdminOauthSettingsAction} beforeSubmit={confirmIdentity} className="space-y-6">
       <section className="space-y-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
         <h3 className="font-semibold text-slate-100">Google OAuth</h3>
         <label className="flex items-center gap-2 text-slate-300">
@@ -88,8 +90,9 @@ export function AdminPasswordLoginForm({
   passwordLoginDisabled: boolean;
   configuredViaEnv: boolean;
 }) {
+  const confirmIdentity = useConfirmIdentity();
   return (
-    <ServerActionForm action={updatePasswordLoginSettingAction} className="space-y-2">
+    <ServerActionForm action={updatePasswordLoginSettingAction} beforeSubmit={confirmIdentity} className="space-y-2">
       <section className="space-y-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
         <h3 className="font-semibold text-slate-100">Sign-in methods</h3>
         {configuredViaEnv ? (
@@ -139,8 +142,9 @@ export function AdminPlaidForm({
   configuredViaEnv: boolean;
   warnings: string[];
 }) {
+  const confirmIdentity = useConfirmIdentity();
   return (
-    <ServerActionForm action={updateAdminPlaidSettingsAction} className="space-y-2">
+    <ServerActionForm action={updateAdminPlaidSettingsAction} beforeSubmit={confirmIdentity} className="space-y-2">
       <section className="space-y-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
         <h3 className="font-semibold text-slate-100">Plaid (bank transaction sync)</h3>
         {warnings.map((warning) => (

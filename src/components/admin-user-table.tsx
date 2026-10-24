@@ -7,6 +7,7 @@ import {
   setUserDisabledAction,
   setUserRoleAction,
 } from "@/app/actions";
+import { useConfirmIdentity } from "@/components/mfa/confirm-identity";
 import { ServerActionForm } from "@/components/server-action-form";
 import type { AdminUserRow } from "@/lib/admin-users";
 import { inputClass, secondaryBtnClass } from "@/components/forms/shared";
@@ -55,11 +56,12 @@ function StatusLabel({ user }: { user: AdminUserRow }) {
 }
 
 function RoleControl({ user, isSelf }: { user: AdminUserRow; isSelf: boolean }) {
+  const confirmIdentity = useConfirmIdentity();
   if (isSelf) {
     return <span className="font-mono text-[11px] text-slate-400">{user.role} (you)</span>;
   }
   return (
-    <ServerActionForm action={setUserRoleAction} className="flex items-center gap-1">
+    <ServerActionForm action={setUserRoleAction} beforeSubmit={confirmIdentity} className="flex items-center gap-1">
       <input type="hidden" name="userId" value={user.id} />
       <input type="hidden" name="role" value={user.role === "SERVER_ADMIN" ? "USER" : "SERVER_ADMIN"} />
       <span className="font-mono text-[11px] text-slate-400">{user.role}</span>
@@ -72,6 +74,7 @@ function RoleControl({ user, isSelf }: { user: AdminUserRow; isSelf: boolean }) 
 
 function DeleteUserForm({ user }: { user: AdminUserRow }) {
   const [open, setOpen] = useState(false);
+  const confirmIdentity = useConfirmIdentity();
 
   if (!open) {
     return (
@@ -82,7 +85,7 @@ function DeleteUserForm({ user }: { user: AdminUserRow }) {
   }
 
   return (
-    <ServerActionForm action={deleteUserAction} className="flex flex-wrap items-center gap-2">
+    <ServerActionForm action={deleteUserAction} beforeSubmit={confirmIdentity} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="userId" value={user.id} />
       <input
         name="confirmEmail"
@@ -106,11 +109,12 @@ function DeleteUserForm({ user }: { user: AdminUserRow }) {
 }
 
 function UserActions({ user, isSelf }: { user: AdminUserRow; isSelf: boolean }) {
+  const confirmIdentity = useConfirmIdentity();
   if (isSelf) return <span className="text-slate-500">—</span>;
   const suspended = user.disabledAt !== null;
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <ServerActionForm action={setUserDisabledAction}>
+      <ServerActionForm action={setUserDisabledAction} beforeSubmit={confirmIdentity}>
         <input type="hidden" name="userId" value={user.id} />
         <input type="hidden" name="disabled" value={suspended ? "false" : "true"} />
         <button type="submit" className={secondaryBtnClass}>
