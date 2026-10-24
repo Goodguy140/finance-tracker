@@ -337,3 +337,31 @@ describe("buildComparisonPace", () => {
     expect(ytd.every((p) => p.comparisonCents === null)).toBe(true);
   });
 });
+
+describe("a custom range", () => {
+  const rows = [
+    { date: utc(2026, 9, 29), amountCents: 1_000 },
+    { date: utc(2026, 10, 2), amountCents: 500 },
+  ];
+
+  it("is drawn day by day when short, stopping at today", () => {
+    const points = buildCumulativeSpendSeries(rows, {
+      range: "custom",
+      ym: "2026-10",
+      custom: { fromYmd: "2026-09-28", toYmd: "2026-10-05" },
+      todayYmd: "2026-10-03",
+    });
+    expect(points.map((p) => p.label)).toEqual(["Sep 28", "Sep 29", "Sep 30", "Oct 1", "Oct 2", "Oct 3", "Oct 4", "Oct 5"]);
+    expect(points.map((p) => p.cumulativeCents)).toEqual([0, 1_000, 1_000, 1_000, 1_500, 1_500, null, null]);
+  });
+
+  it("is drawn by month from its first month when long", () => {
+    const points = buildCumulativeSpendSeries(rows, {
+      range: "custom",
+      ym: "2026-10",
+      custom: { fromYmd: "2026-06-01", toYmd: "2026-10-31" },
+      todayYmd: "2026-10-03",
+    });
+    expect(points.map((p) => p.bucketCents)).toEqual([0, 0, 0, 1_000, 500]);
+  });
+});

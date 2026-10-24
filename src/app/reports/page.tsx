@@ -19,6 +19,7 @@ import {
   incomeVsSpendingByMonth,
   merchantSummaries,
   previousYearWindow,
+  reportPeriodParam,
   resolveReportPeriod,
   withinWindow,
   yearOverYearByCategory,
@@ -60,7 +61,10 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   const user = await requireUser();
   const sp = await searchParams;
   const todayYmd = currentYmdInTimeZone(user.timezone);
-  const period = resolveReportPeriod(firstParam(sp.period), todayYmd);
+  const period = resolveReportPeriod(
+    reportPeriodParam({ period: firstParam(sp.period), from: firstParam(sp.from), to: firstParam(sp.to) }),
+    todayYmd,
+  );
   const currency = getCountryConfig(user.countryCode).defaultCurrency;
   const fmt = (cents: number) => formatCurrency(cents, currency);
 
@@ -128,7 +132,12 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   const netCents = flow.incomeCents - flow.spendingCents;
   const periodQuery = period.key === "12m" ? "" : `&period=${period.key}`;
   const maxYoyCents = Math.max(1, ...yoy.rows.flatMap((r) => [r.currentCents, r.previousCents]));
-  const comparisonLabel = period.key === "12m" ? "the 12 months before" : `the same dates in ${Number(period.key) - 1}`;
+  const comparisonLabel =
+    period.key === "12m"
+      ? "the 12 months before"
+      : period.custom
+        ? "the same dates a year earlier"
+        : `the same dates in ${Number(period.key) - 1}`;
 
   return (
     <>
@@ -192,6 +201,42 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
             );
           })}
         </nav>
+        <form action="/reports" className="flex flex-wrap items-center gap-1.5 text-sm" aria-label="Custom range">
+          {tagFilter ? <input type="hidden" name="tag" value={tagFilter.id} /> : null}
+          <label className="sr-only" htmlFor="report-from">
+            From
+          </label>
+          <input
+            id="report-from"
+            type="date"
+            name="from"
+            required
+            defaultValue={period.custom?.fromYmd ?? ymdFromDateUtc(period.start)}
+            className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-slate-200"
+          />
+          <span className="text-slate-500">to</span>
+          <label className="sr-only" htmlFor="report-to">
+            To
+          </label>
+          <input
+            id="report-to"
+            type="date"
+            name="to"
+            required
+            defaultValue={period.custom?.toYmd ?? todayYmd}
+            className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-slate-200"
+          />
+          <button
+            type="submit"
+            className={`rounded-full border px-3 py-1 transition ${
+              period.custom
+                ? "border-sky-400/60 bg-sky-500/15 text-sky-100"
+                : "border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
+            }`}
+          >
+            {period.custom ? "Change range" : "Custom range"}
+          </button>
+        </form>
         {tags.length ? (
           <TagFilterSelect tags={tags} selectedId={tagFilter?.id ?? null} className="block w-40 shrink-0" />
         ) : null}

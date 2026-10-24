@@ -1,5 +1,13 @@
 import { endExclusiveOfMonthYm, formatYmShortLabel, shiftYm, startOfMonthYm } from "@/lib/dashboard-period";
 import { dateFromYmd } from "@/lib/date-only";
+import {
+  customRangeKey,
+  dayAfter,
+  formatCustomRange,
+  parseCustomRange,
+  parseCustomRangeKey,
+  type CustomDateRange,
+} from "@/lib/date-range";
 import { categoryAmounts } from "@/lib/insights/facts";
 import { merchantKeyFor, merchantLabelFor, mostCommon, ymOf } from "@/lib/insights/util";
 import type { InsightTx } from "@/lib/insights/types";
@@ -27,8 +35,11 @@ export function filterByTag<T extends ReportTx>(txs: readonly T[], tagId: string
   return txs.filter((tx) => tx.tagIds?.includes(tagId));
 }
 
-/** `12m` is the trailing twelve months; a four-digit year is that calendar year. */
-export type ReportPeriodKey = "12m" | `${number}`;
+/**
+ * `12m` is the trailing twelve months; a four-digit year is that calendar year; `from_to` (two
+ * `YYYY-MM-DD` dates) is a custom range, both days included.
+ */
+export type ReportPeriodKey = "12m" | `${number}` | `${string}_${string}`;
 
 export type ReportPeriod = {
   key: ReportPeriodKey;
@@ -41,9 +52,20 @@ export type ReportPeriod = {
   end: Date;
   /** True when the period stops at today rather than at the end of its last month. */
   toDate: boolean;
+  /** Set for a custom range. */
+  custom?: CustomDateRange;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The `period` search value, from the custom range form's `from` and `to` when both are given,
+ * else the `period` param itself.
+ */
+export function reportPeriodParam(sp: { period?: string; from?: string; to?: string }): string | undefined {
+  const custom = parseCustomRange(sp.from, sp.to);
+  return custom ? customRangeKey(custom) : sp.period;
+}
 
 function monthsBetween(firstYm: string, lastYm: string): string[] {
   const out: string[] = [];
@@ -61,6 +83,19 @@ export function resolveReportPeriod(raw: string | undefined, todayYmd: string): 
   const tomorrow = new Date(dateFromYmd(todayYmd).getTime() + DAY_MS);
   const year = raw && /^\d{4}$/.test(raw) ? Number(raw) : null;
   const thisYear = Number(todayYm.slice(0, 4));
+
+  const custom = parseCustomRangeKey(raw);
+  if (custom) {
+    return {
+      key: customRangeKey(custom) as ReportPeriodKey,
+      label: formatCustomRange(custom),
+      months: monthsBetween(custom.fromYmd.slice(0, 7), custom.toYmd.slice(0, 7)),
+      start: dateFromYmd(custom.fromYmd),
+      end: dayAfter(custom.toYmd),
+      toDate: custom.toYmd >= todayYmd,
+      custom,
+    };
+  }
 
   if (year !== null && year <= thisYear && year >= 1970) {
     const running = year === thisYear;

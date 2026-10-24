@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { formatCustomRange, parseCustomRange } from "@/lib/date-range";
 import {
   currentPeriodYm,
   formatYmLongLabel,
@@ -30,12 +31,21 @@ function pushQuery(
   pathname: string,
   router: ReturnType<typeof useRouter>,
   searchParams: URLSearchParams,
-  updates: { range?: string | null; month?: string | null; preset?: string | null },
+  updates: { range?: string | null; month?: string | null; preset?: string | null; from?: string; to?: string },
 ) {
   const next = new URLSearchParams(searchParams.toString());
   if (updates.range !== undefined) {
     if (updates.range === null || updates.range === "month") next.delete("range");
     else next.set("range", updates.range);
+    // The custom range's days only mean something under it.
+    if (updates.range !== "custom") {
+      next.delete("from");
+      next.delete("to");
+    }
+  }
+  if (updates.from !== undefined && updates.to !== undefined) {
+    next.set("from", updates.from);
+    next.set("to", updates.to);
   }
   if (updates.month !== undefined) {
     if (updates.month === null) next.delete("month");
@@ -99,6 +109,11 @@ export function DashboardMonthFilter({
     !legacyAll && range === "month" && selectedYm === previousCalendarYm;
   const isYtdThroughCurrent = !legacyAll && range === "ytd" && selectedYm === clientAnchorYm;
   const isLifetime = !legacyAll && range === "lifetime";
+  const custom = range === "custom" ? parseCustomRange(searchParams.get("from"), searchParams.get("to")) : null;
+  const [customOpen, setCustomOpen] = useState(false);
+  const [draftFrom, setDraftFrom] = useState(custom?.fromYmd ?? `${selectedYm}-01`);
+  const [draftTo, setDraftTo] = useState(custom?.toYmd ?? "");
+  const draftRange = parseCustomRange(draftFrom, draftTo);
 
   const monthHeading = formatYmLongLabel(selectedYm);
 
@@ -120,7 +135,7 @@ export function DashboardMonthFilter({
     if (hasExplicitMonth) return;
 
     const parsedRange = parseDashboardRangeParam(rangeParam ?? undefined);
-    if (parsedRange === "lifetime") return;
+    if (parsedRange === "lifetime" || parsedRange === "custom") return;
 
     const targetRange = parsedRange === "ytd" ? "ytd" : "month";
     if (rawMonth === clientAnchorYm && (rangeParam ?? "month") === targetRange) {
@@ -207,7 +222,57 @@ export function DashboardMonthFilter({
         >
           Lifetime
         </button>
+        <button
+          type="button"
+          className={`${chipClass} ${custom ? chipActive : chipInactive}`}
+          aria-pressed={Boolean(custom)}
+          aria-expanded={customOpen}
+          onClick={() => setCustomOpen((open) => !open)}
+        >
+          {custom ? formatCustomRange(custom) : "Custom"}
+        </button>
       </div>
+
+      {customOpen ? (
+        <form
+          className="flex flex-wrap items-center gap-1.5 text-xs"
+          aria-label="Custom range"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!draftRange) return;
+            setCustomOpen(false);
+            pushQuery(pathname, router, searchParams, {
+              range: "custom",
+              month: null,
+              preset: null,
+              from: draftRange.fromYmd,
+              to: draftRange.toYmd,
+            });
+          }}
+        >
+          <input
+            type="date"
+            aria-label="From"
+            value={draftFrom}
+            onChange={(e) => setDraftFrom(e.target.value)}
+            required
+            className="rounded-lg border border-slate-600 bg-slate-900/80 px-2 py-1 text-slate-100"
+          />
+          <span className="text-slate-500">to</span>
+          <input
+            type="date"
+            aria-label="To"
+            value={draftTo}
+            min={draftFrom || undefined}
+            onChange={(e) => setDraftTo(e.target.value)}
+            required
+            className="rounded-lg border border-slate-600 bg-slate-900/80 px-2 py-1 text-slate-100"
+          />
+          <button type="submit" disabled={!draftRange} className={`${chipClass} ${chipInactive} disabled:opacity-50`}>
+            Show
+          </button>
+        </form>
+      ) : null}
 
       <div
         className="flex w-full items-center gap-1.5 rounded-lg border border-slate-700/80 bg-slate-950/50 px-1.5 py-0.5 sm:w-auto xl:shrink-0"
@@ -219,7 +284,11 @@ export function DashboardMonthFilter({
           className={navBtnClass}
           aria-label="One month earlier"
           onClick={() =>
-            pushQuery(pathname, router, searchParams, { month: shiftYm(selectedYm, -1), preset: null })
+            pushQuery(pathname, router, searchParams, {
+              month: shiftYm(selectedYm, -1),
+              preset: null,
+              ...(custom ? { range: "month" } : {}),
+            })
           }
         >
           <span aria-hidden className="leading-none">
@@ -234,7 +303,11 @@ export function DashboardMonthFilter({
           className={navBtnClass}
           aria-label="One month later"
           onClick={() =>
-            pushQuery(pathname, router, searchParams, { month: shiftYm(selectedYm, 1), preset: null })
+            pushQuery(pathname, router, searchParams, {
+              month: shiftYm(selectedYm, 1),
+              preset: null,
+              ...(custom ? { range: "month" } : {}),
+            })
           }
         >
           <span aria-hidden className="leading-none">

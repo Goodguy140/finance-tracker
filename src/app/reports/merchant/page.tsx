@@ -1,3 +1,4 @@
+import { parseCustomRangeKey } from "@/lib/date-range";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppNav, APP_TAB_BAR_PAD_CLASS } from "@/components/app-nav";
@@ -28,7 +29,8 @@ export default async function MerchantReportPage({ searchParams }: { searchParam
   const key = firstParam(sp.key)?.trim();
   if (!key) notFound();
   const period = firstParam(sp.period);
-  const backHref = period && /^\d{4}$/.test(period) ? `/reports?period=${period}` : "/reports";
+  const backHref =
+    period && (/^\d{4}$/.test(period) || parseCustomRangeKey(period)) ? `/reports?period=${period}` : "/reports";
 
   const currency = getCountryConfig(user.countryCode).defaultCurrency;
   const fmt = (cents: number) => formatCurrency(cents, currency);

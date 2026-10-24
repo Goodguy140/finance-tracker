@@ -50,9 +50,11 @@ import { loadRolloverCarries } from "@/lib/budget-rollover";
 import {
   buildComparisonPace,
   buildCumulativeSpendSeries,
+  customRangeIsDaily,
   resolveMonthlyExpected,
 } from "@/lib/cumulative-spend";
 import { dateFromYmd, formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
+import { dayAfter } from "@/lib/date-range";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
 import type { VerificationInfo } from "@/components/verified-badge";
 import { PlaidReviewQueue } from "@/components/plaid-review-queue";
@@ -453,11 +455,15 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     const rolloverCarries = await loadRolloverCarries(prisma, user.id, homeCurrency, [period.ym], budgets);
     budgetProgressItems = buildBudgetProgressRows(activeBudgets, spendByCategory, carriesForMonth(rolloverCarries, period.ym));
     totalBudgetCents = budgetProgressItems.reduce((sum, row) => sum + row.limitCents, 0);
-  } else if (period.range === "ytd") {
+  } else if (period.range === "ytd" || period.range === "custom") {
+    // A custom range sums the budgets of every month it touches, as YTD does from January.
+    const fromYm = period.custom?.fromYmd.slice(0, 7);
+    const inRange = (periodMonth: string) =>
+      fromYm ? periodMonth >= fromYm && periodMonth <= period.ym : budgetPeriodMonthInYtd(periodMonth, period.ym);
     const limitSumByCategory = new Map<string, number>();
     const nameByCategory = new Map<string, string>();
     for (const budget of budgets) {
-      if (!budgetPeriodMonthInYtd(budget.periodMonth, period.ym)) continue;
+      if (!inRange(budget.periodMonth)) continue;
       limitSumByCategory.set(
         budget.categoryId,
         (limitSumByCategory.get(budget.categoryId) ?? 0) + budget.limitCents,
@@ -598,7 +604,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
 
   const currentSpendCents = homeExpenses.reduce((sum, row) => sum + row.amountCents, 0);
 
-  const cumulativeSpendGranularity = period.range === "month" ? ("day" as const) : ("month" as const);
+  const cumulativeSpendGranularity =
+    period.range === "month" || (period.custom && customRangeIsDaily(period.custom)) ? ("day" as const) : ("month" as const);
   // One month's worth of budget, whatever the selected range: the YTD and lifetime totals
   // sum many months and would overstate a per-month baseline.
   const budgetedMonthlyCents = Array.from(selectActiveBudgetsByCategory(budgets, period.ym).values()).reduce(
@@ -899,7 +906,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const recentUnlinkedIncomeOptions = recentUnlinkedIncomes.map(toRecentOption);
 
   const recurringForecastPeriod =
-    period.range === "ytd"
+    period.custom
+      ? { start: dateFromYmd(period.custom.fromYmd), endExclusive: dayAfter(period.custom.toYmd), label: periodDescription }
+      : period.range === "ytd"
       ? { start: startOfCalendarYearForYm(period.ym), endExclusive: endExclusiveOfMonthYm(period.ym), label: periodDescription }
       : period.range === "month"
         ? { start: startOfMonthYm(period.ym), endExclusive: endExclusiveOfMonthYm(period.ym), label: periodDescription }
@@ -917,7 +926,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       ? "Spend vs budgeted"
       : period.range === "ytd"
         ? "YTD spend vs summed budgets"
-        : "Lifetime spend vs summed budgets";
+        : period.range === "custom"
+          ? "Spend vs summed budgets"
+          : "Lifetime spend vs summed budgets";
 
   const incomeSumCents = tagFilter
     ? logIncomes.filter(inHomeCurrency).reduce((sum, txn) => sum + txn.amountCents, 0)
@@ -956,6 +967,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const cumulativeSpendPoints = buildCumulativeSpendSeries(homeExpenses, {
     range: period.range,
     ym: period.ym,
+    custom: period.custom,
     todayYmd: currentYmdInTimeZone(user.timezone, now),
     monthlyExpected,
     comparisonPace,
