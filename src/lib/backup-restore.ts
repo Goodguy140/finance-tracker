@@ -87,7 +87,7 @@ export function assertBackupReferencesResolve(parsed: ParsedUserBackup): void {
       throw new Error("Backup references unknown verified transaction.");
     }
   }
-  for (const row of parsed.budgets) {
+  for (const row of [...parsed.budgets, ...(parsed.yearlyBudgets ?? [])]) {
     if (!categoryIds.has(row.categoryId)) {
       throw new Error("Backup references unknown budget category.");
     }

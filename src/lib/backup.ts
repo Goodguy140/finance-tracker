@@ -108,6 +108,14 @@ export type UserBackupPayload = {
     createdAt: IsoString;
     updatedAt: IsoString;
   }>;
+  /** Optional: absent in files exported before yearly budgets existed. */
+  yearlyBudgets?: Array<{
+    categoryId: string;
+    year: number;
+    limitCents: number;
+    createdAt: IsoString;
+    updatedAt: IsoString;
+  }>;
   recurringTransactions: Array<{
     /** Referenced by `transactions[].recurringTransactionId`; remapped on import. */
     id: string;
@@ -289,6 +297,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
         },
       },
       budgets: true,
+      yearlyBudgets: true,
       recurringTransactions: {
         include: { subscriptionMembers: { include: { shareStatuses: true } } },
       },
@@ -399,6 +408,13 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       categoryId: row.categoryId,
       name: row.name,
       periodMonth: row.periodMonth,
+      limitCents: row.limitCents,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    })),
+    yearlyBudgets: user.yearlyBudgets.map((row) => ({
+      categoryId: row.categoryId,
+      year: row.year,
       limitCents: row.limitCents,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),

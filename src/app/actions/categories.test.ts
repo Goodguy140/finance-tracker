@@ -372,3 +372,51 @@ describe("category groups", () => {
     expect(await groupOf(mine.id)).toBeNull();
   });
 });
+
+describe("yearly budgets", () => {
+  const yearlyForm = (categoryId: string, fields: Record<string, string>) => {
+    const f = new FormData();
+    f.set("categoryId", categoryId);
+    for (const [k, v] of Object.entries(fields)) f.set(k, v);
+    return f;
+  };
+  const thisYear = Number(currentYmInTimeZone("America/Toronto").slice(0, 4));
+
+  it("sets this year's limit, updates it in place, and removes every year", async () => {
+    const insurance = await category("Insurance");
+    await db.yearlyBudget.create({ data: { userId: session.userId, categoryId: insurance.id, year: thisYear - 1, limitCents: 50_000 } });
+    expect(await actions.setCategoryYearlyBudgetAction(yearlyForm(insurance.id, { limit: "1,200" }))).toBeUndefined();
+    await actions.setCategoryYearlyBudgetAction(yearlyForm(insurance.id, { limit: "1300" }));
+    const rows = await db.yearlyBudget.findMany({ where: { categoryId: insurance.id }, orderBy: { year: "asc" } });
+    expect(rows.map((r) => [r.year, r.limitCents])).toEqual([
+      [thisYear - 1, 50_000],
+      [thisYear, 130_000],
+    ]);
+    expect(await actions.setCategoryYearlyBudgetAction(yearlyForm(insurance.id, { limit: "0" }))).toMatchObject({
+      error: "Enter a yearly limit above zero.",
+    });
+    await actions.setCategoryYearlyBudgetAction(yearlyForm(insurance.id, { intent: "remove" }));
+    expect(await db.yearlyBudget.count({ where: { categoryId: insurance.id } })).toBe(0);
+  });
+
+  it("merging keeps the target's limit for a year both have and moves the rest", async () => {
+    const car = await category("Car insurance");
+    const home = await category("Home insurance");
+    await db.yearlyBudget.createMany({
+      data: [
+        { userId: session.userId, categoryId: car.id, year: 2025, limitCents: 1 },
+        { userId: session.userId, categoryId: car.id, year: 2026, limitCents: 2 },
+        { userId: session.userId, categoryId: home.id, year: 2026, limitCents: 3 },
+      ],
+    });
+    const f = new FormData();
+    f.set("categoryId", car.id);
+    f.set("targetCategoryId", home.id);
+    expect(await actions.deleteCategoryAction(f)).toBeUndefined();
+    const rows = await db.yearlyBudget.findMany({ where: { userId: session.userId }, orderBy: { year: "asc" } });
+    expect(rows.map((r) => [r.categoryId, r.year, r.limitCents])).toEqual([
+      [home.id, 2025, 1],
+      [home.id, 2026, 3],
+    ]);
+  });
+});

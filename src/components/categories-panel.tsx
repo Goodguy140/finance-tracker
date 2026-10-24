@@ -9,6 +9,7 @@ import {
   setCategoryBudgetAction,
   setCategoryGroupAction,
   setCategoryRolloverAction,
+  setCategoryYearlyBudgetAction,
   setPlaidCategoryMappingAction,
 } from "@/app/actions";
 import { ServerActionForm } from "@/components/server-action-form";
@@ -31,6 +32,8 @@ export type CategoryRow = {
   recurringCount: number;
   /** The budget in force this month, if any. */
   budgetLimitCents: number | null;
+  /** The yearly budget (sinking fund) in force this year, if any. */
+  yearlyLimitCents: number | null;
   /** Spent this month, for budgeted expense categories; null when there is no budget. */
   spentCents: number | null;
   /** Whether unspent (or overspent) budget carries into the next month. */
@@ -265,10 +268,16 @@ function CategoryItem({
           {category.kind === "EXPENSE" ? (
             <span
               className={`w-24 shrink-0 text-right text-xs font-medium tabular-nums ${
-                category.budgetLimitCents === null ? "text-slate-500" : "text-slate-200"
+                category.budgetLimitCents === null && category.yearlyLimitCents === null ? "text-slate-500" : "text-slate-200"
               }`}
             >
-              {category.budgetLimitCents === null ? "No budget" : `${formatCurrency(category.budgetLimitCents)}/mo`}
+              {category.budgetLimitCents === null && category.yearlyLimitCents === null ? "No budget" : null}
+              {category.budgetLimitCents !== null ? (
+                <span className="block">{formatCurrency(category.budgetLimitCents)}/mo</span>
+              ) : null}
+              {category.yearlyLimitCents !== null ? (
+                <span className="block">{formatCurrency(category.yearlyLimitCents)}/yr</span>
+              ) : null}
             </span>
           ) : null}
           <span aria-hidden className="shrink-0 text-slate-500 transition group-open:rotate-90">
@@ -388,6 +397,8 @@ function CategoryItem({
             <RolloverToggle category={category} />
           ) : null}
 
+          {category.kind === "EXPENSE" ? <YearlyBudgetForm category={category} /> : null}
+
           <div className="flex flex-wrap items-center gap-2 border-t border-slate-800/80 pt-3">
             <p className="min-w-0 flex-1 text-xs text-slate-500">
               {inUse ? `Used by ${describeUsage(category)}.` : "Nothing uses this category."}
@@ -451,6 +462,74 @@ function CategoryItem({
         />
       ) : null}
     </li>
+  );
+}
+
+/** The yearly budget: a limit for the whole year, set aside a twelfth a month as a sinking fund. */
+function YearlyBudgetForm({ category }: { category: CategoryRow }) {
+  const [confirming, setConfirming] = useState(false);
+  const removeButton = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <ServerActionForm
+        key={category.yearlyLimitCents ?? "none"}
+        action={setCategoryYearlyBudgetAction}
+        className="flex flex-wrap items-end gap-2"
+      >
+        <input type="hidden" name="categoryId" value={category.id} />
+        <input type="hidden" name="intent" value="set" />
+        <label className="min-w-0 flex-1 space-y-1">
+          <span className="text-xs font-medium text-slate-400">Yearly budget</span>
+          <input
+            name="limit"
+            inputMode="decimal"
+            aria-label={`Yearly budget for ${category.name}`}
+            className={inputClass}
+            defaultValue={category.yearlyLimitCents === null ? "" : (category.yearlyLimitCents / 100).toFixed(2)}
+            placeholder="No yearly budget"
+            required
+          />
+        </label>
+        <button
+          type="submit"
+          className={smallBtnClass}
+          onClick={(e) => {
+            const intent = e.currentTarget.form?.elements.namedItem("intent") as HTMLInputElement | null;
+            if (intent) intent.value = "set";
+          }}
+        >
+          Save yearly
+        </button>
+        {category.yearlyLimitCents !== null ? (
+          <button ref={removeButton} type="button" className={smallBtnClass} onClick={() => setConfirming(true)}>
+            Remove yearly
+          </button>
+        ) : null}
+        <p className="w-full text-xs text-slate-500">
+          For costs that come once or a few times a year, like insurance or gifts. A twelfth is set aside each month and
+          spending here draws it down; the Budgets card shows what the fund holds. Kept apart from monthly totals.
+        </p>
+      </ServerActionForm>
+      {confirming ? (
+        <ConfirmDialog
+          title={`Remove the yearly budget for “${category.name}”?`}
+          body="Its yearly limit is removed for every year, past years included. Transactions are not affected."
+          confirmLabel="Remove yearly budget"
+          danger
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => {
+            setConfirming(false);
+            const form = removeButton.current?.form;
+            if (!form) return;
+            const intent = form.elements.namedItem("intent") as HTMLInputElement | null;
+            const limit = form.elements.namedItem("limit") as HTMLInputElement | null;
+            if (intent) intent.value = "remove";
+            if (limit) limit.required = false;
+            form.requestSubmit();
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 

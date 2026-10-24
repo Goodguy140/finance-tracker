@@ -7,6 +7,7 @@ const mockPrisma = vi.hoisted(() => ({
   passwordResetToken: { deleteMany: vi.fn(), create: vi.fn() },
   authAccount: { deleteMany: vi.fn(), create: vi.fn() },
   budget: { deleteMany: vi.fn(), createMany: vi.fn() },
+  yearlyBudget: { deleteMany: vi.fn(), createMany: vi.fn() },
   budgetAlertNotification: { deleteMany: vi.fn() },
   recurringTransaction: { deleteMany: vi.fn(), create: vi.fn() },
   investmentFlow: { deleteMany: vi.fn(), create: vi.fn(), createMany: vi.fn() },
@@ -521,6 +522,30 @@ describe("importUserBackupAction", () => {
       expect.objectContaining({ name: "Emergency fund", accountId: "acc-new" }),
       expect.objectContaining({ name: "Trip", accountId: null, savedCents: 45_000 }),
     ]);
+  });
+
+  it("restores yearly budgets under the category's new id, and refuses one for a category it does not contain", async () => {
+    const iso = "2026-01-01T00:00:00.000Z";
+    mockPrisma.category.create.mockResolvedValue({ id: "cat-new" });
+    const backup = {
+      ...minimalBackup("user@example.com"),
+      categories: [{ id: "cat-old", name: "Insurance", kind: "EXPENSE", isDefault: false, createdAt: iso, updatedAt: iso }],
+      yearlyBudgets: [{ categoryId: "cat-old", year: 2026, limitCents: 120_000, createdAt: iso, updatedAt: iso }],
+    };
+    const formData = new FormData();
+    formData.set("backupJson", new File([JSON.stringify(backup)], "backup.json", { type: "application/json" }));
+    await importUserBackupAction(formData);
+    expect(mockPrisma.yearlyBudget.deleteMany).toHaveBeenCalledWith({ where: { userId: "user-1" } });
+    expect(mockPrisma.yearlyBudget.createMany.mock.calls[0]?.[0]?.data).toEqual([
+      expect.objectContaining({ categoryId: "cat-new", year: 2026, limitCents: 120_000 }),
+    ]);
+
+    vi.clearAllMocks();
+    const orphan = { ...backup, yearlyBudgets: [{ ...backup.yearlyBudgets[0], categoryId: "missing" }] };
+    const bad = new FormData();
+    bad.set("backupJson", new File([JSON.stringify(orphan)], "backup.json", { type: "application/json" }));
+    expect(await importUserBackupAction(bad)).toMatchObject({ error: expect.stringContaining("unknown budget category") });
+    expect(mockPrisma.yearlyBudget.createMany).not.toHaveBeenCalled();
   });
 
   it("refuses a file whose savings goal points at an account it does not contain", async () => {

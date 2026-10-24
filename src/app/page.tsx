@@ -61,6 +61,7 @@ import { TransferLog, type TransferLogEntry } from "@/components/transfer-log";
 import { TransactionRulesProvider } from "@/components/transaction-rules-context";
 import { CategoryColorsProvider } from "@/components/category-colors-context";
 import { hasGroups, mergeSlicesByGroup } from "@/lib/category-groups";
+import { loadYearlyBudgetRows } from "@/lib/yearly-budgets";
 import { assignCategoryColors, categoryColor, SAVINGS_SLICE_COLOR } from "@/lib/category-colors";
 import type { CategorySpendSlice } from "@/components/category-spend-pie";
 import { loadSavingsTransfers } from "@/lib/reports/load";
@@ -520,6 +521,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
     totalBudgetCents = budgetProgressItems.reduce((sum, row) => sum + row.limitCents, 0);
   }
+
+  // Yearly budgets judge the year through the month shown; all of time has no single year.
+  const yearlyBudgetRows = period.range === "lifetime" ? [] : await loadYearlyBudgetRows(user.id, period.ym, homeCurrency);
 
   let budgetWarnings: ReturnType<typeof computeBudgetWarnings> = [];
   let budgetPaceTrends: ReturnType<typeof computeOverBudgetTrends> = [];
@@ -1090,6 +1094,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           hideZeroSpend={cardSettings.budgets?.hideZeroSpend}
           showPeriodNote={cardSettings.budgets?.showPeriodNote}
           daysLeftInMonth={daysLeftInBudgetMonth}
+          yearlyBudgets={yearlyBudgetRows}
         />
       ),
     },
