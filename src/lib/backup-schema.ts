@@ -138,6 +138,18 @@ export const userBackupSchema = z.object({
       updatedAt: isoDate,
     }),
   ),
+  /** Absent from backups made before yearly budgets existed. */
+  yearlyBudgets: z
+    .array(
+      z.object({
+        categoryId: z.string().min(1),
+        year: z.number().int().min(1970).max(9999),
+        limitCents: positiveCents,
+        createdAt: isoDate,
+        updatedAt: isoDate,
+      }),
+    )
+    .optional(),
   recurringTransactions: z
     .array(
       z.object({

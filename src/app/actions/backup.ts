@@ -42,6 +42,7 @@ export const clearUserFinancialDataAction = formAction(async (formData: FormData
     await tx.insightDismissal.deleteMany({ where: { userId: user.id } });
     await tx.insightPreference.deleteMany({ where: { userId: user.id } });
     await tx.budget.deleteMany({ where: { userId: user.id } });
+    await tx.yearlyBudget.deleteMany({ where: { userId: user.id } });
     await tx.budgetAlertNotification.deleteMany({ where: { userId: user.id } });
     await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
     await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
@@ -121,6 +122,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
     await tx.insightDismissal.deleteMany({ where: { userId: user.id } });
     await tx.insightPreference.deleteMany({ where: { userId: user.id } });
     await tx.budget.deleteMany({ where: { userId: user.id } });
+    await tx.yearlyBudget.deleteMany({ where: { userId: user.id } });
     await tx.budgetAlertNotification.deleteMany({ where: { userId: user.id } });
     await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
     await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
@@ -422,6 +424,25 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
         };
       }),
     });
+
+    if (parsed.yearlyBudgets?.length) {
+      await tx.yearlyBudget.createMany({
+        data: parsed.yearlyBudgets.map((row) => {
+          const mappedCategoryId = categoryIdMap.get(row.categoryId);
+          if (!mappedCategoryId) {
+            throw new Error("Backup references unknown budget category.");
+          }
+          return {
+            userId: user.id,
+            categoryId: mappedCategoryId,
+            year: row.year,
+            limitCents: row.limitCents,
+            createdAt: new Date(row.createdAt),
+            updatedAt: new Date(row.updatedAt),
+          };
+        }),
+      });
+    }
 
     for (const row of parsed.subscriptions ?? []) {
       const mappedCategoryId = categoryIdMap.get(row.categoryId);

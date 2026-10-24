@@ -239,3 +239,43 @@ test("categories filed under a group add up on Settings, the Budgets card and Re
   const groups = page.getByTestId("report-groups");
   await expect(groups.getByRole("row").filter({ hasText: group })).toContainText("$165.00");
 });
+
+test("a yearly budget set in Settings shows on the Budgets card as a sinking fund", async ({ page }) => {
+  const { user, stamp } = await createUserAndLogin(page);
+  const thisYm = currentYmInTimeZone("America/Toronto");
+  const month = Number(thisYm.slice(5, 7));
+  const account = await prisma.account.findFirstOrThrow({ where: { userId: user.id } });
+  const insurance = await prisma.category.create({
+    data: { userId: user.id, name: `Insurance ${stamp}`, kind: CategoryKind.EXPENSE },
+  });
+  await prisma.transaction.create({
+    data: {
+      userId: user.id,
+      accountId: account.id,
+      categoryId: insurance.id,
+      type: TransactionType.EXPENSE,
+      amountCents: 30_000,
+      date: new Date(`${thisYm.slice(0, 4)}-01-15T12:00:00Z`),
+      title: `Premium ${stamp}`,
+    },
+  });
+
+  await page.goto("/settings/categories");
+  const panel = page.getByRole("region", { name: "Categories & budgets" });
+  const row = panel.getByTestId("category-row").filter({ hasText: insurance.name });
+  await row.locator("summary").click();
+  await row.getByLabel(`Yearly budget for ${insurance.name}`).fill("1200");
+  await row.getByRole("button", { name: "Save yearly" }).click();
+  await expect(row).toContainText("$1,200.00/yr");
+
+  await page.goto("/");
+  const fund = page.getByRole("region", { name: "Budgets" }).getByTestId("yearly-budget").filter({ hasText: insurance.name });
+  await expect(fund).toContainText("$300.00 / $1,200.00");
+  await expect(fund).toContainText("$100.00 a month");
+  // A twelfth set aside each month so far, less the $300 already spent.
+  const fundCents = month * 10_000 - 30_000;
+  const dollars = (cents: number) => `$${(cents / 100).toLocaleString("en-CA", { minimumFractionDigits: 2 })}`;
+  await expect(fund.getByTestId("yearly-budget-fund")).toHaveText(
+    fundCents >= 0 ? `${dollars(fundCents)} in the fund` : `${dollars(-fundCents)} spent ahead of the fund`,
+  );
+});

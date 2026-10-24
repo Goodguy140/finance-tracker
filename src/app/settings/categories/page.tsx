@@ -9,13 +9,14 @@ import { buildPlaidMappingView } from "@/lib/plaid/category-mapping-view";
 import { currentYmInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
 import { requireLoadedUser } from "@/lib/session";
+import { selectActiveYearlyBudgets } from "@/lib/yearly-budgets";
 
 export const dynamic = "force-dynamic";
 
 export default async function CategoriesSettingsPage() {
   const { user } = await requireLoadedUser();
   const ym = currentYmInTimeZone(user.timezone);
-  const [categories, budgets, suggestionContext, transactionCounts, splitCounts, recurringCounts, plaidItemCount, progress] =
+  const [categories, budgets, suggestionContext, transactionCounts, splitCounts, recurringCounts, plaidItemCount, progress, yearly] =
     await Promise.all([
       prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true, rolloverSinceMonth: true, groupName: true } }),
       prisma.budget.findMany({
@@ -29,6 +30,7 @@ export default async function CategoriesSettingsPage() {
       prisma.recurringTransaction.groupBy({ by: ["categoryId"], where: { userId: user.id }, _count: { _all: true } }),
       prisma.plaidItem.count({ where: { userId: user.id } }),
       buildMonthlyBudgetProgress(user.id, ym),
+      prisma.yearlyBudget.findMany({ where: { userId: user.id } }),
     ]);
 
   const countsBy = (rows: { categoryId: string; _count: { _all: number } }[]) =>
@@ -37,6 +39,7 @@ export default async function CategoriesSettingsPage() {
   const splitsByCategory = countsBy(splitCounts);
   const recurringByCategory = countsBy(recurringCounts);
   const activeBudgets = selectActiveBudgetsByCategory(budgets, ym);
+  const activeYearly = selectActiveYearlyBudgets(yearly, Number(ym.slice(0, 4)));
   const activeIds = new Set([...activeBudgets.values()].map((b) => b.id));
   const spentByCategory = new Map(progress.budgets.map((row) => [row.categoryId, row.spentCents]));
   const carryByCategory = new Map(progress.budgets.map((row) => [row.categoryId, row.carryCents]));
@@ -71,6 +74,7 @@ export default async function CategoriesSettingsPage() {
                   splitCount: splitsByCategory.get(c.id) ?? 0,
                   recurringCount: recurringByCategory.get(c.id) ?? 0,
                   budgetLimitCents: activeBudgets.get(c.id)?.limitCents ?? null,
+                  yearlyLimitCents: activeYearly.get(c.id)?.limitCents ?? null,
                   spentCents: activeBudgets.has(c.id) ? (spentByCategory.get(c.id) ?? 0) : null,
                   rolloverOn: c.rolloverSinceMonth !== null,
                   carryCents: carryByCategory.get(c.id) ?? 0,

@@ -82,6 +82,16 @@ async function mergeCategoryInto(tx: Tx, userId: string, fromId: string, toId: s
   await tx.budget.updateMany(move);
   await tx.budgetAlertNotification.deleteMany({ where: { userId, categoryId: fromId } });
 
+  // Yearly budgets merge the same way: the target keeps its own for a year both have.
+  const [fromYearly, toYearly] = await Promise.all([
+    tx.yearlyBudget.findMany({ where: { userId, categoryId: fromId }, select: { id: true, year: true } }),
+    tx.yearlyBudget.findMany({ where: { userId, categoryId: toId }, select: { year: true } }),
+  ]);
+  const targetYears = new Set(toYearly.map((b) => b.year));
+  const clashingYears = fromYearly.filter((b) => targetYears.has(b.year)).map((b) => b.id);
+  if (clashingYears.length > 0) await tx.yearlyBudget.deleteMany({ where: { id: { in: clashingYears } } });
+  await tx.yearlyBudget.updateMany(move);
+
   await tx.category.delete({ where: { id: fromId } });
 }
 
@@ -193,9 +203,9 @@ export const deleteCategoryAction = formAction(async (formData: FormData) => {
   await afterCategoryChange(user);
 });
 
-function parseLimit(raw: string): number {
+function parseLimit(raw: string, period: "monthly" | "yearly" = "monthly"): number {
   const parsed = positiveAmount.safeParse(raw.replace(/[$,\s]/g, ""));
-  if (!parsed.success) throw new Error("Enter a monthly limit above zero.");
+  if (!parsed.success) throw new Error(`Enter a ${period} limit above zero.`);
   return toCents(parsed.data);
 }
 
@@ -262,6 +272,29 @@ export const setCategoryRolloverAction = formAction(async (formData: FormData) =
  * Says which category a Plaid category lands in, or (empty `categoryId`) returns it to the
  * built-in default. Rows still waiting in the review queue are re-suggested at once.
  */
+/**
+ * Sets a category's yearly budget from this year on, or removes it (`intent=remove`, every
+ * year). Earlier years keep the limits they had.
+ */
+export const setCategoryYearlyBudgetAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const category = await findManagedCategory(prisma, user.id, getFormValue(formData, "categoryId"));
+  if (category.kind !== CategoryKind.EXPENSE) throw new Error("Budgets apply to expense categories only.");
+  if (getFormValue(formData, "intent") === "remove") {
+    await prisma.yearlyBudget.deleteMany({ where: { userId: user.id, categoryId: category.id } });
+  } else {
+    const limitCents = parseLimit(getFormValue(formData, "limit").trim(), "yearly");
+    const year = Number(currentYmInTimeZone(user.timezone).slice(0, 4));
+    await prisma.yearlyBudget.upsert({
+      where: { userId_categoryId_year: { userId: user.id, categoryId: category.id, year } },
+      update: { limitCents },
+      create: { userId: user.id, categoryId: category.id, year, limitCents },
+    });
+  }
+  revalidatePath("/");
+  revalidatePath("/settings", "layout");
+});
+
 /**
  * Files a category under a group, or takes it out of one (an empty name). A group is matched to
  * an existing one ignoring case, so "food" joins "Food" rather than starting a second group.

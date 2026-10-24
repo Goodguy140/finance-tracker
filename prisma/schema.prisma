@@ -182,6 +182,7 @@ model User {
   transactions              Transaction[]
   splitTransaction          SplitTransactionPart[]
   budgets                   Budget[]
+  yearlyBudgets             YearlyBudget[]
   recurringTransactions     RecurringTransaction[]
   investmentFlows           InvestmentFlow[]
   contributionRooms         ContributionRoom[]
@@ -465,6 +466,7 @@ model Category {
   transactions          Transaction[]
   splitParts            SplitTransactionPart[]
   budgets               Budget[]
+  yearlyBudgets         YearlyBudget[]
   recurringTransactions RecurringTransaction[]
   plaidItemDefaults     PlaidItem[]
   transactionRules      TransactionRule[]
@@ -589,6 +591,25 @@ model Budget {
   category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
 
   @@unique([userId, categoryId, periodMonth])
+}
+
+/// A budget for a whole year, for spending that comes once or a few times a year (car
+/// insurance, gifts). It works as a sinking fund: a twelfth is set aside each month, and the
+/// category's spending draws it down. Like monthly budgets, the latest year's row on or before
+/// the year shown applies, so one set this year carries into the next until changed.
+model YearlyBudget {
+  id         String   @id @default(cuid())
+  userId     String
+  categoryId String
+  year       Int
+  limitCents Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryId, year])
 }
 
 model RecurringTransaction {

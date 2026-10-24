@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { DashboardRange } from "@/lib/dashboard-period";
 import { hasGroups, sectionByGroup } from "@/lib/category-groups";
 import { formatCurrency } from "@/lib/money";
+import type { YearlyBudgetRow } from "@/lib/yearly-budgets";
 
 export type DashboardBudgetProgressItem = {
   id: string;
@@ -28,6 +29,8 @@ export type BudgetsCardBodyProps = {
   showPeriodNote?: boolean;
   /** Days left in the month, counting today; set only when the period is the current month. */
   daysLeftInMonth?: number | null;
+  /** Yearly budgets in force for the period's year, as sinking funds; kept out of the totals above. */
+  yearlyBudgets?: YearlyBudgetRow[];
 };
 
 /** "$414 left" or "$1,413 over", or null when there is no limit to measure against. */
@@ -100,6 +103,7 @@ export function BudgetsCardBody({
   hideZeroSpend = false,
   showPeriodNote = true,
   daysLeftInMonth = null,
+  yearlyBudgets = [],
 }: BudgetsCardBodyProps) {
   const items = hideZeroSpend
     ? budgetProgressItems.filter((item) => item.spentCents !== 0)
@@ -127,7 +131,7 @@ export function BudgetsCardBody({
           </p>
         ) : null}
       </div>
-      {items.length === 0 ? (
+      {items.length === 0 && yearlyBudgets.length > 0 && budgetProgressItems.length === 0 ? null : items.length === 0 ? (
         <p className="mt-3 text-sm text-slate-400">
           {hideZeroSpend && budgetProgressItems.length > 0
             ? "No spending against a budget in this period."
@@ -136,6 +140,7 @@ export function BudgetsCardBody({
       ) : (
         <BudgetRowSections items={items} perRow={perRow} />
       )}
+      {yearlyBudgets.length > 0 ? <YearlyBudgets rows={yearlyBudgets} /> : null}
     </>
   );
 }
@@ -214,5 +219,50 @@ function BudgetRowGrid({
         </div>
       ))}
     </div>
+  );
+}
+
+/** "$1,100 in the fund" or "$150 spent ahead of the fund": set aside so far less spent. */
+export function sinkingFundText(fundCents: number): string {
+  return fundCents >= 0 ? `${formatCurrency(fundCents)} in the fund` : `${formatCurrency(-fundCents)} spent ahead of the fund`;
+}
+
+/** Yearly budgets as sinking funds: spent this year against the year's limit, and what the fund holds. */
+function YearlyBudgets({ rows }: { rows: YearlyBudgetRow[] }) {
+  return (
+    <section aria-label="Yearly budgets" className="mt-4">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Yearly budgets</h3>
+      <div className="mt-1.5 grid gap-2 grid-cols-[repeat(var(--budgets-per-row,1),minmax(0,1fr))]">
+        {rows.map((row) => {
+          const pct = row.limitCents > 0 ? Math.min(100, Math.max(0, (row.spentCents / row.limitCents) * 100)) : 0;
+          return (
+            <div
+              key={row.categoryId}
+              data-testid="yearly-budget"
+              className="min-w-0 rounded-xl border border-slate-800 bg-slate-950/50 p-2.5"
+            >
+              <div className="mb-1 flex items-center justify-between gap-2 text-sm">
+                <span className="truncate font-medium text-slate-200">{row.categoryName}</span>
+                <span className="shrink-0 tabular-nums text-slate-300">
+                  {formatCurrency(row.spentCents)} / {formatCurrency(row.limitCents)}
+                </span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className={`h-full rounded-full ${row.spentCents > row.limitCents ? "bg-red-500" : "bg-sky-500"}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <p className="mt-1 flex flex-wrap justify-between gap-x-2 text-xs tabular-nums text-slate-400">
+                <span>{formatCurrency(row.monthlyCents)} a month</span>
+                <span data-testid="yearly-budget-fund" className={row.fundCents < 0 ? "text-amber-300" : undefined}>
+                  {sinkingFundText(row.fundCents)}
+                </span>
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
