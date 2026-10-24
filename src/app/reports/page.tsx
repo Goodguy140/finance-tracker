@@ -25,6 +25,7 @@ import {
   yearsWithActivity,
 } from "@/lib/reports";
 import { loadActivityBounds, loadOtherCurrencyTotals, loadReportTxs, loadSavingsTransfers } from "@/lib/reports/load";
+import { groupYearRows } from "@/lib/category-groups";
 import { describeOtherCurrencies } from "@/lib/home-currency";
 import { savedByTransferByMonth, totalSavedByTransfer } from "@/lib/savings-transfers";
 import { prisma } from "@/lib/prisma";
@@ -63,7 +64,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   const currency = getCountryConfig(user.countryCode).defaultCurrency;
   const fmt = (cents: number) => formatCurrency(cents, currency);
 
-  const [loaded, savings, activityYears, tags, financial, netWorth, projectionInputs, insights] = await Promise.all([
+  const [loaded, savings, activityYears, tags, financial, netWorth, projectionInputs, insights, categoryGroups] = await Promise.all([
     loadReportTxs(user.id, previousYearWindow(period).start, currency),
     loadSavingsTransfers(user.id, period.start, currency),
     loadActivityBounds(user.id),
@@ -73,6 +74,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
     loadProjectionInputs(user.id),
     // For the score card's count of possible gaps in the data, as Insights lists them.
     loadInsights(user.id, user.countryCode, user.timezone),
+    prisma.category.findMany({ where: { userId: user.id, groupName: { not: null } }, select: { id: true, groupName: true } }),
   ]);
   const projection = projectBalances({
     accounts: netWorth.accounts,
@@ -114,6 +116,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   const months = firstActive === -1 ? [] : allMonths.slice(firstActive);
   const flow = cashFlow(inPeriod, { toSavingsCents });
   const yoy = yearOverYearByCategory(txs, period);
+  const groupRows = groupYearRows(yoy.rows, new Map(categoryGroups.map((c) => [c.id, c.groupName])));
   const merchants = merchantSummaries(inPeriod);
   // Who you paid and who paid you are listed apart: an employer is not a payee.
   const payees = merchants.filter((m) => m.spentCents !== 0);
@@ -353,6 +356,44 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
           <p className="text-sm text-slate-500">No spending in either period.</p>
         )}
       </section>
+
+      {groupRows.length ? (
+        <section aria-labelledby="report-groups" className={card}>
+          <h2 id="report-groups" className="text-lg font-semibold">
+            Spending by group
+          </h2>
+          <p className="mb-3 mt-0.5 text-sm text-slate-400">
+            Category groups from Settings → Categories, {period.label.toLowerCase()} against {comparisonLabel}.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm tabular-nums" data-testid="report-groups">
+              <thead className="text-left text-xs text-slate-500">
+                <tr>
+                  <th className="py-1 font-normal">Group</th>
+                  <th className="py-1 text-right font-normal">This period</th>
+                  <th className="py-1 text-right font-normal">A year earlier</th>
+                  <th className="py-1 text-right font-normal">Change</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupRows.map((row) => (
+                  <tr key={row.groupName} className="border-t border-slate-800 align-top">
+                    <td className="py-1.5 pr-2">
+                      <span className="text-slate-200">{row.groupName}</span>
+                      <span className="block text-xs text-slate-500">{row.categoryNames.join(", ")}</span>
+                    </td>
+                    <td className="py-1.5 text-right text-slate-200">{fmt(row.currentCents)}</td>
+                    <td className="py-1.5 text-right text-slate-400">{fmt(row.previousCents)}</td>
+                    <td className={`py-1.5 text-right ${row.currentCents > row.previousCents ? "text-amber-300" : "text-emerald-300"}`}>
+                      {formatChange(row.changeRatio)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       <section aria-labelledby="report-merchants" className={card}>
         <h2 id="report-merchants" className="text-lg font-semibold">

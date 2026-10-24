@@ -146,6 +146,12 @@ function CardSettingsFields({
             checked={current.showSavings ?? false}
             onChange={(showSavings) => onChange("spending-by-category", { showSavings })}
           />
+          <SettingToggleRow
+            label="Add up category groups"
+            hint="One slice per group set in Settings → Categories, instead of one per category."
+            checked={current.groupCategories ?? true}
+            onChange={(groupCategories) => onChange("spending-by-category", { groupCategories })}
+          />
         </>
       );
     }

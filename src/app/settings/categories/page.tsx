@@ -17,7 +17,7 @@ export default async function CategoriesSettingsPage() {
   const ym = currentYmInTimeZone(user.timezone);
   const [categories, budgets, suggestionContext, transactionCounts, splitCounts, recurringCounts, plaidItemCount, progress] =
     await Promise.all([
-      prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true, rolloverSinceMonth: true } }),
+      prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true, rolloverSinceMonth: true, groupName: true } }),
       prisma.budget.findMany({
         where: { userId: user.id },
         include: { category: { select: { name: true } } },
@@ -66,6 +66,7 @@ export default async function CategoriesSettingsPage() {
                   id: c.id,
                   name: c.name,
                   kind: c.kind,
+                  groupName: c.groupName,
                   transactionCount: countByCategory.get(c.id) ?? 0,
                   splitCount: splitsByCategory.get(c.id) ?? 0,
                   recurringCount: recurringByCategory.get(c.id) ?? 0,

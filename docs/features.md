@@ -61,7 +61,7 @@ Cards (`src/components/dashboard-cards/`), with their gear settings:
 | Expense Log (`expense-log`) `src/components/expense-log.tsx` | search, tag filter, day groups, verified badge, edit dialog (dates, note, tags, splits, credits, owed shares, receipts: photos or PDFs kept in `TransactionAttachment`, type read from the bytes, served by `/api/attachments/[id]`; `receipts-section.tsx`, `src/lib/attachments.ts`; kept through Undo; not in JSON backups), **Select** mode for bulk changes (`expense-bulk-bar.tsx`, `bulkEditExpensesAction`: set category, set account, add tag, delete with one Undo; split expenses keep their categories), delete with an Undo toast (`undo-toast.tsx`, `src/lib/transaction-undo.ts`, kept 15 minutes in `DeletedTransaction`); Owed to you (`owed-to-you.tsx`); Transfers list (`transfer-log.tsx`: mark/unmark, pair/unpair, set account); bank review queue | density, list height, show review queue |
 | Income (`income`, conditional) `income-card.tsx`, `income-log.tsx` | list, edit, delete (with Undo); absent from a period with no income | density, list height |
 | Budgets (`budgets`) `budgets-card.tsx` | progress per category with "$X left" / "$X over" on each row and the total, days left in the current month, rollover (`src/lib/budget-rollover.ts`), reallocate (`budget-reallocate-dialog.tsx`) | per row, hide zero spend, period note |
-| Spending by category (`spending-by-category`) `spending-by-category-card.tsx`, `category-spend-pie.tsx` | pie with colors shared with the log (`src/lib/category-colors.ts`), optional savings slice (`src/lib/savings-transfers.ts`) | chart height, slices shown, show savings |
+| Spending by category (`spending-by-category`) `spending-by-category-card.tsx`, `category-spend-pie.tsx` | pie with colors shared with the log (`src/lib/category-colors.ts`), optional savings slice (`src/lib/savings-transfers.ts`) | chart height, slices shown, show savings, add up category groups |
 | Cumulative spending (`cumulative-spend`) `cumulative-spend-card.tsx`, `src/lib/cumulative-spend.ts` | running total, expected line, compare with last month / 3-month avg | chart height, expected line, compare with |
 | Recurring (`recurring`) `recurring-card.tsx`, `recurring-transactions-panel.tsx`, `recurring-rule-form.tsx` | rules due in the month as one summary line each (category · account · cadence · date), overdue carry ("Unposted since"), Post, with Skip/Edit/Disable/Remove behind the "⋯" button, auto-post, new/edit/pause/delete, recurring transfers (from/to account, `RecurringTransaction.transferAccountId`, kept out of income and bills), cash-flow summary; `src/lib/recurring-transactions.ts`, `recurring-post.ts` | cash-flow summary, rules shown |
 | Insights (`insights`) `insights-card.tsx` | count per section and the most pressing few, link to `/insights`; leaves out budget and money-owed insights, which this page already shows | insights shown |
@@ -200,8 +200,12 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
   - Savings goals: `settings/savings-goals-panel.tsx`, `actions/savings-goals.ts`
   - Connected banks: see Bank sync
   - Categories & budgets (add, rename, merge, delete with reassign, budget, rollover, earlier
-    budgets, bank mapping): `categories-panel.tsx`, `settings/budget-history.tsx`,
-    `actions/categories.ts`, `actions/budgets.ts`
+    budgets, bank mapping, group): `categories-panel.tsx`, `settings/budget-history.tsx`,
+    `actions/categories.ts`, `actions/budgets.ts`. **Category groups** (`Category.groupName`, a
+    shared label, matched ignoring case; `src/lib/category-groups.ts`): the list is shown under
+    group headings with each group's budget and spend; the Budgets card shows its rows under
+    group headings with the group's total and what is left; the pie adds each group up (card
+    setting "Add up category groups", on by default); Reports has "Spending by group"
   - Rules (title/type/account/amount conditions; set category, title, amount, account, note,
     tag, mark as transfer; priority, enable, preview and apply, learned suggestions):
     `transaction-rules-panel.tsx`, `src/lib/transaction-rules.ts`,

@@ -60,6 +60,7 @@ import { nextReviewQueueLimit, parseReviewQueueLimit } from "@/lib/plaid/review-
 import { TransferLog, type TransferLogEntry } from "@/components/transfer-log";
 import { TransactionRulesProvider } from "@/components/transaction-rules-context";
 import { CategoryColorsProvider } from "@/components/category-colors-context";
+import { hasGroups, mergeSlicesByGroup } from "@/lib/category-groups";
 import { assignCategoryColors, categoryColor, SAVINGS_SLICE_COLOR } from "@/lib/category-colors";
 import type { CategorySpendSlice } from "@/components/category-spend-pie";
 import { loadSavingsTransfers } from "@/lib/reports/load";
@@ -438,6 +439,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   };
 
   const spendByCategory = computeSpendByCategory(homeExpenses);
+  const groupByCategoryId = new Map(categories.map((c) => [c.id, c.groupName]));
 
   const categoryName = (categoryId: string) =>
     categories.find((c) => c.id === categoryId)?.name ?? budgets.find((b) => b.categoryId === categoryId)?.category.name ?? "Unknown";
@@ -613,7 +615,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const categoryPieSlices = Array.from((tagFilter ? computeSpendByCategory(logExpenses.filter(inHomeCurrency)) : spendByCategory).entries())
     .map(([categoryId, cents]) => {
       const cat = categories.find((c) => c.id === categoryId);
-      return { name: cat?.name ?? "Unknown", cents, color: categoryColor(categoryColors, categoryId) };
+      return { name: cat?.name ?? "Unknown", cents, color: categoryColor(categoryColors, categoryId), groupName: cat?.groupName ?? null };
     })
     .filter((s) => s.cents !== 0)
     .sort((a, b) => Math.abs(b.cents) - Math.abs(a.cents));
@@ -957,6 +959,12 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const insights = await insightsPromise;
   const getStartedSteps = await getStartedPromise;
 
+  // Once the user has grouped categories the pie adds each group up, unless the card's setting says not to.
+  const pieSlicesShown =
+    (cardSettings["spending-by-category"]?.groupCategories ?? true) && hasGroups(categoryPieSlices, (slice) => slice.groupName)
+      ? mergeSlicesByGroup(categoryPieSlices)
+      : categoryPieSlices;
+
   // Transfers stay out of every spending total; this slice only draws them beside the
   // categories, so nothing else (Reports' Saved, the score) is counted again.
   let savingsPieSlice: CategorySpendSlice | null = null;
@@ -1077,7 +1085,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           currentSpendCents={currentSpendCents}
           totalBudgetCents={totalBudgetCents}
           otherCurrencySpending={otherCurrencySpending}
-          budgetProgressItems={budgetProgressItems}
+          budgetProgressItems={budgetProgressItems.map((row) => ({ ...row, groupName: groupByCategoryId.get(row.categoryId) ?? null }))}
           perRow={cardSettings.budgets?.perRow}
           hideZeroSpend={cardSettings.budgets?.hideZeroSpend}
           showPeriodNote={cardSettings.budgets?.showPeriodNote}
@@ -1089,7 +1097,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       body: (
         <SpendingByCategoryCardBody
           periodDescription={`${periodDescription}${tagFilterLabel}`}
-          categoryPieSlices={categoryPieSlices}
+          categoryPieSlices={pieSlicesShown}
           chartHeight={cardSettings["spending-by-category"]?.chartHeight}
           maxSlices={cardSettings["spending-by-category"]?.maxSlices}
           savingsSlice={savingsPieSlice}

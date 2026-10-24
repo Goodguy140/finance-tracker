@@ -7,12 +7,14 @@ import {
   deleteCategoryAction,
   renameCategoryAction,
   setCategoryBudgetAction,
+  setCategoryGroupAction,
   setCategoryRolloverAction,
   setPlaidCategoryMappingAction,
 } from "@/app/actions";
 import { ServerActionForm } from "@/components/server-action-form";
 import { ConfirmDialog, dangerBtnClass, FormDialog, ModalShell } from "@/components/settings/dialog";
 import { inputClass, primaryBtnClass, secondaryBtnClass, selectClass } from "@/components/forms/shared";
+import { MAX_GROUP_NAME_LENGTH, hasGroups, sectionByGroup } from "@/lib/category-groups";
 import { formatCurrency } from "@/lib/money";
 
 type Kind = "EXPENSE" | "INCOME";
@@ -21,6 +23,8 @@ export type CategoryRow = {
   id: string;
   name: string;
   kind: Kind;
+  /** The group it is filed under, or null. */
+  groupName: string | null;
   transactionCount: number;
   /** Split lines and recurring rules filed under it; with transactions, what blocks a plain delete. */
   splitCount: number;
@@ -163,18 +167,52 @@ function CategoryListSection({
   categories: CategoryRow[];
   sameKind: CategoryRow[];
 }) {
+  const groupNames = [...new Set(sameKind.map((c) => c.groupName).filter((g): g is string => Boolean(g)))].sort();
+  const item = (category: CategoryRow) => (
+    <CategoryItem
+      key={category.id}
+      category={category}
+      others={sameKind.filter((c) => c.id !== category.id)}
+      groupNames={groupNames}
+    />
+  );
+  const listClass = "divide-y divide-slate-800 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50";
   return (
     <section aria-label={KIND_HEADINGS[kind]}>
       {categories.length === 0 ? (
         <p className="rounded-xl border border-dashed border-slate-700 px-4 py-6 text-center text-sm text-slate-500">None yet.</p>
+      ) : !hasGroups(categories, (c) => c.groupName) ? (
+        <ul className={listClass}>{categories.map(item)}</ul>
       ) : (
-        <ul className="divide-y divide-slate-800 overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
-          {categories.map((category) => (
-            <CategoryItem key={category.id} category={category} others={sameKind.filter((c) => c.id !== category.id)} />
+        <div className="space-y-3">
+          {sectionByGroup(categories, (c) => c.groupName).map((section) => (
+            <div key={section.groupName ?? ""} data-testid="category-group" className="space-y-1.5">
+              <GroupHeading kind={kind} groupName={section.groupName} members={section.items} />
+              <ul className={listClass}>{section.items.map(item)}</ul>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </section>
+  );
+}
+
+/** A group's name over its categories, with its budgets and this month's spend added up. */
+function GroupHeading({ kind, groupName, members }: { kind: Kind; groupName: string | null; members: CategoryRow[] }) {
+  const budgeted = members.filter((c) => c.budgetLimitCents !== null);
+  const limit = budgeted.reduce((sum, c) => sum + (c.budgetLimitCents ?? 0) + c.carryCents, 0);
+  const spent = budgeted.reduce((sum, c) => sum + (c.spentCents ?? 0), 0);
+  return (
+    <div className="flex items-center gap-3 px-1">
+      <h3 className="min-w-0 flex-1 truncate text-xs font-semibold uppercase tracking-wide text-slate-400">
+        {groupName ?? "Not grouped"}
+      </h3>
+      {kind === "EXPENSE" && groupName && budgeted.length > 0 ? (
+        <span data-testid="category-group-total" className="shrink-0 text-xs tabular-nums text-slate-400">
+          {formatCurrency(spent)} of {formatCurrency(limit)} this month
+        </span>
+      ) : null}
+    </div>
   );
 }
 
@@ -191,7 +229,16 @@ function describeUsage(category: CategoryRow): string {
   return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 }
 
-function CategoryItem({ category, others }: { category: CategoryRow; others: CategoryRow[] }) {
+function CategoryItem({
+  category,
+  others,
+  groupNames,
+}: {
+  category: CategoryRow;
+  others: CategoryRow[];
+  groupNames: string[];
+}) {
+  const groupListId = useId();
   // Everything that would block deleting it (Restrict relations), not only transactions:
   // a category used only by a recurring rule must still offer somewhere to move it.
   const inUse = category.transactionCount + category.splitCount + category.recurringCount > 0;
@@ -260,6 +307,38 @@ function CategoryItem({ category, others }: { category: CategoryRow; others: Cat
               Rename
             </button>
             <p className="w-full text-xs text-slate-500">Renaming it to another category&apos;s name merges the two.</p>
+          </ServerActionForm>
+
+          <ServerActionForm
+            key={category.groupName ?? "none"}
+            action={setCategoryGroupAction}
+            className="flex flex-wrap items-end gap-2"
+          >
+            <input type="hidden" name="categoryId" value={category.id} />
+            <label className="min-w-0 flex-1 space-y-1">
+              <span className="text-xs font-medium text-slate-400">Group</span>
+              <input
+                name="groupName"
+                list={groupListId}
+                aria-label={`Group for ${category.name}`}
+                className={inputClass}
+                defaultValue={category.groupName ?? ""}
+                placeholder="Not grouped"
+                maxLength={MAX_GROUP_NAME_LENGTH}
+              />
+              <datalist id={groupListId}>
+                {groupNames.map((g) => (
+                  <option key={g} value={g} />
+                ))}
+              </datalist>
+            </label>
+            <button type="submit" className={smallBtnClass}>
+              Save group
+            </button>
+            <p className="w-full text-xs text-slate-500">
+              Categories in the same group are added up on the Budgets card, the spending pie and Reports. Leave it empty
+              to take it out of a group.
+            </p>
           </ServerActionForm>
 
           {category.kind === "EXPENSE" ? (
