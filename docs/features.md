@@ -181,6 +181,10 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     received, top categories, biggest purchases, budgets over 80%, bills coming up, review
     queue count; skipped when empty; "Send me one now"): `email-digest-preferences.tsx`,
     `src/lib/email-digest.ts`, hourly `email-digest-scheduler.ts` (`EMAIL_DIGEST_SCHEDULER`)
+  - Bill reminders (off / the day before / 3 days / a week before; one email listing recurring
+    bills and transfers coming up, each occurrence reminded once via
+    `RecurringTransaction.reminderSentForDate`; same hourly sweep, after 7am local):
+    `bill-reminder-preferences.tsx`, `src/lib/bill-reminders.ts`
   - Appearance (dashboard readability, install app): `src/lib/dashboard-readability.ts`
 - **Money**
   - Accounts (add/edit/archive/delete, default expense account, currency, balances, counts as
@@ -248,6 +252,7 @@ Nav `src/components/admin/admin-nav.tsx`; actions `actions/admin*.ts`.
 - Schedulers started in `src/instrumentation.ts`: Plaid sweep
   (`src/lib/plaid-sync-scheduler.ts`), recurring auto-post
   (`src/lib/recurring-auto-post-scheduler.ts`)
+- Email digest and bill reminders, hourly: `src/lib/email-digest-scheduler.ts`
 - Budget alert emails: `src/lib/budget-alert-dispatch.ts`, `budget-alert-email.ts` (sent after any
   spending change, including automatic recurring posts from `src/lib/recurring-post.ts`)
 - Health check `/api/health`; schema repair on start `scripts/repair-sqlite-schema.cjs`

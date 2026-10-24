@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { DigestFrequency } from "@prisma/client";
+import { parseBillReminderDays } from "@/lib/bill-reminders";
 import { isBudgetAlertEmailConfigured } from "@/lib/budget-alert-email";
 import { latestDigestPeriod, sendDigestPreview } from "@/lib/email-digest";
 import { currentYmdInTimeZone } from "@/lib/period-month";
@@ -82,4 +83,15 @@ export const sendEmailDigestPreviewAction = formAction(async () => {
   const user = await requireUser();
   const result = await sendDigestPreview(user.id);
   if (result !== "sent") throw new Error("The email could not be sent. SMTP may not be configured on the server.");
+});
+
+/** How many days before a recurring bill is due to email a reminder, or off. */
+export const setBillRemindersAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const billReminderDays = parseBillReminderDays(getFormValue(formData, "days"));
+  if (billReminderDays !== null && !isBudgetAlertEmailConfigured()) {
+    throw new Error("Bill reminders need SMTP configured on the server first.");
+  }
+  await prisma.user.update({ where: { id: user.id }, data: { billReminderDays } });
+  revalidatePath("/settings", "layout");
 });

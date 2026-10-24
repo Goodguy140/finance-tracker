@@ -1,10 +1,12 @@
+import { runBillReminderSweep } from "@/lib/bill-reminders";
 import { runEmailDigestSweep } from "@/lib/email-digest";
 import { markSchedulerStarted, recordSchedulerRun } from "@/lib/scheduler-status";
 
 /**
- * In-process scheduler for the emailed digest, started once from `instrumentation.ts` like the
- * other sweeps. Hourly, so each user's digest goes out within the hour after 7am in their own
- * time zone; the period key stored on the user keeps it to one per week or month.
+ * In-process scheduler for the emailed digest and bill reminders, started once from
+ * `instrumentation.ts` like the other sweeps. Hourly, so each user's email goes out within the
+ * hour after 7am in their own time zone; the digest's period key keeps it to one per week or
+ * month, and each recurring rule's `reminderSentForDate` keeps a bill to one reminder.
  */
 
 const INTERVAL_MS = 60 * 60 * 1000;
@@ -25,9 +27,12 @@ export function startEmailDigestScheduler(): boolean {
   const sweep = async () => {
     const nextRunAt = new Date(Date.now() + INTERVAL_MS);
     try {
-      const result = await runEmailDigestSweep();
-      if (result.sent > 0) console.log(`[digest] sent ${result.sent} digest(s)`);
-      recordSchedulerRun("emailDigest", { ok: result.ok, message: result.message, nextRunAt });
+      const digests = await runEmailDigestSweep();
+      if (digests.sent > 0) console.log(`[digest] sent ${digests.sent} digest(s)`);
+      const reminders = await runBillReminderSweep();
+      if (reminders.sent > 0) console.log(`[bill reminders] sent ${reminders.sent} reminder(s)`);
+      const message = digests.message === reminders.message ? digests.message : `${digests.message}; ${reminders.message}`;
+      recordSchedulerRun("emailDigest", { ok: digests.ok && reminders.ok, message, nextRunAt });
     } catch (err) {
       console.error("[digest] sweep failed", err);
       recordSchedulerRun("emailDigest", {

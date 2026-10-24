@@ -1,3 +1,4 @@
+import { BillReminderPreferences } from "@/components/bill-reminder-preferences";
 import { BudgetAlertPreferences } from "@/components/budget-alert-preferences";
 import { EmailDigestPreferences } from "@/components/email-digest-preferences";
 import { SettingsPage } from "@/components/settings/ui";
@@ -12,6 +13,7 @@ export default async function NotificationsSettingsPage() {
     <SettingsPage section="notifications">
       <BudgetAlertPreferences emailConfigured={isBudgetAlertEmailConfigured()} emailEnabled={user.budgetAlertEmailEnabled} />
       <EmailDigestPreferences emailConfigured={isBudgetAlertEmailConfigured()} frequency={user.digestFrequency} />
+      <BillReminderPreferences emailConfigured={isBudgetAlertEmailConfigured()} days={user.billReminderDays} />
     </SettingsPage>
   );
 }

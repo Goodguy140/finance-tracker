@@ -1,5 +1,5 @@
 /** Keep in sync with SCHEMA_REPAIR_VERSION in src/lib/migration-health.ts */
-const SCHEMA_REPAIR_VERSION = "18";
+const SCHEMA_REPAIR_VERSION = "19";
 const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
 
@@ -169,6 +169,16 @@ const COLUMN_REPAIRS = [
     table: "Account",
     column: "minimumPaymentCents",
     ddl: 'ALTER TABLE "Account" ADD COLUMN "minimumPaymentCents" INTEGER',
+  },
+  {
+    table: "User",
+    column: "billReminderDays",
+    ddl: 'ALTER TABLE "User" ADD COLUMN "billReminderDays" INTEGER',
+  },
+  {
+    table: "RecurringTransaction",
+    column: "reminderSentForDate",
+    ddl: 'ALTER TABLE "RecurringTransaction" ADD COLUMN "reminderSentForDate" DATETIME',
   },
 ];
 
