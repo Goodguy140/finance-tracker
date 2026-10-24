@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readAttachment } from "@/lib/attachments";
+import { attachmentContentDisposition, readAttachment } from "@/lib/attachments";
 import { prisma } from "@/lib/prisma";
 import { requireUserApiUser } from "@/lib/session";
 
@@ -16,7 +16,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   return new NextResponse(new Uint8Array(file.data), {
     headers: {
       "Content-Type": file.contentType,
-      "Content-Disposition": `inline; filename="${file.fileName}"`,
+      "Content-Disposition": attachmentContentDisposition(file.fileName),
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
       // Files are served from the app's own origin: an image page may load nothing but itself.

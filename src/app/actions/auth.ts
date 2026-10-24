@@ -14,7 +14,7 @@ import { revokePlaidItemsForUser } from "@/lib/plaid/unlink";
 import { tryMakePlaidItemRevoker } from "@/lib/plaid/service";
 import { AUDIT_ACTIONS, clientMetaFromHeaders, recordAuditLog } from "@/lib/audit-log";
 import { isPasswordLoginDisabled } from "@/lib/oauth-provider-config";
-import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
+import { clearRateLimit, enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
 import { sendEmail } from "@/lib/email";
 import {
   loginSchema,
@@ -31,6 +31,8 @@ import {
 
 const SIGNUP_WINDOW_MS = 15 * 60 * 1000;
 const SIGNUP_MAX_PER_IP = 10;
+const CHANGE_PASSWORD_WINDOW_MS = 15 * 60 * 1000;
+const CHANGE_PASSWORD_MAX_ATTEMPTS = 5;
 
 export const signupAction = formAction(async (formData: FormData) => {
   const payload = signupSchema.parse({
@@ -102,8 +104,18 @@ export const changePasswordAction = formAction(async (formData: FormData) => {
   });
 
   if (!user.passwordHash) throw new Error("Password login is not enabled for this account.");
+  // Metered like sign-in: without it, a stolen session could guess the current password at
+  // bcrypt speed and then change it, locking the owner out of their own account.
+  const attemptsKey = `password-change:${user.id}`;
+  await enforceSlidingWindowRateLimit(
+    attemptsKey,
+    CHANGE_PASSWORD_MAX_ATTEMPTS,
+    CHANGE_PASSWORD_WINDOW_MS,
+    "Too many password change attempts. Please try again later.",
+  );
   const valid = await compare(payload.currentPassword, user.passwordHash);
   if (!valid) throw new Error("Current password is incorrect.");
+  await clearRateLimit(attemptsKey);
 
   await prisma.user.update({
     where: { id: user.id },

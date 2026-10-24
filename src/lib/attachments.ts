@@ -42,6 +42,17 @@ export function cleanAttachmentName(name: string, contentType: string): string {
   return contentType === "application/pdf" ? "receipt.pdf" : "receipt";
 }
 
+/**
+ * `Content-Disposition` for serving a receipt. Header values must be Latin-1, so a name like
+ * `收据.pdf` or one with an emoji made the response itself throw (a 500). Browsers that
+ * understand `filename*` (all current ones) show the real name; the rest get an ASCII copy.
+ */
+export function attachmentContentDisposition(fileName: string): string {
+  const ascii = fileName.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "");
+  const encoded = encodeURIComponent(fileName).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `inline; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
 export type AttachmentRefusal = "empty" | "too-large" | "type" | "too-many" | "not-found";
 
 export async function addAttachment(

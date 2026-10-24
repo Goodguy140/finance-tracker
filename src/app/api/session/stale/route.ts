@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { mfaCookieName, mfaCookieSecure } from "@/lib/mfa-session";
+import { resolveSession } from "@/lib/session";
 import { expiredSessionCookies, sessionCookieNamesToClear } from "@/lib/stale-session";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,11 @@ export const dynamic = "force-dynamic";
  * hit is harmless: it just ends up on /login too.
  */
 export async function GET(request: Request) {
+  // A GET any page can trigger with an <img>: a live login is sent home untouched, or this
+  // route would be a one-line way for another site to sign people out.
+  if ((await resolveSession()).status === "ok") {
+    return new NextResponse(null, { status: 303, headers: { Location: "/", "Cache-Control": "no-store" } });
+  }
   const response = NextResponse.redirect(new URL("/login", request.url), 303);
   // A relative Location keeps the redirect on whatever public host the browser used,
   // rather than the loopback host a tunnel or reverse proxy may present to Node.

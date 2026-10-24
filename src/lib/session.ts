@@ -136,10 +136,17 @@ async function currentPath(): Promise<string | null> {
   }
 }
 
-/** Only same-origin relative paths make it into `?next=`; anything else lands on `/`. */
+/**
+ * Only same-origin relative paths make it into `?next=`; anything else lands on `/`.
+ *
+ * Browsers delete tabs and newlines from a URL before parsing it, and read `\` as `/`, so
+ * `/<TAB>/evil.example` is `//evil.example` by the time it is followed. A path never needs
+ * either, so any control character or backslash anywhere refuses the whole value.
+ */
 export function safeNextPath(candidate: string | null | undefined): string {
   if (!candidate) return "/";
-  if (!candidate.startsWith("/") || candidate.startsWith("//") || candidate.startsWith("/\\")) return "/";
+  if (/[\u0000-\u001f\u007f\\]/.test(candidate)) return "/";
+  if (!candidate.startsWith("/") || candidate.startsWith("//")) return "/";
   if (candidate === "/mfa" || candidate.startsWith("/mfa?") || candidate.startsWith("/login")) return "/";
   return candidate;
 }
