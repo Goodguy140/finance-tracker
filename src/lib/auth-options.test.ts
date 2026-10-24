@@ -189,6 +189,8 @@ describe("credentials authorize auditing", () => {
       action: AUDIT_ACTIONS.user_login_failed,
       metadata: { email: "nobody@example.com", reason: "unknown_email" },
     });
+    // Same bcrypt cost as a real wrong password, so timing does not reveal the address is unknown.
+    expect(compareMock).toHaveBeenCalledTimes(1);
   });
 
   it("distinguishes an account that has no password login from a wrong password", async () => {
@@ -199,7 +201,7 @@ describe("credentials authorize auditing", () => {
       userId: "u1",
       metadata: { reason: "password_login_unavailable" },
     });
-    expect(compareMock).not.toHaveBeenCalled();
+    expect(compareMock).toHaveBeenCalledTimes(1);
   });
 
   it("refuses a suspended account before checking its password", async () => {
@@ -215,7 +217,9 @@ describe("credentials authorize auditing", () => {
       userId: "u1",
       metadata: { reason: "account_disabled" },
     });
-    expect(compareMock).not.toHaveBeenCalled();
+    // Only the timing equaliser: a suspended account's real password is never checked.
+    expect(compareMock).toHaveBeenCalledTimes(1);
+    expect(compareMock).not.toHaveBeenCalledWith("right", "hashed");
   });
 
   it("records a wrong password against the user", async () => {

@@ -1,7 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { addAttachment, MAX_ATTACHMENT_BYTES, type AttachmentRefusal } from "@/lib/attachments";
+import {
+  addAttachment,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENT_BYTES_PER_USER,
+  type AttachmentRefusal,
+} from "@/lib/attachments";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { formAction, getFormValue } from "./_helpers";
@@ -11,6 +16,7 @@ const REFUSALS: Record<AttachmentRefusal, string> = {
   "too-large": `Receipts can be up to ${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB.`,
   type: "Only photos (JPEG, PNG, WebP, GIF, HEIC) and PDFs can be kept as receipts.",
   "too-many": "This entry already has as many receipts as it can hold.",
+  quota: `Your receipts have reached the ${MAX_ATTACHMENT_BYTES_PER_USER / (1024 * 1024)} MB limit. Remove some you no longer need first.`,
   "not-found": "Transaction not found.",
 };
 

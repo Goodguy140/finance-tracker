@@ -1,0 +1,11 @@
+# Workflow actions are pinned to commit SHAs (a moved tag cannot change what runs with
+# `packages: write`); this keeps the pins current. Monthly, grouped into one PR.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

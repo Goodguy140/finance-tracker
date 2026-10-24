@@ -4,28 +4,27 @@ import { BACKUP_REQUEST_LIMIT_BYTES } from "./src/lib/backup-limits";
 const isDev = process.env.NODE_ENV !== "production";
 
 /**
- * The Plaid Link policy, sent **report-only** to begin with, as the note that used to sit
- * here promised.
+ * The Content-Security-Policy, enforced. It shipped report-only first, as promised here, so
+ * a policy that blocked Plaid Link (which fails silently: the button just does nothing)
+ * could be caught before it bit.
  *
  * Link loads its script from cdn.plaid.com, renders in an iframe from the same host,
- * injects its own inline styles into the parent document, and talks to *.plaid.com. OAuth
- * institutions navigate out to *.plaid.com and post back, hence `form-action`.
+ * injects its own inline styles into the parent document, and talks to *.plaid.com.
  *
- * Report-only rather than enforcing on day one because a CSP that blocks Link fails
- * *silently* from the user's point of view — the button simply does nothing. Collect
- * violations from a real release first, then promote this to the enforcing header.
- *
- * Two deliberate weaknesses, both worth revisiting separately:
+ * Deliberate gaps:
  *  - `script-src 'unsafe-inline'`: the alternative is the nonce pattern, which forces
- *    dynamic rendering on every route. `/` is already force-dynamic but not everything is,
- *    and that change does not belong in the same release as a payments integration.
- *  - `style-src 'unsafe-inline'`: unavoidable regardless — Tailwind v4 and Next both
- *    inject inline styles, and Link injects its own into this document.
+ *    dynamic rendering on every route. Even so, this blocks script from any other host and
+ *    any connection to one, which is most of what an injected script would want.
+ *  - `style-src 'unsafe-inline'`: unavoidable — Tailwind v4 and Next both inject inline
+ *    styles, and Link injects its own into this document.
+ *  - No `form-action`: SSO sign-in is a plain form POST to /api/auth/signin/<provider> that
+ *    redirects to the provider, and browsers apply `form-action` to that redirect. The
+ *    Authentik host is whatever the admin configures, so it cannot be listed here.
  *
  * No `report-uri`: on a self-hosted deployment the browser console is the right level, and
  * a reporting endpoint would be a new unauthenticated write route for no benefit.
  */
-const plaidCspReportOnly = [
+const contentSecurityPolicy = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://cdn.plaid.com`,
   "style-src 'self' 'unsafe-inline'",
@@ -33,24 +32,17 @@ const plaidCspReportOnly = [
   "font-src 'self' data:",
   "connect-src 'self' https://*.plaid.com",
   "frame-src 'self' https://cdn.plaid.com https://*.plaid.com",
-  "form-action 'self' https://*.plaid.com",
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'none'",
   "upgrade-insecure-requests",
 ].join("; ");
 
-/**
- * Response headers applied to every route.
- *
- * The enforcing `Content-Security-Policy` stays limited to `frame-ancestors` until the
- * report-only policy above has been through a release without violations.
- */
+/** Response headers applied to every route. */
 const securityHeaders = [
-  // Clickjacking. `frame-ancestors` is the modern control; X-Frame-Options covers
+  { key: "Content-Security-Policy", value: contentSecurityPolicy },
+  // Clickjacking: `frame-ancestors` above is the modern control; X-Frame-Options covers
   // older agents. Revisit only if this app is ever legitimately embedded.
-  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
-  { key: "Content-Security-Policy-Report-Only", value: plaidCspReportOnly },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
