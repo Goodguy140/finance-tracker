@@ -85,6 +85,7 @@ jobs:
       - name: Docker start-up smoke test
         run: |
           docker run -d --name ft-smoke -p 3000:3000 \
+            -e DATABASE_URL=file:/data/app.db \
             -e NEXTAUTH_URL=http://localhost:3000 \
             -e NEXTAUTH_SECRET=ci-smoke-secret-ci-smoke-secret-0123456789 \
             -e SERVER_SETTINGS_ENCRYPTION_KEY=ci-smoke-key-ci-smoke-key-0123456789abcdef \
