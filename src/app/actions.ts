@@ -30,6 +30,7 @@ export {
   setRecurringTransactionEnabledAction,
   deleteRecurringTransactionAction,
   postRecurringTransactionAction,
+  cancelSubscriptionAction,
 } from "./actions/recurring";
 export {
   createSubscriptionMemberAction,

@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { dateFromYmd } from "@/lib/date-only";
 import { requireUser } from "@/lib/session";
 import { postRecurringOccurrence } from "@/lib/recurring-post";
+import { parseCancelFields } from "@/lib/subscription-cancel";
 import {
   postRecurringTransactionSchema,
   recurringTransactionSchema,
@@ -50,6 +51,14 @@ async function resolveRuleSides(
   return { categoryId: payload.categoryId, transferAccountId: null };
 }
 
+/** Only bills carry a cancel link and decide-by date; income and transfers clear them. */
+function cancelFieldsFor(type: TransactionType, formData: FormData) {
+  if (type !== TransactionType.EXPENSE) return { cancelUrl: null, decideBy: null };
+  // A form without the fields (an older one) leaves what is stored alone.
+  if (!formData.has("cancelUrl") && !formData.has("decideBy")) return {};
+  return parseCancelFields({ cancelUrl: getFormValue(formData, "cancelUrl"), decideBy: getFormValue(formData, "decideBy") });
+}
+
 export const createRecurringTransactionAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = recurringTransactionSchema.parse({
@@ -73,8 +82,10 @@ export const createRecurringTransactionAction = formAction(async (formData: Form
     throw new Error("End date must be on or after the next expected date.");
   }
 
+  const cancel = cancelFieldsFor(type, formData);
   await prisma.recurringTransaction.create({
     data: {
+      ...cancel,
       userId: user.id,
       accountId: payload.accountId,
       categoryId: sides.categoryId,
@@ -127,9 +138,11 @@ export const updateRecurringTransactionAction = formAction(async (formData: Form
   });
   if (!existing) throw new Error("Recurring transaction not found.");
 
+  const cancel = cancelFieldsFor(type, formData);
   await prisma.recurringTransaction.update({
     where: { id: existing.id },
     data: {
+      ...cancel,
       // A new date sets the day the rule falls on. An unchanged one keeps the anchor, which
       // can be later than the date shown (a rule on the 31st waiting on Feb 28).
       ...(existing.nextExpectedDate.getTime() === nextExpectedDate.getTime()
@@ -166,7 +179,8 @@ export const setRecurringTransactionEnabledAction = formAction(async (formData: 
 
   await prisma.recurringTransaction.update({
     where: { id: existing.id },
-    data: { enabled: payload.enabled === "true" },
+    // Turning a cancelled subscription back on means it was not cancelled after all.
+    data: payload.enabled === "true" ? { enabled: true, cancelledAt: null } : { enabled: false },
   });
   revalidatePath("/");
 });
@@ -212,3 +226,21 @@ export const postRecurringTransactionAction = formAction(async (formData: FormDa
   revalidatePath("/");
 });
 
+
+/**
+ * "Cancel subscription": the user has cancelled it with the provider. The rule is turned off
+ * and the date kept, so Insights can show what it saves; turning it back on undoes both.
+ */
+export const cancelSubscriptionAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const { recurringTransactionId } = deleteRecurringTransactionSchema.parse({
+    recurringTransactionId: getFormValue(formData, "recurringTransactionId"),
+  });
+  const updated = await prisma.recurringTransaction.updateMany({
+    where: { id: recurringTransactionId, userId: user.id, type: TransactionType.EXPENSE },
+    data: { enabled: false, cancelledAt: new Date() },
+  });
+  if (updated.count === 0) throw new Error("Recurring bill not found.");
+  revalidatePath("/");
+  revalidatePath("/insights");
+});

@@ -51,6 +51,7 @@ import {
   type BudgetProgressRow,
 } from "@/lib/budget-progress";
 import { loadRolloverCarries } from "@/lib/budget-rollover";
+import { annualCostCents } from "@/lib/subscription-cancel";
 import {
   buildComparisonPace,
   buildCumulativeSpendSeries,
@@ -901,6 +902,11 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     enabled: rule.enabled,
     postMode: rule.postMode,
     status: rule.enabled ? getRecurringDateStatus(occurrence, now) : ("disabled" as const),
+    cancelUrl: rule.cancelUrl,
+    decideByYmd: rule.decideBy ? ymdFromDateUtc(rule.decideBy) : null,
+    decideByDisplay: rule.decideBy ? formatDateOnlyUtc(rule.decideBy) : null,
+    cancelledAtDisplay: rule.cancelledAt ? formatDateOnlyUtc(rule.cancelledAt) : null,
+    annualCostCents: annualCostCents(rule.amountCents, rule.cadence),
   });
   const recurringListItems = periodRecurringRules.map(toRecurringListItem);
   // The rest, at their next date, for the card's "show them" control: a rule due next quarter

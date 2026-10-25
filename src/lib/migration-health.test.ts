@@ -90,7 +90,11 @@ async function createMinimalSchema(prisma: PrismaClient) {
       "id" TEXT NOT NULL PRIMARY KEY,
       "anchorDay" INTEGER,
       "transferAccountId" TEXT,
-      "reminderSentForDate" DATETIME
+      "reminderSentForDate" DATETIME,
+      "cancelUrl" TEXT,
+      "decideBy" DATETIME,
+      "decideRemindedFor" DATETIME,
+      "cancelledAt" DATETIME
     )
   `);
 

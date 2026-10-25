@@ -4,6 +4,7 @@ import { useOpenRequest } from "@/lib/search/dashboard-requests";
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  cancelSubscriptionAction,
   deleteRecurringTransactionAction,
   postRecurringTransactionAction,
   setRecurringTransactionEnabledAction,
@@ -12,6 +13,7 @@ import {
 import { RecurringRuleForm } from "@/components/recurring-rule-form";
 import { ServerActionForm } from "@/components/server-action-form";
 import { formatCurrency } from "@/lib/money";
+import { cancelLinkHref } from "@/lib/subscription-cancel";
 import { MOBILE_OVERLAY_ROOT_Z_CLASS } from "@/lib/mobile-z-index";
 
 export type RecurringTransactionListItem = {
@@ -42,6 +44,12 @@ export type RecurringTransactionListItem = {
   enabled: boolean;
   postMode: "REVIEW" | "AUTO";
   status: "overdue" | "due" | "upcoming" | "disabled";
+  /** Subscription cancel helper (`src/lib/subscription-cancel.ts`); bills only. */
+  cancelUrl?: string | null;
+  decideByYmd?: string | null;
+  decideByDisplay?: string | null;
+  cancelledAtDisplay?: string | null;
+  annualCostCents?: number;
 };
 
 type Option = { id: string; name: string };
@@ -90,7 +98,9 @@ function RecurringCard({
   onSkip: (item: RecurringTransactionListItem) => void;
 }) {
   const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [showingMore, setShowingMore] = useState(false);
+  const cancelHref = cancelLinkHref(item.cancelUrl ?? null);
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-2.5 text-left text-sm text-slate-100">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -128,6 +138,26 @@ function RecurringCard({
           {item.endDateDisplay ? ` · Ends ${item.endDateDisplay}` : ""}
         </span>
       </div>
+      {item.type === "EXPENSE" && (item.decideByDisplay || item.cancelUrl || item.cancelledAtDisplay) ? (
+        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" data-testid="subscription-cancel-info">
+          {item.cancelledAtDisplay && !item.enabled ? (
+            <span className="text-emerald-200">
+              Cancelled {item.cancelledAtDisplay} · saves {formatCurrency(item.annualCostCents ?? 0)} a year
+            </span>
+          ) : item.decideByDisplay ? (
+            <span className="rounded-full border border-amber-400/45 bg-amber-400/10 px-2 py-0.5 text-amber-100">
+              Decide by {item.decideByDisplay}
+            </span>
+          ) : null}
+          {item.enabled && cancelHref ? (
+            <a href={cancelHref} target="_blank" rel="noopener noreferrer" className="text-sky-300 underline-offset-2 hover:underline">
+              Cancel page
+            </a>
+          ) : item.enabled && item.cancelUrl ? (
+            <span className="text-slate-400">To cancel: {item.cancelUrl}</span>
+          ) : null}
+        </p>
+      ) : null}
       {item.missedSinceDisplay ? (
         <p className="mt-1 text-xs text-amber-200">Unposted since {item.missedSinceDisplay}</p>
       ) : null}
@@ -168,9 +198,35 @@ function RecurringCard({
               {item.enabled ? "Disable" : "Enable"}
             </button>
           </ServerActionForm>
+          {item.type === "EXPENSE" && item.enabled ? (
+            <button type="button" className={secondaryBtnClass} onClick={() => setConfirmingCancel(true)}>
+              Cancel subscription
+            </button>
+          ) : null}
           <button type="button" className={secondaryBtnClass} onClick={() => setConfirmingRemove(true)}>
             Remove
           </button>
+        </div>
+      ) : null}
+      {confirmingCancel ? (
+        <div
+          role="group"
+          aria-label={`Cancel ${item.name}?`}
+          className="mt-2 flex flex-wrap items-center justify-end gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2"
+        >
+          <span className="mr-auto text-xs text-amber-100">
+            Cancelled {item.name} with the provider? The rule is turned off and Insights counts the{" "}
+            {formatCurrency(item.annualCostCents ?? 0)} a year saved. Enable undoes it.
+          </span>
+          <button type="button" className={secondaryBtnClass} onClick={() => setConfirmingCancel(false)}>
+            Not yet
+          </button>
+          <ServerActionForm action={cancelSubscriptionAction} onSuccess={() => setConfirmingCancel(false)}>
+            <input type="hidden" name="recurringTransactionId" value={item.id} />
+            <button type="submit" className={primaryBtnClass}>
+              Mark cancelled
+            </button>
+          </ServerActionForm>
         </div>
       ) : null}
       {confirmingRemove ? (

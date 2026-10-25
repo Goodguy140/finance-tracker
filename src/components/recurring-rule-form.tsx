@@ -57,6 +57,8 @@ export type RecurringRuleValues = {
   endDateYmd: string | null;
   postMode: "REVIEW" | "AUTO";
   note: string | null;
+  cancelUrl?: string | null;
+  decideByYmd?: string | null;
 };
 
 export function RecurringRuleForm({
@@ -227,6 +229,28 @@ export function RecurringRuleForm({
           <option value="AUTO">Post automatically when due</option>
         </select>
       </LabeledField>
+
+      {type === "EXPENSE" ? (
+        <>
+          <LabeledField label="Where to cancel" hint="Optional: where to cancel it, a web address or a phone number.">
+            <input
+              name="cancelUrl"
+              aria-label="Where to cancel"
+              maxLength={500}
+              defaultValue={rule?.cancelUrl ?? ""}
+              className={inputClass}
+              placeholder="https://… or Call 1-800…"
+              autoComplete="off"
+            />
+          </LabeledField>
+          <DateField
+            name="decideBy"
+            label="Decide by"
+            hint="Optional: when a free trial turns paid or a plan renews. Bill reminders warn you before it."
+            defaultValue={rule?.decideByYmd ?? undefined}
+          />
+        </>
+      ) : null}
 
       <LabeledField label="Note" hint="Optional note copied to posted transactions." className={spanFullSm}>
         <textarea

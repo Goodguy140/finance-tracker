@@ -7,6 +7,7 @@ import { homeCurrencyOf } from "@/lib/home-currency";
 import { formatCurrency } from "@/lib/money";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
+import { dueDecisionReminders, type DecisionReminder } from "@/lib/subscription-cancel";
 
 /**
  * Bill reminder emails: a few days before a recurring bill (or a recurring transfer, such as a
@@ -83,20 +84,41 @@ function whenLabel(date: Date, todayYmd: string): string {
 export function renderBillReminder(
   reminders: readonly BillReminder[],
   options: { todayYmd: string; currency: string; days: number; baseUrl?: string },
+  decisions: readonly DecisionReminder[] = [],
 ): { subject: string; text: string } {
   const money = (cents: number) => formatCurrency(cents, options.currency);
   const total = reminders.reduce((sum, r) => sum + r.cents, 0);
-  const first = reminders[0];
-  const when = whenLabel(first.date, options.todayYmd);
-  const subject =
-    reminders.length === 1
-      ? `${first.name} is due ${when === "Today" || when === "Tomorrow" ? when.toLowerCase() : `on ${when}`}: ${money(first.cents)}`
-      : `${reminders.length} bills due soon: ${money(total)}`;
-  const lines = ["Coming up", ""];
-  for (const r of reminders) {
-    lines.push(`  ${whenLabel(r.date, options.todayYmd)}  ${r.name}: ${money(r.cents)} (${r.transfer ? "transfer, " : ""}${r.accountName})`);
+  const lines: string[] = [];
+  let subject: string;
+  if (reminders.length > 0) {
+    const first = reminders[0];
+    const when = whenLabel(first.date, options.todayYmd);
+    subject =
+      reminders.length === 1
+        ? `${first.name} is due ${when === "Today" || when === "Tomorrow" ? when.toLowerCase() : `on ${when}`}: ${money(first.cents)}`
+        : `${reminders.length} bills due soon: ${money(total)}`;
+  } else {
+    const first = decisions[0];
+    subject =
+      decisions.length === 1
+        ? `Decide on ${first.name} by ${whenLabel(first.decideBy, options.todayYmd).toLowerCase() === "today" ? "today" : dayLabel.format(first.decideBy)}`
+        : `${decisions.length} subscriptions to decide on soon`;
   }
-  if (reminders.length > 1) lines.push("", `Total: ${money(total)}`);
+  if (decisions.length > 0) {
+    // First: a trial converting is the one that costs money if it is missed.
+    lines.push("Decide soon (a trial ends or a plan renews)", "");
+    for (const d of decisions) {
+      lines.push(`  ${whenLabel(d.decideBy, options.todayYmd)}  ${d.name}: ${money(d.cents)}${d.cancelUrl ? ` (to cancel: ${d.cancelUrl})` : ""}`);
+    }
+    if (reminders.length > 0) lines.push("");
+  }
+  if (reminders.length > 0) {
+    lines.push("Coming up", "");
+    for (const r of reminders) {
+      lines.push(`  ${whenLabel(r.date, options.todayYmd)}  ${r.name}: ${money(r.cents)} (${r.transfer ? "transfer, " : ""}${r.accountName})`);
+    }
+    if (reminders.length > 1) lines.push("", `Total: ${money(total)}`);
+  }
   if (options.baseUrl) lines.push("", `Open the app: ${options.baseUrl}/`);
   lines.push(
     "",
@@ -140,14 +162,35 @@ export async function sendDueBillReminders(
     select: RULE_SELECT,
   });
   const reminders = dueBillReminders(rules, todayYmd, user.billReminderDays);
-  if (reminders.length === 0) return "none";
-
-  const { subject, text } = renderBillReminder(reminders, {
+  const decisions = dueDecisionReminders(
+    await client.recurringTransaction.findMany({
+      where: { userId: user.id, enabled: true, type: TransactionType.EXPENSE, decideBy: { not: null } },
+      select: {
+        id: true,
+        name: true,
+        amountCents: true,
+        cadence: true,
+        enabled: true,
+        decideBy: true,
+        decideRemindedFor: true,
+        cancelUrl: true,
+      },
+    }),
     todayYmd,
-    currency: homeCurrencyOf(user.countryCode),
-    days: user.billReminderDays,
-    baseUrl: deps.baseUrl,
-  });
+    user.billReminderDays,
+  );
+  if (reminders.length === 0 && decisions.length === 0) return "none";
+
+  const { subject, text } = renderBillReminder(
+    reminders,
+    {
+      todayYmd,
+      currency: homeCurrencyOf(user.countryCode),
+      days: user.billReminderDays,
+      baseUrl: deps.baseUrl,
+    },
+    decisions,
+  );
   try {
     if (!(await send({ to: user.email, subject, text })).sent) return "failed";
   } catch (err) {
@@ -161,6 +204,9 @@ export async function sendDueBillReminders(
   }
   for (const [id, date] of latest) {
     await client.recurringTransaction.update({ where: { id }, data: { reminderSentForDate: date } });
+  }
+  for (const d of decisions) {
+    await client.recurringTransaction.update({ where: { id: d.ruleId }, data: { decideRemindedFor: d.decideBy } });
   }
   return "sent";
 }

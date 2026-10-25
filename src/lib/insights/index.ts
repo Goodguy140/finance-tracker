@@ -3,6 +3,7 @@ import { detectChanges } from "./changes";
 import { detectDataGaps, type GapAccount, type GapTransferTx } from "./gaps";
 import { detectScoreGaps, type ScoreGapAccount } from "./score-gaps";
 import { detectStanding, type StandingInput } from "./standing";
+import { cancelledSubscriptionInsights } from "@/lib/subscription-cancel";
 import { habitInsights, summarizeHabitSpending } from "./habits";
 import { suggestImprovements } from "./improvements";
 import { detectRecurringCandidates, recurringCandidateInsights } from "./recurring-detection";
@@ -131,6 +132,7 @@ export function buildInsights(input: BuildInsightsInput): BuiltInsights {
     ...detectSavingsOpportunities({ txs, rules, candidates, now, fmt }),
     ...suggestImprovements({ txs, budgets, now, fmt, toSavingsByMonth, withSavingsRate: !input.scoreInsights }),
     ...(input.scoreInsights ?? []),
+    ...cancelledSubscriptionInsights(rules, now, fmt),
     ...detectStanding({
       txs,
       now,

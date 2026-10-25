@@ -95,6 +95,20 @@ describe("bill reminders", () => {
     expect(send.mock.calls[1][0].subject).toBe("Rent is due on Tue, Oct 27: $100.00");
   });
 
+  it("warns before a trial's decide-by date once, with where to cancel", async () => {
+    // Next charge far away, so only the decision is due.
+    await rule("StreamCo", "2026-11-20", {
+      decideBy: new Date("2026-10-25T00:00:00Z"),
+      cancelUrl: "https://streamco.test/cancel",
+    });
+    const send = vi.fn(async (_message: { to: string; subject: string; text: string }) => ({ sent: true }));
+    expect(await reminders.sendDueBillReminders(await user(), now, { send })).toBe("sent");
+    const message = send.mock.calls[0][0];
+    expect(message.subject).toBe("Decide on StreamCo by Sun, Oct 25");
+    expect(message.text).toContain("  Sun, Oct 25  StreamCo: $100.00 (to cancel: https://streamco.test/cancel)");
+    expect(await reminders.sendDueBillReminders(await user(), new Date("2026-10-23T13:00:00Z"), { send })).toBe("none");
+  });
+
   it("waits for 7am in the user's time zone and does nothing when off", async () => {
     await rule("Phone", "2026-10-24");
     const send = vi.fn(async () => ({ sent: true }));

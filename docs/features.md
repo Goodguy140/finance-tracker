@@ -245,6 +245,14 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
   - Tags (rename, merge, delete): `settings/tags-panel.tsx`, `src/lib/tags*.ts`
   - Subscriptions (shared members, who paid, skip occurrence): `subscriptions-panel.tsx`,
     `actions/subscriptions.ts`
+  - **Subscription cancel helper** (Recurring card and rule form, bills only): "Where to cancel"
+    (a link, shown as "Cancel page", or a note) and a "Decide by" date for a trial turning paid or
+    a plan renewing, shown as a chip; the bill reminder email warns before that date, once per date
+    (`decideRemindedFor`, only while bill reminders are on); "Cancel subscription" (⋯, in-page
+    confirm) turns the rule off and sets `cancelledAt`, and Insights' Going well shows "Cancelled X:
+    saving $Y a year" for 90 days; Enable undoes it. `src/lib/subscription-cancel.ts`,
+    `actions/recurring.ts` (`cancelSubscriptionAction`), `recurring-transactions-panel.tsx`,
+    `recurring-rule-form.tsx`, `bill-reminders.ts`
 - **Data**
   - Import a CSV, OFX or QFX statement with summary (rows already in the log on the same
     account are skipped). Amount sign either way round, or separate debit and credit columns

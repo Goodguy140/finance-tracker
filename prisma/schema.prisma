@@ -654,6 +654,14 @@ model RecurringTransaction {
   transferAccountId   String?
   /// The latest occurrence a bill reminder email has gone out for, so each is reminded once.
   reminderSentForDate DateTime?
+  /// Where to cancel this subscription: a web address, or a note such as a phone number.
+  cancelUrl           String?
+  /// When to decide whether to keep it: a free trial turning paid, an annual plan renewing.
+  decideBy            DateTime?
+  /// The decide-by date the reminder email last went out for, so each date is reminded once.
+  decideRemindedFor   DateTime?
+  /// Set by "Cancel subscription" (which also turns the rule off); cleared when it is turned back on.
+  cancelledAt         DateTime?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 
