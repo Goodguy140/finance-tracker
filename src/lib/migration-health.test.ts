@@ -49,6 +49,7 @@ async function createMinimalSchema(prisma: PrismaClient) {
       "dashboardTextVisiblePct" INTEGER NOT NULL DEFAULT 95,
       "dashboardBudgetNameVisiblePct" INTEGER NOT NULL DEFAULT 90,
       "projectionIncludesTransfers" BOOLEAN NOT NULL DEFAULT false,
+      "zeroBasedBudgeting" BOOLEAN NOT NULL DEFAULT false,
       "getStartedDismissedAt" DATETIME,
       "digestFrequency" TEXT NOT NULL DEFAULT 'OFF',
       "digestLastPeriodKey" TEXT,

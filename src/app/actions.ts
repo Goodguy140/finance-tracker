@@ -122,6 +122,7 @@ export {
   setChargeAlertsAction,
   setEmailDigestAction,
   setProjectionIncludesTransfersAction,
+  setZeroBasedBudgetingAction,
   updateDashboardReadabilityAction,
 } from "./actions/preferences";
 export {

@@ -156,6 +156,8 @@ model User {
   /// Projected balances on Reports (and what Insights and the printable summary take from them)
   /// also apply recurring transfers: out of one account and into the other.
   projectionIncludesTransfers   Boolean         @default(false)
+  /// Zero-based budgeting: the Safe to spend card shows income still to assign to budgets instead.
+  zeroBasedBudgeting            Boolean         @default(false)
   /// When the user hid the dashboard's "Get started" checklist. It also goes once every step is done.
   getStartedDismissedAt         DateTime?
   /// The spending summary emailed weekly (Mondays) or monthly (the 1st), or OFF.

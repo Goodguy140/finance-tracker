@@ -1,5 +1,5 @@
 /** Keep in sync with SCHEMA_REPAIR_VERSION in src/lib/migration-health.ts */
-const SCHEMA_REPAIR_VERSION = "22";
+const SCHEMA_REPAIR_VERSION = "23";
 const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
 
@@ -209,6 +209,11 @@ const COLUMN_REPAIRS = [
     table: "RecurringTransaction",
     column: "cancelledAt",
     ddl: 'ALTER TABLE "RecurringTransaction" ADD COLUMN "cancelledAt" DATETIME',
+  },
+  {
+    table: "User",
+    column: "zeroBasedBudgeting",
+    ddl: 'ALTER TABLE "User" ADD COLUMN "zeroBasedBudgeting" BOOLEAN NOT NULL DEFAULT false',
   },
 ];
 
