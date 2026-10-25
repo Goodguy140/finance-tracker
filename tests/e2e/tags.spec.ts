@@ -70,6 +70,7 @@ test("a rule adds its tag on the add-expense form, and the log filters by it", a
   await expect(page.getByTestId("tag-list")).toContainText(tagName);
 
   await page.goto("/");
+  await expectDashboardHome(page);
   const card = page.getByRole("region", { name: "Add", exact: true });
   await card.getByPlaceholder("e.g. Weekly groceries, Shell fuel").fill(`Hotel ${pattern}`);
   // The rule opens the Tags field with its tag already in it.
@@ -85,6 +86,9 @@ test("a rule adds its tag on the add-expense form, and the log filters by it", a
     .toEqual([tagName]);
 
   await page.reload();
+  // The reload is of a bare "/": wait for the period filter to add ?month= before choosing a tag,
+  // or that navigation can land after (or swallow) the tag filter's and drop ?tag=.
+  await expectDashboardHome(page);
   const log = expenseLogLocator(page);
   await expect(log.getByTestId("tag-chip").filter({ hasText: `#${tagName}` }).filter({ visible: true })).toHaveCount(1);
   await expect(log.getByText(`Untagged ${stamp}`).filter({ visible: true })).toHaveCount(1);
@@ -111,6 +115,7 @@ test("tags are added and removed from the edit dialog", async ({ page }) => {
     },
   });
   await page.reload();
+  await expectDashboardHome(page);
 
   const log = expenseLogLocator(page);
   await log.getByRole("button").filter({ hasText: title }).first().click();
