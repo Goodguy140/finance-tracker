@@ -164,6 +164,13 @@ Page: `src/app/reports/page.tsx`; data `src/lib/reports/*`; charts
   totals per tag with tax-looking names (donation, medical, deductible…) first and marked "Tax
   time"; contributions and withdrawals per registered account from the Investments card; Print
   and a CSV for the year. `src/app/reports/year/page.tsx`, `src/lib/reports/year-summary.ts`
+- **Monthly review** `/reports/month?month=YYYY-MM` ("Monthly review" on Reports; the month just
+  finished by default; linked from the monthly email digest): month totals against the month
+  before, categories that moved most, where it went, biggest purchases, budgets kept and missed
+  with whether each leftover or overspend rolls into next month, bank rows still waiting for
+  review, and "Mark month closed" / Reopen (`MonthClose`, a record only: nothing is locked).
+  `src/app/reports/month/page.tsx`, `src/lib/reports/month-recap.ts`, `actions/month-close.ts`,
+  `src/components/reports/month-close-button.tsx`
 - **Debt payoff** `/reports/debt` (linked from Net worth when there is a card or loan): each
   card's and loan's balance, interest rate and minimum (`Account.interestRateBps`,
   `.minimumPaymentCents`, set on the page), and a plan for a monthly amount comparing highest

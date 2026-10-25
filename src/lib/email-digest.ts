@@ -250,6 +250,9 @@ export function renderDigest(data: DigestData, baseUrl?: string): { subject: str
     );
   }
   if (baseUrl) lines.push("", `Open the app: ${baseUrl}/`);
+  if (baseUrl && data.period.frequency === "MONTHLY") {
+    lines.push(`Review and close the month: ${baseUrl}/reports/month?month=${ymdFromDateUtc(data.period.start).slice(0, 7)}`);
+  }
   lines.push("", `You get this ${noun === "week" ? "every Monday" : "on the 1st of each month"} because it is turned on in Settings → Notifications.`);
 
   return { subject: `${title}: spent ${money(data.spentCents)}`, text: lines.join("\n") };
