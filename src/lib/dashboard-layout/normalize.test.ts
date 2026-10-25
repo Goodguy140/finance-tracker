@@ -67,11 +67,11 @@ describe("reconcileDashboardLayout — card drift", () => {
     // A layout saved before Investments existed, with Insights stacked under Trend.
     const blob = defaultBlob();
     blob.columns[0].slots = blob.columns[0].slots.filter((slot) => slot.id !== "slot-insights");
-    blob.columns[0].slots[0] = { id: "slot-trend", cards: ["cumulative-spend", "insights"], activeIndex: 1 };
+    blob.columns[0].slots[0] = { id: "slot-trend", cards: ["cumulative-spend", "calendar", "insights"], activeIndex: 2 };
     const result = reconcileDashboardLayout(json(blob), ALL);
     const host = result.stored.columns[0].slots[0];
-    expect(host.cards).toEqual(["cumulative-spend", "insights", "investments"]);
-    expect(host.activeIndex).toBe(1);
+    expect(host.cards).toEqual(["cumulative-spend", "calendar", "insights", "investments"]);
+    expect(host.activeIndex).toBe(2);
     expect(result.stored.columns[0].slots).toHaveLength(blob.columns[0].slots.length);
     expect(result.changed).toBe(true);
   });

@@ -85,6 +85,7 @@ const MOBILE_SPECS = [
   "pwa",
   "reimbursements",
   "shared-nav",
+  "spending-calendar",
   "split-expenses",
   "subscriptions",
   "transfers",

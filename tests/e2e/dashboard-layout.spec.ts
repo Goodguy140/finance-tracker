@@ -172,7 +172,7 @@ test("a card dragged to another column stays there across a reload", async ({ pa
       { timeout: 10_000 },
     )
     .toEqual([
-      ["cumulative-spend", "insights", "investments", "bills-forecast", "expense-log"],
+      ["cumulative-spend", "calendar", "insights", "investments", "bills-forecast", "expense-log"],
       ["add-expense", "budgets", "safe-to-spend", "spending-by-category", "income", "recurring"],
     ]);
 
@@ -294,7 +294,7 @@ test("narrowing the window never produces horizontal scrolling, and no card disa
     "add-expense",
     "bills-forecast",
     "budgets+spending-by-category+safe-to-spend",
-    "cumulative-spend",
+    "cumulative-spend+calendar",
     "expense-log",
     "insights+investments",
     "recurring",

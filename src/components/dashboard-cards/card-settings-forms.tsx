@@ -315,6 +315,18 @@ function CardSettingsFields({
       );
     }
 
+    case "calendar": {
+      const current = settings.calendar ?? {};
+      return (
+        <SettingToggleRow
+          label="Show recurring due"
+          hint="Dots for bills and pay due on each day, from your recurring rules."
+          checked={current.showBills ?? true}
+          onChange={(showBills) => onChange("calendar", { showBills })}
+        />
+      );
+    }
+
     case "safe-to-spend": {
       const current = settings["safe-to-spend"] ?? {};
       return (
