@@ -184,6 +184,7 @@ model User {
   budgets                   Budget[]
   yearlyBudgets             YearlyBudget[]
   chargeAlertSetting        ChargeAlertSetting?
+  monthCloses               MonthClose[]
   recurringTransactions     RecurringTransaction[]
   investmentFlows           InvestmentFlow[]
   contributionRooms         ContributionRoom[]
@@ -1221,4 +1222,17 @@ model InsightPreference {
   updatedAt             DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// A month the user reviewed and marked closed on the monthly review (`/reports/month`).
+/// Only a record of the ritual: nothing is locked by it.
+model MonthClose {
+  userId   String
+  /// `YYYY-MM`.
+  ym       String
+  closedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, ym])
 }

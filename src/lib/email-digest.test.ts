@@ -123,6 +123,7 @@ describe("the digest's contents", () => {
     expect(text).toContain("Left over: $2,250.00");
     expect(text).toContain("  Food: $250.00 of $200.00, over by $50.00");
     expect(text).toContain("Open the app: https://example.test/");
+    expect(text).toContain("Review and close the month: https://example.test/reports/month?month=2026-09");
   });
 
   it("lists bills due soon and bank rows waiting", async () => {
