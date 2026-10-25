@@ -40,7 +40,7 @@ export default async function MonthReviewPage({ searchParams }: { searchParams: 
   const fmt = (cents: number) => formatCurrency(cents, currency);
   const range = { gte: startOfMonthYm(ym), lt: endExclusiveOfMonthYm(ym) };
 
-  const [txs, progress, categories, needsReview, closed] = await Promise.all([
+  const [txs, progress, categories, needsReview, closed, unreviewedPosted] = await Promise.all([
     loadReportTxs(user.id, startOfMonthYm(shiftYm(ym, -1)), currency),
     buildMonthlyBudgetProgress(user.id, ym),
     prisma.category.findMany({ where: { userId: user.id }, select: { id: true, rolloverSinceMonth: true } }),
@@ -48,6 +48,8 @@ export default async function MonthReviewPage({ searchParams }: { searchParams: 
       where: { userId: user.id, status: PlaidStagedStatus.NEEDS_REVIEW, date: range },
     }),
     prisma.monthClose.findUnique({ where: { userId_ym: { userId: user.id, ym } } }),
+    // Imported, auto-posted or API rows nobody has looked at (the log's Needs review filter).
+    prisma.transaction.count({ where: { userId: user.id, needsReview: true, date: range } }),
   ]);
   const rolloverOn = new Set(
     categories.filter((c) => c.rolloverSinceMonth !== null && c.rolloverSinceMonth <= ym).map((c) => c.id),
@@ -209,6 +211,19 @@ export default async function MonthReviewPage({ searchParams }: { searchParams: 
                   {" "}
                   <Link href={`/?month=${ym}`} className="text-sky-300 hover:text-sky-200">
                     Review them
+                  </Link>
+                </>
+              ) : null}
+            </li>
+            <li>
+              {unreviewedPosted === 0
+                ? "Every imported or automatically posted entry has been looked at."
+                : `${unreviewedPosted} imported or automatically posted entr${unreviewedPosted === 1 ? "y needs" : "ies need"} a look (Needs review in the Expense Log).`}
+              {unreviewedPosted > 0 ? (
+                <>
+                  {" "}
+                  <Link href={`/?month=${ym}`} className="text-sky-300 hover:text-sky-200">
+                    Open the log
                   </Link>
                 </>
               ) : null}

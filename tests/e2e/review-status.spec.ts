@@ -32,6 +32,11 @@ test("imported expenses wait under Needs review until marked reviewed", async ({
 
   await signInWithPassword(page, email, "e2e-password-123");
   await expectDashboardHome(page);
+  // The monthly review counts what is waiting.
+  await page.goto(`/reports/month?month=${date.toISOString().slice(0, 7)}`);
+  await expect(page.getByTestId("month-unreviewed")).toContainText("1 imported or automatically posted entry needs a look");
+  await page.goto("/");
+  await expectDashboardHome(page);
   const log = expenseLogLocator(page);
   await log.getByTestId("needs-review-filter").filter({ visible: true }).click();
   await expect(log.getByText(`Typed ${stamp}`).filter({ visible: true })).toHaveCount(0);
