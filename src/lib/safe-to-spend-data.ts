@@ -14,13 +14,25 @@ import { currentYmdInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
 import { loadSavingsGoals } from "@/lib/savings-goals-data";
 import { computeSafeToSpend, daysLeftInMonth, type SafeToSpend } from "@/lib/safe-to-spend";
+import type { ZeroBasedInput } from "@/lib/zero-based";
+
+type SafeToSpendUser = { id: string; countryCode: string | null; timezone: string | null };
 
 /** Safe to spend for the month now running, in the user's home currency. */
 export async function loadSafeToSpend(
-  user: { id: string; countryCode: string | null; timezone: string | null },
+  user: SafeToSpendUser,
   now: Date = new Date(),
   client: PrismaClient = prisma,
 ): Promise<SafeToSpend> {
+  return computeSafeToSpend(await loadSafeToSpendInput(user, now, client));
+}
+
+/** What Safe to spend and zero-based budgeting are worked out from, for the month now running. */
+export async function loadSafeToSpendInput(
+  user: SafeToSpendUser,
+  now: Date = new Date(),
+  client: PrismaClient = prisma,
+): Promise<ZeroBasedInput> {
   const currency = homeCurrencyOf(user.countryCode);
   const todayYmd = currentYmdInTimeZone(user.timezone, now);
   const ym = todayYmd.slice(0, 7);
@@ -57,7 +69,7 @@ export async function loadSafeToSpend(
   const budgetRows = buildBudgetProgressRows(active, spendByCategory, carries);
   const forecast = forecastRecurringOccurrences(rules, { todayYmd, currentYm: ym, days: daysLeftInMonth(todayYmd) });
 
-  return computeSafeToSpend({
+  return {
     todayYmd,
     incomeReceivedCents: income._sum.amountCents ?? 0,
     spentCents: expenses.reduce((sum, e) => sum + e.amountCents, 0),
@@ -71,5 +83,5 @@ export async function loadSafeToSpend(
     goalContributionsCents: goals.goals
       .filter((g) => g.currency === currency)
       .flatMap((g) => (g.progress.monthlyNeededCents ? [g.progress.monthlyNeededCents] : [])),
-  });
+  };
 }

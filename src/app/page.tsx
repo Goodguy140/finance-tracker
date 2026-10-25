@@ -18,7 +18,11 @@ import { BillsForecastCardBody } from "@/components/dashboard-cards/bills-foreca
 import { CalendarCardBody } from "@/components/dashboard-cards/calendar-card";
 import { buildCalendarMonth } from "@/lib/spending-calendar";
 import { SafeToSpendCardBody } from "@/components/dashboard-cards/safe-to-spend-card";
-import { loadSafeToSpend } from "@/lib/safe-to-spend-data";
+import { loadSafeToSpendInput } from "@/lib/safe-to-spend-data";
+import { computeSafeToSpend } from "@/lib/safe-to-spend";
+import { computeZeroBased } from "@/lib/zero-based";
+import { ZeroBasedCardBody } from "@/components/dashboard-cards/zero-based-card";
+import { ZeroBasedToggle } from "@/components/dashboard-cards/zero-based-toggle";
 import { ExpenseLogPanel } from "@/components/expense-log";
 import { loadContributionRoomData } from "@/lib/contribution-room-data";
 import { isRegisteredAccountType } from "@/lib/contribution-room";
@@ -186,7 +190,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   // Always the month now running, whatever period is on screen. A failure costs the card.
   const safeToSpendPromise = layoutJsonPromise
     .then((json) =>
-      isCardPlaced(reconcileDashboardLayout(json, CARD_IDS).stored, "safe-to-spend") ? loadSafeToSpend(user, now) : null,
+      isCardPlaced(reconcileDashboardLayout(json, CARD_IDS).stored, "safe-to-spend") ? loadSafeToSpendInput(user, now) : null,
     )
     .catch((err) => {
       console.error("[safe-to-spend] loading failed", err);
@@ -996,7 +1000,10 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   });
   const insights = await insightsPromise;
   const getStartedSteps = await getStartedPromise;
-  const safeToSpend = await safeToSpendPromise;
+  const safeToSpendInput = await safeToSpendPromise;
+  const zeroBased = user.zeroBasedBudgeting;
+  const safeToSpend = safeToSpendInput && !zeroBased ? computeSafeToSpend(safeToSpendInput) : null;
+  const zeroBasedSummary = safeToSpendInput && zeroBased ? computeZeroBased(safeToSpendInput) : null;
 
   // Once the user has grouped categories the pie adds each group up, unless the card's setting says not to.
   const pieSlicesShown =
@@ -1272,13 +1279,24 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       ),
     },
     "safe-to-spend": {
-      subtitle: "This month · income, bills, budgets and goals",
+      subtitle: zeroBased ? "Zero-based · this month's income still to assign" : "This month · income, bills, budgets and goals",
       body: (
-        <SafeToSpendCardBody
-          data={safeToSpend}
-          currency={homeCurrency}
-          showBreakdown={cardSettings["safe-to-spend"]?.showBreakdown}
-        />
+        <>
+          {zeroBased ? (
+            <ZeroBasedCardBody
+              data={zeroBasedSummary}
+              currency={homeCurrency}
+              showBreakdown={cardSettings["safe-to-spend"]?.showBreakdown}
+            />
+          ) : (
+            <SafeToSpendCardBody
+              data={safeToSpend}
+              currency={homeCurrency}
+              showBreakdown={cardSettings["safe-to-spend"]?.showBreakdown}
+            />
+          )}
+          <ZeroBasedToggle enabled={zeroBased} />
+        </>
       ),
     },
     calendar: {

@@ -54,6 +54,14 @@ export const setProjectionIncludesTransfersAction = formAction(async (formData: 
   revalidatePath("/");
 });
 
+/** Opt in or out of zero-based budgeting; the dashboard's Safe to spend card shows "To assign" instead. */
+export const setZeroBasedBudgetingAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const enabled = getFormValue(formData, "enabled") === "true";
+  await prisma.user.update({ where: { id: user.id }, data: { zeroBasedBudgeting: enabled } });
+  revalidatePath("/");
+});
+
 /** Hides the dashboard's "Get started" checklist for good. */
 export const dismissGetStartedAction = formAction(async () => {
   const user = await requireUser();
