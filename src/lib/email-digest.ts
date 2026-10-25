@@ -1,3 +1,4 @@
+import { loadSafeToSpend } from "@/lib/safe-to-spend-data";
 import { DigestFrequency, PlaidStagedStatus, TransactionType, type PrismaClient } from "@prisma/client";
 import { forecastRecurringOccurrences } from "@/lib/bills-forecast";
 import { buildMonthlyBudgetProgress } from "@/lib/budget-progress";
@@ -100,6 +101,8 @@ export type DigestData = {
   upcoming: Array<{ date: Date; name: string; cents: number }>;
   upcomingDays: number;
   reviewCount: number;
+  /** Safe to spend for the month now running (`safe-to-spend.ts`); null when it could not be worked out. */
+  safeToSpendCents: number | null;
 };
 
 export async function loadDigestData(
@@ -131,6 +134,12 @@ export async function loadDigestData(
     }),
     client.plaidStagedTransaction.count({ where: { userId: user.id, status: PlaidStagedStatus.NEEDS_REVIEW } }),
   ]);
+  const safeToSpendCents = await loadSafeToSpend(user, now, client)
+    .then((s) => s.safeCents)
+    .catch((err) => {
+      console.error("[digest] safe to spend failed", err);
+      return null;
+    });
 
   const inPeriod = txs.filter((tx) => tx.date >= period.start && tx.date < period.end);
   const before = txs.filter((tx) => tx.date >= period.previousStart && tx.date < period.start);
@@ -175,6 +184,7 @@ export async function loadDigestData(
       .map((o) => ({ date: o.date, name: o.rule.name, cents: o.rule.amountCents })),
     upcomingDays,
     reviewCount,
+    safeToSpendCents,
   };
 }
 
@@ -207,6 +217,7 @@ export function renderDigest(data: DigestData, baseUrl?: string): { subject: str
   lines.push(`Received: ${money(data.receivedCents)}`);
   const net = data.receivedCents - data.spentCents;
   lines.push(net >= 0 ? `Left over: ${money(net)}` : `Spent more than came in by ${money(-net)}`);
+  if (data.safeToSpendCents !== null) lines.push(`Safe to spend for the rest of this month: ${money(data.safeToSpendCents)}`);
 
   if (data.topCategories.length) {
     lines.push("", "Where it went");

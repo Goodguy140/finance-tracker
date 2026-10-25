@@ -135,6 +135,18 @@ export const DASHBOARD_CARDS: Record<DashboardCardId, DashboardCardMeta> = {
     conditional: false,
     hasSettings: true,
   },
+  "safe-to-spend": {
+    id: "safe-to-spend",
+    title: "Safe to spend",
+    tabLabel: "Safe to spend",
+    // A tab beside Budgets for a layout saved before it: it reads off the same numbers, and a
+    // slot of its own could flip which column a narrow window folds (see `insights`).
+    defaultColumnIndex: 1,
+    defaultSlotIndex: 0,
+    joinsSlotOf: "budgets",
+    conditional: false,
+    hasSettings: true,
+  },
 };
 
 /**
@@ -159,7 +171,7 @@ export const DEFAULT_LAYOUT: DashboardLayout = {
       id: "col-side",
       weight: 10,
       slots: [
-        { id: "slot-budgets", cards: ["budgets"], activeIndex: 0 },
+        { id: "slot-budgets", cards: ["budgets", "safe-to-spend"], activeIndex: 0 },
         { id: "slot-categories", cards: ["spending-by-category"], activeIndex: 0 },
         { id: "slot-income", cards: ["income"], activeIndex: 0 },
         { id: "slot-recurring", cards: ["recurring"], activeIndex: 0 },
@@ -182,6 +194,7 @@ export const MOBILE_SLOTS: readonly DashboardSlot[] = [
     cards: ["spending-by-category", "budgets", "cumulative-spend"],
     activeIndex: 0,
   },
+  { id: "mobile-safe-to-spend", cards: ["safe-to-spend"], activeIndex: 0 },
   { id: "mobile-log", cards: ["expense-log"], activeIndex: 0 },
   { id: "mobile-income", cards: ["income"], activeIndex: 0 },
   { id: "mobile-recurring", cards: ["recurring"], activeIndex: 0 },

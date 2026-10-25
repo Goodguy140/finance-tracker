@@ -68,6 +68,7 @@ Cards (`src/components/dashboard-cards/`), with their gear settings:
 | Recurring (`recurring`) `recurring-card.tsx`, `recurring-transactions-panel.tsx`, `recurring-rule-form.tsx` | rules due in the month as one summary line each (category · account · cadence · date), overdue carry ("Unposted since"), Post, with Skip/Edit/Disable/Remove behind the "⋯" button, auto-post, new/edit/pause/delete, recurring transfers (from/to account, `RecurringTransaction.transferAccountId`, kept out of income and bills), cash-flow summary; `src/lib/recurring-transactions.ts`, `recurring-post.ts` | cash-flow summary, rules shown |
 | Insights (`insights`) `insights-card.tsx` | count per section and the most pressing few, link to `/insights`; leaves out budget and money-owed insights, which this page already shows | insights shown |
 | Upcoming bills (`bills-forecast`) `bills-forecast-card.tsx`, `src/lib/bills-forecast.ts` | bills and income due by day, running net | days ahead (30/60/90) |
+| Safe to spend (`safe-to-spend`, tab beside Budgets) `safe-to-spend-card.tsx`, `src/lib/safe-to-spend.ts`, `safe-to-spend-data.ts` | what is free to spend until month end, always for the month now running: income received − spent + recurring income still due − recurring bills still due (outside budgeted categories) − what is left in budgets (with rollover) − savings goals' monthly need; a-day figure for the days left; also a line in the email digest | show breakdown |
 | Investments (`investments`, tab on Insights) `investments-card.tsx` | contributions/withdrawals, count a transfer toward room, portfolio snapshots, room left (`src/lib/contribution-room.ts`); `actions/investments.ts` | room left, add forms, recent activity |
 
 ## Bank sync (Plaid)
@@ -187,7 +188,7 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     `src/lib/budget-alert-dispatch.ts`
   - Email digest (off / weekly on Mondays / monthly on the 1st, after 7am local; spent and
     received, top categories, biggest purchases, budgets over 80%, bills coming up, review
-    queue count; skipped when empty; "Send me one now"): `email-digest-preferences.tsx`,
+    queue count, safe to spend for the month; skipped when empty; "Send me one now"): `email-digest-preferences.tsx`,
     `src/lib/email-digest.ts`, hourly `email-digest-scheduler.ts` (`EMAIL_DIGEST_SCHEDULER`)
   - Bill reminders (off / the day before / 3 days / a week before; one email listing recurring
     bills and transfers coming up, each occurrence reminded once via
