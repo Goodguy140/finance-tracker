@@ -185,6 +185,7 @@ model User {
   yearlyBudgets             YearlyBudget[]
   chargeAlertSetting        ChargeAlertSetting?
   monthCloses               MonthClose[]
+  webhookEndpoints          WebhookEndpoint[]
   recurringTransactions     RecurringTransaction[]
   investmentFlows           InvestmentFlow[]
   contributionRooms         ContributionRoom[]
@@ -1246,4 +1247,46 @@ model MonthClose {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, ym])
+}
+
+/// An outbound webhook (Settings → Developer): signed JSON POSTs for the events it names.
+model WebhookEndpoint {
+  id              String    @id @default(cuid())
+  userId          String
+  url             String
+  /// The signing secret, encrypted with SERVER_SETTINGS_ENCRYPTION_KEY like other secrets.
+  secretEncrypted String
+  /// Comma-separated event names (`WEBHOOK_EVENTS` in src/lib/webhooks.ts).
+  events          String
+  enabled         Boolean   @default(true)
+  lastDeliveredAt DateTime?
+  lastStatus      Int?
+  lastError       String?
+  createdAt       DateTime  @default(now())
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([userId])
+}
+
+/// One event queued for one endpoint; retried with backoff until delivered or out of attempts.
+model WebhookDelivery {
+  id            String    @id @default(cuid())
+  endpointId    String
+  event         String
+  /// The JSON body, exactly as signed and sent.
+  payload       String
+  /// Set for events that must go out once (a budget going over, a bill falling due).
+  dedupeKey     String?
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
+  deliveredAt   DateTime?
+  lastError     String?
+  createdAt     DateTime  @default(now())
+
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@unique([endpointId, dedupeKey])
+  @@index([deliveredAt, nextAttemptAt])
 }

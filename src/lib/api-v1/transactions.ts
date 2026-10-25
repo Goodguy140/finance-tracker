@@ -1,3 +1,4 @@
+import { emitWebhookEvent } from "@/lib/webhooks";
 import { CategoryKind, Prisma, TransactionType, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { dateFromYmd, ymdFromDateUtc } from "@/lib/date-only";
@@ -220,6 +221,14 @@ export async function createTransactionFromApi(
     const tagIds = [...new Set([...(await resolveTagIds(tx, user.id, input.tags ?? [])), ...rule.tagIds])];
     await addTagsToTransaction(tx, row.id, tagIds);
     return tx.transaction.findUniqueOrThrow({ where: { id: row.id }, include: transactionInclude });
+  });
+  emitWebhookEvent(user.id, "transaction.created", {
+    id: created.id,
+    type: created.type,
+    amountCents: created.amountCents,
+    date: created.date.toISOString().slice(0, 10),
+    title: created.title,
+    source: "api",
   });
   return { ok: true, transaction: serializeTransaction(created) };
 }
