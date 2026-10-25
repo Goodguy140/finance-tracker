@@ -6,6 +6,7 @@ import { FinancialScoreChip } from "@/components/financial-score-card";
 import { CashFlowSankey, IncomeSpendingChart, NetWorthChart } from "@/components/reports/report-charts";
 import { ProjectionTransfersToggle } from "@/components/reports/projection-transfers-toggle";
 import { loadNetWorth, loadProjectionInputs } from "@/lib/net-worth-data";
+import { WhatIfPanel } from "@/components/reports/what-if-panel";
 import { PROJECTION_DAYS, projectBalances, type ProjectedBalances } from "@/lib/projected-balances";
 import { getCountryConfig } from "@/lib/country-config";
 import { loadFinancialScore } from "@/lib/financial-score-data";
@@ -195,7 +196,22 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
 
       <NetWorthSection netWorth={netWorth} fmt={fmt} />
 
-      {projection.accounts.length > 0 ? <ProjectedBalancesSection projection={projection} todayYmd={todayYmd} fmt={fmt} /> : null}
+      {projection.accounts.length > 0 ? (
+        <ProjectedBalancesSection
+          projection={projection}
+          todayYmd={todayYmd}
+          fmt={fmt}
+          whatIf={
+            <WhatIfPanel
+              accounts={netWorth.accounts}
+              rules={projectionInputs.rules}
+              todayYmd={todayYmd}
+              includeTransfers={projectionInputs.includeTransfers}
+              currency={currency}
+            />
+          }
+        />
+      ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <nav aria-label="Report period" className="flex flex-wrap gap-2">
@@ -568,10 +584,12 @@ function ProjectedBalancesSection({
   projection,
   todayYmd,
   fmt,
+  whatIf,
 }: {
   projection: ProjectedBalances;
   todayYmd: string;
   fmt: (cents: number) => string;
+  whatIf?: React.ReactNode;
 }) {
   const columns = ["Today", ...PROJECTION_DAYS.map((days) => `${days} days`)];
   const signed = (cents: number, liability: boolean) => (liability && cents !== 0 ? `−${fmt(cents)}` : fmt(cents));
@@ -670,6 +688,7 @@ function ProjectedBalancesSection({
           </p>
         ) : null}
       </details>
+      {whatIf}
     </section>
   );
 }

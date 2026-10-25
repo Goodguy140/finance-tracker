@@ -30,7 +30,7 @@ export const PROJECTION_DAYS = BILLS_FORECAST_DAY_OPTIONS;
 export type ProjectableRule = Pick<
   RecurringForecastRule,
   "type" | "amountCents" | "cadence" | "nextExpectedDate" | "anchorDay" | "endDate" | "enabled"
-> & { accountId: string; name?: string; transferAccountId?: string | null };
+> & { accountId: string; name?: string; transferAccountId?: string | null; id?: string };
 
 export type ProjectedAccount = {
   accountId: string;
@@ -39,7 +39,7 @@ export type ProjectedAccount = {
   /** Latest reading, as the net-worth section shows it. */
   currentCents: number;
   asOf: Date;
-  /** One per entry of `PROJECTION_DAYS`, in that order. */
+  /** One per entry of the horizons (`PROJECTION_DAYS` unless `days` is given), in that order. */
   projectedCents: number[];
   /**
    * Set on an asset account whose balance goes below zero within the longest horizon: the first
@@ -69,9 +69,12 @@ export function projectBalances(input: {
   todayYmd: string;
   currentYm: string;
   includeTransfers?: boolean;
+  /** Horizons in days; the Reports section's 30/60/90 by default, longer for what-if scenarios. */
+  days?: readonly number[];
 }): ProjectedBalances {
   const includeTransfers = input.includeTransfers ?? false;
-  const horizons = PROJECTION_DAYS.map((days) => {
+  const horizonDays = input.days ?? PROJECTION_DAYS;
+  const horizons = horizonDays.map((days) => {
     const end = dateFromYmd(input.todayYmd);
     end.setUTCDate(end.getUTCDate() + days);
     return ymdFromDateUtc(end);
@@ -84,7 +87,7 @@ export function projectBalances(input: {
 
   const forecast = forecastRecurringOccurrences(
     input.rules.filter((r) => (r.type === "TRANSFER" ? transferApplies(r) : byId.has(r.accountId))),
-    { todayYmd: input.todayYmd, currentYm: input.currentYm, days: Math.max(...PROJECTION_DAYS), includeTransfers },
+    { todayYmd: input.todayYmd, currentYm: input.currentYm, days: Math.max(...horizonDays), includeTransfers },
   );
   const rulesLeftOut = input.rules.filter(
     (r) => r.enabled && (r.type === "EXPENSE" || r.type === "INCOME") && !byId.has(r.accountId),
