@@ -135,6 +135,18 @@ export const DASHBOARD_CARDS: Record<DashboardCardId, DashboardCardMeta> = {
     conditional: false,
     hasSettings: true,
   },
+  calendar: {
+    id: "calendar",
+    title: "Calendar",
+    tabLabel: "Calendar",
+    // A tab on Cumulative spending: the same month's spending seen day by day, and no new slot
+    // to upset the column balance (see `insights`).
+    defaultColumnIndex: 0,
+    defaultSlotIndex: 0,
+    joinsSlotOf: "cumulative-spend",
+    conditional: false,
+    hasSettings: true,
+  },
   "safe-to-spend": {
     id: "safe-to-spend",
     title: "Safe to spend",
@@ -160,7 +172,7 @@ export const DEFAULT_LAYOUT: DashboardLayout = {
       id: "col-main",
       weight: 14,
       slots: [
-        { id: "slot-trend", cards: ["cumulative-spend"], activeIndex: 0 },
+        { id: "slot-trend", cards: ["cumulative-spend", "calendar"], activeIndex: 0 },
         { id: "slot-insights", cards: ["insights", "investments"], activeIndex: 0 },
         { id: "slot-bills-forecast", cards: ["bills-forecast"], activeIndex: 0 },
         { id: "slot-add", cards: ["add-expense"], activeIndex: 0 },
@@ -199,6 +211,7 @@ export const MOBILE_SLOTS: readonly DashboardSlot[] = [
   { id: "mobile-income", cards: ["income"], activeIndex: 0 },
   { id: "mobile-recurring", cards: ["recurring"], activeIndex: 0 },
   { id: "mobile-bills-forecast", cards: ["bills-forecast"], activeIndex: 0 },
+  { id: "mobile-calendar", cards: ["calendar"], activeIndex: 0 },
   { id: "mobile-insights", cards: ["insights", "investments"], activeIndex: 0 },
 ];
 

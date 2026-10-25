@@ -15,6 +15,8 @@ import { InsightsCardBody } from "@/components/dashboard-cards/insights-card";
 import { RecurringCardActions, RecurringCardBody } from "@/components/dashboard-cards/recurring-card";
 import { AddEntryCardBody } from "@/components/dashboard-cards/add-entry-card";
 import { BillsForecastCardBody } from "@/components/dashboard-cards/bills-forecast-card";
+import { CalendarCardBody } from "@/components/dashboard-cards/calendar-card";
+import { buildCalendarMonth } from "@/lib/spending-calendar";
 import { SafeToSpendCardBody } from "@/components/dashboard-cards/safe-to-spend-card";
 import { loadSafeToSpend } from "@/lib/safe-to-spend-data";
 import { ExpenseLogPanel } from "@/components/expense-log";
@@ -960,6 +962,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     "insights",
     "investments",
     "safe-to-spend",
+    "calendar",
     ...(showDashboardIncomeCard ? (["income"] as const) : []),
   ];
   // Reconciliation is deterministic and runs on every render, so a layout blob that predates
@@ -1039,6 +1042,33 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       missedSinceDisplay: missedSince ? formatDateOnlyUtc(missedSince) : null,
     })),
   }));
+
+  // The Calendar card: the month on screen as a grid, with recurring still due from today on.
+  let calendarMonth = null;
+  if (period.range === "month") {
+    const viewedYm = period.ym;
+    const lastDay = new Date(Date.UTC(Number(viewedYm.slice(0, 4)), Number(viewedYm.slice(5, 7)), 0));
+    const daysAhead = Math.round((lastDay.getTime() - dateFromYmd(todayYmd).getTime()) / 86_400_000);
+    const calendarBills =
+      viewedYm >= anchorYm && daysAhead >= 0
+        ? forecastRecurringOccurrences(homeRecurringRules, { todayYmd, currentYm: anchorYm, days: daysAhead }).occurrences
+            .filter((o) => ymdFromDateUtc(o.date).slice(0, 7) === viewedYm)
+            .map((o) => ({
+              dateYmd: ymdFromDateUtc(o.date),
+              name: o.rule.name,
+              type: o.rule.type === TransactionType.INCOME ? ("INCOME" as const) : ("EXPENSE" as const),
+              cents: o.rule.amountCents,
+              overdue: o.overdue,
+            }))
+        : [];
+    calendarMonth = buildCalendarMonth({
+      ym: viewedYm,
+      todayYmd,
+      expenses: homeExpenses.map((t) => ({ dateYmd: ymdFromDateUtc(t.date), cents: t.amountCents })),
+      incomes: periodIncomes.filter(inHomeCurrency).map((t) => ({ dateYmd: ymdFromDateUtc(t.date), cents: t.amountCents })),
+      bills: calendarBills,
+    });
+  }
 
   // Newest first across the three kinds. A transfer already counted toward room is left out:
   // the contribution recorded from it is in the list, marked as such.
@@ -1243,6 +1273,10 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           showBreakdown={cardSettings["safe-to-spend"]?.showBreakdown}
         />
       ),
+    },
+    calendar: {
+      subtitle: calendarMonth ? `${periodDescription} · spending by day` : "Spending by day",
+      body: <CalendarCardBody month={calendarMonth} showBills={cardSettings.calendar?.showBills} />,
     },
     investments: {
       subtitle: "TFSA, RRSP, FHSA and other investment accounts",
