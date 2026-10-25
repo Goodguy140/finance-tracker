@@ -36,6 +36,8 @@ export type InsightRecurringRule = {
   categoryId: string;
   /** When it is next due; only the "Coming up" renewals read it. */
   nextExpectedDate?: Date;
+  /** Set by "Cancel subscription"; read by the Going well saving. */
+  cancelledAt?: Date | null;
 };
 
 export type InsightBudget = { categoryId: string; periodMonth: string };

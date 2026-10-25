@@ -96,6 +96,7 @@ export const loadInsights = cache(async (
         enabled: true,
         categoryId: true,
         nextExpectedDate: true,
+        cancelledAt: true,
       },
     }),
     prisma.budget.findMany({ where: { userId }, select: { categoryId: true, periodMonth: true } }),

@@ -14,6 +14,17 @@ const txs = [
 const base = { txs, rules: [], budgets: [], now: NOW, fmt: moneyFormatter(), habitsEnabled: true, dismissals: [] };
 
 describe("buildInsights", () => {
+  it("counts a recently cancelled subscription under Going well", () => {
+    const cancelledAt = new Date(NOW.getTime() - 5 * 86_400_000);
+    const { visible } = buildInsights({
+      ...base,
+      rules: [
+        { id: "gym", name: "Gym", type: "EXPENSE", amountCents: 5_000, cadence: "MONTHLY", enabled: false, categoryId: "c", cancelledAt },
+      ],
+    });
+    expect(visible.find((i) => i.key === "good:cancelled:gym")).toMatchObject({ section: "good", annualCents: 60_000 });
+  });
+
   it("orders sections recurring, habit, saving, improvement", () => {
     const { visible } = buildInsights(base);
     expect(visible.map((i) => i.key)).toEqual(expect.arrayContaining(["recurring:EXPENSE:netflix", "habit:CANNABIS"]));
