@@ -516,6 +516,9 @@ function NetWorthSection({ netWorth, fmt }: { netWorth: Awaited<ReturnType<typeo
               Debt payoff plan
             </Link>
           ) : null}
+          <Link href="/reports/retirement" className="text-sm text-sky-300 hover:text-sky-200">
+            Retirement
+          </Link>
           <Link href="/settings/accounts" className="text-sm text-sky-300 hover:text-sky-200">
             Update balances
           </Link>

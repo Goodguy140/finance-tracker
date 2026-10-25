@@ -182,6 +182,13 @@ Page: `src/app/reports/page.tsx`; data `src/lib/reports/*`; charts
   `.minimumPaymentCents`, set on the page), and a plan for a monthly amount comparing highest
   rate first, smallest balance first and minimums only (debt-free month, interest, payoff order):
   `src/app/reports/debt/page.tsx`, `src/lib/debt-payoff.ts`, `actions/debt.ts`
+- **Retirement** `/reports/retirement` (linked from Net worth): a deterministic Canadian FIRE projection in today's
+  dollars (return net of inflation, no Monte Carlo). Starts from the last 12 months' income and spending, TFSA/RRSP/FHSA/
+  non-registered balances and this year's entered contribution room; all inputs editable in a GET form. Savings go TFSA,
+  then RRSP (18% of income up to the dollar limit), then FHSA (if saving for a first home; $8,000/yr, $40,000 lifetime),
+  then non-registered; retirement spending comes from non-registered, FHSA/RRSP, then TFSA, before tax. Shows the FI
+  number (spending ÷ withdrawal rate), FI age, savings at retirement, the age money runs out, and a year-by-year table:
+  `src/app/reports/retirement/page.tsx`, `src/lib/retirement.ts`, `src/lib/retirement-data.ts`
 - **Print and templates** `/reports/print`: `printables-panel.tsx`, `src/lib/printables/*`,
   `src/app/api/printables/*`. Financial summary PDF, action plan (3/6/12/24+ months, blank
   version), 10 templates (budget, bills, goals, debt, net worth, subscriptions, sinking funds,
