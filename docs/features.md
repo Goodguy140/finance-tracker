@@ -157,6 +157,11 @@ Page: `src/app/reports/page.tsx`; data `src/lib/reports/*`; charts
   (`projection-transfers-toggle.tsx`, `User.projectionIncludesTransfers`, off by default) moves
   each recurring transfer out of one account and into the other, also in Insights' Coming up and
   the printable summary
+- **What if…** under projected balances: try a new recurring bill or income from a date, an
+  income change by a percentage from a date, or dropping recurring bills, and see net worth at
+  30 / 90 / 180 days and a year against today's plan, with any account that would go below zero.
+  Held only in the browser; nothing is saved. `src/components/reports/what-if-panel.tsx`,
+  `src/lib/forecast-scenarios.ts` (on `projectBalances`, which takes other horizons via `days`)
 - Income vs spending by month from the first month with data (table toggle), cash-flow Sankey, year over
   year (says so instead of zeros when there is no earlier year), payees, and "Who paid you" for income
 - **Merchant page** `/reports/merchant`: `src/app/reports/merchant/page.tsx`

@@ -149,3 +149,55 @@ test("a recurring transfer moves money between accounts in the projection once i
     await page.getByTestId("report-projected-balances").screenshot({ path: `${SCREENSHOT_DIR}/projected-transfers-${testInfo.project.name}.png` });
   }
 });
+
+test("a what-if scenario shows net worth against today's plan without saving anything", async ({ page }) => {
+  const email = `e2e-whatif-${uniqueStamp()}@example.com`;
+  const password = "e2e-password-123";
+  const user = await prisma.user.create({
+    data: {
+      email,
+      passwordHash: await hashTestPassword(password),
+      displayName: "E2E What-if User",
+      countryCode: "CA",
+      timezone: TIMEZONE,
+      role: "USER",
+    },
+  });
+  await ensureDefaultDataForUser(user);
+  const [chequing, category] = await Promise.all([
+    prisma.account.findFirstOrThrow({ where: { userId: user.id, type: AccountType.CHEQUING } }),
+    prisma.category.findFirstOrThrow({ where: { userId: user.id, kind: CategoryKind.EXPENSE } }),
+  ]);
+  const today = dateFromYmd(currentYmdInTimeZone(TIMEZONE));
+  const inFiveDays = new Date(today.getTime() + 5 * 24 * 60 * 60 * 1000);
+  await prisma.accountBalanceSnapshot.create({
+    data: { userId: user.id, accountId: chequing.id, date: today, balanceCents: 150_000, source: "MANUAL" },
+  });
+  const rent = await prisma.recurringTransaction.create({
+    data: {
+      userId: user.id,
+      accountId: chequing.id,
+      categoryId: category.id,
+      type: "EXPENSE",
+      name: "Rent",
+      amountCents: 100_000,
+      cadence: "MONTHLY",
+      nextExpectedDate: inFiveDays,
+      anchorDay: inFiveDays.getUTCDate(),
+    },
+  });
+
+  await signInWithPassword(page, email, password);
+  await expectDashboardHome(page);
+  await page.goto("/reports");
+  const whatIf = page.getByTestId("what-if");
+  await whatIf.getByRole("radio", { name: "Drop bills" }).click();
+  await whatIf.getByRole("checkbox", { name: /Rent/ }).check();
+  await whatIf.getByRole("button", { name: "Add to scenario" }).click();
+
+  // Rent is monthly from five days out: once within 30 days, twelve times within a year.
+  const difference = whatIf.getByTestId("what-if-results").getByRole("row", { name: /Difference/ });
+  await expect(difference.getByRole("cell")).toHaveText(["Difference", "+$1,000.00", "+$3,000.00", "+$6,000.00", "+$12,000.00"]);
+  // Trying it changed nothing stored.
+  expect((await prisma.recurringTransaction.findUniqueOrThrow({ where: { id: rent.id } })).enabled).toBe(true);
+});

@@ -70,6 +70,7 @@ export async function loadProjectionInputs(
     prisma.recurringTransaction.findMany({
       where: { userId, enabled: true, type: { in: ["EXPENSE", "INCOME", "TRANSFER"] } },
       select: {
+        id: true,
         accountId: true,
         transferAccountId: true,
         name: true,
