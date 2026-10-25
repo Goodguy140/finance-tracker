@@ -127,6 +127,13 @@ export function ExpenseBulkBar({
             Add tag
           </button>
         </ServerActionForm>
+        <ServerActionForm action={bulkEditExpensesAction} onSuccess={report("Marked reviewed:")} className="flex items-center">
+          <input type="hidden" name="transactionIdsJson" value={ids} />
+          <input type="hidden" name="op" value="reviewed" />
+          <button type="submit" className={applyBtnClass} disabled={none}>
+            Mark reviewed
+          </button>
+        </ServerActionForm>
         <ServerActionForm
           action={bulkEditExpensesAction}
           onSuccess={(result) => {

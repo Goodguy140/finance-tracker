@@ -53,7 +53,7 @@ function rule(overrides: Partial<Rule> = {}): Rule {
  */
 function fakeDb(initial: Rule, timezone = "UTC") {
   let current = { ...initial };
-  const posted: Array<{ recurringExpectedDate: Date }> = [];
+  const posted: Array<{ recurringExpectedDate: Date; needsReview?: boolean }> = [];
   const tx = {
     recurringTransaction: {
       findFirst: vi.fn(async () => ({ ...current })),
@@ -65,8 +65,8 @@ function fakeDb(initial: Rule, timezone = "UTC") {
     },
     transaction: {
       findFirst: vi.fn(async () => null),
-      create: vi.fn(async ({ data }: { data: { recurringExpectedDate: Date } }) => {
-        posted.push({ recurringExpectedDate: data.recurringExpectedDate });
+      create: vi.fn(async ({ data }: { data: { recurringExpectedDate: Date; needsReview?: boolean } }) => {
+        posted.push({ recurringExpectedDate: data.recurringExpectedDate, needsReview: data.needsReview });
         return { id: `t${posted.length}` };
       }),
       update: vi.fn(),
@@ -81,7 +81,13 @@ function fakeDb(initial: Rule, timezone = "UTC") {
     },
     $transaction: vi.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx)),
   };
-  return { tx, client, posted: () => posted.map((p) => ymdFromDateUtc(p.recurringExpectedDate)), current: () => current };
+  return {
+    tx,
+    client,
+    posted: () => posted.map((p) => ymdFromDateUtc(p.recurringExpectedDate)),
+    reviewFlags: () => posted.map((p) => p.needsReview),
+    current: () => current,
+  };
 }
 
 describe("postRecurringOccurrence", () => {
@@ -97,6 +103,8 @@ describe("postRecurringOccurrence", () => {
     expect(outcome).toBe("posted");
     expect(db.posted()).toEqual(["2026-06-01"]);
     expect(ymdFromDateUtc(db.current().nextExpectedDate)).toBe("2026-07-01");
+    // The user pressed Post: there is nothing to review.
+    expect(db.reviewFlags()).toEqual([false]);
   });
 
   it("posts a later occurrence of an overdue rule, passing over the missed ones", async () => {
@@ -142,6 +150,8 @@ describe("autoPostDueRecurringTransactions", () => {
     expect(result).toEqual({ posted: 3, ruleIds: ["rule-1"] });
     expect(db.posted()).toEqual(["2026-04-01", "2026-05-01", "2026-06-01"]);
     expect(ymdFromDateUtc(db.current().nextExpectedDate)).toBe("2026-07-01");
+    // Posted by the schedule, so each waits in the log's Needs review filter.
+    expect(db.reviewFlags()).toEqual([true, true, true]);
   });
 
   it("keeps a rule on the 31st on the last day of every month after February", async () => {

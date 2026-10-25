@@ -35,7 +35,7 @@ function categoryKindFor(type: "EXPENSE" | "INCOME" | "TRANSFER") {
  */
 export async function postRecurringOccurrence(
   tx: Prisma.TransactionClient,
-  params: { userId: string; recurringTransactionId: string; expectedDate: Date },
+  params: { userId: string; recurringTransactionId: string; expectedDate: Date; needsReview?: boolean },
 ): Promise<PostOutcome> {
   const { userId, recurringTransactionId, expectedDate } = params;
   const expectedYmd = ymdFromDateUtc(expectedDate);
@@ -89,6 +89,8 @@ export async function postRecurringOccurrence(
       note: rule.note,
       recurringTransactionId: rule.id,
       recurringExpectedDate: expectedDate,
+      // Posted by the schedule rather than the user's own Post button.
+      needsReview: params.needsReview ?? false,
     },
   });
 
@@ -135,7 +137,7 @@ export async function autoPostDueRecurringTransactions(
       let outcome: PostOutcome;
       try {
         outcome = await client.$transaction((tx) =>
-          postRecurringOccurrence(tx, { userId, recurringTransactionId: rule.id, expectedDate }),
+          postRecurringOccurrence(tx, { userId, recurringTransactionId: rule.id, expectedDate, needsReview: true }),
         );
       } catch (err) {
         console.warn(`[recurring] auto-post skipped rule ${rule.id}:`, err instanceof Error ? err.message : err);

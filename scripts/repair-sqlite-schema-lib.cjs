@@ -1,5 +1,5 @@
 /** Keep in sync with SCHEMA_REPAIR_VERSION in src/lib/migration-health.ts */
-const SCHEMA_REPAIR_VERSION = "20";
+const SCHEMA_REPAIR_VERSION = "21";
 const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
 
@@ -184,6 +184,11 @@ const COLUMN_REPAIRS = [
     table: "Category",
     column: "groupName",
     ddl: 'ALTER TABLE "Category" ADD COLUMN "groupName" TEXT',
+  },
+  {
+    table: "Transaction",
+    column: "needsReview",
+    ddl: 'ALTER TABLE "Transaction" ADD COLUMN "needsReview" BOOLEAN NOT NULL DEFAULT false',
   },
 ];
 

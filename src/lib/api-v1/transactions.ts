@@ -212,6 +212,8 @@ export async function createTransactionFromApi(
         postedDate: input.postedDate ? dateFromYmd(input.postedDate) : null,
         title: rule.title ?? input.title ?? null,
         note: appendRuleNote(input.note ?? null, rule.appendNote) ?? null,
+        // Posted by a script, not typed in the app.
+        needsReview: true,
       },
       select: { id: true },
     });

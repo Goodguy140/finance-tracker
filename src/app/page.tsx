@@ -806,6 +806,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     })),
     tags: tagNamesOf(txn),
     receipts: txn.attachments,
+    needsReview: txn.needsReview,
   }));
 
   const owedToYouItems: OwedToYouItem[] = owedShareRows.map((share) => ({
