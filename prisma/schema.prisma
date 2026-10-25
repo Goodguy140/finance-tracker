@@ -484,6 +484,9 @@ model Transaction {
   categoryId             String
   type                   TransactionType
   amountCents            Int
+  /// Came in without the user entering it (a file import, a recurring auto-post, the API) and
+  /// has not been looked at yet. Cleared by "Mark reviewed" or by editing the row.
+  needsReview            Boolean         @default(false)
   /**
    * Purchase total before credits/rewards (optional; net outflow stays in amountCents).
    */

@@ -126,6 +126,16 @@ describe("bulk edit in the Expense Log", () => {
     expect(await db.transaction.count({ where: { id: { in: [a.id, b.id] } } })).toBe(2);
   });
 
+  it("marks imported expenses reviewed, and never another user's", async () => {
+    const mine = await expense(session.userId, { needsReview: true });
+    const otherUser = (await db.user.create({ data: { email: `other-r${seq}@example.test`, displayName: "Other" } })).id;
+    const theirs = await expense(otherUser, { needsReview: true });
+    const result = await bulk([mine.id, theirs.id], "reviewed");
+    expect(result).toMatchObject({ ok: true, changed: 1 });
+    expect((await db.transaction.findUniqueOrThrow({ where: { id: mine.id } })).needsReview).toBe(false);
+    expect((await db.transaction.findUniqueOrThrow({ where: { id: theirs.id } })).needsReview).toBe(true);
+  });
+
   it("refuses an unknown change and an oversized selection", async () => {
     const a = await expense();
     expect(await bulk([a.id], "rename", "x")).toMatchObject({ ok: false });

@@ -113,6 +113,13 @@ describe("importExpensesCsvAction with rules", () => {
     });
   });
 
+  it("marks every imported row as needing review", async () => {
+    await importExpensesCsvAction(
+      csvForm([{ Amount: "15.99", Desc: "NETFLIX.COM" }, { Amount: "4.00", Desc: "Coffee" }], { amount: "Amount", title: "Desc" }),
+    );
+    expect(writtenRows().map((row) => row.needsReview)).toEqual([true, true]);
+  });
+
   it("writes no tags when no rule adds one", async () => {
     await importExpensesCsvAction(csvForm([{ Amount: "15.99", Desc: "NETFLIX.COM" }], { amount: "Amount", title: "Desc" }));
     expect(mockPrisma.transactionTag.createMany).not.toHaveBeenCalled();

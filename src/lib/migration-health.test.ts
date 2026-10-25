@@ -35,7 +35,8 @@ async function createMinimalSchema(prisma: PrismaClient) {
       "creditCents" INTEGER,
       "creditBreakdownJson" TEXT,
       "transferAccountId" TEXT,
-      "transferPeerId" TEXT
+      "transferPeerId" TEXT,
+      "needsReview" BOOLEAN NOT NULL DEFAULT false
     )
   `);
   await prisma.$executeRawUnsafe(`

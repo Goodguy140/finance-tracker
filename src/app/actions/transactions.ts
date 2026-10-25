@@ -161,6 +161,8 @@ export const updateExpenseAction = formAction(async (formData: FormData) => {
     await tx.transaction.update({
       where: { id: existing.id },
       data: {
+        // Saving the edit dialog is looking at the row.
+        needsReview: false,
         account: payload.accountId
           ? { connect: { id: payload.accountId } }
           : { disconnect: true },
@@ -468,7 +470,8 @@ export const importExpensesCsvAction = formActionWithResult(async (formData: For
         note,
       });
     }
-    if (pending.length > 0) await tx.transaction.createMany({ data: pending });
+    // Nobody typed these in: they wait in the log's "Needs review" filter until looked at.
+    if (pending.length > 0) await tx.transaction.createMany({ data: pending.map((row) => ({ ...row, needsReview: true })) });
     if (pendingTags.length > 0) await tx.transactionTag.createMany({ data: pendingTags });
     summary.imported = pending.length;
   }, LONG_TRANSACTION_OPTIONS);
@@ -595,6 +598,8 @@ export const updateIncomeAction = formAction(async (formData: FormData) => {
     await tx.transaction.update({
       where: { id: existing.id },
       data: {
+        // Saving the edit dialog is looking at the row.
+        needsReview: false,
         account: payload.accountId
           ? { connect: { id: payload.accountId } }
           : { disconnect: true },
@@ -699,6 +704,10 @@ export const bulkEditExpensesAction = formActionWithResult(async (formData: Form
       for (const id of rowIds) await addTagsToTransaction(tx, id, tagIds);
     }, LONG_TRANSACTION_OPTIONS);
     changed = rowIds.length;
+  } else if (op === "reviewed") {
+    changed = (
+      await prisma.transaction.updateMany({ where: { id: { in: rowIds }, userId: user.id }, data: { needsReview: false } })
+    ).count;
   } else if (op === "delete") {
     for (const id of rowIds) {
       const undoId = await deleteTransactionWithUndo(prisma, user.id, id, TransactionType.EXPENSE);
