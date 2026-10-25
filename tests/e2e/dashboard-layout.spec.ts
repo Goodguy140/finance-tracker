@@ -173,7 +173,7 @@ test("a card dragged to another column stays there across a reload", async ({ pa
     )
     .toEqual([
       ["cumulative-spend", "insights", "investments", "bills-forecast", "expense-log"],
-      ["add-expense", "budgets", "spending-by-category", "income", "recurring"],
+      ["add-expense", "budgets", "safe-to-spend", "spending-by-category", "income", "recurring"],
     ]);
 
   await page.reload();
@@ -293,7 +293,7 @@ test("narrowing the window never produces horizontal scrolling, and no card disa
   expect(expected).toEqual([
     "add-expense",
     "bills-forecast",
-    "budgets+spending-by-category",
+    "budgets+spending-by-category+safe-to-spend",
     "cumulative-spend",
     "expense-log",
     "insights+investments",
@@ -467,10 +467,10 @@ test("a removed card stays off across a reload and can be added back as a tab", 
 
   await page.getByRole("button", { name: "Edit layout" }).click();
   await page.getByRole("button", { name: "Add card (1)" }).click();
-  await page.getByLabel("Upcoming bills", { exact: true }).selectOption({ label: "Tab on Budgets" });
+  await page.getByLabel("Upcoming bills", { exact: true }).selectOption({ label: "Tab on Budgets, Safe to spend" });
   await page.getByRole("button", { name: "Add Upcoming bills" }).click();
 
-  const stack = page.getByRole("region", { name: "Budgets, Upcoming bills" });
+  const stack = page.getByRole("region", { name: "Budgets, Safe to spend, Upcoming bills" });
   await expect(stack).toBeVisible();
   await expect(page.getByRole("button", { name: "Add card" })).toBeDisabled();
   await page.getByRole("button", { name: "Done" }).click();
@@ -487,7 +487,7 @@ test("a removed card stays off across a reload and can be added back as a tab", 
         return {
           hidden: parsed.hidden ?? [],
           stacked: parsed.columns.some((column) =>
-            column.slots.some((slot) => slot.cards.join(",") === "budgets,bills-forecast"),
+            column.slots.some((slot) => slot.cards.join(",") === "budgets,safe-to-spend,bills-forecast"),
           ),
         };
       },

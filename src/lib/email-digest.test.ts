@@ -142,6 +142,9 @@ describe("the digest's contents", () => {
     expect(data.upcoming).toEqual([{ date: new Date("2026-10-03T00:00:00Z"), name: "Rent", cents: 150_000 }]);
     expect(digest.digestIsEmpty(data)).toBe(false);
     expect(digest.renderDigest(data).text).toContain("Bills in the next 30 days\n  Oct 3  Rent: $1,500.00");
+    // Nothing in yet this month, and rent still to pay.
+    expect(data.safeToSpendCents).toBe(-150_000);
+    expect(digest.renderDigest(data).text).toContain("Safe to spend for the rest of this month: -$1,500.00");
   });
 });
 

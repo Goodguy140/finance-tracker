@@ -121,8 +121,8 @@ describe("addCard", () => {
     const added = addCard(removed, "insights", { kind: "tab", slotId: "slot-budgets" });
 
     const stack = slotOf(added, "budgets");
-    expect(stack?.cards).toEqual(["budgets", "insights"]);
-    expect(stack?.activeIndex).toBe(1);
+    expect(stack?.cards).toEqual(["budgets", "safe-to-spend", "insights"]);
+    expect(stack?.activeIndex).toBe(2);
   });
 
   it("gives the new slot an id no other slot has", () => {

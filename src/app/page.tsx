@@ -15,6 +15,8 @@ import { InsightsCardBody } from "@/components/dashboard-cards/insights-card";
 import { RecurringCardActions, RecurringCardBody } from "@/components/dashboard-cards/recurring-card";
 import { AddEntryCardBody } from "@/components/dashboard-cards/add-entry-card";
 import { BillsForecastCardBody } from "@/components/dashboard-cards/bills-forecast-card";
+import { SafeToSpendCardBody } from "@/components/dashboard-cards/safe-to-spend-card";
+import { loadSafeToSpend } from "@/lib/safe-to-spend-data";
 import { ExpenseLogPanel } from "@/components/expense-log";
 import { loadContributionRoomData } from "@/lib/contribution-room-data";
 import { isRegisteredAccountType } from "@/lib/contribution-room";
@@ -176,6 +178,15 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     )
     .catch((err) => {
       console.error("[insights] loading failed", err);
+      return null;
+    });
+  // Always the month now running, whatever period is on screen. A failure costs the card.
+  const safeToSpendPromise = layoutJsonPromise
+    .then((json) =>
+      isCardPlaced(reconcileDashboardLayout(json, CARD_IDS).stored, "safe-to-spend") ? loadSafeToSpend(user, now) : null,
+    )
+    .catch((err) => {
+      console.error("[safe-to-spend] loading failed", err);
       return null;
     });
   const anchorYm = currentYmInTimeZone(user.timezone, now);
@@ -948,6 +959,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     "bills-forecast",
     "insights",
     "investments",
+    "safe-to-spend",
     ...(showDashboardIncomeCard ? (["income"] as const) : []),
   ];
   // Reconciliation is deterministic and runs on every render, so a layout blob that predates
@@ -974,6 +986,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   });
   const insights = await insightsPromise;
   const getStartedSteps = await getStartedPromise;
+  const safeToSpend = await safeToSpendPromise;
 
   // Once the user has grouped categories the pie adds each group up, unless the card's setting says not to.
   const pieSlicesShown =
@@ -1219,6 +1232,16 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         />
       ) : (
         <p className="text-sm text-slate-400">Insights could not be loaded right now.</p>
+      ),
+    },
+    "safe-to-spend": {
+      subtitle: "This month · income, bills, budgets and goals",
+      body: (
+        <SafeToSpendCardBody
+          data={safeToSpend}
+          currency={homeCurrency}
+          showBreakdown={cardSettings["safe-to-spend"]?.showBreakdown}
+        />
       ),
     },
     investments: {

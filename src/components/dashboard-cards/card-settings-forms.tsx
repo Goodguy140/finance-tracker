@@ -315,6 +315,18 @@ function CardSettingsFields({
       );
     }
 
+    case "safe-to-spend": {
+      const current = settings["safe-to-spend"] ?? {};
+      return (
+        <SettingToggleRow
+          label="Show the breakdown"
+          hint="Income, spending, bills, budgets and goals that make up the number."
+          checked={current.showBreakdown ?? true}
+          onChange={(showBreakdown) => onChange("safe-to-spend", { showBreakdown })}
+        />
+      );
+    }
+
     default:
       return null;
   }

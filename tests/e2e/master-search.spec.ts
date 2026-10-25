@@ -75,7 +75,8 @@ test("settings and actions are found by name and run from the search", async ({ 
   await dialog.getByRole("combobox").fill("add tr");
   await expect(dialog.getByRole("option").first()).toContainText("Add transfer");
   await dialog.getByRole("combobox").press("Enter");
-  await expectDashboardHome(page);
+  // The add request takes over the URL here, so the period bootstrap's `?month=` is not waited on.
+  await expect(page).toHaveURL((url) => url.pathname === "/");
   if (isPhone()) {
     await expect(page.getByRole("dialog", { name: "Add transfer" })).toBeVisible();
   } else {

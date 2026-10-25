@@ -19,6 +19,7 @@ export const CARD_IDS = [
   "insights",
   "bills-forecast",
   "investments",
+  "safe-to-spend",
 ] as const;
 
 export type DashboardCardId = (typeof CARD_IDS)[number];
@@ -116,6 +117,12 @@ const cardSettingsSchema = z
     "bills-forecast": z
       .object({
         days: z.union([z.literal(30), z.literal(60), z.literal(90)]).catch(30),
+      })
+      .partial()
+      .catch({}),
+    "safe-to-spend": z
+      .object({
+        showBreakdown: z.boolean().catch(true),
       })
       .partial()
       .catch({}),
