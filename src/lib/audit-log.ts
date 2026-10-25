@@ -30,6 +30,8 @@ export const AUDIT_ACTIONS = {
   user_printable_downloaded: "user_printable_downloaded",
   api_token_created: "api_token_created",
   api_token_revoked: "api_token_revoked",
+  webhook_created: "webhook_created",
+  webhook_deleted: "webhook_deleted",
   api_budgets_read: "api_budgets_read",
   api_transactions_read: "api_transactions_read",
   api_transaction_created: "api_transaction_created",

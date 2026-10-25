@@ -1,3 +1,4 @@
+import { emitWebhookEvent } from "@/lib/webhooks";
 import type { Prisma } from "@prisma/client";
 import { RecurringPostMode } from "@prisma/client";
 import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
@@ -145,6 +146,12 @@ export async function autoPostDueRecurringTransactions(
       }
       if (outcome !== "posted") break;
       posted += 1;
+      emitWebhookEvent(
+        userId,
+        "transaction.created",
+        { recurringId: rule.id, date: expectedDate.toISOString().slice(0, 10), source: "recurring-auto-post" },
+        { client },
+      );
       if (!ruleIds.includes(rule.id)) ruleIds.push(rule.id);
       const fresh = await client.recurringTransaction.findUnique({
         where: { id: rule.id },

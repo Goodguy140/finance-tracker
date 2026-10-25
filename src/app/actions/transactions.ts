@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { dateFromYmd } from "@/lib/date-only";
 import { parseImportedDate } from "@/lib/import-dates";
 import { DuplicateMatcher, statementOutflow, utcYmd, type CsvImportSummary } from "@/lib/csv-import";
+import { emitWebhookEvent } from "@/lib/webhooks";
 import { requireUser } from "@/lib/session";
 import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
 import { ownPartCents, parseOwedSharesFromForm, saveOwedShares } from "@/lib/owed-shares";
@@ -65,7 +66,7 @@ export const createExpenseAction = formAction(async (formData: FormData) => {
     assertUserOwnsCategory(user.id, payload.categoryId, CategoryKind.EXPENSE),
   ]);
 
-  await prisma.$transaction(async (tx) => {
+  const created = await prisma.$transaction(async (tx) => {
     const created = await tx.transaction.create({
       data: {
         userId: user.id,
@@ -84,6 +85,15 @@ export const createExpenseAction = formAction(async (formData: FormData) => {
       select: { id: true },
     });
     await addTagsToTransaction(tx, created.id, await resolveTagIds(tx, user.id, tagNames));
+    return created;
+  });
+  emitWebhookEvent(user.id, "transaction.created", {
+    id: created.id,
+    type: "EXPENSE",
+    amountCents: amounts.amountCents,
+    date: payload.date,
+    title: payload.title ?? null,
+    source: "manual",
   });
   scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
@@ -476,6 +486,13 @@ export const importExpensesCsvAction = formActionWithResult(async (formData: For
     summary.imported = pending.length;
   }, LONG_TRANSACTION_OPTIONS);
 
+  if (summary.imported > 0) {
+    emitWebhookEvent(user.id, "transactions.imported", {
+      imported: summary.imported,
+      income: summary.income,
+      duplicatesSkipped: summary.duplicates.length,
+    });
+  }
   scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
   revalidatePath("/settings", "layout");
@@ -503,7 +520,7 @@ export const createIncomeAction = formAction(async (formData: FormData) => {
     assertUserOwnsCategory(user.id, payload.categoryId, CategoryKind.INCOME),
   ]);
 
-  await prisma.$transaction(async (tx) => {
+  const created = await prisma.$transaction(async (tx) => {
     const created = await tx.transaction.create({
       data: {
         userId: user.id,
@@ -518,6 +535,15 @@ export const createIncomeAction = formAction(async (formData: FormData) => {
       select: { id: true },
     });
     await addTagsToTransaction(tx, created.id, await resolveTagIds(tx, user.id, tagNames));
+    return created;
+  });
+  emitWebhookEvent(user.id, "transaction.created", {
+    id: created.id,
+    type: "INCOME",
+    amountCents: toCents(payload.amount),
+    date: payload.date,
+    title: payload.title ?? null,
+    source: "manual",
   });
   revalidatePath("/");
 });

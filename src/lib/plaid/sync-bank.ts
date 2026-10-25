@@ -1,3 +1,4 @@
+import { emitWebhookEvent } from "@/lib/webhooks";
 import type { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/prisma";
 import { PlaidApiError, type PlaidClient } from "@/lib/plaid/client";
@@ -78,7 +79,7 @@ async function clearBackoff(db: SyncBankDeps["prisma"], itemId: string): Promise
 async function recordBackoff(db: SyncBankDeps["prisma"], itemId: string, now: Date): Promise<void> {
   const current = await db.plaidItem.findUnique({
     where: { id: itemId },
-    select: { consecutiveSyncFailures: true },
+    select: { consecutiveSyncFailures: true, userId: true, institutionName: true },
   });
   // The bank was unlinked while it synced; there is nothing left to back off.
   if (!current) return;
@@ -86,4 +87,8 @@ async function recordBackoff(db: SyncBankDeps["prisma"], itemId: string, now: Da
     where: { id: itemId },
     data: backoffAfterFailure(current.consecutiveSyncFailures + 1, now),
   });
+  // The first failure in a row only: a bank that stays down is not announced every hour.
+  if (current.consecutiveSyncFailures === 0) {
+    emitWebhookEvent(current.userId, "sync.failed", { institutionName: current.institutionName, failedAt: now.toISOString() });
+  }
 }

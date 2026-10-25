@@ -1,6 +1,7 @@
 import { runBillReminderSweep } from "@/lib/bill-reminders";
 import { runChargeAlertSweep } from "@/lib/charge-alerts";
 import { runEmailDigestSweep } from "@/lib/email-digest";
+import { runWebhookSweep } from "@/lib/webhooks";
 import { markSchedulerStarted, recordSchedulerRun } from "@/lib/scheduler-status";
 
 /**
@@ -35,8 +36,10 @@ export function startEmailDigestScheduler(): boolean {
       if (reminders.sent > 0) console.log(`[bill reminders] sent ${reminders.sent} reminder(s)`);
       const charges = await runChargeAlertSweep();
       if (charges.sent > 0) console.log(`[charge alerts] sent ${charges.sent} alert(s)`);
-      const message = [...new Set([digests.message, reminders.message, charges.message])].join("; ");
-      recordSchedulerRun("emailDigest", { ok: digests.ok && reminders.ok && charges.ok, message, nextRunAt });
+      // Webhook retries and bill.due events ride the same hourly tick.
+      const webhooks = await runWebhookSweep();
+      const message = [...new Set([digests.message, reminders.message, charges.message, webhooks.message])].join("; ");
+      recordSchedulerRun("emailDigest", { ok: digests.ok && reminders.ok && charges.ok && webhooks.ok, message, nextRunAt });
     } catch (err) {
       console.error("[digest] sweep failed", err);
       recordSchedulerRun("emailDigest", {

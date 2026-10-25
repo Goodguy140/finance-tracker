@@ -265,6 +265,11 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
   - Developer (API tokens with chosen scopes; `GET /api/v1/budgets`, `GET`/`POST /api/v1/transactions`,
     `GET /api/v1/accounts`, `GET /api/v1/categories`): `api-tokens-panel.tsx`, `src/lib/api-token.ts`,
     `src/lib/api-v1/*`, `src/app/api/v1/*`
+  - Webhooks on the Developer page (HTTPS endpoints picking events: transaction added, CSV import, budget over,
+    bill due, bank sync failed; secret shown once, stored encrypted; each POST signed with
+    `x-webhook-signature: t=<unix>,v1=<HMAC-SHA256 of "t.body">`; retries with growing gaps up to 6 attempts on
+    the hourly digest scheduler tick, which also queues bill-due events and prunes rows after 30 days):
+    `webhooks-panel.tsx`, `src/app/actions/webhooks.ts`, `src/lib/webhooks.ts`, `src/lib/webhook-events.ts`
 
 ## Admin (`/settings/admin/*`, admins only)
 

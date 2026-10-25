@@ -8,6 +8,7 @@ import { formatYmLongLabel } from "@/lib/dashboard-period";
 import { homeCurrencyOf } from "@/lib/home-currency";
 import { currentYmInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
+import { dispatchBudgetOverWebhooks } from "@/lib/webhooks";
 
 /**
  * Budget alert emails.
@@ -111,10 +112,15 @@ export async function dispatchBudgetAlertEmails(
  * scripts) it simply runs in the background.
  */
 export function scheduleBudgetAlertEmails(userId: string): void {
-  const run = () =>
-    dispatchBudgetAlertEmails(userId).catch((err) => {
+  const run = async () => {
+    await dispatchBudgetAlertEmails(userId).catch((err) => {
       console.error("[budget-alerts] email dispatch failed", err);
     });
+    // Outbound webhooks for budgets gone over: their own memory, independent of the emails.
+    await dispatchBudgetOverWebhooks(prisma, userId).catch((err) => {
+      console.error("[webhooks] budget.over failed", err);
+    });
+  };
   try {
     after(run);
   } catch {
