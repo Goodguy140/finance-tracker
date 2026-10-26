@@ -93,8 +93,30 @@ E2E specs create users with `hashTestPassword` and sign in with `signInWithPassw
 specs listed in `MOBILE_SPECS` (`playwright.config.ts`) also run on the phone project: add one
 there when what it checks is laid out differently on a phone.
 
+**After loading a bare `/`, call `expectDashboardHome` (`tests/e2e/expect-dashboard-home.ts`)
+before the next step.** The period filter pushes `?month=` once it hydrates and renders the page
+again; a click made before that lands can have its dialog discarded or its `?tag=` dropped. It
+caused two flakes (in-page confirms on phones, the tags spec).
+
 `npm run lint` must be clean; `.claude/**` is ignored because agent worktrees are full
 checkouts of this repo nested inside it.
+
+## Security
+
+**Actions that destroy data or change who can get in call `requireRecentIdentity`**
+(`src/lib/recent-identity.ts`) and the client wraps them in `confirm-identity.tsx`: deleting the
+account, clearing or restoring data, and the admin controls for users, sign-in and Plaid
+credentials. A new action of that kind needs the same, so a stolen session cookie cannot take it
+alone. `docs/access-control.md` lists what is covered.
+
+**The Content-Security-Policy is enforced** (`next.config.ts`): scripts, frames and connections
+only from this origin and Plaid. A new outside host (a script, an iframe, a `fetch` from the
+browser) must be added there, or it fails silently in production. Outbound calls made by the
+server, such as user webhooks, are not affected.
+
+**Two kinds of webhook.** `/api/plaid/webhook` receives Plaid's (see below). The user-configured
+webhooks on Settings → Developer are outbound (`src/lib/webhooks.ts`): signed with the
+endpoint's secret and delivered from the hourly scheduler tick.
 
 ## Plaid integration
 

@@ -60,7 +60,7 @@ Cards (`src/components/dashboard-cards/`), with their gear settings:
 | Card (id) | Features | Settings |
 | --- | --- | --- |
 | Add (`add-expense`) `add-entry-card.tsx` | Expense / Income / Transfer switch, title autocomplete (`expense-title-autocomplete.tsx`), rules applied while typing (`transaction-rules-context.tsx`) | posted date, note, receipt breakdown |
-| Expense Log (`expense-log`) `src/components/expense-log.tsx` | search, tag filter, **Needs review** filter for rows nobody typed in (CSV/OFX imports, recurring auto-posts, API posts; `Transaction.needsReview`; "Mark N shown as reviewed", bulk "Mark reviewed", saving the edit dialog clears it; count on the monthly review), day groups, verified badge, edit dialog (dates, note, tags, splits, credits, owed shares, receipts: photos or PDFs kept in `TransactionAttachment`, type read from the bytes, served by `/api/attachments/[id]`; `receipts-section.tsx`, `src/lib/attachments.ts`; kept through Undo; not in JSON backups), **Select** mode for bulk changes (`expense-bulk-bar.tsx`, `bulkEditExpensesAction`: set category, set account, add tag, delete with one Undo; split expenses keep their categories), delete with an Undo toast (`undo-toast.tsx`, `src/lib/transaction-undo.ts`, kept 15 minutes in `DeletedTransaction`); Owed to you (`owed-to-you.tsx`); Transfers list (`transfer-log.tsx`: mark/unmark, pair/unpair, set account); bank review queue | density, list height, show review queue |
+| Expense Log (`expense-log`) `src/components/expense-log.tsx` | search, tag filter, **Needs review** filter for rows nobody typed in (CSV/OFX imports, recurring auto-posts, API posts; `Transaction.needsReview`; "Mark N shown as reviewed", bulk "Mark reviewed", saving the edit dialog clears it; count on the monthly review), day groups, verified badge, edit dialog (dates, note, tags, splits, credits, owed shares, receipts: photos or PDFs kept in `TransactionAttachment`, type read from the bytes, served by `/api/attachments/[id]`; up to 8 MB each and 500 MB per user; `receipts-section.tsx`, `src/lib/attachments.ts`; kept through Undo; not in JSON backups), **Select** mode for bulk changes (`expense-bulk-bar.tsx`, `bulkEditExpensesAction`: set category, set account, add tag, delete with one Undo; split expenses keep their categories), delete with an Undo toast (`undo-toast.tsx`, `src/lib/transaction-undo.ts`, kept 15 minutes in `DeletedTransaction`); Owed to you (`owed-to-you.tsx`); Transfers list (`transfer-log.tsx`: mark/unmark, pair/unpair, set account); bank review queue | density, list height, show review queue |
 | Income (`income`, conditional) `income-card.tsx`, `income-log.tsx` | list, edit, delete (with Undo); absent from a period with no income | density, list height |
 | Budgets (`budgets`) `budgets-card.tsx` | progress per category with "$X left" / "$X over" on each row and the total, days left in the current month, rollover (`src/lib/budget-rollover.ts`), reallocate (`budget-reallocate-dialog.tsx`), rows under category group headings with group totals, yearly budgets as sinking funds | per row, hide zero spend, period note |
 | Spending by category (`spending-by-category`) `spending-by-category-card.tsx`, `category-spend-pie.tsx` | pie with colors shared with the log (`src/lib/category-colors.ts`), optional savings slice (`src/lib/savings-transfers.ts`) | chart height, slices shown, show savings, add up category groups |
@@ -301,6 +301,12 @@ Nav `src/components/admin/admin-nav.tsx`; actions `actions/admin*.ts`.
 - `/login` (password, passkey, passwordless, Google/SSO), `/mfa`, `/signup`,
   `/forgot-password`, `/reset-password`: `forms/auth-forms.tsx`, `sso-sign-in-forms.tsx`,
   `src/components/mfa/*`, `src/lib/auth-options.ts`, `webauthn.ts`, `mfa-session.ts`
+- **Confirm it's you** before deleting the account, clearing or restoring its data, and the
+  admin controls for roles, suspensions, deleting users, sign-in providers, password login,
+  public sign-up and Plaid credentials: a passkey if the account has one, else the password,
+  else (SSO only) a sign-in in the last five minutes; one confirmation covers five minutes.
+  `src/components/mfa/confirm-identity.tsx`, `requireRecentIdentity` in
+  `src/lib/recent-identity.ts`; see `docs/access-control.md`
 - Rate limits and stale sessions: `src/lib/rate-limit.ts`, `stale-session.ts`
 
 ## Background and outside the app
@@ -308,8 +314,10 @@ Nav `src/components/admin/admin-nav.tsx`; actions `actions/admin*.ts`.
 - Schedulers started in `src/instrumentation.ts`: Plaid sweep
   (`src/lib/plaid-sync-scheduler.ts`), recurring auto-post
   (`src/lib/recurring-auto-post-scheduler.ts`)
-- Email digest, bill reminders and charge alerts, hourly: `src/lib/email-digest-scheduler.ts`
+- Email digest, bill reminders, charge alerts and outbound webhook deliveries (retries, bill-due
+  events, pruning), hourly: `src/lib/email-digest-scheduler.ts`
 - Budget alert emails: `src/lib/budget-alert-dispatch.ts`, `budget-alert-email.ts` (sent after any
   spending change, including automatic recurring posts from `src/lib/recurring-post.ts`)
+- Security headers, including the enforced Content-Security-Policy: `next.config.ts`
 - Health check `/api/health`; schema repair on start `scripts/repair-sqlite-schema.cjs`
 - Project website (GitHub Pages): `site/`, `.github/workflows/pages.yml`
