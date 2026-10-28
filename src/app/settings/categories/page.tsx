@@ -1,8 +1,11 @@
 import { CategoryKind } from "@prisma/client";
 import { CategoriesPanel } from "@/components/categories-panel";
 import { BudgetHistory } from "@/components/settings/budget-history";
+import { BudgetSuggestions } from "@/components/settings/budget-suggestions";
 import { SettingsFold, SettingsPage } from "@/components/settings/ui";
 import { buildMonthlyBudgetProgress, selectActiveBudgetsByCategory } from "@/lib/budget-progress";
+import { loadBudgetSuggestions } from "@/lib/budget-suggestions-data";
+import { homeCurrencyOf } from "@/lib/home-currency";
 import { formatCurrency } from "@/lib/money";
 import { loadCategorySuggestionContext } from "@/lib/plaid/category-suggestions";
 import { buildPlaidMappingView } from "@/lib/plaid/category-mapping-view";
@@ -13,10 +16,13 @@ import { selectActiveYearlyBudgets } from "@/lib/yearly-budgets";
 
 export const dynamic = "force-dynamic";
 
-export default async function CategoriesSettingsPage() {
+type SearchParams = Promise<{ suggest?: string }>;
+
+export default async function CategoriesSettingsPage({ searchParams }: { searchParams: SearchParams }) {
   const { user } = await requireLoadedUser();
   const ym = currentYmInTimeZone(user.timezone);
-  const [categories, budgets, suggestionContext, transactionCounts, splitCounts, recurringCounts, plaidItemCount, progress, yearly] =
+  const autoSuggest = (await searchParams).suggest === "1";
+  const [categories, budgets, suggestionContext, transactionCounts, splitCounts, recurringCounts, plaidItemCount, progress, yearly, budgetSuggestions] =
     await Promise.all([
       prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true, rolloverSinceMonth: true, groupName: true } }),
       prisma.budget.findMany({
@@ -31,6 +37,7 @@ export default async function CategoriesSettingsPage() {
       prisma.plaidItem.count({ where: { userId: user.id } }),
       buildMonthlyBudgetProgress(user.id, ym),
       prisma.yearlyBudget.findMany({ where: { userId: user.id } }),
+      loadBudgetSuggestions(user.id, homeCurrencyOf(user.countryCode), ym),
     ]);
 
   const countsBy = (rows: { categoryId: string; _count: { _all: number } }[]) =>
@@ -51,15 +58,22 @@ export default async function CategoriesSettingsPage() {
 
   return (
     <SettingsPage section="categories">
-      {totalBudgetCents > 0 ? (
-        <p className="text-sm text-slate-400">
-          This month: <span className="tabular-nums text-slate-200">{formatCurrency(progress.totalSpentCents)}</span> spent of{" "}
-          <span className="tabular-nums text-slate-200">{formatCurrency(totalBudgetCents)}</span> budgeted. Open a category
-          to set or change its budget.
-        </p>
-      ) : (
-        <p className="text-sm text-slate-400">Open an expense category to give it a monthly budget.</p>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {totalBudgetCents > 0 ? (
+          <p className="text-sm text-slate-400">
+            This month: <span className="tabular-nums text-slate-200">{formatCurrency(progress.totalSpentCents)}</span> spent of{" "}
+            <span className="tabular-nums text-slate-200">{formatCurrency(totalBudgetCents)}</span> budgeted. Open a category
+            to set or change its budget.
+          </p>
+        ) : (
+          <p className="text-sm text-slate-400">Open an expense category to give it a monthly budget.</p>
+        )}
+        <BudgetSuggestions
+          sets={budgetSuggestions}
+          currentBudgets={Object.fromEntries([...activeBudgets].map(([categoryId, b]) => [categoryId, b.limitCents]))}
+          autoOpen={autoSuggest}
+        />
+      </div>
       <CategoriesPanel
         categories={categories.flatMap((c) =>
           c.kind === CategoryKind.TRANSFER
