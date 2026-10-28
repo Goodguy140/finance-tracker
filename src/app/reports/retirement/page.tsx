@@ -4,6 +4,8 @@ import { inputClass } from "@/components/forms/shared";
 import { formatCurrency, parseCentsInput } from "@/lib/money";
 import { projectRetirement, type RetirementYear } from "@/lib/retirement";
 import { loadRetirementDefaults } from "@/lib/retirement-data";
+import { formatDateOnlyUtc } from "@/lib/date-only";
+import { loadInvestmentReturns } from "@/lib/investment-returns-data";
 import { homeCurrencyOf } from "@/lib/home-currency";
 import { requireUser } from "@/lib/session";
 
@@ -30,7 +32,21 @@ export default async function RetirementPage({ searchParams }: { searchParams: S
   const sp = await searchParams;
   const currency = homeCurrencyOf(user.countryCode);
   const fmt = (cents: number) => formatCurrency(Math.round(cents / 100) * 100, currency).replace(/\.00$/, "");
-  const d = await loadRetirementDefaults(user);
+  const [d, returns] = await Promise.all([loadRetirementDefaults(user), loadInvestmentReturns(user)]);
+  // The user's own money-weighted return, offered once there is a year of history to go on.
+  const ownWindow = returns.total?.sinceStart;
+  const ownReturnPct =
+    ownWindow && ownWindow.days >= 365 && ownWindow.annualRate !== null
+      ? Math.round(Math.min(20, Math.max(-5, ownWindow.annualRate * 100)) * 10) / 10
+      : null;
+  const withReturn = (pct: number) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(sp)) {
+      for (const v of Array.isArray(value) ? value : value === undefined ? [] : [value]) params.append(key, v);
+    }
+    params.set("return", String(pct));
+    return `/reports/retirement?${params.toString()}`;
+  };
 
   const ageRaw = one(sp.age).trim();
   const age = ageRaw === "" ? null : Math.round(num(ageRaw, 35, 16, 90));
@@ -94,6 +110,18 @@ export default async function RetirementPage({ searchParams }: { searchParams: S
             Filled in from the last 12 months ({fmt(d.incomeCents)} income, {fmt(d.spendingCents)} spending) and{" "}
             {fmt(startingTotal)} in TFSA, RRSP, FHSA and non-registered accounts. Change anything to try it out.
           </p>
+          {ownReturnPct !== null && ownWindow ? (
+            <p className="mt-1 text-xs text-slate-400" data-testid="retire-own-return">
+              Your investments have returned {ownReturnPct}% a year since {formatDateOnlyUtc(ownWindow.startDate)}.{" "}
+              {ownReturnPct === returnPct ? (
+                "That is the return used below."
+              ) : (
+                <Link href={withReturn(ownReturnPct)} className="text-sky-300 hover:text-sky-200">
+                  Use {ownReturnPct}%
+                </Link>
+              )}
+            </p>
+          ) : null}
           <form method="get" className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
               { name: "age", label: "Your age", value: ageRaw, placeholder: "35" },

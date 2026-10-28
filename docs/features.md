@@ -206,6 +206,14 @@ Page: `src/app/reports/page.tsx`; data `src/lib/reports/*`; charts
   `.minimumPaymentCents`, set on the page), and a plan for a monthly amount comparing highest
   rate first, smallest balance first and minimums only (debt-free month, interest, payoff order):
   `src/app/reports/debt/page.tsx`, `src/lib/debt-payoff.ts`, `actions/debt.ts`
+- **Investment returns** (Reports, under Net worth, once an investment account has two value
+  readings): per TFSA/RRSP/FHSA/non-registered account (or any account with portfolio snapshots)
+  and all together: value, put in, growth, and the money-weighted return (XIRR) this year, over 12
+  months and since the first value (a year's rate from a year of history, the period's own rate
+  below that). Cash flows are Investments-card contributions and withdrawals plus transfers in
+  and out not already counted toward room. Also on the account page, and offered as the
+  Retirement page's return ("Use X%"). `src/lib/investment-returns.ts`,
+  `investment-returns-data.ts`, `src/components/reports/investment-returns-section.tsx`
 - **Retirement** `/reports/retirement` (linked from Net worth): a deterministic Canadian FIRE projection in today's
   dollars (return net of inflation, no Monte Carlo). Starts from the last 12 months' income and spending, TFSA/RRSP/FHSA/
   non-registered balances and this year's entered contribution room; all inputs editable in a GET form. Savings go TFSA,

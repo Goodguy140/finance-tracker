@@ -7,6 +7,8 @@ import { CashFlowSankey, IncomeSpendingChart, NetWorthChart } from "@/components
 import { ProjectionTransfersToggle } from "@/components/reports/projection-transfers-toggle";
 import { loadNetWorth, loadProjectionInputs } from "@/lib/net-worth-data";
 import { WhatIfPanel } from "@/components/reports/what-if-panel";
+import { InvestmentReturnsSection } from "@/components/reports/investment-returns-section";
+import { loadInvestmentReturns } from "@/lib/investment-returns-data";
 import { PROJECTION_DAYS, projectBalances, type ProjectedBalances } from "@/lib/projected-balances";
 import { getCountryConfig } from "@/lib/country-config";
 import { loadFinancialScore } from "@/lib/financial-score-data";
@@ -70,7 +72,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   const currency = getCountryConfig(user.countryCode).defaultCurrency;
   const fmt = (cents: number) => formatCurrency(cents, currency);
 
-  const [loaded, savings, activityYears, tags, financial, netWorth, projectionInputs, insights, categoryGroups] = await Promise.all([
+  const [loaded, savings, activityYears, tags, financial, netWorth, projectionInputs, insights, categoryGroups, returns] = await Promise.all([
     loadReportTxs(user.id, previousYearWindow(period).start, currency),
     loadSavingsTransfers(user.id, period.start, currency),
     loadActivityBounds(user.id),
@@ -81,6 +83,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
     // For the score card's count of possible gaps in the data, as Insights lists them.
     loadInsights(user.id, user.countryCode, user.timezone),
     prisma.category.findMany({ where: { userId: user.id, groupName: { not: null } }, select: { id: true, groupName: true } }),
+    loadInvestmentReturns(user),
   ]);
   const projection = projectBalances({
     accounts: netWorth.accounts,
@@ -196,6 +199,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
       />
 
       <NetWorthSection netWorth={netWorth} fmt={fmt} />
+
+      <InvestmentReturnsSection returns={returns} />
 
       {projection.accounts.length > 0 ? (
         <ProjectedBalancesSection
