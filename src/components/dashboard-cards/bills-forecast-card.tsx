@@ -1,3 +1,4 @@
+import { PlannedPastDuePrompt, type PlannedItem } from "@/components/planned-transactions";
 import { formatCurrency } from "@/lib/money";
 
 export type BillsForecastItem = {
@@ -9,6 +10,8 @@ export type BillsForecastItem = {
   overdue: boolean;
   /** Set when the rule is carried past a missed occurrence from an earlier month. */
   missedSinceDisplay: string | null;
+  /** A one-off plan rather than a recurring rule's occurrence. */
+  planned: boolean;
 };
 
 export type BillsForecastDay = {
@@ -26,8 +29,10 @@ export type BillsForecastCardBodyProps = {
   incomeCents: number;
   expenseCents: number;
   netCents: number;
-  /** Enabled recurring rules; zero means there is nothing to forecast from. */
+  /** Enabled recurring rules and open plans; zero means there is nothing to forecast from. */
   ruleCount: number;
+  /** Plans whose date has passed with nothing matching them in the log. */
+  pastDuePlans: PlannedItem[];
 };
 
 function signed(cents: number): string {
@@ -41,17 +46,20 @@ export function BillsForecastCardBody({
   expenseCents,
   netCents,
   ruleCount,
+  pastDuePlans,
 }: BillsForecastCardBodyProps) {
   if (ruleCount === 0) {
     return (
       <p className="text-sm text-slate-400">
-        Add a recurring bill or paycheque in the Recurring card and it will show up here.
+        Add a recurring bill or paycheque in the Recurring card, or plan a one-off on the Add card&apos;s Plan tab, and it
+        will show up here.
       </p>
     );
   }
 
   return (
     <>
+      <PlannedPastDuePrompt plans={pastDuePlans} />
       <div className="mb-3 grid grid-cols-1 gap-2 @md:grid-cols-3">
         <div className="min-w-0 rounded-xl border border-slate-800 bg-slate-950/50 p-2.5">
           <p className="text-[10px] uppercase tracking-wide text-slate-400">Income due</p>
@@ -69,7 +77,7 @@ export function BillsForecastCardBody({
         </div>
       </div>
       {days.length === 0 ? (
-        <p className="text-sm text-slate-400">Nothing recurring is due in the next {windowDays} days.</p>
+        <p className="text-sm text-slate-400">Nothing recurring or planned is due in the next {windowDays} days.</p>
       ) : (
         <ol className="max-h-[min(44vh,22rem)] space-y-3 overflow-y-auto pr-1" data-bills-forecast>
           {days.map((day) => (
@@ -93,6 +101,11 @@ export function BillsForecastCardBody({
                       <span className="block truncate font-medium text-slate-100">{item.name}</span>
                       <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
                         <span className="truncate">{item.categoryLabel}</span>
+                        {item.planned ? (
+                          <span className="rounded-full border border-sky-500/45 bg-sky-500/15 px-1.5 py-px text-[11px] font-medium text-sky-100">
+                            Planned
+                          </span>
+                        ) : null}
                         {item.overdue ? (
                           <span className="rounded-full border border-red-500/45 bg-red-500/15 px-1.5 py-px text-[11px] font-medium text-red-100">
                             Overdue

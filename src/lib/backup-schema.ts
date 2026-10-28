@@ -258,6 +258,23 @@ export const userBackupSchema = z.object({
     )
     .optional()
     .default([]),
+  // Optional with a default: backups written before plans existed have none.
+  plannedTransactions: z
+    .array(
+      z.object({
+        type: z.enum(["EXPENSE", "INCOME"]),
+        name: z.string().trim().min(1).max(120),
+        amountCents: z.number().int().positive().max(MAX_AMOUNT_CENTS),
+        date: isoDate,
+        accountId: z.string().min(1),
+        categoryId: z.string().min(1),
+        note: z.string().max(250).nullable(),
+        transactionId: z.string().min(1).nullable(),
+        createdAt: isoDate,
+      }),
+    )
+    .optional()
+    .default([]),
   // Optional with a default so every backup written before Plaid sync existed still
   // validates, the same way earlier additions were handled.
   transactionVerifications: z
