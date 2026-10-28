@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient, RecurringCadence, TransactionRuleTextOperator } from "@prisma/client";
 import { TransactionType } from "@prisma/client";
-import { homeCurrencyOf } from "@/lib/home-currency";
+import { homeCurrencyOf, inCurrencyWhere } from "@/lib/home-currency";
 import {
   MIN_SEARCH_QUERY_LENGTH,
   parseAmountQuery,
@@ -18,7 +18,16 @@ import { quoteRuleTitlePatterns } from "@/lib/transaction-rules";
  * of searching from anywhere. Matching is SQLite `LIKE`, which ignores case for ASCII.
  */
 
-export type SearchHitKind = "transaction" | "transfer" | "account" | "category" | "tag" | "rule" | "recurring" | "goal";
+export type SearchHitKind =
+  | "transaction"
+  | "transfer"
+  | "account"
+  | "category"
+  | "tag"
+  | "rule"
+  | "recurring"
+  | "goal"
+  | "saved";
 
 export type SearchHit = {
   kind: SearchHitKind;
@@ -51,6 +60,7 @@ const GROUP_LABELS: Record<SearchHitKind, string> = {
   rule: "Rules",
   recurring: "Recurring",
   goal: "Savings goals",
+  saved: "Saved searches",
 };
 
 const CADENCE_LABELS: Record<RecurringCadence, string> = {
@@ -95,6 +105,34 @@ export function transactionSearchWhere(userId: string, filter: TransactionSearch
   if (filter.tagId) and.push({ tags: { some: { tagId: filter.tagId } } });
   if (filter.type) and.push({ type: filter.type });
   return { AND: and };
+}
+
+export type TransactionSearchTotals = { count: number; spentCents: number; receivedCents: number };
+
+/**
+ * How many transactions a search finds and what they add up to: spending and income in the home
+ * currency, as every total is (there is no conversion), transfers counted but not summed.
+ */
+export async function transactionSearchTotals(
+  db: PrismaClient,
+  userId: string,
+  filter: TransactionSearchFilter,
+  homeCurrency: string,
+): Promise<TransactionSearchTotals> {
+  const where = transactionSearchWhere(userId, filter);
+  const [count, sums] = await Promise.all([
+    db.transaction.count({ where }),
+    db.transaction.groupBy({
+      by: ["type"],
+      where: { AND: [where, inCurrencyWhere(homeCurrency), { type: { not: TransactionType.TRANSFER } }] },
+      _sum: { amountCents: true },
+    }),
+  ]);
+  return {
+    count,
+    spentCents: sums.find((t) => t.type === TransactionType.EXPENSE)?._sum.amountCents ?? 0,
+    receivedCents: sums.find((t) => t.type === TransactionType.INCOME)?._sum.amountCents ?? 0,
+  };
 }
 
 export const TRANSACTION_SEARCH_INCLUDE = {

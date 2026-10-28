@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { parseSearchTransactionType } from "@/lib/search/search-paths";
 import { isRegisteredAccountType } from "@/lib/contribution-room";
 
 export const BACKUP_VERSION = 1;
@@ -258,6 +259,16 @@ export type UserBackupPayload = {
   tags?: Array<{ id: string; name: string; createdAt: IsoString }>;
   /** Learned Title → Category combos the user hid (normalised title keys). Optional. */
   hiddenTitleSuggestions?: Array<{ titleKey: string }>;
+  /** Named `/search` filters; ids as exported. Optional: older backups predate them. */
+  savedSearches?: Array<{
+    name: string;
+    query: string | null;
+    type: "EXPENSE" | "INCOME" | "TRANSFER" | null;
+    accountId: string | null;
+    categoryId: string | null;
+    tagId: string | null;
+    createdAt: IsoString;
+  }>;
   /**
    * Insights the user dismissed or snoozed. Optional. Some keys embed a category or rule id,
    * which restore re-issues; those dismissals simply stop matching and the insight may
@@ -335,6 +346,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
         include: { splits: { orderBy: { position: "asc" } } },
       },
       hiddenTitleSuggestions: true,
+      savedSearches: { orderBy: [{ name: "asc" }, { id: "asc" }] },
       tags: { orderBy: { nameKey: "asc" } },
       insightDismissals: true,
       insightPreference: true,
@@ -555,6 +567,15 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
     })),
     tags: user.tags.map((row) => ({ id: row.id, name: row.name, createdAt: row.createdAt.toISOString() })),
     hiddenTitleSuggestions: user.hiddenTitleSuggestions.map((row) => ({ titleKey: row.titleKey })),
+    savedSearches: user.savedSearches.map((row) => ({
+      name: row.name,
+      query: row.query,
+      type: parseSearchTransactionType(row.type ?? undefined) ?? null,
+      accountId: row.accountId,
+      categoryId: row.categoryId,
+      tagId: row.tagId,
+      createdAt: row.createdAt.toISOString(),
+    })),
     insightDismissals: user.insightDismissals.map((row) => ({
       insightKey: row.insightKey,
       snoozedUntil: row.snoozedUntil?.toISOString() ?? null,

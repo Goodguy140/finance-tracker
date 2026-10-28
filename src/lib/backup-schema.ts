@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_SAVED_SEARCH_NAME_LENGTH, MAX_SAVED_SEARCHES } from "@/lib/search/search-paths";
 import { MAX_AMOUNT_CENTS } from "@/lib/money";
 import { YM_PATTERN } from "@/lib/period-month";
 import { MAX_GOAL_NAME_LENGTH } from "@/lib/savings-goals";
@@ -339,6 +340,21 @@ export const userBackupSchema = z.object({
     .default([]),
   hiddenTitleSuggestions: z
     .array(z.object({ titleKey: z.string().min(1).max(200) }))
+    .optional()
+    .default([]),
+  savedSearches: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(MAX_SAVED_SEARCH_NAME_LENGTH),
+        query: z.string().max(100).nullable(),
+        type: z.enum(["EXPENSE", "INCOME", "TRANSFER"]).nullable(),
+        accountId: z.string().min(1).nullable(),
+        categoryId: z.string().min(1).nullable(),
+        tagId: z.string().min(1).nullable(),
+        createdAt: isoDate,
+      }),
+    )
+    .max(MAX_SAVED_SEARCHES)
     .optional()
     .default([]),
   insightDismissals: z

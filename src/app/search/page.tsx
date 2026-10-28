@@ -1,15 +1,28 @@
 import Link from "next/link";
-import { TransactionType } from "@prisma/client";
+import { deleteSavedSearchAction, saveSearchAction } from "@/app/actions/saved-searches";
 import { AppNav, APP_TAB_BAR_PAD_CLASS } from "@/components/app-nav";
+import { ServerActionForm } from "@/components/server-action-form";
 import { inputClass, primaryBtnClass, secondaryBtnClass } from "@/components/forms/shared";
 import { formatYmLongLabel } from "@/lib/dashboard-period";
 import { ymdFromDateUtc } from "@/lib/date-only";
-import { homeCurrencyOf, inCurrencyWhere } from "@/lib/home-currency";
+import { homeCurrencyOf } from "@/lib/home-currency";
 import { formatCurrency } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { formatHitAmount } from "@/lib/search/format";
-import { shortDateUtc, transactionHit, transactionSearchWhere, TRANSACTION_SEARCH_INCLUDE } from "@/lib/search/search-data";
-import { parseSearchTransactionType, searchPageHref, type TransactionSearchFilter } from "@/lib/search/search-paths";
+import { loadSavedSearches } from "@/lib/search/saved-searches";
+import {
+  shortDateUtc,
+  transactionHit,
+  transactionSearchTotals,
+  transactionSearchWhere,
+  TRANSACTION_SEARCH_INCLUDE,
+} from "@/lib/search/search-data";
+import {
+  MAX_SAVED_SEARCH_NAME_LENGTH,
+  parseSearchTransactionType,
+  searchPageHref,
+  type TransactionSearchFilter,
+} from "@/lib/search/search-paths";
 import { requireUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -53,25 +66,21 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
 
   const homeCurrency = homeCurrencyOf(user.countryCode);
   const where = transactionSearchWhere(user.id, filter);
-  const [rows, total, totals] = hasFilter
-    ? await Promise.all([
-        prisma.transaction.findMany({
+  const [rows, totals, saved] = await Promise.all([
+    hasFilter
+      ? prisma.transaction.findMany({
           where,
           include: TRANSACTION_SEARCH_INCLUDE,
           orderBy: [{ date: "desc" }, { id: "asc" }],
           take: limit,
-        }),
-        prisma.transaction.count({ where }),
-        // Totals in the home currency only, as everywhere else: there is no conversion.
-        prisma.transaction.groupBy({
-          by: ["type"],
-          where: { AND: [where, inCurrencyWhere(homeCurrency), { type: { not: TransactionType.TRANSFER } }] },
-          _sum: { amountCents: true },
-        }),
-      ])
-    : [[], 0, []];
-  const spent = totals.find((t) => t.type === TransactionType.EXPENSE)?._sum.amountCents ?? 0;
-  const received = totals.find((t) => t.type === TransactionType.INCOME)?._sum.amountCents ?? 0;
+        })
+      : [],
+    hasFilter ? transactionSearchTotals(prisma, user.id, filter, homeCurrency) : null,
+    loadSavedSearches(prisma, user),
+  ]);
+  const total = totals?.count ?? 0;
+  const spent = totals?.spentCents ?? 0;
+  const received = totals?.receivedCents ?? 0;
 
   const months: { ym: string; hits: ReturnType<typeof transactionHit>[] }[] = [];
   for (const row of rows) {
@@ -174,6 +183,34 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
           </div>
         </form>
 
+        {saved.length > 0 ? (
+          <section aria-labelledby="saved-searches" className={card}>
+            <h2 id="saved-searches" className="mb-2 text-sm font-semibold text-slate-300">
+              Saved searches
+            </h2>
+            <ul className="divide-y divide-slate-800 text-sm" data-testid="saved-searches">
+              {saved.map((entry) => (
+                <li key={entry.id} className="flex items-center justify-between gap-3 py-1.5">
+                  <Link href={entry.href} className="min-w-0 flex-1 rounded-lg px-1 py-1 transition hover:bg-slate-800/60">
+                    <span className="block truncate text-slate-200">{entry.name}</span>
+                    <span className="block truncate text-xs tabular-nums text-slate-500">{entry.summary}</span>
+                  </Link>
+                  <ServerActionForm action={deleteSavedSearchAction}>
+                    <input type="hidden" name="savedSearchId" value={entry.id} />
+                    <button
+                      type="submit"
+                      className="touch-manipulation rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:bg-slate-800"
+                      aria-label={`Remove saved search ${entry.name}`}
+                    >
+                      Remove
+                    </button>
+                  </ServerActionForm>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
         {hasFilter ? (
           <section aria-labelledby="search-results" className={card}>
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -189,6 +226,24 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
                 </p>
               ) : null}
             </div>
+            <ServerActionForm action={saveSearchAction} className="mb-4 flex flex-wrap items-center gap-2">
+              <input type="hidden" name="q" value={filter.query ?? ""} />
+              <input type="hidden" name="type" value={filter.type ?? ""} />
+              <input type="hidden" name="account" value={filter.accountId ?? ""} />
+              <input type="hidden" name="category" value={filter.categoryId ?? ""} />
+              <input type="hidden" name="tag" value={filter.tagId ?? ""} />
+              <input
+                name="name"
+                aria-label="Name for this search"
+                defaultValue={describe.replace(/[“”]/g, "").slice(0, MAX_SAVED_SEARCH_NAME_LENGTH)}
+                maxLength={MAX_SAVED_SEARCH_NAME_LENGTH}
+                required
+                className={`${inputClass} min-w-0 flex-1 sm:max-w-xs`}
+              />
+              <button type="submit" className={secondaryBtnClass}>
+                Save this search
+              </button>
+            </ServerActionForm>
             {total === 0 ? (
               <p className="text-sm text-slate-400">Nothing matches. Try fewer words, or clear a filter.</p>
             ) : (

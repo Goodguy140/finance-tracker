@@ -19,6 +19,10 @@ export function parseSearchTransactionType(raw: string | undefined): SearchTrans
   return raw === "EXPENSE" || raw === "INCOME" || raw === "TRANSFER" ? raw : undefined;
 }
 
+/** Saved searches: how many a user keeps, and how long a name. */
+export const MAX_SAVED_SEARCHES = 50;
+export const MAX_SAVED_SEARCH_NAME_LENGTH = 60;
+
 /** The shortest query worth sending to the database; one letter matches nearly everything. */
 export const MIN_SEARCH_QUERY_LENGTH = 2;
 

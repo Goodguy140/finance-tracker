@@ -23,7 +23,7 @@ function revalidateTags() {
 
 /**
  * Renames a tag. Renaming it to the name of another tag merges the two: its transactions and
- * rules move to that tag, so "Trip" and "trips" can be tidied into one.
+ * rules (and saved searches) move to that tag, so "Trip" and "trips" can be tidied into one.
  */
 export const renameTagAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
@@ -41,6 +41,7 @@ export const renameTagAction = formAction(async (formData: FormData) => {
     const links = await tx.transactionTag.findMany({ where: { tagId: tag.id }, select: { transactionId: true } });
     for (const { transactionId } of links) await addTagsToTransaction(tx, transactionId, [other.id]);
     await tx.transactionRule.updateMany({ where: { userId: user.id, addTagId: tag.id }, data: { addTagId: other.id } });
+    await tx.savedSearch.updateMany({ where: { userId: user.id, tagId: tag.id }, data: { tagId: other.id } });
     await tx.tag.delete({ where: { id: tag.id } });
   });
   revalidateTags();
