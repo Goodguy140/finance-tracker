@@ -237,18 +237,19 @@ export const BLANK_DEBT_ROWS = ["Credit card", "Line of credit", "Car loan", "St
 
 // --- Subscription audit -------------------------------------------------------------------
 
-export type Cadence = "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL";
+export type Cadence = "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL" | "SEMI_MONTHLY";
 
 export const CADENCE_LABELS: Record<Cadence, string> = {
   WEEKLY: "Weekly",
   BIWEEKLY: "Every 2 weeks",
+  SEMI_MONTHLY: "Twice a month",
   MONTHLY: "Monthly",
   QUARTERLY: "Quarterly",
   YEARLY: "Yearly",
   BIENNIAL: "Every 2 years",
 };
 
-const PER_YEAR: Record<Cadence, number> = { WEEKLY: 52, BIWEEKLY: 26, MONTHLY: 12, QUARTERLY: 4, YEARLY: 1, BIENNIAL: 0.5 };
+const PER_YEAR: Record<Cadence, number> = { WEEKLY: 52, BIWEEKLY: 26, SEMI_MONTHLY: 24, MONTHLY: 12, QUARTERLY: 4, YEARLY: 1, BIENNIAL: 0.5 };
 
 /** What a recurring amount comes to over a year. */
 export function yearlyCents(amountCents: number, cadence: Cadence): number {

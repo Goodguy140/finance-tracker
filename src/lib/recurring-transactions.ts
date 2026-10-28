@@ -27,13 +27,112 @@ export function recurringAnchorDay(rule: { anchorDay?: number | null; nextExpect
   return rule.anchorDay ?? rule.nextExpectedDate.getUTCDate();
 }
 
+/** The two days a twice-a-month rule falls on; 31 is the last day of any month. */
+export type SemiMonthlyDays = { day: number; secondDay: number; beforeWeekend: boolean };
+
+/** Paid on the 15th and the last day: the usual Canadian semi-monthly payroll. */
+export const DEFAULT_SEMI_MONTHLY_DAYS: SemiMonthlyDays = { day: 15, secondDay: 31, beforeWeekend: false };
+
+/** The days must be a week apart, so even clamped to February and moved off a weekend they stay apart and in order. */
+export const SEMI_MONTHLY_MIN_GAP_DAYS = 7;
+
+export function isValidSemiMonthlyDays(day: number, secondDay: number): boolean {
+  return (
+    Number.isInteger(day) &&
+    Number.isInteger(secondDay) &&
+    day >= 1 &&
+    secondDay <= 31 &&
+    secondDay - day >= SEMI_MONTHLY_MIN_GAP_DAYS
+  );
+}
+
+/**
+ * Where a rule's occurrences land, as the date functions below take it: a day of the month,
+ * or a twice-a-month rule's two days.
+ */
+export type RecurringAnchor = number | SemiMonthlyDays;
+
+export type RecurringAnchorFields = {
+  cadence: RecurringCadence;
+  anchorDay?: number | null;
+  secondAnchorDay?: number | null;
+  beforeWeekend?: boolean | null;
+  nextExpectedDate: Date;
+};
+
+/** A rule's anchor: its two days if it is twice a month, otherwise its day (`recurringAnchorDay`). */
+export function recurringAnchor(rule: RecurringAnchorFields): RecurringAnchor {
+  if (rule.cadence !== "SEMI_MONTHLY") return recurringAnchorDay(rule);
+  return {
+    day: rule.anchorDay ?? DEFAULT_SEMI_MONTHLY_DAYS.day,
+    secondDay: rule.secondAnchorDay ?? DEFAULT_SEMI_MONTHLY_DAYS.secondDay,
+    beforeWeekend: rule.beforeWeekend ?? false,
+  };
+}
+
+/** A twice-a-month rule's days, for a form or a label; null for any other cadence. */
+export function semiMonthlyDaysOfRule(rule: RecurringAnchorFields): SemiMonthlyDays | null {
+  const anchor = recurringAnchor(rule);
+  return typeof anchor === "number" ? null : anchor;
+}
+
+function ordinalDay(day: number): string {
+  if (day >= 31) return "last day";
+  const suffix = day % 10 === 1 && day !== 11 ? "st" : day % 10 === 2 && day !== 12 ? "nd" : day % 10 === 3 && day !== 13 ? "rd" : "th";
+  return `${day}${suffix}`;
+}
+
+/** "15th and last day", with "(Friday before weekends)" when dates move off a weekend. */
+export function semiMonthlyDaysLabel(days: SemiMonthlyDays): string {
+  const label = `${ordinalDay(days.day)} and ${ordinalDay(days.secondDay)}`;
+  return days.beforeWeekend ? `${label} (Friday before weekends)` : label;
+}
+
+function semiMonthlyDaysOf(anchor: RecurringAnchor): SemiMonthlyDays {
+  return typeof anchor === "number" ? DEFAULT_SEMI_MONTHLY_DAYS : anchor;
+}
+
+function dayOfMonthAnchor(anchor: RecurringAnchor): number {
+  return typeof anchor === "number" ? anchor : anchor.day;
+}
+
+/** Saturday and Sunday move back to the Friday before. */
+function fridayBeforeWeekend(date: Date): Date {
+  const weekday = date.getUTCDay();
+  if (weekday !== 0 && weekday !== 6) return date;
+  const moved = new Date(date.getTime());
+  moved.setUTCDate(moved.getUTCDate() - (weekday === 6 ? 1 : 2));
+  return moved;
+}
+
+/**
+ * A twice-a-month rule's next occurrence strictly after `date`. Its dates are worked out from the
+ * month rather than from `date`, which may sit on the Friday before a weekend (or in the month
+ * before, when the 1st was a Saturday): the earliest of this and the next two months' dates
+ * that is later than `date`.
+ */
+function nextSemiMonthlyDate(date: Date, days: SemiMonthlyDays): Date {
+  const ymd = ymdFromDateUtc(date);
+  const monthStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+  for (let months = 0; months < 3; months++) {
+    for (const day of [days.day, days.secondDay]) {
+      const nominal = addUtcMonths(monthStart, months, day);
+      const candidate = days.beforeWeekend ? fridayBeforeWeekend(nominal) : nominal;
+      if (ymdFromDateUtc(candidate) > ymd) return candidate;
+    }
+  }
+  // Unreachable: two months on is always later than `date`.
+  return addUtcMonths(monthStart, 2, days.day);
+}
+
 /** The occurrence after `date`. Month-based cadences land on `anchorDay`, clamped to the month. */
 export function advanceRecurringDate(
   date: Date,
   cadence: RecurringCadence,
-  anchorDay: number = date.getUTCDate(),
+  anchor: RecurringAnchor = date.getUTCDate(),
 ): Date {
   const next = new Date(date.getTime());
+  const anchorDay = dayOfMonthAnchor(anchor);
   switch (cadence) {
     case "WEEKLY":
       next.setUTCDate(next.getUTCDate() + 7);
@@ -41,6 +140,8 @@ export function advanceRecurringDate(
     case "BIWEEKLY":
       next.setUTCDate(next.getUTCDate() + 14);
       return next;
+    case "SEMI_MONTHLY":
+      return nextSemiMonthlyDate(date, semiMonthlyDaysOf(anchor));
     case "MONTHLY":
       return addUtcMonths(date, 1, anchorDay);
     case "QUARTERLY":
@@ -52,17 +153,27 @@ export function advanceRecurringDate(
   }
 }
 
+/**
+ * A twice-a-month rule's first occurrence on or after `date`, which is where a rule saved with
+ * any start date begins: the 3rd with days 15 and last begins on the 15th.
+ */
+export function firstSemiMonthlyDateOnOrAfter(date: Date, days: SemiMonthlyDays): Date {
+  const dayBefore = new Date(date.getTime());
+  dayBefore.setUTCDate(dayBefore.getUTCDate() - 1);
+  return nextSemiMonthlyDate(dayBefore, days);
+}
+
 export function advanceRecurringDateOnOrAfter(
   nextExpectedDate: Date,
   cadence: RecurringCadence,
   onOrAfter: Date,
-  anchorDay: number = nextExpectedDate.getUTCDate(),
+  anchor: RecurringAnchor = nextExpectedDate.getUTCDate(),
 ): Date {
   let date = new Date(nextExpectedDate.getTime());
   const targetYmd = ymdFromDateUtc(onOrAfter);
   let guard = 0;
   while (ymdFromDateUtc(date) < targetYmd && guard < 1040) {
-    date = advanceRecurringDate(date, cadence, anchorDay);
+    date = advanceRecurringDate(date, cadence, anchor);
     guard++;
   }
   return date;
@@ -84,6 +195,8 @@ export type RecurringForecastRule = {
   cadence: RecurringCadence;
   nextExpectedDate: Date;
   anchorDay?: number | null;
+  secondAnchorDay?: number | null;
+  beforeWeekend?: boolean | null;
   endDate: Date | null;
   enabled: boolean;
 };
@@ -97,7 +210,7 @@ export type RecurringForecastRule = {
  * the missed one. Months before the current one show only the outstanding occurrence.
  */
 export function recurringOccurrenceInMonth(
-  rule: Pick<RecurringForecastRule, "cadence" | "nextExpectedDate" | "anchorDay" | "endDate">,
+  rule: Pick<RecurringForecastRule, "cadence" | "nextExpectedDate" | "anchorDay" | "secondAnchorDay" | "beforeWeekend" | "endDate">,
   ym: string,
   currentYm: string,
 ): Date | null {
@@ -108,7 +221,7 @@ export function recurringOccurrenceInMonth(
     rule.nextExpectedDate,
     rule.cadence,
     dateFromYmd(`${ym}-01`),
-    recurringAnchorDay(rule),
+    recurringAnchor(rule),
   );
   const occurrenceYmd = ymdFromDateUtc(occurrence);
   if (rule.endDate && occurrenceYmd > ymdFromDateUtc(rule.endDate)) return null;
@@ -124,11 +237,11 @@ export function isRecurringOccurrenceOnOrAfterNext(
   nextExpectedDate: Date,
   cadence: RecurringCadence,
   expectedDate: Date,
-  anchorDay: number = nextExpectedDate.getUTCDate(),
+  anchor: RecurringAnchor = nextExpectedDate.getUTCDate(),
 ): boolean {
   const expectedYmd = ymdFromDateUtc(expectedDate);
   return (
-    ymdFromDateUtc(advanceRecurringDateOnOrAfter(nextExpectedDate, cadence, expectedDate, anchorDay)) === expectedYmd
+    ymdFromDateUtc(advanceRecurringDateOnOrAfter(nextExpectedDate, cadence, expectedDate, anchor)) === expectedYmd
   );
 }
 
@@ -178,8 +291,8 @@ export function computeRecurringCashFlowSummary(
   for (const rule of rules) {
     if (!rule.enabled) continue;
 
-    const anchorDay = recurringAnchorDay(rule);
-    let occurrence = advanceRecurringDateOnOrAfter(rule.nextExpectedDate, rule.cadence, period.start, anchorDay);
+    const anchor = recurringAnchor(rule);
+    let occurrence = advanceRecurringDateOnOrAfter(rule.nextExpectedDate, rule.cadence, period.start, anchor);
     let guard = 0;
     while (ymdFromDateUtc(occurrence) < periodEndYmd && guard < 1040) {
       if (rule.endDate && ymdFromDateUtc(occurrence) > ymdFromDateUtc(rule.endDate)) break;
@@ -189,7 +302,7 @@ export function computeRecurringCashFlowSummary(
       } else if (rule.type === "EXPENSE") {
         expenseCents += rule.amountCents;
       }
-      occurrence = advanceRecurringDate(occurrence, rule.cadence, anchorDay);
+      occurrence = advanceRecurringDate(occurrence, rule.cadence, anchor);
       guard++;
     }
   }

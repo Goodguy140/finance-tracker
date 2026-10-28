@@ -128,6 +128,8 @@ export async function loadDigestData(
         cadence: true,
         nextExpectedDate: true,
         anchorDay: true,
+        secondAnchorDay: true,
+        beforeWeekend: true,
         endDate: true,
         enabled: true,
       },

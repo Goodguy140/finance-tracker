@@ -166,10 +166,12 @@ export const userBackupSchema = z.object({
         type: z.enum(["EXPENSE", "INCOME", "TRANSFER"]),
         name: z.string().min(1).max(80),
         amountCents: positiveCents,
-        cadence: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "BIENNIAL"]),
+        cadence: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "BIENNIAL", "SEMI_MONTHLY"]),
         nextExpectedDate: isoDate,
         /** Absent in files exported before rules stored the day they fall on. */
         anchorDay: z.number().int().min(1).max(31).nullable().optional(),
+        secondAnchorDay: z.number().int().min(1).max(31).nullable().optional(),
+        beforeWeekend: z.boolean().optional(),
         /** Absent in files exported before transfer rules named their other side. */
         transferAccountId: z.string().min(1).nullable().optional(),
         endDate: isoDate.nullable(),

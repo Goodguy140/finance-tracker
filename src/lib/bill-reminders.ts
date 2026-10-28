@@ -38,6 +38,8 @@ export type ReminderRule = {
   cadence: RecurringCadence;
   nextExpectedDate: Date;
   anchorDay: number | null;
+  secondAnchorDay: number | null;
+  beforeWeekend: boolean;
   endDate: Date | null;
   enabled: boolean;
   reminderSentForDate: Date | null;
@@ -203,6 +205,8 @@ const RULE_SELECT = {
   cadence: true,
   nextExpectedDate: true,
   anchorDay: true,
+  secondAnchorDay: true,
+  beforeWeekend: true,
   endDate: true,
   enabled: true,
   reminderSentForDate: true,

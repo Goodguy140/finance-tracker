@@ -70,6 +70,8 @@ enum RecurringCadence {
   QUARTERLY
   YEARLY
   BIENNIAL
+  /// Twice a month on two fixed days (`anchorDay` and `secondAnchorDay`), such as the 15th and the last day.
+  SEMI_MONTHLY
 }
 
 enum RecurringPostMode {
@@ -684,6 +686,10 @@ model RecurringTransaction {
   /// Day of the month (1-31) a month-based rule falls on. nextExpectedDate cannot hold it once
   /// clamped (a rule on the 31st sits on Feb 28). Null on rules saved before it was stored.
   anchorDay           Int?
+  /// A twice-a-month rule's later day (8-31; 31 means the last day of the month). Null on other cadences.
+  secondAnchorDay     Int?
+  /// A twice-a-month rule that lands on a Saturday or Sunday falls on the Friday before instead.
+  beforeWeekend       Boolean           @default(false)
   endDate             DateTime?
   postMode            RecurringPostMode @default(REVIEW)
   enabled             Boolean           @default(true)

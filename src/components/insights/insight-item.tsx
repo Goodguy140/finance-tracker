@@ -96,6 +96,13 @@ function TrackRecurringForm({
       className={`${formGridResponsive} mt-3 rounded-xl border border-slate-800 bg-slate-950/40 p-3`}
     >
       <input type="hidden" name="type" value={prefill.type} />
+      {prefill.semiMonthly ? (
+        <>
+          <input type="hidden" name="firstDay" value={prefill.semiMonthly.day} />
+          <input type="hidden" name="secondDay" value={prefill.semiMonthly.secondDay} />
+          {prefill.semiMonthly.beforeWeekend ? <input type="hidden" name="beforeWeekend" value="on" /> : null}
+        </>
+      ) : null}
       <LabeledField label="Name" className={spanFullSm}>
         <input id={`${ids}-name`} name="name" defaultValue={prefill.name} maxLength={80} className={inputClass} required />
       </LabeledField>
@@ -128,6 +135,7 @@ function TrackRecurringForm({
         <select name="cadence" defaultValue={prefill.cadence} className={selectClass}>
           <option value="WEEKLY">Weekly</option>
           <option value="BIWEEKLY">Biweekly</option>
+          <option value="SEMI_MONTHLY">Twice a month</option>
           <option value="MONTHLY">Monthly</option>
           <option value="QUARTERLY">Quarterly</option>
           <option value="YEARLY">Yearly</option>

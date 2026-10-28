@@ -1,6 +1,12 @@
 import type { RecurringCadence, TransactionType } from "@prisma/client";
 import { ymdFromDateUtc } from "@/lib/date-only";
-import { advanceRecurringDate, advanceRecurringDateOnOrAfter } from "@/lib/recurring-transactions";
+import {
+  advanceRecurringDate,
+  advanceRecurringDateOnOrAfter,
+  SEMI_MONTHLY_MIN_GAP_DAYS,
+  type RecurringAnchor,
+  type SemiMonthlyDays,
+} from "@/lib/recurring-transactions";
 import { factsOf } from "./facts";
 import type { Insight, InsightRecurringRule, InsightTx, RecurringPrefill } from "./types";
 import {
@@ -31,6 +37,38 @@ export const CADENCE_BANDS: CadenceBand[] = [
   { cadence: "YEARLY", minDays: 355, maxDays: 375, typicalDays: 365, minCount: 2 },
 ];
 
+/**
+ * Twice a month falls inside the biweekly band's gaps (13 to 16 days, wider when a payday moves
+ * off a weekend), so it is told apart by the days of the month the charges land on instead.
+ */
+export const SEMI_MONTHLY_BAND: CadenceBand = { cadence: "SEMI_MONTHLY", minDays: 11, maxDays: 19, typicalDays: 15.2, minCount: 4 };
+
+/**
+ * The two days of the month a series (dates oldest first) is paid on, if it is paid twice a
+ * month: the days, and whether weekend dates move to the Friday before, under which the most
+ * charges are each the date right after the one before. With no weekend in the history either
+ * way fits, and the plain days win; so does the last day over the 30th.
+ */
+export function semiMonthlyScheduleOf(dates: readonly Date[]): { days: SemiMonthlyDays; regularShare: number } | null {
+  if (dates.length < 2) return null;
+  const ymds = dates.map(ymdFromDateUtc);
+  let best: { days: SemiMonthlyDays; regularShare: number } | null = null;
+  for (const beforeWeekend of [false, true]) {
+    for (let day = 1; day + SEMI_MONTHLY_MIN_GAP_DAYS <= 31; day++) {
+      for (let secondDay = 31; secondDay >= day + SEMI_MONTHLY_MIN_GAP_DAYS; secondDay--) {
+        const days = { day, secondDay, beforeWeekend };
+        let regular = 0;
+        for (let i = 1; i < dates.length; i++) {
+          if (ymdFromDateUtc(advanceRecurringDate(dates[i - 1], "SEMI_MONTHLY", days)) === ymds[i]) regular++;
+        }
+        const regularShare = regular / (dates.length - 1);
+        if (!best || regularShare > best.regularShare) best = { days, regularShare };
+      }
+    }
+  }
+  return best;
+}
+
 /** Share of gaps that must fall in the band, and of amounts that must sit near the median. */
 export const MIN_REGULAR_SHARE = 0.75;
 const AMOUNT_TOLERANCE_PCT = 0.15;
@@ -41,6 +79,7 @@ const ACTIVE_GRACE_FACTOR = 1.5;
 export const MONTHLY_FACTOR: Record<RecurringCadence, number> = {
   WEEKLY: 52 / 12,
   BIWEEKLY: 26 / 12,
+  SEMI_MONTHLY: 2,
   MONTHLY: 1,
   QUARTERLY: 1 / 3,
   YEARLY: 1 / 12,
@@ -143,6 +182,8 @@ export function detectRecurringCandidates(
  */
 export type RecurringSeries = {
   band: CadenceBand;
+  /** The days a twice-a-month series lands on. */
+  semiMonthly?: SemiMonthlyDays;
   medianAmountCents: number;
   /** Oldest first. */
   txs: InsightTx[];
@@ -155,7 +196,8 @@ export function seriesOf(unsorted: readonly InsightTx[]): RecurringSeries | null
   const gaps: number[] = [];
   for (let i = 1; i < txs.length; i++) gaps.push(daysBetween(txs[i - 1].date, txs[i].date));
 
-  const cadence = classifyCadence(gaps);
+  const semiMonthly = semiMonthlySeriesOf(txs, gaps);
+  const cadence = semiMonthly ?? classifyCadence(gaps);
   if (!cadence || cadence.regularShare < MIN_REGULAR_SHARE) return null;
   const { band } = cadence;
   if (txs.length < band.minCount) return null;
@@ -171,7 +213,28 @@ export function seriesOf(unsorted: readonly InsightTx[]): RecurringSeries | null
     medianAmountCents = changed;
     stableShare = PRICE_CHANGE_CONFIDENCE;
   }
-  return { band, medianAmountCents, txs, confidence: Math.round(cadence.regularShare * stableShare * 100) / 100 };
+  return {
+    band,
+    ...(semiMonthly ? { semiMonthly: semiMonthly.days } : {}),
+    medianAmountCents,
+    txs,
+    confidence: Math.round(cadence.regularShare * stableShare * 100) / 100,
+  };
+}
+
+/** A series about two weeks apart that keeps to two days of the month, rather than every 14 days. */
+function semiMonthlySeriesOf(txs: readonly InsightTx[], gaps: number[]) {
+  if (txs.length < SEMI_MONTHLY_BAND.minCount) return null;
+  const mid = median(gaps);
+  if (mid < SEMI_MONTHLY_BAND.minDays || mid > SEMI_MONTHLY_BAND.maxDays) return null;
+  const schedule = semiMonthlyScheduleOf(txs.map((tx) => tx.date));
+  if (!schedule || schedule.regularShare < MIN_REGULAR_SHARE) return null;
+  return { band: SEMI_MONTHLY_BAND, ...schedule };
+}
+
+/** Where a series' next date lands: its two days if it is twice a month. */
+export function seriesAnchor(series: RecurringSeries, last: Date): RecurringAnchor {
+  return series.semiMonthly ?? last.getUTCDate();
 }
 
 /** Rows by type and merchant, as series are looked for: positive, unsplit, with a merchant. */
@@ -201,7 +264,8 @@ function evaluateGroup(unsorted: InsightTx[], now: Date): RecurringCandidate | n
   const categoryId = mostCommon(txs.map((tx) => tx.categoryId)) ?? last.categoryId;
   const accountId = mostCommon(txs.map((tx) => tx.accountId).filter((id): id is string => id != null)) ?? null;
   // Strictly after the last charge — one that landed today is not also the next one.
-  const nextExpected = advanceRecurringDateOnOrAfter(advanceRecurringDate(last.date, band.cadence), band.cadence, now);
+  const anchor = seriesAnchor(series, last.date);
+  const nextExpected = advanceRecurringDateOnOrAfter(advanceRecurringDate(last.date, band.cadence, anchor), band.cadence, now, anchor);
 
   return {
     key: `recurring:${last.type}:${merchantKey}`,
@@ -221,6 +285,7 @@ function evaluateGroup(unsorted: InsightTx[], now: Date): RecurringCandidate | n
       accountId,
       categoryId,
       nextExpectedDate: ymdFromDateUtc(nextExpected),
+      ...(series.semiMonthly ? { semiMonthly: series.semiMonthly } : {}),
     },
   };
 }
@@ -228,6 +293,7 @@ function evaluateGroup(unsorted: InsightTx[], now: Date): RecurringCandidate | n
 export const CADENCE_WORDS: Record<RecurringCadence, string> = {
   WEEKLY: "every week",
   BIWEEKLY: "every two weeks",
+  SEMI_MONTHLY: "twice a month",
   MONTHLY: "every month",
   QUARTERLY: "every three months",
   YEARLY: "every year",

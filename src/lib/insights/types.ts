@@ -1,3 +1,4 @@
+import type { SemiMonthlyDays } from "@/lib/recurring-transactions";
 import type { RecurringCadence, TransactionType } from "@prisma/client";
 
 /**
@@ -57,6 +58,8 @@ export type RecurringPrefill = {
   categoryId: string;
   /** `YYYY-MM-DD`. */
   nextExpectedDate: string;
+  /** The two days a twice-a-month series lands on. */
+  semiMonthly?: SemiMonthlyDays;
 };
 
 export type InsightAction =

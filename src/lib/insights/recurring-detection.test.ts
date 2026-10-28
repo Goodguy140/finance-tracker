@@ -3,7 +3,7 @@ import { NOW, tx } from "./test-fixtures";
 
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-const { classifyCadence, detectRecurringCandidates, recurringCandidateInsights } = await import(
+const { classifyCadence, detectRecurringCandidates, recurringCandidateInsights, semiMonthlyScheduleOf } = await import(
   "./recurring-detection"
 );
 const { moneyFormatter } = await import("./util");
@@ -46,6 +46,29 @@ describe("detectRecurringCandidates", () => {
       categoryId: "cat-fun",
       nextExpectedDate: "2026-10-15",
     });
+  });
+
+  it("tells pay on the 15th and last day apart from every two weeks", () => {
+    const pay = ["2026-06-15", "2026-06-30", "2026-07-15", "2026-07-31", "2026-08-14", "2026-08-31", "2026-09-15"].map(
+      (date) => tx(date, "ACME PAYROLL", 250_000, { type: "INCOME" }),
+    );
+    const [candidate] = detectRecurringCandidates(pay, [], NOW);
+    expect(candidate.cadence).toBe("SEMI_MONTHLY");
+    // Aug 15 2026 was a Saturday, paid on the Friday before.
+    expect(candidate.prefill).toMatchObject({
+      cadence: "SEMI_MONTHLY",
+      nextExpectedDate: "2026-09-30",
+      semiMonthly: { day: 15, secondDay: 31, beforeWeekend: true },
+    });
+
+    const biweekly = ["2026-06-05", "2026-06-19", "2026-07-03", "2026-07-17", "2026-07-31", "2026-08-14", "2026-08-28", "2026-09-11"];
+    expect(semiMonthlyScheduleOf(biweekly.map((d) => new Date(`${d}T00:00:00.000Z`)))!.regularShare).toBeLessThan(0.75);
+    const [everyTwoWeeks] = detectRecurringCandidates(
+      biweekly.map((date) => tx(date, "OTHER PAYROLL", 180_000, { type: "INCOME" })),
+      [],
+      NOW,
+    );
+    expect(everyTwoWeeks.cadence).toBe("BIWEEKLY");
   });
 
   it("groups a bank description with a hand-typed title for the same merchant", () => {

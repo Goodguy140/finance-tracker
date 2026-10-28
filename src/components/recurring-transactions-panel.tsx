@@ -1,5 +1,6 @@
 "use client";
 
+import type { SemiMonthlyDays } from "@/lib/recurring-transactions";
 import { useOpenRequest } from "@/lib/search/dashboard-requests";
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -29,8 +30,10 @@ export type RecurringTransactionListItem = {
   transferAccountLabel: string | null;
   categoryId: string;
   categoryLabel: string;
-  cadence: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL";
+  cadence: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL" | "SEMI_MONTHLY";
   cadenceLabel: string;
+  /** A twice-a-month rule's days; null on other cadences. */
+  semiMonthly?: SemiMonthlyDays | null;
   nextExpectedDateYmd: string;
   nextExpectedDateDisplay: string;
   /** The occurrence on show: the next expected date, or this month's for a carried-over rule. */

@@ -95,6 +95,9 @@ import {
   getPastMonthYmsBefore,
   getRecurringDateStatus,
   recurringOccurrenceInMonth,
+  semiMonthlyDaysLabel,
+  semiMonthlyDaysOfRule,
+  type RecurringAnchorFields,
 } from "@/lib/recurring-transactions";
 import { currentYmdInTimeZone, currentYmInTimeZone } from "@/lib/period-month";
 import { loadInsights, type LoadedInsights } from "@/lib/insights/load";
@@ -120,11 +123,18 @@ import { OwedToYouList, type OwedToYouItem } from "@/components/owed-to-you";
 const cadenceLabels: Record<RecurringCadence, string> = {
   WEEKLY: "Weekly",
   BIWEEKLY: "Biweekly",
+  SEMI_MONTHLY: "Twice a month",
   MONTHLY: "Monthly",
   QUARTERLY: "Quarterly",
   YEARLY: "Yearly",
   BIENNIAL: "Every 2 years",
 };
+
+/** A twice-a-month rule names its days: "Twice a month, 15th and last day". */
+function cadenceLabelOf(rule: RecurringAnchorFields): string {
+  const days = semiMonthlyDaysOfRule(rule);
+  return days ? `${cadenceLabels.SEMI_MONTHLY}, ${semiMonthlyDaysLabel(days)}` : cadenceLabels[rule.cadence];
+}
 
 type SearchParams = Promise<{
   month?: string | string[];
@@ -903,7 +913,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     categoryId: rule.categoryId,
     categoryLabel: rule.category.name,
     cadence: rule.cadence,
-    cadenceLabel: cadenceLabels[rule.cadence],
+    cadenceLabel: cadenceLabelOf(rule),
+    semiMonthly: semiMonthlyDaysOfRule(rule),
     nextExpectedDateYmd: ymdFromDateUtc(rule.nextExpectedDate),
     nextExpectedDateDisplay: formatDateOnlyUtc(rule.nextExpectedDate),
     occurrenceDateYmd: ymdFromDateUtc(occurrence),

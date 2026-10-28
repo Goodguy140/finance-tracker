@@ -9,6 +9,7 @@ import { requireUser } from "@/lib/session";
 import {
   advanceRecurringDate,
   isRecurringOccurrenceOnOrAfterNext,
+  recurringAnchor,
   recurringAnchorDay,
 } from "@/lib/recurring-transactions";
 import { recomputeSubscriptionTransactionCredits } from "@/lib/subscription-credit";
@@ -201,6 +202,8 @@ export const skipRecurringOccurrenceAction = formAction(async (formData: FormDat
           endDate: true,
           nextExpectedDate: true,
           anchorDay: true,
+          secondAnchorDay: true,
+          beforeWeekend: true,
         },
       });
       if (!rule) throw new Error("Subscription not found.");
@@ -208,7 +211,8 @@ export const skipRecurringOccurrenceAction = formAction(async (formData: FormDat
       // Optimistic concurrency: only advance if this is still the current occurrence, or a
       // later one on the rule's cadence (which passes over the missed ones before it).
       const anchorDay = recurringAnchorDay(rule);
-      if (!isRecurringOccurrenceOnOrAfterNext(rule.nextExpectedDate, rule.cadence, expectedDate, anchorDay)) {
+      const anchor = recurringAnchor(rule);
+      if (!isRecurringOccurrenceOnOrAfterNext(rule.nextExpectedDate, rule.cadence, expectedDate, anchor)) {
         throw new Error("This subscription has already moved to a different expected date.");
       }
       if (!rule.enabled) throw new Error("Subscription is disabled.");
@@ -222,7 +226,7 @@ export const skipRecurringOccurrenceAction = formAction(async (formData: FormDat
         });
       }
 
-      const nextExpectedDate = advanceRecurringDate(expectedDate, rule.cadence, anchorDay);
+      const nextExpectedDate = advanceRecurringDate(expectedDate, rule.cadence, anchor);
       const stillEnabled = !rule.endDate || ymdFromDateUtc(nextExpectedDate) <= ymdFromDateUtc(rule.endDate);
       await tx.recurringTransaction.updateMany({
         where: { id: rule.id, userId: user.id, enabled: true, nextExpectedDate: rule.nextExpectedDate },
