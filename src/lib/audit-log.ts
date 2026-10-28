@@ -39,6 +39,8 @@ export const AUDIT_ACTIONS = {
   passkey_registered: "passkey_registered",
   passkey_renamed: "passkey_renamed",
   passkey_removed: "passkey_removed",
+  totp_enabled: "totp_enabled",
+  totp_removed: "totp_removed",
   mfa_disabled: "mfa_disabled",
   mfa_verified: "mfa_verified",
   mfa_verification_failed: "mfa_verification_failed",

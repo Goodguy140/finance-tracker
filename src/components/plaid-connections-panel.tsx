@@ -7,7 +7,8 @@ import { ServerActionForm } from "@/components/server-action-form";
 import { PlaidStatusPill } from "@/components/plaid-status-pill";
 import { MetaChip } from "@/components/meta-chip";
 import { usePlaidLink } from "@/components/plaid-link-button";
-import { usePasskeyStepUp } from "@/components/mfa/passkey-client";
+import { useStepUp } from "@/components/mfa/second-factor";
+import type { MfaFactors } from "@/lib/recent-identity";
 import { inputClass, primaryBtnClass, secondaryBtnClass } from "@/components/forms/shared";
 import { mapPlaidAccountAction } from "@/app/actions";
 import { syncAllPlaidItemsAction, syncPlaidItemAction } from "@/app/actions/plaid";
@@ -53,7 +54,7 @@ export type PlaidItemRow = {
 
 export type AccountOption = { id: string; name: string; currency: string };
 
-export type PlaidPanelMfaState = { enrolled: boolean; freshUntil: number | null };
+export type PlaidPanelMfaState = { enrolled: boolean; factors: MfaFactors; freshUntil: number | null };
 
 export type PlaidConnectionsPanelProps = {
   configured: boolean;
@@ -101,7 +102,7 @@ export function PlaidConnectionsPanel({
   );
   const [unlinkState, unlink, unlinking] = useActionState(unlinkPlaidItemAction, unlinkInitial);
   const [updateState, completeUpdate, updating] = useActionState(completePlaidUpdateAction, updateInitial);
-  const stepUp = usePasskeyStepUp(mfa.freshUntil, mfa.enrolled);
+  const stepUp = useStepUp(mfa.freshUntil, mfa.factors);
   const [stepUpError, setStepUpError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -227,7 +228,7 @@ export function PlaidConnectionsPanel({
 
       {!mfa.enrolled && configured ? (
         <div className="rounded-2xl border border-amber-800/80 bg-amber-950/40 p-4 text-sm text-amber-100">
-          Connecting a bank requires a passkey.{" "}
+          Connecting a bank requires a passkey or an authenticator app.{" "}
           <Link href="/settings/security" className="font-medium underline underline-offset-4">
             Add one in Security
           </Link>{" "}

@@ -8,16 +8,20 @@ import { requireLoadedUser, type LoadedSession } from "@/lib/session";
  * controls (roles, suspensions, sign-in providers, bank credentials, public sign-up).
  *
  * How depends on what the account has, strongest first:
- * - a passkey: a fresh assertion (the same step-up as linking a bank or minting a token);
+ * - a passkey or authenticator app: a fresh use of it (the same step-up as linking a bank or
+ *   minting a token);
  * - a password: re-entering it;
  * - neither (SSO only): the login itself must be recent, so the user signs in again.
  * Any of them counts for `MFA_STEP_UP_MAX_AGE_MS`, so several changes in a row need one prompt.
  */
 
-export type IdentityMethod = "passkey" | "password" | "sso";
+export type IdentityMethod = "mfa" | "password" | "sso";
+
+/** The second factors an account has, so the client offers the right prompt. */
+export type MfaFactors = { passkey: boolean; totp: boolean };
 
 /** What the client needs to prompt only when the server would refuse. */
-export type IdentityPrompt = { method: IdentityMethod; freshUntil: number | null };
+export type IdentityPrompt = { method: IdentityMethod; freshUntil: number | null; factors: MfaFactors };
 
 export const IDENTITY_REQUIRED_MESSAGE = "Confirm it's you, then try again.";
 
@@ -29,14 +33,14 @@ export class IdentityConfirmationRequiredError extends Error {
 }
 
 export function identityMethodFor(loaded: Pick<LoadedSession, "mfa"> & { user: { passwordHash: string | null } }): IdentityMethod {
-  if (loaded.mfa.required) return "passkey";
+  if (loaded.mfa.required) return "mfa";
   return loaded.user.passwordHash ? "password" : "sso";
 }
 
 /**
- * When this login last proved who it is, by the method its account requires. A passkey
- * account only counts a passkey: re-entering a password must not stand in for the stronger
- * factor the owner chose. The others count the sign-in itself as well as a re-entered password.
+ * When this login last proved who it is, by the method its account requires. An account with
+ * a second factor only counts that factor: re-entering a password must not stand in for the
+ * stronger factor the owner chose. The others count the sign-in itself as well as a re-entered password.
  */
 export function identityConfirmedAt(input: {
   method: IdentityMethod;
@@ -44,7 +48,7 @@ export function identityConfirmedAt(input: {
   authAt: number | null;
   reauthAt: number | null;
 }): number | null {
-  if (input.method === "passkey") return input.mfaVerifiedAt;
+  if (input.method === "mfa") return input.mfaVerifiedAt;
   const candidates = [input.authAt, input.method === "password" ? input.reauthAt : null].filter(
     (at): at is number => typeof at === "number",
   );
@@ -66,7 +70,11 @@ async function confirmedAtFor(loaded: LoadedSession): Promise<number | null> {
 }
 
 export async function identityPromptFor(loaded: LoadedSession): Promise<IdentityPrompt> {
-  return { method: identityMethodFor(loaded), freshUntil: identityFreshUntil(await confirmedAtFor(loaded)) };
+  return {
+    method: identityMethodFor(loaded),
+    freshUntil: identityFreshUntil(await confirmedAtFor(loaded)),
+    factors: { passkey: loaded.mfa.passkeyCount > 0, totp: loaded.mfa.totp },
+  };
 }
 
 /** `requireUser`, plus a recent "it's you". Throws `IdentityConfirmationRequiredError` otherwise. */

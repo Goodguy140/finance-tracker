@@ -43,6 +43,7 @@ function signInMethods(user: AdminUserRow): string {
   const methods: string[] = [];
   if (user.hasPassword) methods.push("password");
   if (user.passkeyCount > 0) methods.push(`${user.passkeyCount} passkey${user.passkeyCount === 1 ? "" : "s"}`);
+  if (user.hasAuthenticatorApp) methods.push("authenticator app");
   methods.push(...user.ssoProviders);
   return methods.length > 0 ? methods.join(", ") : "none";
 }

@@ -6,8 +6,15 @@ import { useRouter } from "next/navigation";
 import { ServerActionForm } from "@/components/server-action-form";
 import { inputClass, primaryBtnClass, secondaryBtnClass, LabeledField } from "@/components/forms/shared";
 import { removePasskeyAction, renamePasskeyAction, unlinkSsoProviderAction } from "@/app/actions";
-import { beginSsoLinkAction, regenerateRecoveryCodesAction } from "@/app/actions/mfa";
-import { registerPasskey, usePasskeyStepUp } from "@/components/mfa/passkey-client";
+import {
+  beginSsoLinkAction,
+  beginTotpEnrollmentAction,
+  finishTotpEnrollmentAction,
+  regenerateRecoveryCodesAction,
+  removeTotpAction,
+} from "@/app/actions/mfa";
+import { registerPasskey } from "@/components/mfa/passkey-client";
+import { TotpCodeField, useStepUp } from "@/components/mfa/second-factor";
 import { useConfirm } from "@/components/settings/dialog";
 
 export type PasskeyRow = {
@@ -21,6 +28,8 @@ export type PasskeyRow = {
 export type SecurityPanelProps = {
   hasPassword: boolean;
   passkeys: PasskeyRow[];
+  /** When the authenticator app was set up, or null when there is none. */
+  authenticatorSince: string | null;
   recoveryCodesRemaining: number;
   /** Epoch ms until which the current login counts as freshly verified, or null. */
   freshUntil: number | null;
@@ -84,8 +93,8 @@ function RecoveryCodesReveal({ codes, onClose }: { codes: string[]; onClose: () 
           Save your recovery codes
         </h2>
         <p className="text-sm text-slate-300">
-          Each code signs you in once if you lose every passkey. Store them somewhere safe — they will not be shown
-          again.
+          Each code signs you in once if you lose your passkeys and authenticator app. Store them somewhere safe —
+          they will not be shown again.
         </p>
         <ul className="grid grid-cols-2 gap-2 rounded-xl border border-slate-700/80 bg-slate-950/70 p-3 font-mono text-sm text-emerald-100">
           {codes.map((code) => (
@@ -133,6 +142,7 @@ function Notice({ tone, children }: { tone: "error" | "info" | "success"; childr
 export function SecurityPanel({
   hasPassword,
   passkeys,
+  authenticatorSince,
   recoveryCodesRemaining,
   freshUntil,
   linkedProviders,
@@ -142,7 +152,10 @@ export function SecurityPanel({
   const confirm = useConfirm();
   const router = useRouter();
   const enrolled = passkeys.length > 0;
-  const stepUp = usePasskeyStepUp(freshUntil, enrolled);
+  const totpOn = authenticatorSince !== null;
+  // Any second factor turns sign-in confirmation on; adding another needs a step-up with it.
+  const mfaOn = enrolled || totpOn;
+  const stepUp = useStepUp(freshUntil, { passkey: enrolled, totp: totpOn });
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [revealCodes, setRevealCodes] = useState<string[] | null>(null);
@@ -159,10 +172,10 @@ export function SecurityPanel({
   const addPasskey = () => {
     setError(null);
     startTransition(async () => {
-      if (enrolled && !(await gate())) return;
+      if (mfaOn && !(await gate())) return;
       const outcome = await registerPasskey({
         name: newName,
-        currentPassword: !enrolled && hasPassword ? currentPassword : undefined,
+        currentPassword: !mfaOn && hasPassword ? currentPassword : undefined,
       });
       if (!outcome.ok) {
         if (!outcome.cancelled) setError(outcome.error);
@@ -246,7 +259,7 @@ export function SecurityPanel({
         description={
           enrolled
             ? "Every sign-in — password or SSO — must be confirmed with one of these passkeys. Passkeys cannot be phished: they only work on this site."
-            : "Add a passkey (Touch ID, Windows Hello, Android, or a security key) to require it at every sign-in. Linking external accounts requires one."
+            : "Add a passkey (Touch ID, Windows Hello, Android, or a security key) to require it at every sign-in. Linking external accounts needs a passkey or an authenticator app."
         }
       >
         {error ? <Notice tone="error">{error}</Notice> : null}
@@ -334,7 +347,7 @@ export function SecurityPanel({
                 placeholder="MacBook Touch ID"
               />
             </LabeledField>
-            {!enrolled && hasPassword ? (
+            {!mfaOn && hasPassword ? (
               <LabeledField label="Current password" hint="Required to turn passkeys on." className="flex-1">
                 <input
                   type="password"
@@ -353,10 +366,20 @@ export function SecurityPanel({
         </form>
       </Card>
 
-      {enrolled ? (
+      <AuthenticatorAppCard
+        since={authenticatorSince}
+        mfaOn={mfaOn}
+        hasPasskeys={enrolled}
+        askPassword={!mfaOn && hasPassword}
+        gate={gate}
+        busy={pending || stepUp.busy}
+        onRecoveryCodes={setRevealCodes}
+      />
+
+      {mfaOn ? (
         <Card
           title="Recovery codes"
-          description="One-time codes that get you in if every passkey is lost. Generating a new set invalidates the old one."
+          description="One-time codes that get you in if you lose your passkeys and authenticator app. Generating a new set invalidates the old one."
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-slate-300">
@@ -372,10 +395,10 @@ export function SecurityPanel({
 
       <Card
         title="Connected sign-in"
-        description="External identity providers that can sign in to this account. Linking one requires a passkey confirmation."
+        description="External identity providers that can sign in to this account. Linking one requires a passkey or authenticator code."
       >
         {linkedJustNow ? <Notice tone="success">{providerLabel(linkedJustNow)} is now linked to your account.</Notice> : null}
-        {!enrolled ? <Notice tone="info">Add a passkey above before linking an external sign-in.</Notice> : null}
+        {!mfaOn ? <Notice tone="info">Add a passkey or an authenticator app above before linking an external sign-in.</Notice> : null}
         <ul className="divide-y divide-slate-800/80 overflow-hidden rounded-2xl border border-slate-800/80">
           {linkedProviders.length === 0 ? (
             <li className="bg-slate-950/40 p-4 text-sm text-slate-500">No external sign-ins linked.</li>
@@ -400,7 +423,7 @@ export function SecurityPanel({
                 key={provider}
                 type="button"
                 className={secondaryBtnClass}
-                disabled={!enrolled || pending || stepUp.busy}
+                disabled={!mfaOn || pending || stepUp.busy}
                 onClick={() => linkProvider(provider)}
               >
                 Link {providerLabel(provider)}
@@ -410,5 +433,166 @@ export function SecurityPanel({
         ) : null}
       </Card>
     </div>
+  );
+}
+
+type TotpSetup = { enrollmentId: string; secret: string; qrSvg: string };
+
+/**
+ * Authenticator app (TOTP): scan a QR code, type the first code to prove it worked. Like a
+ * first passkey, turning it on as the account's first factor needs the password, and shows
+ * recovery codes once.
+ */
+function AuthenticatorAppCard({
+  since,
+  mfaOn,
+  hasPasskeys,
+  askPassword,
+  gate,
+  busy,
+  onRecoveryCodes,
+}: {
+  since: string | null;
+  mfaOn: boolean;
+  hasPasskeys: boolean;
+  askPassword: boolean;
+  gate: () => Promise<boolean>;
+  busy: boolean;
+  onRecoveryCodes: (codes: string[]) => void;
+}) {
+  const confirm = useConfirm();
+  const router = useRouter();
+  const [setup, setSetup] = useState<TotpSetup | null>(null);
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  const begin = () => {
+    setError(null);
+    startTransition(async () => {
+      if (mfaOn && !(await gate())) return;
+      const result = await beginTotpEnrollmentAction({ currentPassword: askPassword ? password : undefined });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setPassword("");
+      setCode("");
+      setSetup({ enrollmentId: result.enrollmentId, secret: result.secret, qrSvg: result.qrSvg });
+    });
+  };
+
+  const finish = () => {
+    if (!setup) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await finishTotpEnrollmentAction({ enrollmentId: setup.enrollmentId, code });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setSetup(null);
+      if (result.recoveryCodes) onRecoveryCodes(result.recoveryCodes);
+      router.refresh();
+    });
+  };
+
+  return (
+    <Card
+      title="Authenticator app"
+      description="Codes from an app such as Google Authenticator, Microsoft Authenticator, 1Password or Authy, for a device without passkeys. Asked for at sign-in and by “Confirm it’s you”."
+    >
+      {confirm.dialog}
+      {error ? <Notice tone="error">{error}</Notice> : null}
+      {since ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Notice tone="success">Authenticator app is on, since {fmtDate(since)}.</Notice>
+          <ServerActionForm
+            action={removeTotpAction}
+            beforeSubmit={async () => {
+              if (
+                !(await confirm.ask({
+                  title: "Remove the authenticator app?",
+                  body: hasPasskeys
+                    ? "Its codes will stop working here. Your passkeys still protect sign-in."
+                    : "Its codes will stop working, sign-in will no longer ask for a second step, and your recovery codes are deleted.",
+                  confirmLabel: "Remove app",
+                  danger: true,
+                }))
+              )
+                return false;
+              return gate();
+            }}
+          >
+            <button type="submit" className={secondaryBtnClass} disabled={busy}>
+              Remove
+            </button>
+          </ServerActionForm>
+        </div>
+      ) : setup ? (
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            finish();
+          }}
+        >
+          <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-300">
+            <li>In your authenticator app, add an account and scan this code.</li>
+            <li>Type the six-digit code the app shows.</li>
+          </ol>
+          <div className="flex flex-wrap items-start gap-4">
+            <div
+              className="h-44 w-44 shrink-0 rounded-xl bg-white p-2"
+              role="img"
+              aria-label="QR code for your authenticator app"
+              // Made on the server by qrcode-generator from our own otpauth link; no user HTML.
+              dangerouslySetInnerHTML={{ __html: setup.qrSvg }}
+            />
+            <div className="min-w-0 space-y-2">
+              <p className="text-xs text-slate-400">Can&apos;t scan? Enter this key in the app instead:</p>
+              <p className="break-all font-mono text-sm text-slate-100" data-testid="totp-secret">
+                {setup.secret}
+              </p>
+              <CopyButton value={setup.secret.replace(/\s/g, "")} label="Copy key" />
+            </div>
+          </div>
+          <TotpCodeField value={code} onChange={setCode} autoFocus />
+          <div className="flex flex-wrap gap-2">
+            <button type="submit" className={primaryBtnClass} disabled={pending || code.replace(/\s/g, "").length !== 6}>
+              {pending ? "Checking…" : "Turn on"}
+            </button>
+            <button type="button" className={secondaryBtnClass} onClick={() => setSetup(null)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : (
+        <form
+          className="flex flex-col gap-3 sm:flex-row sm:items-end"
+          onSubmit={(e) => {
+            e.preventDefault();
+            begin();
+          }}
+        >
+          {askPassword ? (
+            <LabeledField label="Current password" hint="Required to turn it on." className="flex-1">
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={inputClass}
+                autoComplete="current-password"
+                required
+              />
+            </LabeledField>
+          ) : null}
+          <button type="submit" className={primaryBtnClass} disabled={pending || busy}>
+            {pending ? "Waiting…" : "Set up authenticator app"}
+          </button>
+        </form>
+      )}
+    </Card>
   );
 }

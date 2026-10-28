@@ -18,7 +18,7 @@ import { MFA_STEP_UP_MAX_AGE_MS, SESSION_MAX_AGE_S } from "@/lib/auth-constants"
  * either source.
  */
 
-export type MfaMethod = "passkey" | "recovery" | "enroll";
+export type MfaMethod = "passkey" | "totp" | "recovery" | "enroll";
 
 export type MfaCookiePayload = {
   sub: string;
@@ -108,7 +108,7 @@ export function verifyMfaPayload(
   if (!payload) return null;
   const { sub, sid, verifiedAt, method } = payload;
   if (typeof sub !== "string" || typeof sid !== "string" || typeof verifiedAt !== "number") return null;
-  if (method !== "passkey" && method !== "recovery" && method !== "enroll") return null;
+  if (method !== "passkey" && method !== "totp" && method !== "recovery" && method !== "enroll") return null;
   if (sub !== opts.sub || sid !== opts.sid) return null;
   const now = opts.now ?? Date.now();
   if (verifiedAt > now + 60_000) return null;

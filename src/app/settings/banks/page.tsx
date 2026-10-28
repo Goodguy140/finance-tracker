@@ -34,7 +34,8 @@ export default async function BanksSettingsPage() {
         historyWindows={HISTORY_WINDOWS.map((w) => ({ days: w.days, label: w.label }))}
         accountOptions={accounts.map((account) => ({ id: account.id, name: account.name, currency: account.currency }))}
         mfa={{
-          enrolled: mfa.passkeyCount > 0,
+          enrolled: mfa.required,
+          factors: { passkey: mfa.passkeyCount > 0, totp: mfa.totp },
           freshUntil: mfa.verified && mfa.verifiedAt != null ? mfa.verifiedAt + MFA_STEP_UP_MAX_AGE_MS : null,
         }}
         items={plaidItems.map((item) => ({

@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 import { confirmIdentityWithPasswordAction } from "@/app/actions/mfa";
 import { inputClass, primaryBtnClass, secondaryBtnClass } from "@/components/forms/shared";
-import { verifyWithPasskey } from "@/components/mfa/passkey-client";
+import { verifySecondFactor } from "@/components/mfa/second-factor";
 import { FormDialog } from "@/components/settings/dialog";
 import { MFA_STEP_UP_MAX_AGE_MS } from "@/lib/auth-constants";
 import type { IdentityPrompt } from "@/lib/recent-identity";
@@ -11,7 +11,8 @@ import type { IdentityPrompt } from "@/lib/recent-identity";
 /**
  * The client half of `requireRecentIdentity` (src/lib/recent-identity.ts). Gated forms pass
  * `useConfirmIdentity()` as their `beforeSubmit`: it resolves at once while the last
- * confirmation is still fresh, and otherwise asks for a passkey or the password first.
+ * confirmation is still fresh, and otherwise asks for a passkey, an authenticator code or the
+ * password first.
  */
 
 type Confirm = () => Promise<boolean>;
@@ -29,8 +30,8 @@ export function IdentityConfirmationProvider({ prompt, children }: { prompt: Ide
   const confirm = useCallback(async (): Promise<boolean> => {
     // A few seconds of margin, so a confirmation about to lapse is not trusted in flight.
     if (freshUntil != null && Date.now() < freshUntil - 5_000) return true;
-    if (prompt.method === "passkey") {
-      const outcome = await verifyWithPasskey();
+    if (prompt.method === "mfa") {
+      const outcome = await verifySecondFactor(prompt.factors);
       if (outcome.ok) {
         setLocalFreshUntil(Date.now() + MFA_STEP_UP_MAX_AGE_MS);
         return true;
@@ -40,7 +41,7 @@ export function IdentityConfirmationProvider({ prompt, children }: { prompt: Ide
     }
     if (prompt.method === "sso") throw new Error(SSO_REAUTH_MESSAGE);
     return new Promise<boolean>((resolve) => setPending(() => resolve));
-  }, [freshUntil, prompt.method]);
+  }, [freshUntil, prompt.method, prompt.factors]);
 
   const finish = (ok: boolean) => {
     pending?.(ok);

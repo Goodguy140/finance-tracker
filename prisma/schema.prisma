@@ -179,6 +179,7 @@ model User {
   webAuthnCredentials       WebAuthnCredential[]
   mfaChallenges             MfaChallenge[]
   recoveryCodes             RecoveryCode[]
+  totpCredential            TotpCredential?
   accounts                  Account[]
   categories                Category[]
   transactions              Transaction[]
@@ -401,6 +402,20 @@ model RecoveryCode {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+/**
+ * An authenticator app (TOTP) as a second factor, alongside or instead of passkeys. One per
+ * user. The secret is encrypted like server settings; `lastUsedStep` is the 30-second step of
+ * the last code accepted, so a code cannot be used twice.
+ */
+model TotpCredential {
+  userId          String   @id
+  secretEncrypted String
+  lastUsedStep    Int?
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ServerSetting {
