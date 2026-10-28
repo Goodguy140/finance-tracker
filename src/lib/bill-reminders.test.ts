@@ -134,6 +134,24 @@ describe("bill reminders", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it("without SMTP the sweep still pushes to a phone that has bill reminders on, and marks the bill", async () => {
+    const phone = await rule("Phone", "2026-10-24");
+    const send = vi.fn(async () => ({ sent: true }));
+    const push = vi.fn(async () => ({ ok: true as const }));
+    await db.pushDevice.create({
+      data: { userId, endpoint: `https://fcm.googleapis.com/fcm/send/${seq}`, p256dh: "k", auth: "a", label: "Android", chargeAlerts: false },
+    });
+    expect(await reminders.runBillReminderSweep(now, { send, push, smtpConfigured: () => false })).toMatchObject({ sent: 1, ok: true });
+    expect(send).not.toHaveBeenCalled();
+    expect(push).toHaveBeenCalledTimes(1);
+    const payload = JSON.parse((push.mock.calls[0] as unknown as [unknown, string])[1]);
+    expect(payload).toMatchObject({ title: "Phone is due tomorrow: $100.00", body: "Tomorrow: Phone $100.00", url: "/" });
+    expect((await db.recurringTransaction.findUniqueOrThrow({ where: { id: phone.id } })).reminderSentForDate).toEqual(
+      new Date("2026-10-24T00:00:00Z"),
+    );
+    await db.pushDevice.deleteMany({ where: { userId } });
+  });
+
   it("the setting accepts 1, 3 or 7 days, or off", async () => {
     session.userId = userId;
     const { setBillRemindersAction } = await import("@/app/actions/preferences");

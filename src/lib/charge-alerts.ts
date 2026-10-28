@@ -3,9 +3,10 @@ import { isSmtpConfigured, sendEmail } from "@/lib/email";
 import { homeCurrencyOf } from "@/lib/home-currency";
 import { formatCurrency, parseCentsInput } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
+import { anyPushDevices, deliverAlert, type PushMessage, type PushSender } from "@/lib/push-notifications";
 
 /**
- * Emails about large or unusual charges a bank sync brings in. Every hourly tick looks at the
+ * Emails (and phone notifications) about large or unusual charges a bank sync brings in. Every hourly tick looks at the
  * staged bank rows first seen since the last one (`ChargeAlertSetting.checkedThrough`), so a
  * charge is considered once, and only moves the mark on once the email went out. Nothing here
  * writes to the log: the alert only points at the review queue.
@@ -121,6 +122,15 @@ export function renderChargeAlert(
   return { subject, text: lines.join("\n") };
 }
 
+/** The phone notification: the email's subject, and one line per charge. */
+export function chargeAlertPush(alerts: readonly ChargeAlert[], options: { homeCurrency: string; subject: string }): PushMessage {
+  const lines = alerts
+    .slice(0, 4)
+    .map((a) => `${a.merchantName ?? a.name}: ${formatCurrency(a.amountCents, a.currency ?? options.homeCurrency)} (${a.accountName})`);
+  if (alerts.length > lines.length) lines.push(`and ${alerts.length - lines.length} more`);
+  return { title: options.subject, body: lines.join("\n"), url: "/", tag: "charge-alerts" };
+}
+
 type AlertSetting = {
   userId: string;
   thresholdCents: number | null;
@@ -135,10 +145,9 @@ export type ChargeAlertOutcome = "sent" | "none" | "failed";
 export async function sendChargeAlerts(
   setting: AlertSetting,
   now: Date,
-  deps: { client?: PrismaClient; send?: typeof sendEmail; baseUrl?: string } = {},
+  deps: { client?: PrismaClient; send?: typeof sendEmail; push?: PushSender; baseUrl?: string } = {},
 ): Promise<ChargeAlertOutcome> {
   const client = deps.client ?? prisma;
-  const send = deps.send ?? sendEmail;
   const rows = await client.plaidStagedTransaction.findMany({
     where: { userId: setting.userId, firstSeenAt: { gt: setting.checkedThrough, lte: now } },
     orderBy: [{ firstSeenAt: "asc" }, { date: "asc" }],
@@ -186,12 +195,19 @@ export async function sendChargeAlerts(
       thresholdCents: setting.thresholdCents,
       baseUrl: deps.baseUrl,
     });
-    try {
-      if (!(await send({ to: setting.user.email, subject, text })).sent) return "failed";
-    } catch (err) {
-      console.error("[charge alerts] sending failed", err);
-      return "failed";
-    }
+    const outcome = await deliverAlert(
+      {
+        userId: setting.userId,
+        to: setting.user.email,
+        kind: "chargeAlerts",
+        subject,
+        text,
+        push: chargeAlertPush(alerts, { homeCurrency, subject }),
+      },
+      { client, send: deps.send, push: deps.push },
+    );
+    // With nowhere to send it, the mark still moves: these charges are not news on a later tick.
+    if (outcome === "failed") return "failed";
   }
   await client.chargeAlertSetting.update({ where: { userId: setting.userId }, data: { checkedThrough } });
   return alerts.length > 0 ? "sent" : "none";
@@ -200,10 +216,14 @@ export async function sendChargeAlerts(
 /** One hourly tick over every user with charge alerts on. */
 export async function runChargeAlertSweep(
   now = new Date(),
-  deps: { client?: PrismaClient; send?: typeof sendEmail; smtpConfigured?: () => boolean } = {},
+  deps: { client?: PrismaClient; send?: typeof sendEmail; push?: PushSender; smtpConfigured?: () => boolean } = {},
 ): Promise<{ ok: boolean; message: string; sent: number }> {
-  if (!(deps.smtpConfigured ?? isSmtpConfigured)()) return { ok: true, message: "Skipped: SMTP is not configured", sent: 0 };
   const client = deps.client ?? prisma;
+  const smtp = (deps.smtpConfigured ?? isSmtpConfigured)();
+  if (!smtp && !(await anyPushDevices("chargeAlerts", client))) {
+    return { ok: true, message: "Skipped: SMTP is not configured and no phone has charge alerts on", sent: 0 };
+  }
+  const send = smtp ? deps.send : async () => ({ sent: false, reason: "SMTP not configured" });
   const settings = await client.chargeAlertSetting.findMany({
     where: { user: { disabledAt: null }, OR: [{ thresholdCents: { not: null } }, { unusual: true }] },
     select: {
@@ -218,7 +238,7 @@ export async function runChargeAlertSweep(
   let sent = 0;
   let failed = 0;
   for (const setting of settings) {
-    const outcome = await sendChargeAlerts(setting, now, { client, send: deps.send, baseUrl });
+    const outcome = await sendChargeAlerts(setting, now, { client, send, push: deps.push, baseUrl });
     if (outcome === "sent") sent += 1;
     if (outcome === "failed") failed += 1;
   }

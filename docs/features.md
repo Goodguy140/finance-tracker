@@ -28,6 +28,8 @@ same PR.
 - **Installable web app**: `src/app/manifest.ts`, `src/components/pwa/*` (install prompt, offline
   banner, private-cache purge on sign-out, service worker), `/offline`
 - **Local notifications** for budget alerts: `src/lib/pwa-notifications.ts`
+- **Phone notifications (Web Push)** for bill reminders, charge alerts and budget alerts, even with
+  the app closed; see Settings → Notifications → Phone notifications. Push handler in `public/sw.js`
 
 ## Dashboard (`/`)
 
@@ -219,6 +221,14 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     charges; each staged row looked at once via `ChargeAlertSetting.checkedThrough`; turning
     on starts from now; same hourly sweep, any hour): `charge-alert-preferences.tsx`,
     `src/lib/charge-alerts.ts`
+  - Phone notifications (Web Push: "Turn on for this device", then per device which of bill
+    reminders, charge alerts and budget alerts it gets; "Send a test"; other devices listed with
+    Remove. iPhone needs the app on the Home Screen, iOS 16.4+. Sent alongside the email, or
+    instead of it when SMTP is not set up; budget alerts can go to a phone without the email
+    toggle): `push-notification-preferences.tsx`, `actions/push.ts`, `src/lib/push-notifications.ts`
+    (`deliverAlert`, the one place the three alerts go out; VAPID keys made once in
+    `ServerSetting`), `src/lib/web-push.ts` (RFC 8291 encryption and RFC 8292 VAPID, no package;
+    posts only to the browsers' push services), `PushDevice` table
   - Appearance (dashboard readability, install app): `src/lib/dashboard-readability.ts`;
     the check counts every tab of a stack, so switching tabs never changes the column count
     (`src/lib/dashboard-layout/text-visibility.ts`)

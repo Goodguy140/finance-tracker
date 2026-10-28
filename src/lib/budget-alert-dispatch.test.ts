@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { encryptSecret } from "@/lib/security";
 
 const sendBudgetAlertEmail = vi.fn();
 const isBudgetAlertEmailConfigured = vi.fn(() => true);
@@ -16,8 +17,22 @@ vi.mock("next/server", () => ({
 
 const { dispatchBudgetAlertEmails, scheduleBudgetAlertEmails } = await import("./budget-alert-dispatch");
 
-function client(overrides: { user?: unknown } = {}) {
+function client(overrides: { user?: unknown; phones?: number } = {}) {
+  const phones = overrides.phones ?? 0;
   return {
+    pushDevice: {
+      count: vi.fn(async () => phones),
+      findMany: vi.fn(async () =>
+        Array.from({ length: phones }, (_, i) => ({ id: `d${i}`, endpoint: "https://fcm.googleapis.com/x", p256dh: "k", auth: "a", failureCount: 0 })),
+      ),
+      update: vi.fn(async () => ({})),
+    },
+    serverSetting: {
+      findMany: vi.fn(async () => [
+        { key: "push.vapidPublicKey", encryptedValue: encryptSecret("pub") },
+        { key: "push.vapidPrivateKey", encryptedValue: encryptSecret("priv") },
+      ]),
+    },
     user: {
       findUnique: vi.fn(async () =>
         "user" in overrides ? overrides.user : { email: "a@b.c", timezone: "UTC", budgetAlertEmailEnabled: true },
@@ -77,6 +92,15 @@ describe("dispatchBudgetAlertEmails", () => {
     isBudgetAlertEmailConfigured.mockReturnValue(false);
     expect(await dispatchBudgetAlertEmails("u1", client() as never, now)).toEqual({ sent: 0, skipped: "smtp" });
     expect(sendBudgetAlertEmail).not.toHaveBeenCalled();
+  });
+
+  it("pushes to a phone with budget alerts on even when the email is off", async () => {
+    const db = client({ user: { email: "a@b.c", timezone: "UTC", budgetAlertEmailEnabled: false }, phones: 1 });
+    const push = vi.fn(async () => ({ ok: true as const }));
+    expect(await dispatchBudgetAlertEmails("u1", db as never, now, push)).toEqual({ sent: 1, skipped: null });
+    expect(sendBudgetAlertEmail).not.toHaveBeenCalled();
+    expect(db.pushDevice.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: "u1", budgetAlerts: true } }));
+    expect(JSON.parse((push.mock.calls[0] as unknown as [unknown, string])[1])).toMatchObject({ title: "Over budget: Groceries" });
   });
 
   it("skips a warning that was already announced this month", async () => {
