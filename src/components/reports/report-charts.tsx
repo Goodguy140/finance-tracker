@@ -5,6 +5,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  ComposedChart,
   Legend,
   Line,
   LineChart,
@@ -16,6 +17,7 @@ import {
 } from "recharts";
 import type { NetWorthPoint } from "@/lib/net-worth";
 import type { CashFlow, CashFlowNode, MerchantMonth, MonthFlow } from "@/lib/reports";
+import type { CategoryTrendMonth } from "@/lib/reports/category-trend";
 import { formatCurrency, fromCents } from "@/lib/money";
 
 const INCOME_COLOR = "#34d399";
@@ -280,6 +282,69 @@ export function MerchantMonthChart({ data, currency }: { data: MerchantMonth[]; 
             <Bar dataKey="receivedCents" name="Received" fill={INCOME_COLOR} isAnimationActive={false} radius={[4, 4, 0, 0]} maxBarSize={24} />
           ) : null}
         </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/** One category by month, with its monthly budget as a stepped line where there was one. */
+export function CategoryTrendChart({
+  data,
+  currency,
+  income,
+}: {
+  data: CategoryTrendMonth[];
+  currency: string;
+  income: boolean;
+}) {
+  const hasBudget = data.some((m) => m.budgetCents !== null);
+  function renderTooltip({ active, payload }: TooltipProps<number, string>) {
+    if (!active || !payload?.length) return null;
+    const row = payload[0]?.payload as CategoryTrendMonth;
+    return (
+      <div className={tooltipBox}>
+        <p className="font-medium text-slate-100">{row.label}</p>
+        <p className="tabular-nums text-slate-300">
+          {income ? "Received" : "Spent"} {formatCurrency(row.cents, currency)}
+        </p>
+        {row.budgetCents !== null ? (
+          <p className="tabular-nums text-slate-400">Budget {formatCurrency(row.budgetCents, currency)}</p>
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <div className="w-full" style={{ minHeight: 220 }} data-testid="category-trend-chart">
+      <ResponsiveContainer width="100%" height={220}>
+        <ComposedChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: -12 }}>
+          <CartesianGrid stroke="#1e293b" vertical={false} />
+          <XAxis dataKey="label" {...axisProps} interval="preserveStartEnd" minTickGap={8} />
+          <YAxis {...axisProps} tickFormatter={formatAxisAmount} width={48} />
+          <Tooltip content={renderTooltip} cursor={{ fill: "rgba(148,163,184,0.08)" }} />
+          {hasBudget ? (
+            <Legend wrapperStyle={{ fontSize: "11px" }} formatter={(value) => <span className="text-slate-400">{value}</span>} />
+          ) : null}
+          <Bar
+            dataKey="cents"
+            name={income ? "Received" : "Spent"}
+            fill={income ? INCOME_COLOR : SPENDING_COLOR}
+            isAnimationActive={false}
+            radius={[4, 4, 0, 0]}
+            maxBarSize={24}
+          />
+          {hasBudget ? (
+            <Line
+              dataKey="budgetCents"
+              name="Budget"
+              type="stepAfter"
+              stroke="#fbbf24"
+              strokeDasharray="4 3"
+              dot={false}
+              connectNulls={false}
+              isAnimationActive={false}
+            />
+          ) : null}
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   );

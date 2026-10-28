@@ -387,7 +387,12 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
                 {yoy.rows.map((row) => (
                   <tr key={row.categoryId} className="border-t border-slate-800 align-top">
                     <td className="py-1.5 pr-2">
-                      <span className="text-slate-200">{row.categoryName}</span>
+                      <Link
+                        href={`/reports/category?id=${encodeURIComponent(row.categoryId)}${periodQuery}`}
+                        className="text-slate-200 underline-offset-4 hover:text-sky-200 hover:underline"
+                      >
+                        {row.categoryName}
+                      </Link>
                       <span className="mt-1 block space-y-0.5" aria-hidden>
                         <span
                           className="block h-1.5 rounded-full bg-sky-400"
