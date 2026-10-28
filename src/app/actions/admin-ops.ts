@@ -3,11 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
+import { createDatabaseBackup } from "@/lib/database-backups";
 import {
   OPS_SETTING_KEYS,
   getOpsSettingsStatus,
   invalidateOpsSettingsCache,
   parseAuditRetentionInput,
+  parseBackupHourInput,
+  parseBackupKeepDaysInput,
   parsePlaidSyncIntervalInput,
   type OpsSettingsStatus,
 } from "@/lib/ops-settings";
@@ -85,4 +88,31 @@ export const updatePlaidSyncIntervalAction = formAction(async (formData: FormDat
   if (!formData.has("plaidSyncIntervalMinutes")) return;
   const minutes = parsePlaidSyncIntervalInput(getFormValue(formData, "plaidSyncIntervalMinutes"));
   await saveOpsSettings([{ name: "plaidSyncIntervalMinutes", value: String(minutes) }], "integrations");
+});
+
+export const updateBackupSettingsAction = formAction(async (formData: FormData) => {
+  const changes: Change[] = [
+    { name: "backupEnabled", value: getFormValue(formData, "backupEnabled") === "true" ? "true" : "false" },
+  ];
+  // Absent when the field is disabled because the env var pins it.
+  if (formData.has("backupKeepDays")) {
+    changes.push({ name: "backupKeepDays", value: String(parseBackupKeepDaysInput(getFormValue(formData, "backupKeepDays"))) });
+  }
+  if (formData.has("backupHour")) {
+    changes.push({ name: "backupHour", value: String(parseBackupHourInput(getFormValue(formData, "backupHour"))) });
+  }
+  await saveOpsSettings(changes, "backups");
+});
+
+export const backupDatabaseNowAction = formAction(async () => {
+  const user = await requireAdmin();
+  const ops = await getOpsSettingsStatus();
+  const { file, pruned } = await createDatabaseBackup(prisma, { keepDays: ops.backupKeepDays.value });
+  await recordAuditLog(prisma, {
+    userId: user.id,
+    action: AUDIT_ACTIONS.admin_database_backup_created,
+    metadata: { file: file.name, sizeBytes: file.sizeBytes, pruned: pruned.length },
+    headers: await headers(),
+  });
+  revalidatePath("/settings/admin", "layout");
 });

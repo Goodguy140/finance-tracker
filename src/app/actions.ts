@@ -101,6 +101,8 @@ export {
   updatePublicSignupAction,
   updateOperationsSettingsAction,
   updatePlaidSyncIntervalAction,
+  updateBackupSettingsAction,
+  backupDatabaseNowAction,
 } from "./actions/admin-ops";
 export {
   setUserRoleAction,

@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  backupDatabaseNowAction,
+  updateBackupSettingsAction,
   updateOperationsSettingsAction,
   updatePlaidSyncIntervalAction,
   updatePublicSignupAction,
@@ -192,6 +194,83 @@ export function AdminPlaidIntervalForm({
           Save interval
         </button>
       </SettingCard>
+    </ServerActionForm>
+  );
+}
+
+export function AdminBackupSettingsForm({
+  enabled,
+  keepDays,
+  hour,
+  minDays,
+  maxDays,
+}: {
+  enabled: ResolvedSetting<boolean>;
+  keepDays: ResolvedSetting<number>;
+  hour: ResolvedSetting<number>;
+  minDays: number;
+  maxDays: number;
+}) {
+  const keepPinned = keepDays.source === "environment";
+  const hourPinned = hour.source === "environment";
+  return (
+    <ServerActionForm action={updateBackupSettingsAction}>
+      <SettingCard title="Automatic backups" setting={enabled}>
+        <SwitchField
+          name="backupEnabled"
+          label="Back up the database every day"
+          description="A full copy of the database, every user included, saved in a backups folder beside it."
+          defaultChecked={enabled.value}
+          disabled={enabled.source === "environment"}
+        />
+        <div className="flex flex-wrap gap-4">
+          <label className="block space-y-1 text-sm text-slate-300">
+            <span className="block">Keep daily copies for (days)</span>
+            <input
+              name="backupKeepDays"
+              type="number"
+              inputMode="numeric"
+              min={minDays}
+              max={maxDays}
+              step={1}
+              required
+              defaultValue={keepDays.value}
+              disabled={keepPinned}
+              className={`${inputClass} max-w-40`}
+            />
+          </label>
+          <label className="block space-y-1 text-sm text-slate-300">
+            <span className="block">At hour (0–23, server time)</span>
+            <input
+              name="backupHour"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={23}
+              step={1}
+              required
+              defaultValue={hour.value}
+              disabled={hourPinned}
+              className={`${inputClass} max-w-40`}
+            />
+          </label>
+        </div>
+        <EnvPinnedNote setting={keepDays} />
+        <EnvPinnedNote setting={hour} />
+        <p className="text-xs text-slate-500">
+          Besides the last {keepDays.value} days, the newest copy from each of the last six months is kept, and the
+          most recent copy is never removed.
+        </p>
+        <button className={primaryBtnClass}>Save backup settings</button>
+      </SettingCard>
+    </ServerActionForm>
+  );
+}
+
+export function AdminBackupNowButton() {
+  return (
+    <ServerActionForm action={backupDatabaseNowAction}>
+      <button className={primaryBtnClass}>Back up now</button>
     </ServerActionForm>
   );
 }

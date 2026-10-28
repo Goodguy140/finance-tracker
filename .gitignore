@@ -14,6 +14,7 @@
 /coverage
 /.data/
 prisma/.data/
+prisma/backups/
 /test-results/
 /playwright-report/
 /blob-report/
