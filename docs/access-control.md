@@ -60,7 +60,7 @@ what stops a stolen session cookie from being turned into permanent access.
 **Confirm it's you.** Actions that destroy data or change who can get in also need a recent
 confirmation (`requireRecentIdentity`, `src/lib/recent-identity.ts`): deleting the account,
 clearing or restoring its data, and the admin controls for roles, suspensions, deleting users,
-sign-in providers, password login, public sign-up and Plaid credentials. An account with a
+sign-in providers, password login, public sign-up and Plaid credentials; and making a calendar feed link. An account with a
 passkey confirms with it; one without re-enters its password; an SSO-only account must have
 signed in within the last five minutes. One confirmation covers five minutes.
 
@@ -107,6 +107,13 @@ replacement, move the integration over, then revoke the old one — `lastUsedAt`
 list confirms nothing is still using it.
 
 Tokens of a suspended user are rejected, so suspension covers machine access too.
+
+**Calendar feed.** A user can make one private calendar link (**Settings → Notifications**)
+that calendar apps fetch without a session: `GET /api/calendar/<secret>.ics`, read-only, and
+listing only recurring rules (names, amounts, dates, account names, notes) and decide-by dates.
+The secret is 256 random bits, stored only as a SHA-256 hash and shown once; making it needs
+"Confirm it's you"; it is rate limited to 30 fetches a minute; a new link replaces the old one,
+turning it off deletes it, and a suspended user's link returns 404.
 
 ## De-provisioning
 

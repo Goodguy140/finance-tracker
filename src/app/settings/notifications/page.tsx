@@ -1,4 +1,5 @@
 import { BillReminderPreferences } from "@/components/bill-reminder-preferences";
+import { CalendarFeedPreferences } from "@/components/calendar-feed-preferences";
 import { BudgetAlertPreferences } from "@/components/budget-alert-preferences";
 import { ChargeAlertPreferences } from "@/components/charge-alert-preferences";
 import { EmailDigestPreferences } from "@/components/email-digest-preferences";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 export default async function NotificationsSettingsPage() {
   const { user } = await requireLoadedUser();
-  const [chargeAlerts, devices, vapid] = await Promise.all([
+  const [chargeAlerts, devices, vapid, calendarFeed] = await Promise.all([
     prisma.chargeAlertSetting.findUnique({ where: { userId: user.id } }),
     prisma.pushDevice.findMany({
       where: { userId: user.id },
@@ -22,6 +23,7 @@ export default async function NotificationsSettingsPage() {
       select: { id: true, label: true, endpoint: true, createdAt: true, billReminders: true, chargeAlerts: true, budgetAlerts: true },
     }),
     getVapidKeys(),
+    prisma.calendarFeed.findUnique({ where: { userId: user.id }, select: { createdAt: true, lastFetchedAt: true } }),
   ]);
   return (
     <SettingsPage section="notifications">
@@ -42,6 +44,13 @@ export default async function NotificationsSettingsPage() {
       <PushNotificationPreferences
         vapidPublicKey={vapid.publicKey}
         devices={devices.map((d) => ({ ...d, createdAt: d.createdAt.toISOString() }))}
+      />
+      <CalendarFeedPreferences
+        feed={
+          calendarFeed
+            ? { createdAt: calendarFeed.createdAt.toISOString(), lastFetchedAt: calendarFeed.lastFetchedAt?.toISOString() ?? null }
+            : null
+        }
       />
     </SettingsPage>
   );

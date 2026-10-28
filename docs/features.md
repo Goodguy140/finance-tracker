@@ -261,6 +261,12 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     (`deliverAlert`, the one place the three alerts go out; VAPID keys made once in
     `ServerSetting`), `src/lib/web-push.ts` (RFC 8291 encryption and RFC 8292 VAPID, no package;
     posts only to the browsers' push services), `PushDevice` table
+  - Calendar feed (a private `.ics` link for Google/Apple/Outlook: each recurring bill, payday
+    and transfer for the next 12 months and each subscription decide-by date, all-day with the
+    amount in the title; made after "Confirm it's you", shown once, only its hash kept in
+    `CalendarFeed`; "Make a new link" replaces it, "Turn off" removes it; served by
+    `GET /api/calendar/<secret>.ics` outside the session gate): `calendar-feed-preferences.tsx`,
+    `src/lib/calendar-feed.ts`, `actions/calendar-feed.ts`
   - Appearance (dashboard readability, install app): `src/lib/dashboard-readability.ts`;
     the check counts every tab of a stack, so switching tabs never changes the column count
     (`src/lib/dashboard-layout/text-visibility.ts`)
