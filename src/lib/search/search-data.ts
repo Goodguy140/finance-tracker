@@ -197,8 +197,8 @@ export async function searchUserData(
       kind: "account",
       id: a.id,
       title: a.name,
-      detail: [a.archived ? "Archived" : null, a.currency, "All its transactions"].filter(Boolean).join(" · "),
-      href: searchPageHref({ accountId: a.id }),
+      detail: [a.archived ? "Archived" : null, a.currency, "Balance and register"].filter(Boolean).join(" · "),
+      href: `/accounts/${a.id}`,
     })),
   );
   push(

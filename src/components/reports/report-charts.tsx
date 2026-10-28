@@ -349,3 +349,44 @@ export function CategoryTrendChart({
     </div>
   );
 }
+
+export type AccountBalancePoint = { label: string; cents: number };
+
+/** One account's balance at each month end (what is owed, for a card or loan). */
+export function AccountBalanceChart({ data, currency, owed }: { data: AccountBalancePoint[]; currency: string; owed: boolean }) {
+  function renderTooltip({ active, payload }: TooltipProps<number, string>) {
+    if (!active || !payload?.length) return null;
+    const row = payload[0]?.payload as AccountBalancePoint;
+    return (
+      <div className={tooltipBox}>
+        <p className="font-medium text-slate-100">{row.label}</p>
+        <p className="tabular-nums text-slate-300">
+          {owed ? "Owed " : ""}
+          {formatCurrency(row.cents, currency)}
+        </p>
+      </div>
+    );
+  }
+  const color = owed ? NODE_COLORS.shortfall : SPENDING_COLOR;
+  return (
+    <div className="w-full" style={{ minHeight: 200 }} data-testid="account-balance-chart">
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
+          <CartesianGrid stroke="#1e293b" vertical={false} />
+          <XAxis dataKey="label" {...axisProps} interval="preserveStartEnd" minTickGap={8} />
+          <YAxis {...axisProps} tickFormatter={formatAxisAmount} width={52} />
+          <Tooltip content={renderTooltip} cursor={{ stroke: "#475569" }} />
+          <Line
+            type="linear"
+            dataKey="cents"
+            name={owed ? "Owed" : "Balance"}
+            stroke={color}
+            strokeWidth={2}
+            dot={{ r: 3, fill: color }}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}

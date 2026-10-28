@@ -106,7 +106,9 @@ export default async function DebtPayoffPage({ searchParams }: { searchParams: S
                 return (
                   <li key={a.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <span className="font-medium">{a.name}</span>
+                      <Link href={`/accounts/${a.id}`} className="font-medium hover:text-sky-200 hover:underline">
+                        {a.name}
+                      </Link>
                       <span className="text-sm text-slate-300">
                         {owed === null ? (
                           <Link href="/settings/accounts" className="text-sky-300">
