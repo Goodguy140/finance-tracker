@@ -247,7 +247,8 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     as sinking funds in a "Yearly budgets" section of the Budgets card (spent this year of the
     limit, a twelfth a month, and what the fund holds: set aside so far less spent), kept out of
     the monthly totals and alerts; in backups
-  - Rules (title/type/account/amount conditions; set category, title, amount, account, note,
+  - Rules (title/type/account/amount conditions, the title matching any of up to 20 texts —
+    "contains Bell Aliant Pap or Internet", stored one per line in `titlePattern`; set category, title, amount, account, note,
     tag, mark as transfer; priority, enable, preview and apply, learned suggestions):
     `transaction-rules-panel.tsx`, `src/lib/transaction-rules.ts`,
     `transaction-rules-server.ts`

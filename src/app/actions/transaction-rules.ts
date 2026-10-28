@@ -43,7 +43,7 @@ function optional(formData: FormData, key: string) {
 async function readRuleForm(userId: string, formData: FormData) {
   const payload = transactionRuleSchema.parse({
     titleOperator: getFormValue(formData, "titleOperator") || "CONTAINS",
-    titlePattern: getFormValue(formData, "titlePattern"),
+    titlePatterns: formData.getAll("titlePattern").map(String),
     transactionType: optional(formData, "transactionType"),
     matchAccountId: optional(formData, "matchAccountId"),
     minAmount: optional(formData, "minAmount"),
@@ -88,7 +88,7 @@ async function readRuleForm(userId: string, formData: FormData) {
 
   return {
     titleOperator: payload.titleOperator as TransactionRuleTextOperator,
-    titlePattern: payload.titlePattern,
+    titlePattern: payload.titlePatterns,
     transactionType,
     matchAccountId: payload.matchAccountId ?? null,
     minAmountCents: payload.minAmount !== undefined ? toCents(payload.minAmount) : null,

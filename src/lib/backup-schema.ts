@@ -3,6 +3,7 @@ import { MAX_AMOUNT_CENTS } from "@/lib/money";
 import { YM_PATTERN } from "@/lib/period-month";
 import { MAX_GOAL_NAME_LENGTH } from "@/lib/savings-goals";
 import { MAX_TAG_NAME_LENGTH, MAX_TAGS_PER_TRANSACTION } from "@/lib/tags";
+import { MAX_RULE_TITLE_PATTERN_LENGTH, MAX_RULE_TITLE_PATTERNS } from "@/lib/transaction-rules";
 
 const isoDate = z.iso.datetime();
 /** Money columns are 32-bit ints; bound every cents field so a bad file fails validation, not the DB write. */
@@ -277,7 +278,8 @@ export const userBackupSchema = z.object({
         priority: z.number().int(),
         enabled: z.boolean(),
         titleOperator: z.enum(["CONTAINS", "EQUALS", "STARTS_WITH"]),
-        titlePattern: z.string().min(1).max(200),
+        /** One or more texts, one per line. */
+        titlePattern: z.string().min(1).max((MAX_RULE_TITLE_PATTERN_LENGTH + 1) * MAX_RULE_TITLE_PATTERNS),
         transactionType: z.enum(["EXPENSE", "INCOME", "TRANSFER"]).nullable(),
         matchAccountId: z.string().min(1).nullable(),
         minAmountCents: nonNegativeCents.nullable(),

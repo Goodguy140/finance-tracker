@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   appendRuleNote,
+  describeRuleCondition,
+  joinRuleTitlePatterns,
   planRuleApplication,
   resolveRuleOutcome,
   ruleMatches,
+  ruleTitlePatterns,
   visibleLearnedSuggestions,
   type RuleSubject,
   type RuleTransactionType,
@@ -55,6 +58,17 @@ describe("ruleMatches", () => {
   it("matches if any of the subject texts does (bank name vs merchant name)", () => {
     expect(ruleMatches(rule({ titlePattern: "spotify" }), subject({ texts: ["SQ *XYZ", null, "Spotify"] }))).toBe(true);
     expect(ruleMatches(rule({ titlePattern: "spotify" }), subject({ texts: ["SQ *XYZ", null] }))).toBe(false);
+  });
+
+  it("matches if any of the rule's texts does, for every operator", () => {
+    const either = "Bell Aliant Pap\nInternet";
+    expect(ruleMatches(rule({ titlePattern: either }), subject({ texts: ["BELL ALIANT PAP 1234"] }))).toBe(true);
+    expect(ruleMatches(rule({ titlePattern: either }), subject({ texts: ["Eastlink Internet"] }))).toBe(true);
+    expect(ruleMatches(rule({ titlePattern: either }), subject({ texts: ["Bell Mobility"] }))).toBe(false);
+    expect(ruleMatches(rule({ titleOperator: "EQUALS", titlePattern: "costco\nlcbo" }), subject({ texts: ["LCBO"] }))).toBe(true);
+    expect(ruleMatches(rule({ titleOperator: "STARTS_WITH", titlePattern: "x\nsq *" }), subject({ texts: ["SQ *CAFE"] }))).toBe(true);
+    // A blank line is not an empty pattern that matches everything.
+    expect(ruleMatches(rule({ titlePattern: "costco\n\n" }), subject({ texts: ["Netflix"] }))).toBe(false);
   });
 
   it("compares the absolute amount so a refund matches the same range as the charge", () => {
@@ -244,5 +258,19 @@ describe("mark as transfer", () => {
     expect(ruleMatches(marking, subject({ type: "TRANSFER", amountCents: -50000 }))).toBe(false);
     // A rule that does not mark transfers stays off transfers, as before.
     expect(ruleMatches(rule({ transactionType: "EXPENSE" }), subject({ type: "TRANSFER" }))).toBe(false);
+  });
+});
+
+describe("rule title patterns", () => {
+  it("drops blank lines and case-insensitive repeats, keeping the first spelling", () => {
+    expect(ruleTitlePatterns(" Bell Aliant Pap \n\ninternet\nINTERNET")).toEqual(["Bell Aliant Pap", "internet"]);
+    expect(joinRuleTitlePatterns(["Netflix", " ", "netflix", "Spotify "])).toBe("Netflix\nSpotify");
+  });
+
+  it("describes several texts as alternatives", () => {
+    const labels = { account: (id: string) => id, amount: (cents: number) => String(cents) };
+    expect(describeRuleCondition(rule({ titlePattern: "Bell Aliant Pap\nInternet" }), labels)).toBe(
+      "Title contains “Bell Aliant Pap” or “Internet”",
+    );
   });
 });

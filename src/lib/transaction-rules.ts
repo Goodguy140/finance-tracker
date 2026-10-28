@@ -24,6 +24,7 @@ export type TransactionRuleInput = {
   priority: number;
   enabled: boolean;
   titleOperator: RuleTextOperator;
+  /** One or more texts, one per line; the title condition holds if any of them matches. */
   titlePattern: string;
   transactionType: RuleTransactionType | null;
   matchAccountId: string | null;
@@ -72,6 +73,40 @@ export type LearnedRuleContext = {
   hiddenTitleKeys: ReadonlySet<string> | readonly string[];
 };
 
+/** How many texts one rule may match; each is an alternative ("contains A or B"). */
+export const MAX_RULE_TITLE_PATTERNS = 20;
+export const MAX_RULE_TITLE_PATTERN_LENGTH = 200;
+
+/**
+ * A rule's texts. They are stored one per line in `titlePattern`, so a rule written before
+ * rules could hold several is simply a rule with one. Blank lines and repeats (ignoring case)
+ * are dropped.
+ */
+export function ruleTitlePatterns(stored: string): string[] {
+  const seen = new Set<string>();
+  const patterns: string[] = [];
+  for (const line of stored.split("\n")) {
+    const pattern = line.trim();
+    const key = normalizeExpenseTitleKey(pattern);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    patterns.push(pattern);
+  }
+  return patterns;
+}
+
+/** The stored form of several texts: the inverse of `ruleTitlePatterns`. */
+export function joinRuleTitlePatterns(patterns: readonly string[]): string {
+  return ruleTitlePatterns(patterns.join("\n")).join("\n");
+}
+
+/** `“A” or “B”`, for describing a rule's title condition. */
+export function quoteRuleTitlePatterns(stored: string): string {
+  return ruleTitlePatterns(stored)
+    .map((p) => `“${p}”`)
+    .join(" or ");
+}
+
 export function textMatches(operator: RuleTextOperator, pattern: string, text: string) {
   const needle = normalizeExpenseTitleKey(pattern);
   const haystack = normalizeExpenseTitleKey(text);
@@ -112,7 +147,10 @@ export function ruleMatches(rule: TransactionRuleInput, subject: RuleSubject) {
     if (rule.minAmountCents !== null && amount < rule.minAmountCents) return false;
     if (rule.maxAmountCents !== null && amount > rule.maxAmountCents) return false;
   }
-  return subject.texts.some((text) => !!text && textMatches(rule.titleOperator, rule.titlePattern, text));
+  const patterns = ruleTitlePatterns(rule.titlePattern);
+  return subject.texts.some(
+    (text) => !!text && patterns.some((pattern) => textMatches(rule.titleOperator, pattern, text)),
+  );
 }
 
 export function sortRules<T extends Pick<TransactionRuleInput, "priority" | "id">>(rules: readonly T[]): T[] {
@@ -227,7 +265,7 @@ export function describeRuleCondition(
   rule: TransactionRuleInput,
   labels: { account: (id: string) => string; amount: (cents: number) => string },
 ) {
-  const parts = [`Title ${OPERATOR_LABEL[rule.titleOperator]} “${rule.titlePattern}”`];
+  const parts = [`Title ${OPERATOR_LABEL[rule.titleOperator]} ${quoteRuleTitlePatterns(rule.titlePattern)}`];
   if (rule.transactionType) parts.push(rule.transactionType === "EXPENSE" ? "expenses only" : "income only");
   if (rule.matchAccountId) parts.push(`on ${labels.account(rule.matchAccountId)}`);
   const { minAmountCents: min, maxAmountCents: max } = rule;
