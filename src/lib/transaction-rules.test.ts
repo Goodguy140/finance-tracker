@@ -6,6 +6,7 @@ import {
   planRuleApplication,
   resolveRuleOutcome,
   ruleMatches,
+  splitCentsByShares,
   ruleTitlePatterns,
   visibleLearnedSuggestions,
   type RuleSubject,
@@ -32,6 +33,7 @@ function rule(overrides: Partial<TransactionRuleInput> = {}): TransactionRuleInp
     addTagId: null,
     markAsTransfer: false,
     setTransferAccountId: null,
+    splitBy: [],
     ...overrides,
   };
 }
@@ -195,6 +197,7 @@ describe("planRuleApplication", () => {
         addTagId: null,
         markAsTransfer: false,
         transferAccountId: null,
+        splitLines: null,
       },
     ]);
     expect(changes[0].after).not.toHaveProperty("amountCents");
@@ -272,5 +275,72 @@ describe("rule title patterns", () => {
     expect(describeRuleCondition(rule({ titlePattern: "Bell Aliant Pap\nInternet" }), labels)).toBe(
       "Title contains “Bell Aliant Pap” or “Internet”",
     );
+  });
+});
+
+describe("split by percentage", () => {
+  const costco = [
+    { categoryId: "subs", basisPoints: 7000 },
+    { categoryId: "shopping", basisPoints: 3000 },
+  ];
+
+  it("cuts an amount into its shares to the cent, refunds included", () => {
+    expect(splitCentsByShares(10001, costco)).toEqual([
+      { categoryId: "subs", amountCents: 7001 },
+      { categoryId: "shopping", amountCents: 3000 },
+    ]);
+    expect(splitCentsByShares(-999, costco)).toEqual([
+      { categoryId: "subs", amountCents: -699 },
+      { categoryId: "shopping", amountCents: -300 },
+    ]);
+    const thirds = [
+      { categoryId: "a", basisPoints: 3333 },
+      { categoryId: "b", basisPoints: 3333 },
+      { categoryId: "c", basisPoints: 3334 },
+    ];
+    expect(splitCentsByShares(100, thirds).map((l) => l.amountCents)).toEqual([33, 33, 34]);
+    // One cent cannot be shared: the line that would get nothing is left out.
+    expect(splitCentsByShares(1, costco)).toEqual([{ categoryId: "subs", amountCents: 1 }]);
+  });
+
+  it("sets the split and its first category, competing with Category for the first matching rule", () => {
+    const splitting = rule({ id: "split", priority: 1, splitBy: costco });
+    expect(resolveRuleOutcome([splitting], subject(), kinds)).toMatchObject({
+      split: costco,
+      splitRuleId: "split",
+      categoryId: "subs",
+      categoryFrom: "rule",
+      ruleIds: ["split"],
+    });
+    const earlier = rule({ id: "cat", priority: 0, setCategoryId: "shopping" });
+    const outcome = resolveRuleOutcome([splitting, earlier], subject(), kinds);
+    expect(outcome.categoryId).toBe("shopping");
+    expect(outcome.split).toBeUndefined();
+  });
+
+  it("splits nothing for income, or once a line's category is gone and the rest falls short of 100%", () => {
+    const splitting = rule({ splitBy: costco });
+    expect(resolveRuleOutcome([splitting], subject({ type: "INCOME" }), kinds).split).toBeUndefined();
+    const withoutShopping = new Map([...kinds].filter(([id]) => id !== "shopping"));
+    expect(resolveRuleOutcome([splitting], subject(), withoutShopping).split).toBeUndefined();
+    const short = rule({ splitBy: [costco[0]] });
+    expect(resolveRuleOutcome([short], subject(), kinds).split).toBeUndefined();
+  });
+
+  it("splits matching past expenses, but not ones someone owes part of", () => {
+    const rows = [
+      { id: "t1", title: "Netflix", type: "EXPENSE" as const, amountCents: 2000, accountId: "acc1", categoryId: "shopping", note: null, tagIds: [] },
+      { id: "t2", title: "Netflix", type: "EXPENSE" as const, amountCents: 2000, accountId: "acc1", categoryId: "shopping", note: null, tagIds: [], hasOwedShares: true },
+    ];
+    const changes = planRuleApplication(rule({ splitBy: costco }), rows, kinds);
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({
+      id: "t1",
+      after: { categoryId: "subs" },
+      splitLines: [
+        { categoryId: "subs", amountCents: 1400 },
+        { categoryId: "shopping", amountCents: 600 },
+      ],
+    });
   });
 });

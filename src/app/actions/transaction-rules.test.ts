@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockPrisma = vi.hoisted(() => ({
   account: { findFirst: vi.fn() },
-  category: { findFirst: vi.fn(), findMany: vi.fn() },
+  category: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn() },
   transaction: { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
   transactionRule: {
     count: vi.fn(),
@@ -62,6 +62,7 @@ function ruleRow(overrides: Record<string, unknown> = {}) {
     addTagId: null,
     markAsTransfer: false,
     setTransferAccountId: null,
+    splits: [],
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -98,6 +99,50 @@ describe("transaction rule actions", () => {
           setTitle: null,
         }),
       });
+    });
+
+    it("stores a split's lines in order, pinning the rule to expenses", async () => {
+      mockPrisma.category.count.mockResolvedValue(2);
+      const data = form({ titlePattern: "costco" });
+      for (const [categoryId, percent] of [["cat-groceries", "70"], ["cat-household", "30"], ["", ""]]) {
+        data.append("ruleSplitCategoryId", categoryId);
+        data.append("ruleSplitPercent", percent);
+      }
+
+      expect(await createTransactionRuleAction(data)).toBeUndefined();
+      expect(mockPrisma.transactionRule.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          transactionType: "EXPENSE",
+          setCategoryId: null,
+          splits: {
+            create: [
+              { position: 0, categoryId: "cat-groceries", basisPoints: 7000 },
+              { position: 1, categoryId: "cat-household", basisPoints: 3000 },
+            ],
+          },
+        }),
+      });
+    });
+
+    it("refuses a split that does not add up to 100%, or names a category that is not the user's", async () => {
+      const split = (percents: string[]) => {
+        const data = form({ titlePattern: "costco" });
+        percents.forEach((percent, i) => {
+          data.append("ruleSplitCategoryId", `cat-${i}`);
+          data.append("ruleSplitPercent", percent);
+        });
+        return data;
+      };
+      expect(await createTransactionRuleAction(split(["70", "20"]))).toMatchObject({
+        ok: false,
+        error: expect.stringMatching(/add up to 100%/),
+      });
+      mockPrisma.category.count.mockResolvedValue(1);
+      expect(await createTransactionRuleAction(split(["70", "30"]))).toMatchObject({
+        ok: false,
+        error: expect.stringMatching(/split category was not found/),
+      });
+      expect(mockPrisma.transactionRule.create).not.toHaveBeenCalled();
     });
 
     it("stores every text to match, one per line, skipping blanks", async () => {

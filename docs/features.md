@@ -314,6 +314,11 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     tag, mark as transfer; priority, enable, preview and apply, learned suggestions):
     `transaction-rules-panel.tsx`, `src/lib/transaction-rules.ts`,
     `transaction-rules-server.ts`
+  - **Split by percentage** (rule action, expenses only, e.g. Costco 70% Groceries / 30% Household;
+    `TransactionRuleSplit` table): the Add form offers it ("Book whole" declines), CSV import and the
+    API split unless the row names a category, the bank queue splits while the row keeps the
+    rule's category (not "Add with category"), apply to past splits matching expenses without owed
+    shares; cents from `splitCentsByShares`, written as `SplitTransactionPart`; in backups
   - Tags (rename, merge, delete): `settings/tags-panel.tsx`, `src/lib/tags*.ts`
   - Subscriptions (shared members, who paid, skip occurrence): `subscriptions-panel.tsx`,
     `actions/subscriptions.ts`

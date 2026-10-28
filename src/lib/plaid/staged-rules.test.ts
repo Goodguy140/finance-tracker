@@ -26,6 +26,7 @@ const rule: TransactionRuleInput = {
   addTagId: null,
   markAsTransfer: false,
   setTransferAccountId: null,
+  splitBy: [],
 };
 
 const kinds = new Map<string, RuleTransactionType>([
@@ -54,6 +55,7 @@ describe("proposeForStagedRow", () => {
       tagIds: [],
       markAsTransfer: false,
       transferAccountId: null,
+      split: null,
       reason: "rule",
     });
   });
@@ -90,6 +92,7 @@ describe("proposeForStagedRow", () => {
       tagIds: [],
       markAsTransfer: false,
       transferAccountId: null,
+      split: null,
       reason: "learned",
     });
   });

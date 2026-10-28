@@ -24,7 +24,7 @@ const mockPrisma = vi.hoisted(() => ({
   transactionVerification: { deleteMany: vi.fn(), create: vi.fn() },
   transactionAttachment: { deleteMany: vi.fn() },
   deletedTransaction: { deleteMany: vi.fn() },
-  transactionRule: { deleteMany: vi.fn(), createMany: vi.fn() },
+  transactionRule: { deleteMany: vi.fn(), create: vi.fn() },
   hiddenTitleSuggestion: { deleteMany: vi.fn(), createMany: vi.fn() },
   tag: { deleteMany: vi.fn(), create: vi.fn() },
   transactionTag: { createMany: vi.fn() },
@@ -295,17 +295,16 @@ describe("importUserBackupAction", () => {
     expect(await importUserBackupAction(formData)).toBeUndefined();
 
     expect(mockPrisma.transactionRule.deleteMany).toHaveBeenCalledWith({ where: { userId: "user-1" } });
-    expect(mockPrisma.transactionRule.createMany).toHaveBeenCalledWith({
-      data: [
-        expect.objectContaining({
-          userId: "user-1",
-          titlePattern: "netflix",
-          matchAccountId: "acc-new",
-          setCategoryId: "cat-new",
-          setAccountId: null,
-          setTitle: "Netflix",
-        }),
-      ],
+    expect(mockPrisma.transactionRule.create).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.transactionRule.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: "user-1",
+        titlePattern: "netflix",
+        matchAccountId: "acc-new",
+        setCategoryId: "cat-new",
+        setAccountId: null,
+        setTitle: "Netflix",
+      }),
     });
     expect(mockPrisma.hiddenTitleSuggestion.createMany).toHaveBeenCalledWith({
       data: [{ userId: "user-1", titleKey: "coffee" }],
@@ -413,8 +412,8 @@ describe("importUserBackupAction", () => {
         { transactionId: "txn-new", tagId: "tag-tax-new" },
       ],
     });
-    expect(mockPrisma.transactionRule.createMany).toHaveBeenCalledWith({
-      data: [expect.objectContaining({ addTagId: "tag-trip-new" })],
+    expect(mockPrisma.transactionRule.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ addTagId: "tag-trip-new" }),
     });
   });
 

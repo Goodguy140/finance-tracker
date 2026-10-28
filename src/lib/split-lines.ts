@@ -6,8 +6,9 @@ import { MAX_AMOUNT, toCents } from "./money";
  * `Transaction` keeps the whole amount; each `SplitTransactionPart` says how much of it
  * counts toward one category, and every total that goes by category reads the parts.
  *
- * New splits can no longer be created; these helpers only edit the lines of an expense
- * that is already split. Lines always add up to the parent's `amountCents`, so the per-category
+ * There is no form for typing a new split in: new splits come only from a rule's "Split by
+ * percentage" (`ruleSplitLines`), and the edit dialog edits the lines of an expense that is
+ * already split. Lines always add up to the parent's `amountCents`, so the per-category
  * figures and the expense's own total never disagree.
  */
 

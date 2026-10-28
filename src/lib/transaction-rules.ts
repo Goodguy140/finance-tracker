@@ -39,7 +39,16 @@ export type TransactionRuleInput = {
   markAsTransfer: boolean;
   /** The other side of the transfer; only meaningful with `markAsTransfer`. */
   setTransferAccountId: string | null;
+  /** "Split by percentage", in the editor's order; empty when the rule does not split. */
+  splitBy: RuleSplitShare[];
 };
+
+/** One line of a rule's split: `basisPoints` hundredths of a percent toward `categoryId`. */
+export type RuleSplitShare = { categoryId: string; basisPoints: number };
+
+/** 100%, in the hundredths of a percent split shares are kept in. */
+export const FULL_SPLIT_BASIS_POINTS = 10_000;
+export const MAX_RULE_SPLIT_LINES = 10;
 
 export type RuleSubject = {
   /** Every text the title condition may match: just the title, or a bank row's raw name,
@@ -62,6 +71,14 @@ export type RuleOutcome = {
   markAsTransfer?: true;
   /** The account on the other side, from the same rule that marked it. */
   transferAccountId?: string;
+  /**
+   * The shares to split an expense into. A split is the rule's way of setting the category,
+   * so it competes with "Category" for the first matching rule: when set, `categoryId` is
+   * its first line's, which is the label a split expense carries.
+   */
+  split?: RuleSplitShare[];
+  /** The rule the split came from, for a form to name when it is saved. */
+  splitRuleId?: string;
   /** Unlike the fields above, every matching rule adds its tag, in priority order. */
   tagIds: string[];
   /** Rules that contributed at least one field, in priority order. */
@@ -158,6 +175,75 @@ export function sortRules<T extends Pick<TransactionRuleInput, "priority" | "id"
 }
 
 /**
+ * A rule's split as it can be used now, or null: at least two lines, every category one of the
+ * user's expense categories, adding up to exactly 100%. A rule saved that way can fall short
+ * later (a category deleted outright takes its line with it), and then it splits nothing
+ * rather than booking a share nowhere. Lines naming the same category (two merged) are joined.
+ */
+export function usableRuleSplit(
+  shares: readonly RuleSplitShare[],
+  categoryKindById: ReadonlyMap<string, RuleTransactionType>,
+): RuleSplitShare[] | null {
+  const merged: RuleSplitShare[] = [];
+  for (const share of shares) {
+    if (categoryKindById.get(share.categoryId) !== "EXPENSE" || share.basisPoints <= 0) return null;
+    const same = merged.find((line) => line.categoryId === share.categoryId);
+    if (same) same.basisPoints += share.basisPoints;
+    else merged.push({ ...share });
+  }
+  const total = merged.reduce((sum, line) => sum + line.basisPoints, 0);
+  return merged.length >= 2 && total === FULL_SPLIT_BASIS_POINTS ? merged : null;
+}
+
+/**
+ * Cuts `totalCents` into the split's shares, to the cent and adding up to it exactly: each
+ * line is rounded down (toward zero for a refund) and the cents left over go to the lines
+ * that lost the most to rounding, first line first on a tie. A line that comes to nothing is
+ * left out, so a few cents can end up as one line, which is no split at all.
+ */
+export function splitCentsByShares(
+  totalCents: number,
+  shares: readonly RuleSplitShare[],
+): { categoryId: string; amountCents: number }[] {
+  const sign = totalCents < 0 ? -1 : 1;
+  const total = Math.abs(totalCents);
+  const lines = shares.map((share, index) => {
+    const exact = (total * share.basisPoints) / FULL_SPLIT_BASIS_POINTS;
+    const cents = Math.floor(exact);
+    return { index, categoryId: share.categoryId, cents, lost: exact - cents };
+  });
+  let left = total - lines.reduce((sum, line) => sum + line.cents, 0);
+  for (const line of [...lines].sort((a, b) => b.lost - a.lost || a.index - b.index)) {
+    if (left <= 0) break;
+    line.cents += 1;
+    left -= 1;
+  }
+  return lines
+    .filter((line) => line.cents > 0)
+    .map((line) => ({ categoryId: line.categoryId, amountCents: sign * line.cents }));
+}
+
+/**
+ * The split lines to write for an expense of `amountCents`, or null when there is nothing to
+ * split: no split, or an amount too small to come to two lines. The caller books the expense
+ * in the first line's category, as every split expense is labelled.
+ */
+export function ruleSplitLines(split: readonly RuleSplitShare[] | null | undefined, amountCents: number) {
+  if (!split) return null;
+  const lines = splitCentsByShares(amountCents, split);
+  return lines.length >= 2 ? lines : null;
+}
+
+/** `70% Groceries, 30% Household`, for describing a split. */
+export function describeRuleSplit(shares: readonly RuleSplitShare[], categoryName: (id: string) => string) {
+  return shares.map((share) => `${formatSplitPercent(share.basisPoints)} ${categoryName(share.categoryId)}`).join(", ");
+}
+
+export function formatSplitPercent(basisPoints: number) {
+  return `${Number((basisPoints / 100).toFixed(2))}%`;
+}
+
+/**
  * Walks the enabled rules in priority order; each field is filled by the first matching rule
  * that sets it, so a broad "contains AMZN → Shopping" rule and a narrower "contains AMZN, over
  * $100 → rename" rule compose. A category is only taken if its kind matches the subject's
@@ -174,7 +260,14 @@ export function resolveRuleOutcome(
   for (const rule of sortRules(rules)) {
     if (!ruleMatches(rule, subject)) continue;
     let contributed = false;
-    if (
+    const split = subject.type === "EXPENSE" ? usableRuleSplit(rule.splitBy, categoryKindById) : null;
+    if (outcome.categoryId === undefined && split) {
+      outcome.split = split;
+      outcome.splitRuleId = rule.id;
+      outcome.categoryId = split[0].categoryId;
+      outcome.categoryFrom = "rule";
+      contributed = true;
+    } else if (
       outcome.categoryId === undefined &&
       rule.setCategoryId &&
       categoryKindById.get(rule.setCategoryId) === subject.type
@@ -290,6 +383,7 @@ export function describeRuleActions(
 ) {
   const parts: string[] = [];
   if (rule.setCategoryId) parts.push(`category → ${labels.category(rule.setCategoryId)}`);
+  if (rule.splitBy.length > 0) parts.push(`split → ${describeRuleSplit(rule.splitBy, labels.category)}`);
   if (rule.setTitle) parts.push(`rename → “${rule.setTitle}”`);
   if (rule.setAmountCents !== null) parts.push(`amount → ${labels.amount(rule.setAmountCents)}`);
   if (rule.setAccountId) parts.push(`account → ${labels.account(rule.setAccountId)}`);
@@ -327,6 +421,8 @@ export type RuleChange = {
   /** Booked as a transfer from here on, naming `transferAccountId` as its other side. */
   markAsTransfer: boolean;
   transferAccountId: string | null;
+  /** The rule's split, in cents of this transaction; `after.categoryId` is its first line's. */
+  splitLines: { categoryId: string; amountCents: number }[] | null;
 };
 
 /**
@@ -335,7 +431,9 @@ export type RuleChange = {
  * is only a default for new entries. Rows the rule matches but would leave identical are
  * omitted. Callers exclude split transactions, whose categories live in their parts. A rule
  * that marks transfers turns matching expenses and income into transfers, except entries with
- * owed shares, which keep the rule's other changes.
+ * owed shares, which keep the rule's other changes. A rule that splits splits matching
+ * expenses the same way, except entries with owed shares (a split's lines must add up to the
+ * amount, which the shares already came out of).
  */
 export function planRuleApplication(
   rule: TransactionRuleInput,
@@ -354,7 +452,13 @@ export function planRuleApplication(
     if (!ruleMatches(active, subject)) continue;
     const before = { title: row.title, categoryId: row.categoryId, accountId: row.accountId, note: row.note };
     const after = { ...before };
-    if (active.setCategoryId && categoryKindById.get(active.setCategoryId) === row.type) {
+    const splitLines =
+      row.type === "EXPENSE" && !row.hasOwedShares
+        ? ruleSplitLines(usableRuleSplit(active.splitBy, categoryKindById), row.amountCents)
+        : null;
+    if (splitLines) {
+      after.categoryId = splitLines[0].categoryId;
+    } else if (active.setCategoryId && categoryKindById.get(active.setCategoryId) === row.type) {
       after.categoryId = active.setCategoryId;
     }
     if (active.setTitle?.trim()) after.title = active.setTitle.trim();
@@ -372,9 +476,10 @@ export function planRuleApplication(
       after.accountId !== before.accountId ||
       (after.note ?? null) !== (before.note ?? null) ||
       addTagId ||
-      markAsTransfer
+      markAsTransfer ||
+      splitLines
     ) {
-      changes.push({ id: row.id, before, after, addTagId, markAsTransfer, transferAccountId });
+      changes.push({ id: row.id, before, after, addTagId, markAsTransfer, transferAccountId, splitLines });
     }
   }
   return changes;

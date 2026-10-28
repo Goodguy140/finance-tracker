@@ -87,6 +87,48 @@ test("a rule fills category and account on the add-expense form", async ({ page 
     .toEqual({ title: "Renamed by rule", categoryId: category.id, accountId: account.id });
 });
 
+test("a rule that splits by percentage splits an expense added by hand", async ({ page }) => {
+  const { user, stamp, categories } = await createUserAndLogin(page, "split");
+  const [first, second] = categories.slice(-2);
+  const pattern = `splitmatch${stamp.replace(/[^a-z0-9]/gi, "")}`;
+
+  await page.goto("/settings/rules");
+  const panel = page.getByRole("region", { name: "Rules", exact: true });
+  await panel.getByRole("button", { name: "New rule" }).click();
+  const editor = panel.getByRole("region", { name: "New rule" });
+  await editor.locator('input[name="titlePattern"]').fill(pattern);
+  await editor.getByLabel("Split by percentage").check();
+  await editor.getByLabel("Split category 1").selectOption(first.id);
+  await editor.getByLabel("Split percentage 1").fill("70");
+  await editor.getByLabel("Split category 2").selectOption(second.id);
+  await editor.getByLabel("Split percentage 2").fill("30");
+  await expect(editor.getByTestId("rule-split-total")).toHaveText("Total 100%");
+  await editor.getByRole("button", { name: "Create rule" }).click();
+  await expect(panel.getByTestId("transaction-rule")).toContainText(`split → 70% ${first.name}, 30% ${second.name}`);
+
+  await page.goto("/");
+  await expectDashboardHome(page);
+  const card = addExpenseCard(page);
+  await card.getByPlaceholder("e.g. Weekly groceries, Shell fuel").fill(`Costco ${pattern}`);
+  await expect(card.getByTestId("rule-split-offer")).toContainText(`70% ${first.name}, 30% ${second.name}`);
+  await card.locator('input[name="amount"]').fill("100.01");
+  await card.getByRole("button", { name: "Add expense", exact: true }).click();
+
+  // The parts are written after the expense, in the same transaction: wait on them.
+  await expect
+    .poll(() =>
+      prisma.splitTransactionPart.findMany({
+        where: { userId: user.id },
+        select: { categoryId: true, amountCents: true, transaction: { select: { categoryId: true, amountCents: true } } },
+        orderBy: { amountCents: "desc" },
+      }),
+    )
+    .toEqual([
+      { categoryId: first.id, amountCents: 7001, transaction: { categoryId: first.id, amountCents: 10001 } },
+      { categoryId: second.id, amountCents: 3000, transaction: { categoryId: first.id, amountCents: 10001 } },
+    ]);
+});
+
 test("learned combos are listed with the rules and can be hidden", async ({ page }) => {
   const { user, stamp, categories, accounts } = await createUserAndLogin(page, "learned");
   const category = categories[categories.length - 1];
