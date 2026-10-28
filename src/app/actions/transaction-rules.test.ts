@@ -100,6 +100,16 @@ describe("transaction rule actions", () => {
       });
     });
 
+    it("stores every text to match, one per line, skipping blanks", async () => {
+      const data = form({ setTitle: "Internet bill" });
+      for (const text of [" Bell Aliant Pap ", "", "Internet"]) data.append("titlePattern", text);
+
+      expect(await createTransactionRuleAction(data)).toBeUndefined();
+      expect(mockPrisma.transactionRule.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ titlePattern: "Bell Aliant Pap\nInternet" }),
+      });
+    });
+
     it("creates the tag a rule adds when the user does not have it yet", async () => {
       mockPrisma.tag.findMany.mockResolvedValue([]);
       mockPrisma.tag.upsert.mockResolvedValue({ id: "tag-new" });

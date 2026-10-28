@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { CategoryKind, TransactionRuleTextOperator, TransactionType } from "@prisma/client";
 import { normalizeExpenseTitleKey } from "@/lib/expense-title-suggestions";
+import { ruleTitlePatterns } from "@/lib/transaction-rules";
 import { HABIT_CATEGORY_NAMES } from "@/lib/insights/habit-patterns";
 import { insightSizeCents } from "@/lib/insights/index";
 import { loadInsights } from "@/lib/insights/load";
@@ -92,7 +93,7 @@ export const trackHabitSeparatelyAction = formAction(async (formData: FormData) 
     const already = new Set(
       existingRules
         .filter((r) => r.setCategoryId === category.id)
-        .map((r) => normalizeExpenseTitleKey(r.titlePattern)),
+        .flatMap((r) => ruleTitlePatterns(r.titlePattern).map(normalizeExpenseTitleKey)),
     );
     const fresh = [...new Set(patterns.map((p) => p.trim()).filter(Boolean))].filter(
       (p) => !already.has(normalizeExpenseTitleKey(p)),

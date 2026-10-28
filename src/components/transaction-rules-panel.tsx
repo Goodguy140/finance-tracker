@@ -22,7 +22,10 @@ import { formatCurrency } from "@/lib/money";
 import {
   describeRuleActions,
   describeRuleCondition,
+  MAX_RULE_TITLE_PATTERN_LENGTH,
+  MAX_RULE_TITLE_PATTERNS,
   resolveRuleOutcome,
+  ruleTitlePatterns,
   type RuleTransactionType,
   type TransactionRuleInput,
 } from "@/lib/transaction-rules";
@@ -304,6 +307,85 @@ function RuleButtonForm({
   );
 }
 
+/** Keys for the rows of `TitlePatternsField`, unique across editors. */
+let patternRowKey = 0;
+
+/**
+ * The rule's texts to match, one field each. Every field posts as `titlePattern`; the rule
+ * matches when any of them does.
+ */
+function TitlePatternsField({ id, initial }: { id: string; initial: string }) {
+  const [rows, setRows] = useState(() => {
+    const patterns = ruleTitlePatterns(initial);
+    return (patterns.length > 0 ? patterns : [""]).map((value) => ({ key: patternRowKey++, value }));
+  });
+  const focusLast = useRef(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!focusLast.current) return;
+    focusLast.current = false;
+    listRef.current?.querySelector<HTMLInputElement>("li:last-child input")?.focus();
+  }, [rows.length]);
+
+  return (
+    <div ref={listRef} className="flex flex-col gap-1.5">
+      <label className={labelTextClass} htmlFor={id}>
+        Text to match
+      </label>
+      <ul className="flex flex-col gap-1.5">
+        {rows.map((row, index) => (
+          <li key={row.key} className="flex items-center gap-2">
+            {rows.length > 1 ? (
+              <span aria-hidden className="w-5 shrink-0 text-xs text-slate-500">
+                {index > 0 ? "or" : ""}
+              </span>
+            ) : null}
+            <input
+              id={index === 0 ? id : undefined}
+              name="titlePattern"
+              className={inputClass}
+              value={row.value}
+              onChange={(e) =>
+                setRows((current) => current.map((r) => (r.key === row.key ? { ...r, value: e.target.value } : r)))
+              }
+              placeholder={index === 0 ? "e.g. NETFLIX" : "Another text"}
+              aria-label={index === 0 ? undefined : `Text to match ${index + 1}`}
+              maxLength={MAX_RULE_TITLE_PATTERN_LENGTH}
+              required={index === 0}
+            />
+            {rows.length > 1 ? (
+              <button
+                type="button"
+                className={smallBtnClass}
+                aria-label={`Remove “${row.value || `text ${index + 1}`}”`}
+                onClick={() => setRows((current) => current.filter((r) => r.key !== row.key))}
+              >
+                ✕
+              </button>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      {rows.length < MAX_RULE_TITLE_PATTERNS ? (
+        <button
+          type="button"
+          className={`${smallBtnClass} self-start`}
+          onClick={() => {
+            focusLast.current = true;
+            setRows((current) => [...current, { key: patternRowKey++, value: "" }]);
+          }}
+        >
+          + Or another text
+        </button>
+      ) : null}
+      <span className="text-xs text-slate-500">
+        Not case-sensitive. Bank rows are matched on both the bank&apos;s description and the merchant name. With
+        more than one text, any of them matching is enough.
+      </span>
+    </div>
+  );
+}
+
 function RuleEditor({
   draft,
   categories,
@@ -360,20 +442,7 @@ function RuleEditor({
               <option value="EQUALS">is exactly</option>
             </select>,
           )}
-          {field(
-            "titlePattern",
-            "Text to match",
-            <input
-              id={`${ids}-titlePattern`}
-              name="titlePattern"
-              className={inputClass}
-              defaultValue={draft.titlePattern ?? ""}
-              placeholder="e.g. NETFLIX"
-              maxLength={200}
-              required
-            />,
-            "Not case-sensitive. Bank rows are matched on both the bank's description and the merchant name.",
-          )}
+          <TitlePatternsField id={`${ids}-titlePattern`} initial={draft.titlePattern ?? ""} />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           {field(

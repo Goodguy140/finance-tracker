@@ -8,6 +8,7 @@ import {
   transactionHref,
   type TransactionSearchFilter,
 } from "@/lib/search/search-paths";
+import { quoteRuleTitlePatterns } from "@/lib/transaction-rules";
 
 /**
  * What the master search finds in a user's own data. Settings pages and actions are matched
@@ -225,7 +226,7 @@ export async function searchUserData(
     rules.map((r) => ({
       kind: "rule",
       id: r.id,
-      title: `Title ${RULE_OPERATOR_LABELS[r.titleOperator]} “${r.titlePattern}”`,
+      title: `Title ${RULE_OPERATOR_LABELS[r.titleOperator]} ${quoteRuleTitlePatterns(r.titlePattern)}`,
       detail: [r.enabled ? "Rule" : "Rule, off", r.setCategory ? `sets ${r.setCategory.name}` : null, r.setTitle ? `renames to ${r.setTitle}` : null]
         .filter(Boolean)
         .join(" · "),

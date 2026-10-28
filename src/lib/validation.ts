@@ -3,6 +3,7 @@ import { MAX_AMOUNT, MAX_AMOUNT_CENTS } from "@/lib/money";
 import { YM_PATTERN } from "@/lib/period-month";
 import { MAX_GOAL_NAME_LENGTH } from "@/lib/savings-goals";
 import { MAX_TAG_NAME_LENGTH } from "@/lib/tags";
+import { joinRuleTitlePatterns, MAX_RULE_TITLE_PATTERN_LENGTH, MAX_RULE_TITLE_PATTERNS } from "@/lib/transaction-rules";
 
 /**
  * Money inputs. Every money column is a 32-bit `Int` of cents, so amounts are capped at
@@ -200,7 +201,15 @@ export const skipRecurringOccurrenceSchema = z.object({
 export const transactionRuleSchema = z
   .object({
     titleOperator: z.enum(["CONTAINS", "EQUALS", "STARTS_WITH"]),
-    titlePattern: z.string().trim().min(1, "Enter the text to match.").max(200),
+    /** One entry per "Text to match" field; the rule matches if any of them does. Stored joined. */
+    titlePatterns: z
+      .array(z.string().trim().max(MAX_RULE_TITLE_PATTERN_LENGTH, "Keep each text to match under 200 characters."))
+      .transform(joinRuleTitlePatterns)
+      .refine((joined) => joined.length > 0, "Enter the text to match.")
+      .refine(
+        (joined) => joined.split("\n").length <= MAX_RULE_TITLE_PATTERNS,
+        `A rule can match up to ${MAX_RULE_TITLE_PATTERNS} texts.`,
+      ),
     transactionType: z.enum(["EXPENSE", "INCOME"]).optional(),
     matchAccountId: z.string().min(1).optional(),
     minAmount: nonNegativeAmount.optional(),

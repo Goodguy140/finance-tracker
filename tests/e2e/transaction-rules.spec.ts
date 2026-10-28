@@ -44,6 +44,8 @@ test("a rule fills category and account on the add-expense form", async ({ page 
   expect(categories.length).toBeGreaterThan(1);
   expect(accounts.length).toBeGreaterThan(1);
   const pattern = `rulematch${stamp.replace(/[^a-z0-9]/gi, "")}`;
+  // A second text the rule also matches; the add form below uses only this one.
+  const otherPattern = `othermatch${stamp.replace(/[^a-z0-9]/gi, "")}`;
 
   await page.goto("/settings/rules");
   const panel = page.getByRole("region", { name: "Rules", exact: true });
@@ -51,20 +53,22 @@ test("a rule fills category and account on the add-expense form", async ({ page 
   await panel.getByRole("button", { name: "New rule" }).click();
   const editor = panel.getByRole("region", { name: "New rule" });
   await editor.locator('input[name="titlePattern"]').fill(pattern);
+  await editor.getByRole("button", { name: "+ Or another text" }).click();
+  await editor.getByRole("textbox", { name: "Text to match 2" }).fill(otherPattern);
   await editor.locator('select[name="setCategoryId"]').selectOption(category.id);
   await editor.locator('select[name="setAccountId"]').selectOption(account.id);
   await editor.locator('input[name="setTitle"]').fill("Renamed by rule");
   await editor.getByRole("button", { name: "Create rule" }).click();
 
-  await expect(panel.getByTestId("transaction-rule")).toContainText(pattern);
+  await expect(panel.getByTestId("transaction-rule")).toContainText(`“${pattern}” or “${otherPattern}”`);
   await expect
     .poll(() => prisma.transactionRule.findFirst({ where: { userId: user.id } }))
-    .toMatchObject({ titlePattern: pattern, setCategoryId: category.id, setAccountId: account.id, transactionType: "EXPENSE" });
+    .toMatchObject({ titlePattern: `${pattern}\n${otherPattern}`, setCategoryId: category.id, setAccountId: account.id, transactionType: "EXPENSE" });
 
   await page.goto("/");
   const card = addExpenseCard(page);
   const title = card.getByPlaceholder("e.g. Weekly groceries, Shell fuel");
-  await title.fill(`Coffee ${pattern}`);
+  await title.fill(`Coffee ${otherPattern}`);
   await expect(card.locator('select[name="categoryId"]')).toHaveValue(category.id);
   await expect(card.locator('select[name="accountId"]')).toHaveValue(account.id);
   await expect(card.getByTestId("rule-autofill-hint")).toContainText("Filled in by your rules");
