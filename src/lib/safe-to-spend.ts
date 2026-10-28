@@ -2,8 +2,8 @@
  * Safe to spend: one number for what is free to spend for the rest of the month.
  *
  *   income received this month − spent this month
- *   + income still expected (recurring income due by month end)
- *   − bills still due (recurring expenses due by month end, outside a budgeted category)
+ *   + income still expected (recurring and planned income due by month end)
+ *   − bills still due (recurring and planned expenses due by month end, outside a budgeted category)
  *   − what is left in budgets (a budget's unspent remainder is already promised)
  *   − planned savings-goal contributions for the month
  *
@@ -23,7 +23,7 @@ export type SafeToSpendInput = {
   todayYmd: string;
   incomeReceivedCents: number;
   spentCents: number;
-  /** Unposted recurring occurrences from the start of the month on (overdue ones included). */
+  /** Unposted recurring occurrences and open plans from the start of the month on (overdue ones included). */
   occurrences: readonly SafeToSpendRuleOccurrence[];
   budgets: readonly SafeToSpendBudgetRow[];
   /** What each dated savings goal needs a month to make its date. */

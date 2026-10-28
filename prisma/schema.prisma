@@ -194,6 +194,7 @@ model User {
   portfolioSnapshots        PortfolioSnapshot[]
   balanceSnapshots          AccountBalanceSnapshot[]
   savingsGoals              SavingsGoal[]
+  plannedTransactions       PlannedTransaction[]
   updatedServerConfig       ServerSetting[]           @relation("ServerSettingUpdatedBy")
   auditLogs                 AuditLog[]
   subscriptionMembers       SubscriptionMember[]
@@ -451,6 +452,7 @@ model Account {
   portfolioSnapshots     PortfolioSnapshot[]
   balanceSnapshots       AccountBalanceSnapshot[]
   savingsGoals           SavingsGoal[]
+  plannedTransactions    PlannedTransaction[]
   plaidAccounts          PlaidAccount[]
   rulesMatchingAccount   TransactionRule[]        @relation("TransactionRuleMatchAccount")
   rulesSettingAccount    TransactionRule[]        @relation("TransactionRuleSetAccount")
@@ -482,6 +484,7 @@ model Category {
   plaidItemDefaults     PlaidItem[]
   transactionRules      TransactionRule[]
   plaidCategoryMappings PlaidCategoryMapping[]
+  plannedTransactions   PlannedTransaction[]
 
   @@unique([userId, name, kind])
 }
@@ -535,6 +538,8 @@ model Transaction {
   /// The parts of this expense someone else owes back. `amountCents` already excludes them.
   owedShares      OwedShare[]
   verification    TransactionVerification?
+  /// The one-off plan this entry turned out to be, once matched or added from it.
+  plannedFrom     PlannedTransaction?
   /// Set when this transfer has been counted toward contribution room.
   investmentFlow  InvestmentFlow?
   tags            TransactionTag[]
@@ -824,6 +829,34 @@ model SavingsGoal {
   account Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+}
+
+/// A one-off expense or income the user expects on a date: a car repair in March, a tax refund
+/// in April. Forecasts treat it as a single occurrence (Upcoming bills, Calendar, projected
+/// balances, Safe to spend). It is done once `transactionId` points at the real entry, matched
+/// from the log or added from the plan; deleting that entry reopens it.
+model PlannedTransaction {
+  id            String          @id @default(cuid())
+  userId        String
+  accountId     String
+  categoryId    String
+  /// EXPENSE or INCOME.
+  type          TransactionType
+  name          String
+  amountCents   Int
+  /// Date-only, midnight UTC.
+  date          DateTime
+  note          String?
+  transactionId String?         @unique
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category    Category     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, date])
 }
 
 /// A just-deleted expense or income entry, kept for a few minutes so "Undo" can put it back

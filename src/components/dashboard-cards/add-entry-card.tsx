@@ -2,12 +2,13 @@
 
 import { type ComponentProps, useEffect, useRef, useState } from "react";
 import { ExpenseForm, IncomeForm, TransferForm } from "@/components/forms";
+import { PlansPanel, type PlannedItem } from "@/components/planned-transactions";
 import { isDesktopViewport, useQuickAddRequest } from "@/lib/search/dashboard-requests";
 
 type Option = { id: string; name: string };
-type EntryKind = "expense" | "income" | "transfer";
-const ENTRY_KINDS: EntryKind[] = ["expense", "income", "transfer"];
-const KIND_LABEL: Record<EntryKind, string> = { expense: "Expense", income: "Income", transfer: "Transfer" };
+type EntryKind = "expense" | "income" | "transfer" | "plan";
+const ENTRY_KINDS: EntryKind[] = ["expense", "income", "transfer", "plan"];
+const KIND_LABEL: Record<EntryKind, string> = { expense: "Expense", income: "Income", transfer: "Transfer", plan: "Plan" };
 
 /** Which side was used last, per browser. A convenience, not a setting, so it is not synced. */
 const KIND_STORAGE_KEY = "dashboard.add-card.kind";
@@ -17,13 +18,20 @@ const KIND_STORAGE_KEY = "dashboard.add-card.kind";
  * the header's Add menu, a click and a tab away from the expense form beside it; the phone has
  * long had both side by side as its two quick-add buttons, and this is the desktop's version.
  * Transfers sit beside them: money moved between the user's own accounts, counted as neither.
+ * Plan is for a one-off still to come (a car repair, a tax refund), which the forecasts count
+ * until the real entry arrives.
  */
 export function AddEntryCardBody({
   expense,
   incomeCategories,
+  planExpenseCategories,
+  planned,
 }: {
   expense: ComponentProps<typeof ExpenseForm>;
   incomeCategories: Option[];
+  /** Every expense category; the expense form's list may be only the recently used ones. */
+  planExpenseCategories: Option[];
+  planned: PlannedItem[];
 }) {
   const [kind, setKind] = useState<EntryKind>("expense");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -34,7 +42,7 @@ export function AddEntryCardBody({
     try {
       const stored = window.localStorage.getItem(KIND_STORAGE_KEY);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- one-off restore after hydration
-      if (stored === "income" || stored === "transfer") setKind(stored);
+      if (stored === "income" || stored === "transfer" || stored === "plan") setKind(stored);
     } catch {
       // Private windows and blocked storage just start on Expense.
     }
@@ -88,8 +96,15 @@ export function AddEntryCardBody({
         <ExpenseForm {...expense} />
       ) : kind === "income" ? (
         <IncomeForm accounts={expense.accounts} incomeCategories={incomeCategories} />
-      ) : (
+      ) : kind === "transfer" ? (
         <TransferForm accounts={expense.accounts} />
+      ) : (
+        <PlansPanel
+          plans={planned}
+          accounts={expense.accounts}
+          expenseCategories={planExpenseCategories}
+          incomeCategories={incomeCategories}
+        />
       )}
     </div>
   );

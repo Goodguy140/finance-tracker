@@ -15,11 +15,14 @@ import { InsightsCardBody } from "@/components/dashboard-cards/insights-card";
 import { RecurringCardActions, RecurringCardBody } from "@/components/dashboard-cards/recurring-card";
 import { AddEntryCardBody } from "@/components/dashboard-cards/add-entry-card";
 import { BillsForecastCardBody } from "@/components/dashboard-cards/bills-forecast-card";
+import { PlansDialogButton } from "@/components/planned-transactions";
 import { CalendarCardBody } from "@/components/dashboard-cards/calendar-card";
 import { buildCalendarMonth } from "@/lib/spending-calendar";
 import { SafeToSpendCardBody } from "@/components/dashboard-cards/safe-to-spend-card";
 import { loadSafeToSpendInput } from "@/lib/safe-to-spend-data";
 import { computeSafeToSpend } from "@/lib/safe-to-spend";
+import { isPlanPastDue, plannedAsForecastRules } from "@/lib/planned-transactions";
+import { loadOpenPlannedTransactions } from "@/lib/planned-transactions-data";
 import { computeZeroBased } from "@/lib/zero-based";
 import { ZeroBasedCardBody } from "@/components/dashboard-cards/zero-based-card";
 import { ZeroBasedToggle } from "@/components/dashboard-cards/zero-based-toggle";
@@ -196,6 +199,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       console.error("[safe-to-spend] loading failed", err);
       return null;
     });
+  // Open one-off plans, settled against the log first. Every currency, for the Plan tab's list.
+  const plannedPromise = loadOpenPlannedTransactions(user.id);
   const anchorYm = currentYmInTimeZone(user.timezone, now);
   // Every total is in this currency. Entries on accounts in another one are still listed, at
   // their own currency, but kept out of the sums: there is no conversion to add them with.
@@ -1032,7 +1037,27 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const tomorrowDate = dateFromYmd(todayYmd);
   tomorrowDate.setUTCDate(tomorrowDate.getUTCDate() + 1);
   const tomorrowYmd = ymdFromDateUtc(tomorrowDate);
-  const billsForecast = forecastRecurringOccurrences(homeRecurringRules, {
+  const openPlans = await plannedPromise;
+  const plannedItems = openPlans.map((plan) => ({
+    id: plan.id,
+    type: plan.type,
+    name: plan.name,
+    amountCents: plan.amountCents,
+    dateYmd: ymdFromDateUtc(plan.date),
+    dateDisplay: formatDateOnlyUtc(plan.date),
+    accountId: plan.accountId,
+    accountName: plan.account.name,
+    categoryId: plan.categoryId,
+    categoryName: plan.category.name,
+    note: plan.note,
+    pastDue: isPlanPastDue(plan, todayYmd),
+  }));
+  // Plans join the recurring rules as single occurrences in every forecast below.
+  const forecastRules = [
+    ...homeRecurringRules,
+    ...plannedAsForecastRules(openPlans.filter((plan) => plan.account.currency === homeCurrency)),
+  ];
+  const billsForecast = forecastRecurringOccurrences(forecastRules, {
     todayYmd,
     currentYm: anchorYm,
     days: billsForecastDays,
@@ -1054,6 +1079,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       categoryLabel: rule.category.name,
       overdue,
       missedSinceDisplay: missedSince ? formatDateOnlyUtc(missedSince) : null,
+      planned: "planned" in rule,
     })),
   }));
 
@@ -1065,7 +1091,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     const daysAhead = Math.round((lastDay.getTime() - dateFromYmd(todayYmd).getTime()) / 86_400_000);
     const calendarBills =
       viewedYm >= anchorYm && daysAhead >= 0
-        ? forecastRecurringOccurrences(homeRecurringRules, { todayYmd, currentYm: anchorYm, days: daysAhead }).occurrences
+        ? forecastRecurringOccurrences(forecastRules, { todayYmd, currentYm: anchorYm, days: daysAhead }).occurrences
             .filter((o) => ymdFromDateUtc(o.date).slice(0, 7) === viewedYm)
             .map((o) => ({
               dateYmd: ymdFromDateUtc(o.date),
@@ -1073,6 +1099,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
               type: o.rule.type === TransactionType.INCOME ? ("INCOME" as const) : ("EXPENSE" as const),
               cents: o.rule.amountCents,
               overdue: o.overdue,
+              planned: "planned" in o.rule,
             }))
         : [];
     calendarMonth = buildCalendarMonth({
@@ -1189,6 +1216,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
             fieldDefaults: cardSettings["add-expense"],
           }}
           incomeCategories={incomeCategoryOptions}
+          planExpenseCategories={expenseCategoryOptions}
+          planned={plannedItems}
         />
       ),
     },
@@ -1250,7 +1279,15 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       ),
     },
     "bills-forecast": {
-      subtitle: `Next ${billsForecastDays} days · from your recurring rules`,
+      subtitle: `Next ${billsForecastDays} days · from your recurring rules${plannedItems.length > 0 ? " and plans" : ""}`,
+      headerActions: (
+        <PlansDialogButton
+          plans={plannedItems}
+          accounts={accountOptions}
+          expenseCategories={expenseCategoryOptions}
+          incomeCategories={incomeCategoryOptions}
+        />
+      ),
       body: (
         <BillsForecastCardBody
           days={billsForecastDayGroups}
@@ -1258,7 +1295,8 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           incomeCents={billsForecast.incomeCents}
           expenseCents={billsForecast.expenseCents}
           netCents={billsForecast.netCents}
-          ruleCount={recurringTransactions.filter((rule) => rule.enabled).length}
+          ruleCount={recurringTransactions.filter((rule) => rule.enabled).length + plannedItems.length}
+          pastDuePlans={plannedItems.filter((plan) => plan.pastDue)}
         />
       ),
     },

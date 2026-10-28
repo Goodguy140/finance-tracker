@@ -50,6 +50,7 @@ export const clearUserFinancialDataAction = formAction(async (formData: FormData
     await tx.contributionRoom.deleteMany({ where: { userId: user.id } });
     await tx.portfolioSnapshot.deleteMany({ where: { userId: user.id } });
     await tx.savingsGoal.deleteMany({ where: { userId: user.id } });
+    await tx.plannedTransaction.deleteMany({ where: { userId: user.id } });
     // Plaid rows reference Transaction and Account, so they go before both. Staged rows and
     // items are dropped outright rather than kept: a bank connection is not financial
     // history, and leaving stale cursors behind would make a later re-link re-propose
@@ -131,6 +132,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
     await tx.contributionRoom.deleteMany({ where: { userId: user.id } });
     await tx.portfolioSnapshot.deleteMany({ where: { userId: user.id } });
     await tx.savingsGoal.deleteMany({ where: { userId: user.id } });
+    await tx.plannedTransaction.deleteMany({ where: { userId: user.id } });
     // Plaid rows reference Transaction and Account, so they go before both. Staged rows and
     // items are dropped outright rather than kept: a bank connection is not financial
     // history, and leaving stale cursors behind would make a later re-link re-propose
@@ -542,6 +544,29 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
           targetDate: row.targetDate ? new Date(row.targetDate) : null,
           accountId: mappedAccountId ?? null,
           savedCents: row.savedCents,
+          createdAt: new Date(row.createdAt),
+        };
+      }),
+    });
+
+    await tx.plannedTransaction.createMany({
+      data: (parsed.plannedTransactions ?? []).map((row) => {
+        const accountId = accountIdMap.get(row.accountId);
+        const categoryId = categoryIdMap.get(row.categoryId);
+        const transactionId = row.transactionId ? transactionIdMap.get(row.transactionId) : null;
+        if (!accountId || !categoryId || transactionId === undefined) {
+          throw new Error("Backup references unknown plan account, category or transaction.");
+        }
+        return {
+          userId: user.id,
+          type: row.type,
+          name: row.name,
+          amountCents: row.amountCents,
+          date: new Date(row.date),
+          accountId,
+          categoryId,
+          note: row.note,
+          transactionId,
           createdAt: new Date(row.createdAt),
         };
       }),

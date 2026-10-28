@@ -120,6 +120,14 @@ export function assertBackupReferencesResolve(parsed: ParsedUserBackup): void {
       throw new Error("Backup references unknown savings goal account.");
     }
   }
+  for (const row of parsed.plannedTransactions ?? []) {
+    if (!accountIds.has(row.accountId) || !categoryIds.has(row.categoryId)) {
+      throw new Error("Backup references unknown plan account or category.");
+    }
+    if (row.transactionId && !transactionIds.has(row.transactionId)) {
+      throw new Error("Backup references unknown plan transaction.");
+    }
+  }
   for (const row of parsed.transactionRules ?? []) {
     if (
       (row.setCategoryId && !categoryIds.has(row.setCategoryId)) ||

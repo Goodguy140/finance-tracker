@@ -190,6 +190,21 @@ export type UserBackupPayload = {
     createdAt: IsoString;
   }>;
   /**
+   * One-off plans. `accountId`, `categoryId` and `transactionId` are exported ids; the last is
+   * set on a plan that has happened. Optional for older backups.
+   */
+  plannedTransactions?: Array<{
+    type: "EXPENSE" | "INCOME";
+    name: string;
+    amountCents: number;
+    date: IsoString;
+    accountId: string;
+    categoryId: string;
+    note: string | null;
+    transactionId: string | null;
+    createdAt: IsoString;
+  }>;
+  /**
    * Which transactions were confirmed against a bank record, keyed by the exported
    * `transactions[].id` (remapped on import like every other cross-reference).
    *
@@ -309,6 +324,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       portfolioSnapshots: true,
       balanceSnapshots: true,
       savingsGoals: { orderBy: { createdAt: "asc" } },
+      plannedTransactions: { orderBy: { createdAt: "asc" } },
       transactionVerifications: true,
       transactionRules: { orderBy: [{ priority: "asc" }, { id: "asc" }] },
       hiddenTitleSuggestions: true,
@@ -488,6 +504,17 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       targetDate: toIso(row.targetDate),
       accountId: row.accountId,
       savedCents: row.savedCents,
+      createdAt: row.createdAt.toISOString(),
+    })),
+    plannedTransactions: user.plannedTransactions.map((row) => ({
+      type: row.type === "INCOME" ? ("INCOME" as const) : ("EXPENSE" as const),
+      name: row.name,
+      amountCents: row.amountCents,
+      date: row.date.toISOString(),
+      accountId: row.accountId,
+      categoryId: row.categoryId,
+      note: row.note,
+      transactionId: row.transactionId,
       createdAt: row.createdAt.toISOString(),
     })),
     transactionVerifications: user.transactionVerifications.map((row) => ({
