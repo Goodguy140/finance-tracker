@@ -212,6 +212,7 @@ model User {
   transactionVerifications  TransactionVerification[]
   dashboardLayout           DashboardLayout?
   transactionRules          TransactionRule[]
+  savedSearches             SavedSearch[]
   hiddenTitleSuggestions    HiddenTitleSuggestion[]
   tags                      Tag[]
   insightDismissals         InsightDismissal[]
@@ -462,6 +463,7 @@ model Account {
   rulesSettingAccount    TransactionRule[]        @relation("TransactionRuleSetAccount")
   rulesSettingTransferTo TransactionRule[]        @relation("TransactionRuleSetTransferAccount")
   reconciliations        AccountReconciliation[]
+  savedSearches          SavedSearch[]
 }
 
 model Category {
@@ -488,6 +490,7 @@ model Category {
   plaidItemDefaults     PlaidItem[]
   transactionRules      TransactionRule[]
   ruleSplits            TransactionRuleSplit[]
+  savedSearches         SavedSearch[]
   plaidCategoryMappings PlaidCategoryMapping[]
   plannedTransactions   PlannedTransaction[]
 
@@ -1266,9 +1269,10 @@ model Tag {
   nameKey   String
   createdAt DateTime @default(now())
 
-  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions TransactionTag[]
-  rules        TransactionRule[]
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions  TransactionTag[]
+  rules         TransactionRule[]
+  savedSearches SavedSearch[]
 
   @@unique([userId, nameKey])
 }
@@ -1399,4 +1403,29 @@ model CalendarFeed {
   lastFetchedAt DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// A `/search` the user named to come back to: its filters, shown on `/search` and in the master
+/// search with how many transactions it finds and their total. Deleting an account, category or
+/// tag it filters on deletes it too, rather than quietly widening it to everything; merging one
+/// moves it across. Its own table, so no REQUIRED_SCHEMA_COLUMNS / COLUMN_REPAIRS entry is needed.
+model SavedSearch {
+  id         String  @id @default(cuid())
+  userId     String
+  name       String
+  query      String?
+  /// EXPENSE, INCOME or TRANSFER; NULL for every type.
+  type       String?
+  accountId  String?
+  categoryId String?
+  tagId      String?
+
+  createdAt DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account  Account?  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  tag      Tag?      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@index([userId, name])
 }

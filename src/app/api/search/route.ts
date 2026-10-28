@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { previewQuickAdd } from "@/lib/search/quick-add-server";
+import { savedSearchHits } from "@/lib/search/saved-searches";
 import { searchUserData } from "@/lib/search/search-data";
 import { requireUserApiUser } from "@/lib/session";
 
@@ -9,8 +10,9 @@ import { requireUserApiUser } from "@/lib/session";
 const MAX_QUERY_LENGTH = 100;
 
 /**
- * The master search's data. With no `q` it answers only what decides which fixed entries the
- * palette offers (admin pages, Sync banks); with one, the user's matching data, grouped, and
+ * The master search's data. With no `q` it answers what decides which fixed entries the
+ * palette offers (admin pages, Sync banks) and the saved searches; with one, the saved searches
+ * by name, the user's matching data, grouped, and
  * the expense it would add when it reads as one ("12.50 tim hortons yesterday").
  */
 export async function GET(request: Request) {
@@ -24,16 +26,18 @@ export async function GET(request: Request) {
   const user = auth.user;
   const query = (new URL(request.url).searchParams.get("q") ?? "").slice(0, MAX_QUERY_LENGTH);
 
-  const [results, bankCount, quickAdd] = await Promise.all([
+  const [results, bankCount, quickAdd, saved] = await Promise.all([
     searchUserData(prisma, user, query),
     prisma.plaidItem.count({ where: { userId: user.id } }),
     previewQuickAdd(prisma, user, query),
+    savedSearchHits(prisma, user, query),
   ]);
 
   return NextResponse.json(
     {
       ...results,
       quickAdd,
+      saved,
       context: { isAdmin: user.role === UserRole.SERVER_ADMIN, hasBanks: bankCount > 0 },
     },
     { headers: { "Cache-Control": "no-store" } },
