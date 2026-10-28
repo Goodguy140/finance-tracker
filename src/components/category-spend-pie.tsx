@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import type { TooltipProps } from "recharts";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { formatCurrency } from "@/lib/money";
@@ -12,6 +13,8 @@ export type CategorySpendSlice = {
   color: string;
   /** Never rolled into "Other categories": the Savings slice, which is not a category. */
   pinned?: boolean;
+  /** Where clicking the slice goes: the category's trend page. Absent for groups and Savings. */
+  href?: string;
 };
 
 function renderTooltip({ active, payload }: TooltipProps<number, string>) {
@@ -53,10 +56,12 @@ export function CategorySpendPieChart({
   /** Beyond this many slices the remainder is rolled into one "Other categories" wedge. */
   maxSlices?: number;
 }) {
+  const router = useRouter();
   const chartData = collapseToMaxSlices(data.filter((d) => d.cents !== 0), maxSlices).map((d) => ({
     name: d.name,
     cents: d.cents,
     color: d.color,
+    href: d.href,
     /** Pie sector size; credits use absolute value so the chart stays readable. */
     value: Math.abs(d.cents),
   }));
@@ -78,13 +83,23 @@ export function CategorySpendPieChart({
             innerRadius={52}
             outerRadius={88}
             paddingAngle={1}
+            onClick={(_, index) => {
+              const href = chartData[index]?.href;
+              if (href) router.push(href);
+            }}
             label={({ percent }: { percent?: number }) => {
               const p = percent ?? 0;
               return p >= 0.06 ? `${Math.round(p * 100)}%` : "";
             }}
           >
             {chartData.map((slice, index) => (
-              <Cell key={`cell-${index}`} fill={slice.color} stroke="#0f172a" strokeWidth={1} />
+              <Cell
+                key={`cell-${index}`}
+                fill={slice.color}
+                stroke="#0f172a"
+                strokeWidth={1}
+                style={slice.href ? { cursor: "pointer" } : undefined}
+              />
             ))}
           </Pie>
           <Tooltip content={renderTooltip} />
