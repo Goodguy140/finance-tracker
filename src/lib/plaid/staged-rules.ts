@@ -2,6 +2,7 @@ import { resolveDisplayName } from "@/lib/plaid/ingest";
 import {
   resolveRuleOutcome,
   type LearnedRuleContext,
+  type RuleSplitShare,
   type RuleTransactionType,
   type TransactionRuleInput,
 } from "@/lib/transaction-rules";
@@ -25,6 +26,12 @@ export type StagedRuleProposal = {
   markAsTransfer: boolean;
   /** The other side a rule names, written when the row is booked as a transfer. */
   transferAccountId: string | null;
+  /**
+   * The shares a rule splits this expense into; `categoryId` is then its first line's. Only
+   * written while the row is booked in that category: picking another one in the queue, or
+   * "Add with category", books it whole.
+   */
+  split: RuleSplitShare[] | null;
   /** Why the proposal differs from the sync's own suggestion, for the queue to say so. */
   reason: "rule" | "learned" | null;
 };
@@ -70,6 +77,7 @@ export function proposeForStagedRow(
     tagIds: outcome.tagIds,
     markAsTransfer: outcome.markAsTransfer === true,
     transferAccountId: outcome.transferAccountId ?? null,
+    split: outcome.split ?? null,
     reason: outcome.categoryFrom ?? (changed ? "rule" : null),
   };
 }

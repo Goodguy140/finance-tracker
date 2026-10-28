@@ -80,7 +80,7 @@ import { assignCategoryColors, categoryColor, SAVINGS_SLICE_COLOR } from "@/lib/
 import type { CategorySpendSlice } from "@/components/category-spend-pie";
 import { loadSavingsTransfers } from "@/lib/reports/load";
 import { savedByTransferBetween } from "@/lib/savings-transfers";
-import { visibleLearnedSuggestions, type RuleTransactionType } from "@/lib/transaction-rules";
+import { describeRuleSplit, visibleLearnedSuggestions, type RuleTransactionType } from "@/lib/transaction-rules";
 import { catchAllCategoryId } from "@/lib/plaid/category-map";
 import { outflowCents, untransferredType } from "@/lib/transfer-type";
 import { assignTransferPairs, widenDateFilterForPairing } from "@/lib/plaid/transfer-pairing";
@@ -693,6 +693,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     title: proposal.title,
     note: proposal.note,
     tagNames: proposal.tagIds.flatMap((id) => tagNameById.get(id) ?? []),
+    split: proposal.split
+      ? describeRuleSplit(proposal.split, (id) => categories.find((c) => c.id === id)?.name ?? "Deleted category")
+      : null,
     reason: proposal.reason,
   });
   const transferPairs = assignTransferPairs(

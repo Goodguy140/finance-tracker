@@ -2,7 +2,8 @@ import { PlaidStagedStatus, TransactionType, type Prisma } from "@prisma/client"
 import { ownPartCents } from "@/lib/owed-shares";
 import { prisma } from "@/lib/prisma";
 import { makeStagedProposer, type StagedRuleProposal } from "@/lib/plaid/staged-rules";
-import type { RuleTransactionType } from "@/lib/transaction-rules";
+import { ruleSplitLines, type RuleTransactionType } from "@/lib/transaction-rules";
+import { saveSplitLines } from "@/lib/split-lines";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
 import { transferPairDateDelta } from "@/lib/plaid/transfer-pairing";
 import { addTagsToTransaction } from "@/lib/tags-server";
@@ -158,11 +159,12 @@ export async function linkStagedRow(
 
 /** What a commit takes from the queue's proposal. Tags are optional for callers that have none. */
 type StagedProposalFields = Pick<StagedRuleProposal, "title" | "note"> &
-  Partial<Pick<StagedRuleProposal, "tagIds" | "transferAccountId">>;
+  Partial<Pick<StagedRuleProposal, "tagIds" | "transferAccountId" | "split">>;
 
 /**
  * Adds this bank row to the log as a new transaction: the bank's account, amount and dates,
- * with the title, category, note and tags the queue proposed.
+ * with the title, category, note and tags the queue proposed, split as a rule's split says when
+ * the proposal carries one.
  *
  * `type` books it as something other than the sync guessed — a transfer the bank filed as a
  * purchase, or the reverse. The amount is the bank's either way, converted to the new type's
@@ -192,13 +194,15 @@ export async function addStagedRow(
   if (!(await claim(tx, userId, staged.id, PlaidStagedStatus.ADDED, null))) {
     return { ok: false, reason: "already-reviewed" };
   }
+  const amountCents = convertAmountCents(staged.type, staged.amountCents, type);
+  const splitLines = type === TransactionType.EXPENSE ? ruleSplitLines(input.proposal.split, amountCents) : null;
   const created = await tx.transaction.create({
     data: {
       userId,
       accountId: staged.suggestedAccountId,
-      categoryId: input.categoryId,
+      categoryId: splitLines ? splitLines[0].categoryId : input.categoryId,
       type,
-      amountCents: convertAmountCents(staged.type, staged.amountCents, type),
+      amountCents,
       date: staged.date,
       postedDate: staged.postedDate,
       title: input.proposal.title,
@@ -207,6 +211,7 @@ export async function addStagedRow(
     },
     select: { id: true },
   });
+  if (splitLines) await saveSplitLines(tx, { userId, transactionId: created.id, lines: splitLines });
   await addTagsToTransaction(tx, created.id, input.proposal.tagIds ?? []);
   await verify(tx, userId, staged, created.id, "IMPORTED");
   await tx.plaidStagedTransaction.update({

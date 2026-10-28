@@ -487,6 +487,7 @@ model Category {
   recurringTransactions RecurringTransaction[]
   plaidItemDefaults     PlaidItem[]
   transactionRules      TransactionRule[]
+  ruleSplits            TransactionRuleSplit[]
   plaidCategoryMappings PlaidCategoryMapping[]
   plannedTransactions   PlannedTransaction[]
 
@@ -1218,16 +1219,39 @@ model TransactionRule {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user               User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Cascade: a rule scoped to an account that no longer exists would silently broaden.
-  matchAccount       Account?  @relation("TransactionRuleMatchAccount", fields: [matchAccountId], references: [id], onDelete: Cascade)
+  matchAccount       Account?               @relation("TransactionRuleMatchAccount", fields: [matchAccountId], references: [id], onDelete: Cascade)
   /// SetNull: a rule must never block deleting a category or an account.
-  setCategory        Category? @relation(fields: [setCategoryId], references: [id], onDelete: SetNull)
-  setAccount         Account?  @relation("TransactionRuleSetAccount", fields: [setAccountId], references: [id], onDelete: SetNull)
-  addTag             Tag?      @relation(fields: [addTagId], references: [id], onDelete: SetNull)
-  setTransferAccount Account?  @relation("TransactionRuleSetTransferAccount", fields: [setTransferAccountId], references: [id], onDelete: SetNull)
+  setCategory        Category?              @relation(fields: [setCategoryId], references: [id], onDelete: SetNull)
+  setAccount         Account?               @relation("TransactionRuleSetAccount", fields: [setAccountId], references: [id], onDelete: SetNull)
+  addTag             Tag?                   @relation(fields: [addTagId], references: [id], onDelete: SetNull)
+  setTransferAccount Account?               @relation("TransactionRuleSetTransferAccount", fields: [setTransferAccountId], references: [id], onDelete: SetNull)
+  /// "Split by percentage": the expense is booked as these shares instead of one category.
+  splits             TransactionRuleSplit[]
 
   @@index([userId, priority])
+}
+
+/// One line of a rule's "Split by percentage" action: this share of a matching expense counts
+/// toward this category. A rule's lines add up to 100%; a rule left with fewer than two lines
+/// (a category deleted without a replacement) splits nothing. Its own table, so no
+/// REQUIRED_SCHEMA_COLUMNS / COLUMN_REPAIRS entry is needed.
+model TransactionRuleSplit {
+  id          String @id @default(cuid())
+  ruleId      String
+  /// Order in the rule editor. The first line's category is the split expense's own label.
+  position    Int
+  categoryId  String
+  /// Hundredths of a percent: 7000 is 70%.
+  basisPoints Int
+
+  rule     TransactionRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  /// Merging a category moves its lines across; deleting one outright drops them.
+  category Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, position])
+  @@index([categoryId])
 }
 
 /// A learned Title → Category combo the user asked to stop auto-filling. The combos themselves

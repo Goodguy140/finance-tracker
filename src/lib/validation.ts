@@ -3,7 +3,13 @@ import { MAX_AMOUNT, MAX_AMOUNT_CENTS } from "@/lib/money";
 import { YM_PATTERN } from "@/lib/period-month";
 import { MAX_GOAL_NAME_LENGTH } from "@/lib/savings-goals";
 import { MAX_TAG_NAME_LENGTH } from "@/lib/tags";
-import { joinRuleTitlePatterns, MAX_RULE_TITLE_PATTERN_LENGTH, MAX_RULE_TITLE_PATTERNS } from "@/lib/transaction-rules";
+import {
+  FULL_SPLIT_BASIS_POINTS,
+  joinRuleTitlePatterns,
+  MAX_RULE_SPLIT_LINES,
+  MAX_RULE_TITLE_PATTERN_LENGTH,
+  MAX_RULE_TITLE_PATTERNS,
+} from "@/lib/transaction-rules";
 
 /**
  * Money inputs. Every money column is a 32-bit `Int` of cents, so amounts are capped at
@@ -239,6 +245,29 @@ export const transactionRuleSchema = z
     addTag: z.string().trim().max(MAX_TAG_NAME_LENGTH + 10).optional(),
     markAsTransfer: z.boolean().optional(),
     setTransferAccountId: z.string().min(1).optional(),
+    /** "Split by percentage": empty when the rule does not split. */
+    split: z
+      .array(
+        z.object({
+          categoryId: z.string().min(1, "Pick a category for each split line."),
+          /** As typed, in percent; kept in hundredths of a percent. */
+          basisPoints: z.coerce
+            .number({ error: "Enter a percentage for each split line." })
+            .refine((n) => Number.isFinite(n) && n > 0 && n < 100, "Each split line takes more than 0% and less than 100%.")
+            .transform((n) => Math.round(n * 100)),
+        }),
+      )
+      .max(MAX_RULE_SPLIT_LINES, `A rule can split into up to ${MAX_RULE_SPLIT_LINES} categories.`)
+      .default([])
+      .refine((lines) => lines.length !== 1, "A split needs at least two categories.")
+      .refine(
+        (lines) => new Set(lines.map((l) => l.categoryId)).size === lines.length,
+        "Each split line needs a different category.",
+      )
+      .refine(
+        (lines) => lines.length === 0 || lines.reduce((sum, l) => sum + l.basisPoints, 0) === FULL_SPLIT_BASIS_POINTS,
+        "The split lines must add up to 100%.",
+      ),
   })
   .refine((r) => r.minAmount === undefined || r.maxAmount === undefined || r.minAmount <= r.maxAmount, {
     message: "The minimum amount must not exceed the maximum.",
@@ -253,7 +282,8 @@ export const transactionRuleSchema = z
         r.setAccountId ||
         r.appendNote ||
         r.addTag ||
-        r.markAsTransfer
+        r.markAsTransfer ||
+        r.split.length > 0
       ),
     { message: "Choose at least one thing for the rule to set.", path: ["setCategoryId"] },
   )
@@ -265,6 +295,19 @@ export const transactionRuleSchema = z
   .refine((r) => !(r.markAsTransfer && r.setCategoryId), {
     message: "A transfer has no category; leave Category as is or untick “Mark as transfer”.",
     path: ["setCategoryId"],
+  })
+  // A split is how the rule sets the category, and only an expense can be split.
+  .refine((r) => !(r.split.length > 0 && r.setCategoryId), {
+    message: "A split sets the categories itself; leave Category as is or remove the split.",
+    path: ["setCategoryId"],
+  })
+  .refine((r) => !(r.split.length > 0 && r.markAsTransfer), {
+    message: "A transfer cannot be split; remove the split or untick “Mark as transfer”.",
+    path: ["markAsTransfer"],
+  })
+  .refine((r) => !(r.split.length > 0 && r.transactionType === "INCOME"), {
+    message: "Only expenses can be split; change the type or remove the split.",
+    path: ["transactionType"],
   });
 
 export const updateTransactionRuleSchema = z.object({ ruleId: z.string().min(1) });

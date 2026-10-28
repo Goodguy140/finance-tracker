@@ -22,6 +22,10 @@ import { formatCurrency } from "@/lib/money";
 import {
   describeRuleActions,
   describeRuleCondition,
+  describeRuleSplit,
+  FULL_SPLIT_BASIS_POINTS,
+  formatSplitPercent,
+  MAX_RULE_SPLIT_LINES,
   MAX_RULE_TITLE_PATTERN_LENGTH,
   MAX_RULE_TITLE_PATTERNS,
   resolveRuleOutcome,
@@ -386,6 +390,141 @@ function TitlePatternsField({ id, initial }: { id: string; initial: string }) {
   );
 }
 
+/** Keys for the rows of `SplitByPercentField`, unique across editors. */
+let splitRowKey = 0;
+
+/**
+ * "Split by percentage": the expense is booked as shares of several categories, for example
+ * 70% Groceries and 30% Household for a Costco run. Each line posts as `ruleSplitCategoryId`
+ * and `ruleSplitPercent`; the server checks the lines add up to 100%.
+ */
+function SplitByPercentField({
+  id,
+  initial,
+  categories,
+  splitting,
+  onSplittingChange,
+  disabled,
+}: {
+  id: string;
+  initial: { categoryId: string; basisPoints: number }[];
+  categories: { id: string; name: string }[];
+  splitting: boolean;
+  onSplittingChange: (next: boolean) => void;
+  disabled: boolean;
+}) {
+  const [rows, setRows] = useState(() =>
+    (initial.length > 0
+      ? initial.map((line) => ({ categoryId: line.categoryId, percent: String(line.basisPoints / 100) }))
+      : [
+          { categoryId: "", percent: "50" },
+          { categoryId: "", percent: "50" },
+        ]
+    ).map((row) => ({ ...row, key: splitRowKey++ })),
+  );
+  const totalBasisPoints = rows.reduce((sum, row) => {
+    const n = Number(row.percent);
+    return Number.isFinite(n) ? sum + Math.round(n * 100) : sum;
+  }, 0);
+  const update = (key: number, patch: Partial<{ categoryId: string; percent: string }>) =>
+    setRows((current) => current.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+
+  return (
+    <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" data-testid="rule-split-field">
+      <label className="flex items-start gap-2 text-sm text-slate-200" htmlFor={id}>
+        <input
+          id={id}
+          type="checkbox"
+          className="mt-0.5"
+          checked={splitting}
+          disabled={disabled && !splitting}
+          onChange={(e) => onSplittingChange(e.target.checked)}
+        />
+        <span>
+          <span className="font-medium">Split by percentage</span>
+          <span className="block text-xs text-slate-500">
+            Books a matching expense as shares of several categories, like 70% Groceries and 30% Household. Expenses
+            only. Typed entries, imports and bank rows are split; choosing another category books it whole.
+          </span>
+        </span>
+      </label>
+      {splitting ? (
+        <>
+          <ul className="flex flex-col gap-1.5">
+            {rows.map((row, index) => (
+              <li key={row.key} className="flex items-center gap-2">
+                <select
+                  name="ruleSplitCategoryId"
+                  className={selectClass}
+                  value={row.categoryId}
+                  onChange={(e) => update(row.key, { categoryId: e.target.value })}
+                  aria-label={`Split category ${index + 1}`}
+                  required
+                >
+                  <option value="" disabled>
+                    Choose a category
+                  </option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="flex w-28 shrink-0 items-center gap-1">
+                  <input
+                    name="ruleSplitPercent"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    min="0.01"
+                    max="99.99"
+                    className={inputClass}
+                    value={row.percent}
+                    onChange={(e) => update(row.key, { percent: e.target.value })}
+                    aria-label={`Split percentage ${index + 1}`}
+                    required
+                  />
+                  <span aria-hidden className="text-sm text-slate-400">
+                    %
+                  </span>
+                </span>
+                {rows.length > 2 ? (
+                  <button
+                    type="button"
+                    className={smallBtnClass}
+                    aria-label={`Remove split line ${index + 1}`}
+                    onClick={() => setRows((current) => current.filter((r) => r.key !== row.key))}
+                  >
+                    ✕
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap items-center gap-3">
+            {rows.length < MAX_RULE_SPLIT_LINES ? (
+              <button
+                type="button"
+                className={smallBtnClass}
+                onClick={() => setRows((current) => [...current, { key: splitRowKey++, categoryId: "", percent: "" }])}
+              >
+                + Another category
+              </button>
+            ) : null}
+            <span
+              className={`text-xs tabular-nums ${totalBasisPoints === FULL_SPLIT_BASIS_POINTS ? "text-slate-400" : "text-amber-200"}`}
+              data-testid="rule-split-total"
+            >
+              Total {formatSplitPercent(totalBasisPoints)}
+              {totalBasisPoints === FULL_SPLIT_BASIS_POINTS ? "" : " · must be 100%"}
+            </span>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function RuleEditor({
   draft,
   categories,
@@ -403,6 +542,7 @@ function RuleEditor({
   const editing = Boolean(draft.id);
   const [type, setType] = useState<"" | RuleTransactionType>(draft.transactionType ?? "");
   const [asTransfer, setAsTransfer] = useState(draft.markAsTransfer ?? false);
+  const [splitting, setSplitting] = useState((draft.splitBy?.length ?? 0) > 0);
   const categoryOptions = categories.filter((c) => !type || c.kind === type);
   const activeAccounts = accounts.filter((a) => !a.archived || a.id === draft.setAccountId);
 
@@ -523,7 +663,7 @@ function RuleEditor({
               name="setCategoryId"
               className={selectClass}
               defaultValue={draft.setCategoryId ?? ""}
-              disabled={asTransfer}
+              disabled={asTransfer || splitting}
             >
               <option value="">Leave as is</option>
               {(["EXPENSE", "INCOME"] as const).map((kind) => {
@@ -542,7 +682,9 @@ function RuleEditor({
             </select>,
             asTransfer
               ? "A transfer has no category of its own to choose."
-              : "Choosing a category limits the rule to that category's type.",
+              : splitting
+                ? "The split below sets the categories."
+                : "Choosing a category limits the rule to that category's type.",
           )}
           {field(
             "setTitle",
@@ -625,6 +767,14 @@ function RuleEditor({
             "Kept alongside the tags a transaction already has. A new name creates the tag.",
           )}
         </div>
+        <SplitByPercentField
+          id={`${ids}-split`}
+          initial={draft.splitBy ?? []}
+          categories={categories.filter((c) => c.kind === "EXPENSE")}
+          splitting={splitting}
+          onSplittingChange={setSplitting}
+          disabled={asTransfer || type === "INCOME"}
+        />
         <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
           <label className="flex items-start gap-2 text-sm text-slate-200" htmlFor={`${ids}-markAsTransfer`}>
             <input
@@ -634,6 +784,7 @@ function RuleEditor({
               className="mt-0.5"
               checked={asTransfer}
               onChange={(e) => setAsTransfer(e.target.checked)}
+              disabled={splitting}
             />
             <span>
               <span className="font-medium">Mark as transfer</span>
@@ -741,7 +892,8 @@ function RulePreview({
             <p className="text-slate-200">
               {preview.total} past transaction{preview.total === 1 ? "" : "s"} would change
               {preview.total > preview.sample.length ? ` (first ${preview.sample.length} shown)` : ""}. Amounts are never
-              changed; split transactions are skipped, and entries someone owes you part of are not made transfers.
+              changed; split transactions are skipped, and entries someone owes you part of are not made transfers or
+              split.
             </p>
             <ul className="max-h-64 space-y-1.5 overflow-y-auto">
               {preview.sample.map((change) => (
@@ -759,6 +911,16 @@ function RulePreview({
                   {change.addTagId ? (
                     <p>
                       Tag: <span className="text-slate-100">+ {tagName(change.addTagId)}</span>
+                    </p>
+                  ) : null}
+                  {change.splitLines ? (
+                    <p>
+                      Split:{" "}
+                      <span className="text-slate-100">
+                        {change.splitLines
+                          .map((line) => `${formatCurrency(line.amountCents)} ${categoryName(line.categoryId)}`)
+                          .join(", ")}
+                      </span>
                     </p>
                   ) : null}
                   {change.markAsTransfer ? (
@@ -853,7 +1015,12 @@ function RuleTester({
             <p>Nothing would be filled in.</p>
           ) : (
             <ul className="space-y-0.5">
-              {outcome.categoryId ? (
+              {outcome.split ? (
+                <li>
+                  Split: <span className="text-slate-100">{describeRuleSplit(outcome.split, categoryName)}</span>{" "}
+                  <span className="text-slate-500">(rule)</span>
+                </li>
+              ) : outcome.categoryId ? (
                 <li>
                   Category: <span className="text-slate-100">{categoryName(outcome.categoryId)}</span>{" "}
                   <span className="text-slate-500">({outcome.categoryFrom === "learned" ? "learned" : "rule"})</span>

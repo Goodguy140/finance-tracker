@@ -250,6 +250,8 @@ export type UserBackupPayload = {
     /** Optional: older backups predate the transfer action. */
     markAsTransfer?: boolean;
     setTransferAccountId?: string | null;
+    /** "Split by percentage", category ids as exported. Optional: older backups predate it. */
+    splits?: Array<{ categoryId: string; basisPoints: number }>;
     createdAt: IsoString;
   }>;
   /** The user's tags. Optional: older backups predate them. */
@@ -328,7 +330,10 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       savingsGoals: { orderBy: { createdAt: "asc" } },
       plannedTransactions: { orderBy: { createdAt: "asc" } },
       transactionVerifications: true,
-      transactionRules: { orderBy: [{ priority: "asc" }, { id: "asc" }] },
+      transactionRules: {
+        orderBy: [{ priority: "asc" }, { id: "asc" }],
+        include: { splits: { orderBy: { position: "asc" } } },
+      },
       hiddenTitleSuggestions: true,
       tags: { orderBy: { nameKey: "asc" } },
       insightDismissals: true,
@@ -545,6 +550,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       addTagId: row.addTagId,
       markAsTransfer: row.markAsTransfer,
       setTransferAccountId: row.setTransferAccountId,
+      splits: row.splits.map((line) => ({ categoryId: line.categoryId, basisPoints: line.basisPoints })),
       createdAt: row.createdAt.toISOString(),
     })),
     tags: user.tags.map((row) => ({ id: row.id, name: row.name, createdAt: row.createdAt.toISOString() })),

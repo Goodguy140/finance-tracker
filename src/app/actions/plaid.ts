@@ -593,8 +593,12 @@ export const resolveStagedTransactionAction = formAction(async (formData: FormDa
     if (!resolvedCategoryId) throw new Error("Choose a category for this transaction.");
     await assertUserOwnsCategory(user.id, resolvedCategoryId, categoryKindForTransactionType(type));
     if (staged.suggestedAccountId) await assertUserOwnsAccount(user.id, staged.suggestedAccountId);
+    // A rule's split is written only while the row keeps the category the split gave it.
+    const kept = resolvedCategoryId === proposal.categoryId ? proposal : { ...proposal, split: null };
     await prisma.$transaction(async (tx) =>
-      orRefuse(await addStagedRow(tx, { userId: user.id, staged, categoryId: resolvedCategoryId, proposal, type })),
+      orRefuse(
+        await addStagedRow(tx, { userId: user.id, staged, categoryId: resolvedCategoryId, proposal: kept, type }),
+      ),
     );
   } else {
     throw new Error("Choose whether to link, add, or ignore this row.");
@@ -718,7 +722,8 @@ export const bulkAddStagedTransactionsAction = formAction(async (formData: FormD
           userId: user.id,
           staged: toCommittable(row),
           categoryId: categoryFor(row)!,
-          proposal,
+          // "Add with category" books each row whole in that category, as it says.
+          proposal: chosenCategoryId ? { ...proposal, split: null } : proposal,
           type,
         }),
       );

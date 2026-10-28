@@ -3,7 +3,7 @@ import { MAX_AMOUNT_CENTS } from "@/lib/money";
 import { YM_PATTERN } from "@/lib/period-month";
 import { MAX_GOAL_NAME_LENGTH } from "@/lib/savings-goals";
 import { MAX_TAG_NAME_LENGTH, MAX_TAGS_PER_TRANSACTION } from "@/lib/tags";
-import { MAX_RULE_TITLE_PATTERN_LENGTH, MAX_RULE_TITLE_PATTERNS } from "@/lib/transaction-rules";
+import { MAX_RULE_SPLIT_LINES, MAX_RULE_TITLE_PATTERN_LENGTH, MAX_RULE_TITLE_PATTERNS } from "@/lib/transaction-rules";
 
 const isoDate = z.iso.datetime();
 /** Money columns are 32-bit ints; bound every cents field so a bad file fails validation, not the DB write. */
@@ -316,6 +316,10 @@ export const userBackupSchema = z.object({
         addTagId: z.string().min(1).nullable().optional(),
         markAsTransfer: z.boolean().optional(),
         setTransferAccountId: z.string().min(1).nullable().optional(),
+        splits: z
+          .array(z.object({ categoryId: z.string().min(1), basisPoints: z.number().int().min(1).max(9999) }))
+          .max(MAX_RULE_SPLIT_LINES)
+          .optional(),
         createdAt: isoDate,
       }),
     )

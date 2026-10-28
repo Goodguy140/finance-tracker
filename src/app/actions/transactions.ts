@@ -14,8 +14,8 @@ import { requireUser } from "@/lib/session";
 import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
 import { ownPartCents, parseOwedSharesFromForm, saveOwedShares } from "@/lib/owed-shares";
 import { assertSplitLinesMatch, parseSplitLinesFromForm, saveSplitLines } from "@/lib/split-lines";
-import { appendRuleNote, resolveRuleOutcome } from "@/lib/transaction-rules";
-import { loadRuleContext } from "@/lib/transaction-rules-server";
+import { appendRuleNote, resolveRuleOutcome, ruleSplitLines, usableRuleSplit } from "@/lib/transaction-rules";
+import { loadRuleContext, RULE_SPLITS_INCLUDE } from "@/lib/transaction-rules-server";
 import { addTagsToTransaction, replaceTransactionTags, resolveTagIds } from "@/lib/tags-server";
 import { ensureFallbackCategoryFor } from "@/lib/fallback-categories";
 import { parseTagNames } from "@/lib/tags";
@@ -49,6 +49,23 @@ import {
 } from "./_helpers";
 
 type DeleteResult = { ok: true; undoId: string };
+
+/**
+ * The lines to split a new expense into when the Add form kept a rule's split: the form names
+ * the rule, and the lines are worked out here from its shares as they are now and the amount
+ * actually saved. New splits are made only this way; there is no form for typing them in.
+ */
+async function ruleSplitForNewExpense(userId: string, ruleId: string, amountCents: number) {
+  if (!ruleId) return null;
+  const rule = await prisma.transactionRule.findFirst({ where: { id: ruleId, userId }, include: RULE_SPLITS_INCLUDE });
+  if (!rule) throw new Error("The rule that splits this expense was not found. Reload and try again.");
+  const categories = await prisma.category.findMany({
+    where: { userId, id: { in: rule.splits.map((line) => line.categoryId) } },
+    select: { id: true, kind: true },
+  });
+  const kinds = new Map(categories.map((c) => [c.id, c.kind as "EXPENSE" | "INCOME" | "TRANSFER"]));
+  return ruleSplitLines(usableRuleSplit(rule.splits, kinds), amountCents);
+}
 export const createExpenseAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = expenseBaseSchema.parse({
@@ -65,13 +82,14 @@ export const createExpenseAction = formAction(async (formData: FormData) => {
     payload.accountId ? assertUserOwnsAccount(user.id, payload.accountId) : Promise.resolve(),
     assertUserOwnsCategory(user.id, payload.categoryId, CategoryKind.EXPENSE),
   ]);
+  const splitLines = await ruleSplitForNewExpense(user.id, getFormValue(formData, "splitRuleId"), amounts.amountCents);
 
   const created = await prisma.$transaction(async (tx) => {
     const created = await tx.transaction.create({
       data: {
         userId: user.id,
         accountId: payload.accountId,
-        categoryId: payload.categoryId,
+        categoryId: splitLines ? splitLines[0].categoryId : payload.categoryId,
         type: TransactionType.EXPENSE,
         amountCents: amounts.amountCents,
         preCreditCents: amounts.preCreditCents,
@@ -84,6 +102,7 @@ export const createExpenseAction = formAction(async (formData: FormData) => {
       },
       select: { id: true },
     });
+    if (splitLines) await saveSplitLines(tx, { userId: user.id, transactionId: created.id, lines: splitLines });
     await addTagsToTransaction(tx, created.id, await resolveTagIds(tx, user.id, tagNames));
     return created;
   });
@@ -360,6 +379,8 @@ export const importExpensesCsvAction = formActionWithResult(async (formData: For
     // Tags the rules add. A tagged row gets its id here so its tags can name it in the same
     // batch; createMany returns no ids.
     const pendingTags: Prisma.TransactionTagCreateManyInput[] = [];
+    // The parts of the lines a rule splits, named the same way.
+    const pendingSplits: Prisma.SplitTransactionPartCreateManyInput[] = [];
     let transferCategoryId: string | null = null;
     for (const { rowNumber, row, amount, transactionDate, postedDate, statementTitle } of datedRows) {
       const statementNote = getOptionalMappedValue(row, payload.mapping.note) ?? payload.manualValues.note;
@@ -465,8 +486,12 @@ export const importExpensesCsvAction = formActionWithResult(async (formData: For
         }
       }
 
-      const id = rule.tagIds.length > 0 ? randomUUID() : undefined;
+      // A rule's split is its way of setting the category, so a category the file names wins.
+      const splitLines = categoryName ? null : ruleSplitLines(rule.split, toCents(amount));
+      if (splitLines) resolvedCategoryId = splitLines[0].categoryId;
+      const id = rule.tagIds.length > 0 || splitLines ? randomUUID() : undefined;
       if (id) pendingTags.push(...rule.tagIds.map((tagId) => ({ transactionId: id, tagId })));
+      if (id && splitLines) pendingSplits.push(...splitLines.map((line) => ({ ...line, userId: user.id, transactionId: id })));
       pending.push({
         id,
         userId: user.id,
@@ -483,6 +508,7 @@ export const importExpensesCsvAction = formActionWithResult(async (formData: For
     // Nobody typed these in: they wait in the log's "Needs review" filter until looked at.
     if (pending.length > 0) await tx.transaction.createMany({ data: pending.map((row) => ({ ...row, needsReview: true })) });
     if (pendingTags.length > 0) await tx.transactionTag.createMany({ data: pendingTags });
+    if (pendingSplits.length > 0) await tx.splitTransactionPart.createMany({ data: pendingSplits });
     summary.imported = pending.length;
   }, LONG_TRANSACTION_OPTIONS);
 
