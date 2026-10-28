@@ -241,6 +241,8 @@ export function useCardStack({
             className="min-w-0 shrink-0"
             style={{ width: `${100 / slideCount}%` }}
             role="tabpanel"
+            // Read by the dashboard's readability check, so every tab counts, not only this one.
+            data-stack-panel=""
             aria-labelledby={`${stackId}-tab-${index}`}
             aria-hidden={activeIndex !== index}
             inert={activeIndex !== index ? true : undefined}

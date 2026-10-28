@@ -414,6 +414,39 @@ test("a column is dropped rather than show less than 90% of a budget name", asyn
   expect(Math.min(...(await nameShares()))).toBeLessThan(0.9);
 });
 
+test("switching tabs in a stack does not change how many columns there are", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const user = await signInFreshUser(page, "stack-tabs");
+
+  // The long budget name costs a column, as in the test above — but here the stack opens on
+  // Categories (Spending by category), so the Budgets tab holding it starts out behind.
+  const budget = await prisma.budget.findFirstOrThrow({ where: { userId: user.id } });
+  await prisma.category.update({
+    where: { id: budget.categoryId },
+    data: { name: "Household repairs and seasonal upkeep" },
+  });
+  const layout = structuredClone(FOUR_COLUMN_LAYOUT);
+  layout.columns[2].slots[0].activeIndex = 1;
+  await prisma.dashboardLayout.upsert({
+    where: { userId: user.id },
+    create: { userId: user.id, version: 1, layoutJson: JSON.stringify(layout) },
+    update: { version: 1, layoutJson: JSON.stringify(layout) },
+  });
+  await page.reload();
+  await expectDashboardHome(page);
+
+  // Judged on every tab, so the hidden one already counts.
+  const columns = page.locator("[data-column-index]");
+  await expect(page.getByRole("tab", { name: "Categories", selected: true })).toBeVisible();
+  await expect(columns).toHaveCount(3);
+
+  for (const tab of ["Budgets", "Categories", "Budgets"]) {
+    await page.getByRole("tab", { name: tab, exact: true }).click();
+    await expect(page.getByRole("tab", { name: tab, exact: true, selected: true })).toBeVisible();
+    await expect(columns).toHaveCount(3);
+  }
+});
+
 test("columns can be added and removed, and removing one keeps its cards", async ({
   page,
 }) => {
