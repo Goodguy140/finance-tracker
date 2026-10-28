@@ -20,6 +20,12 @@ same PR.
   rule opens on the dashboard at its month and a found account opens its account page (`?open=<id>`, read by the expense, income and
   transfer logs and the Recurring card); an add opens the Add card on desktop or the quick-add
   sheet on phones (`?add=<kind>`, `src/lib/search/dashboard-requests.ts`)
+  - **Type-to-add**: "12.50 tim hortons yesterday" (an amount, a title, optionally today /
+    yesterday / a weekday / "oct 27" / an ISO date) offers "Add expense $12.50 Tim Hortons, Oct 27"
+    first, with the category and account the user's rules and past titles give it; Enter adds it,
+    and Undo deletes it again. Parser `src/lib/search/quick-add.ts`, preview
+    `quick-add-server.ts` (in the `/api/search` answer), save `src/app/actions/quick-add.ts`
+    (through `createTransactionFromApi`, not marked for review)
 - **Search all transactions** (`/search`): every match across months, grouped by month, with
   type / account / category / tag filters and spent/received totals; where a category or tag
   found by the master search lists its transactions. `src/app/search/page.tsx`
