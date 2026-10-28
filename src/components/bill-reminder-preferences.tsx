@@ -11,8 +11,16 @@ const CHOICES: Array<{ value: string; label: string }> = [
   { value: "7", label: "A week before" },
 ];
 
-/** Settings → Notifications: an email a few days before each recurring bill is due. */
-export function BillReminderPreferences({ emailConfigured, days }: { emailConfigured: boolean; days: number | null }) {
+/** Settings → Notifications: an email (and phone notification) a few days before each recurring bill is due. */
+export function BillReminderPreferences({
+  emailConfigured,
+  phoneReady,
+  days,
+}: {
+  emailConfigured: boolean;
+  phoneReady: boolean;
+  days: number | null;
+}) {
   const [value, setValue] = useState(days === null ? "OFF" : String(days));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -40,14 +48,17 @@ export function BillReminderPreferences({ emailConfigured, days }: { emailConfig
       <div className="space-y-1">
         <h3 className="text-base font-semibold text-slate-100">Bill reminders</h3>
         <p className="text-sm text-slate-400">
-          An email before a recurring bill or transfer is due, listing what is coming and from which account. Each
+          A reminder before a recurring bill or transfer is due (by email, and on phones set up below), listing what is coming and from which account. Each
           bill is reminded once; set bills up on the dashboard&apos;s Recurring card.
         </p>
       </div>
       {emailConfigured ? null : (
-        <p className="text-xs text-amber-200">Requires SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM on the server.</p>
+        <p className="text-xs text-amber-200">
+          Email needs SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM on the server.{" "}
+          {phoneReady ? "These go to your phone instead." : "Or turn on Phone notifications below to get these there."}
+        </p>
       )}
-      <fieldset className="space-y-2" disabled={!emailConfigured || pending}>
+      <fieldset className="space-y-2" disabled={(!emailConfigured && !phoneReady) || pending}>
         <legend className="sr-only">When to remind you</legend>
         {CHOICES.map((choice) => (
           <label key={choice.value} className="flex cursor-pointer items-center gap-3">

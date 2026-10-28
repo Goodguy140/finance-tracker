@@ -134,6 +134,12 @@ export {
   updateDashboardReadabilityAction,
 } from "./actions/preferences";
 export {
+  removePushDeviceAction,
+  savePushDeviceAction,
+  sendTestPushAction,
+  updatePushDeviceAction,
+} from "./actions/push";
+export {
   saveDashboardLayoutAction,
   resetDashboardLayoutAction,
 } from "./actions/dashboard-layout";

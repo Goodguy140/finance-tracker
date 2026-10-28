@@ -188,6 +188,7 @@ model User {
   chargeAlertSetting        ChargeAlertSetting?
   monthCloses               MonthClose[]
   webhookEndpoints          WebhookEndpoint[]
+  pushDevices               PushDevice[]
   recurringTransactions     RecurringTransaction[]
   investmentFlows           InvestmentFlow[]
   contributionRooms         ContributionRoom[]
@@ -644,6 +645,30 @@ model ChargeAlertSetting {
   updatedAt      DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// A phone or browser that receives push notifications (Web Push). The endpoint, key and auth
+/// secret come from the browser's `PushManager.subscribe`; each alert kind can be turned on or
+/// off per device. A row the push service reports gone (404/410) is deleted.
+model PushDevice {
+  id            String    @id @default(cuid())
+  userId        String
+  endpoint      String    @unique
+  p256dh        String
+  auth          String
+  /// "iPhone", "Chrome on Windows": named from the browser so the list makes sense.
+  label         String
+  billReminders Boolean   @default(true)
+  chargeAlerts  Boolean   @default(true)
+  budgetAlerts  Boolean   @default(true)
+  lastSentAt    DateTime?
+  /// Failed sends in a row; reset by a delivery.
+  failureCount  Int       @default(0)
+  createdAt     DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model RecurringTransaction {

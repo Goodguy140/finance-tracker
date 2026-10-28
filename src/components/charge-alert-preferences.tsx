@@ -5,14 +5,16 @@ import { setChargeAlertsAction } from "@/app/actions";
 import { isActionFailure } from "@/lib/action-result";
 import { fromCents } from "@/lib/money";
 
-/** Settings → Notifications: an email when a bank sync brings in a large or unusual charge. */
+/** Settings → Notifications: an email (and phone notification) when a bank sync brings in a large or unusual charge. */
 export function ChargeAlertPreferences({
   emailConfigured,
+  phoneReady,
   currency,
   thresholdCents,
   unusual,
 }: {
   emailConfigured: boolean;
+  phoneReady: boolean;
   currency: string;
   thresholdCents: number | null;
   unusual: boolean;
@@ -37,15 +39,18 @@ export function ChargeAlertPreferences({
       <div className="space-y-1">
         <h3 className="text-base font-semibold text-slate-100">Charge alerts</h3>
         <p className="text-sm text-slate-400">
-          An email when a connected bank brings in a charge over an amount you choose, or one well above what that
+          An alert (by email, and on phones set up below) when a connected bank brings in a charge over an amount you choose, or one well above what that
           merchant usually charges (at least three times as much). Checked hourly; each charge is looked at once.
         </p>
       </div>
       {emailConfigured ? null : (
-        <p className="text-xs text-amber-200">Requires SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM on the server.</p>
+        <p className="text-xs text-amber-200">
+          Email needs SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM on the server.{" "}
+          {phoneReady ? "These go to your phone instead." : "Or turn on Phone notifications below to get these there."}
+        </p>
       )}
       <form action={save} className="space-y-3">
-        <fieldset className="space-y-3" disabled={!emailConfigured || pending}>
+        <fieldset className="space-y-3" disabled={(!emailConfigured && !phoneReady) || pending}>
           <label className="block space-y-1">
             <span className="text-sm font-medium text-slate-200">Any charge of at least ({currency})</span>
             <input

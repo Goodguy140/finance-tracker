@@ -8,11 +8,12 @@ import { homeCurrencyOf } from "@/lib/home-currency";
 import { formatCurrency } from "@/lib/money";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
+import { anyPushDevices, deliverAlert, type PushMessage, type PushSender } from "@/lib/push-notifications";
 import { dueDecisionReminders, type DecisionReminder } from "@/lib/subscription-cancel";
 
 /**
- * Bill reminder emails: a few days before a recurring bill (or a recurring transfer, such as a
- * card payment) is due, one email listing what is coming. Each rule remembers the latest
+ * Bill reminders: a few days before a recurring bill (or a recurring transfer, such as a card
+ * payment) is due, one email (and a push to each phone that has them on) listing what is coming. Each rule remembers the latest
  * occurrence it was reminded for (`RecurringTransaction.reminderSentForDate`), so an occurrence
  * is reminded once however many hourly ticks see it, and a rule added or moved inside the
  * window is still caught on the next tick.
@@ -174,6 +175,22 @@ export function renderBillReminder(
   return { subject, text: lines.join("\n") };
 }
 
+/** The phone notification: the email's subject, and one short line per bill. */
+export function billReminderPush(
+  reminders: readonly BillReminder[],
+  decisions: readonly DecisionReminder[],
+  options: { todayYmd: string; currency: string; subject: string },
+): PushMessage {
+  const money = (cents: number) => formatCurrency(cents, options.currency);
+  const lines = [
+    ...decisions.map((d) => `Decide by ${whenLabel(d.decideBy, options.todayYmd)}: ${d.name} ${money(d.cents)}`),
+    ...reminders.map((r) => `${whenLabel(r.date, options.todayYmd)}: ${r.name} ${money(r.cents)}`),
+  ];
+  const shown = lines.slice(0, 4);
+  if (lines.length > shown.length) shown.push(`and ${lines.length - shown.length} more`);
+  return { title: options.subject, body: shown.join("\n"), url: "/", tag: "bill-reminders" };
+}
+
 type ReminderUser = { id: string; email: string; countryCode: string; timezone: string; billReminderDays: number | null };
 
 export type ReminderOutcome = "sent" | "none" | "not-due" | "failed";
@@ -198,10 +215,9 @@ const RULE_SELECT = {
 export async function sendDueBillReminders(
   user: ReminderUser,
   now: Date,
-  deps: { client?: PrismaClient; send?: typeof sendEmail; baseUrl?: string } = {},
+  deps: { client?: PrismaClient; send?: typeof sendEmail; push?: PushSender; baseUrl?: string } = {},
 ): Promise<ReminderOutcome> {
   const client = deps.client ?? prisma;
-  const send = deps.send ?? sendEmail;
   if (!user.billReminderDays) return "not-due";
   if (localHour(user.timezone, now) < DIGEST_SEND_HOUR) return "not-due";
   const todayYmd = currentYmdInTimeZone(user.timezone, now);
@@ -230,23 +246,26 @@ export async function sendDueBillReminders(
   const cards = dueCardReminders(await loadCardTerms(client, user.id, homeCurrencyOf(user.countryCode)), rules, todayYmd, user.billReminderDays);
   if (reminders.length === 0 && decisions.length === 0 && cards.length === 0) return "none";
 
+  const currency = homeCurrencyOf(user.countryCode);
   const { subject, text } = renderBillReminder(
     reminders,
-    {
-      todayYmd,
-      currency: homeCurrencyOf(user.countryCode),
-      days: user.billReminderDays,
-      baseUrl: deps.baseUrl,
-    },
+    { todayYmd, currency, days: user.billReminderDays, baseUrl: deps.baseUrl },
     decisions,
     cards,
   );
-  try {
-    if (!(await send({ to: user.email, subject, text })).sent) return "failed";
-  } catch (err) {
-    console.error("[bill reminders] sending failed", err);
-    return "failed";
-  }
+  const outcome = await deliverAlert(
+    {
+      userId: user.id,
+      to: user.email,
+      kind: "billReminders",
+      subject,
+      text,
+      push: billReminderPush(reminders, decisions, { todayYmd, currency, subject }),
+    },
+    { client, send: deps.send, push: deps.push },
+  );
+  if (outcome === "no-channel") return "none";
+  if (outcome === "failed") return "failed";
   const latest = new Map<string, Date>();
   for (const r of reminders) {
     const seen = latest.get(r.ruleId);
@@ -284,10 +303,15 @@ async function loadCardTerms(client: PrismaClient, userId: string, currency: str
 /** One hourly tick over every user with bill reminders on. */
 export async function runBillReminderSweep(
   now = new Date(),
-  deps: { client?: PrismaClient; send?: typeof sendEmail; smtpConfigured?: () => boolean } = {},
+  deps: { client?: PrismaClient; send?: typeof sendEmail; push?: PushSender; smtpConfigured?: () => boolean } = {},
 ): Promise<{ ok: boolean; message: string; sent: number }> {
-  if (!(deps.smtpConfigured ?? isSmtpConfigured)()) return { ok: true, message: "Skipped: SMTP is not configured", sent: 0 };
   const client = deps.client ?? prisma;
+  const smtp = (deps.smtpConfigured ?? isSmtpConfigured)();
+  if (!smtp && !(await anyPushDevices("billReminders", client))) {
+    return { ok: true, message: "Skipped: SMTP is not configured and no phone has bill reminders on", sent: 0 };
+  }
+  // Without SMTP the email half is skipped rather than failing every user every hour.
+  const send = smtp ? deps.send : async () => ({ sent: false, reason: "SMTP not configured" });
   const users = await client.user.findMany({
     where: { billReminderDays: { not: null }, disabledAt: null },
     select: { id: true, email: true, countryCode: true, timezone: true, billReminderDays: true },
@@ -296,7 +320,7 @@ export async function runBillReminderSweep(
   let sent = 0;
   let failed = 0;
   for (const user of users) {
-    const outcome = await sendDueBillReminders(user, now, { client, send: deps.send, baseUrl });
+    const outcome = await sendDueBillReminders(user, now, { client, send, push: deps.push, baseUrl });
     if (outcome === "sent") sent += 1;
     if (outcome === "failed") failed += 1;
   }

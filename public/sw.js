@@ -162,13 +162,44 @@ async function offlinePage() {
   return hit || new Response("You are offline.", { status: 503, headers: { "Content-Type": "text/plain" } });
 }
 
+/*
+ * Web Push (`src/lib/push-notifications.ts`): bill reminders, charge alerts and budget alerts.
+ * The payload is `{ title, body, url, tag }`; anything unreadable still shows a notification,
+ * because browsers penalise a push that shows nothing (`userVisibleOnly`).
+ */
+self.addEventListener("push", (event) => {
+  let message = {};
+  try {
+    message = event.data ? event.data.json() : {};
+  } catch {
+    message = { body: event.data ? event.data.text() : "" };
+  }
+  const title = typeof message.title === "string" && message.title ? message.title : "Finance Tracker";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: typeof message.body === "string" ? message.body : "",
+      tag: typeof message.tag === "string" ? message.tag : undefined,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      data: { url: typeof message.url === "string" && message.url.startsWith("/") ? message.url : "/" },
+    }),
+  );
+});
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  // Pushes carry the page they are about; a notification the page itself showed has none and
+  // just brings the app forward.
+  const url = event.notification.data && event.notification.data.url;
+  const target = new URL(url || "/", self.location.origin);
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
       const existing = windows.find((client) => new URL(client.url).origin === self.location.origin);
-      if (existing) return existing.focus();
-      return self.clients.openWindow("/");
+      if (existing) {
+        if (!url || new URL(existing.url).pathname === target.pathname) return existing.focus();
+        return existing.focus().then((client) => (client || existing).navigate(target.href));
+      }
+      return self.clients.openWindow(target.href);
     }),
   );
 });

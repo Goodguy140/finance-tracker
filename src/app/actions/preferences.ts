@@ -9,6 +9,7 @@ import { latestDigestPeriod, sendDigestPreview } from "@/lib/email-digest";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import { MIN_BUDGET_NAME_VISIBLE_PCT, MIN_TEXT_VISIBLE_PCT, parseVisiblePct } from "@/lib/dashboard-readability";
 import { prisma } from "@/lib/prisma";
+import { hasPushDeviceFor } from "@/lib/push-notifications";
 import { requireUser } from "@/lib/session";
 import { formAction, getFormValue } from "./_helpers";
 
@@ -98,8 +99,8 @@ export const sendEmailDigestPreviewAction = formAction(async () => {
 export const setBillRemindersAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const billReminderDays = parseBillReminderDays(getFormValue(formData, "days"));
-  if (billReminderDays !== null && !isBudgetAlertEmailConfigured()) {
-    throw new Error("Bill reminders need SMTP configured on the server first.");
+  if (billReminderDays !== null && !isBudgetAlertEmailConfigured() && !(await hasPushDeviceFor(user.id, "billReminders"))) {
+    throw new Error("Bill reminders need SMTP on the server, or a phone with bill reminders on under Phone notifications.");
   }
   await prisma.user.update({ where: { id: user.id }, data: { billReminderDays } });
   revalidatePath("/settings", "layout");
@@ -114,8 +115,8 @@ export const setChargeAlertsAction = formAction(async (formData: FormData) => {
   const thresholdCents = parseChargeAlertThreshold(getFormValue(formData, "threshold"));
   const unusual = getFormValue(formData, "unusual") === "true";
   const on = thresholdCents !== null || unusual;
-  if (on && !isBudgetAlertEmailConfigured()) {
-    throw new Error("Charge alerts need SMTP configured on the server first.");
+  if (on && !isBudgetAlertEmailConfigured() && !(await hasPushDeviceFor(user.id, "chargeAlerts"))) {
+    throw new Error("Charge alerts need SMTP on the server, or a phone with charge alerts on under Phone notifications.");
   }
   const existing = await prisma.chargeAlertSetting.findUnique({ where: { userId: user.id } });
   const wasOn = existing !== null && (existing.thresholdCents !== null || existing.unusual);
