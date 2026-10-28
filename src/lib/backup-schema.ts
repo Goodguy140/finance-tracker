@@ -66,6 +66,11 @@ export const userBackupSchema = z.object({
       archived: z.boolean(),
       /** Absent from backups made before it existed; the type's default then applies. */
       countsAsSavings: z.boolean().optional(),
+      /** Debt and card terms; absent from older backups. */
+      interestRateBps: z.number().int().nonnegative().nullable().optional(),
+      minimumPaymentCents: z.number().int().nonnegative().nullable().optional(),
+      creditLimitCents: z.number().int().positive().nullable().optional(),
+      paymentDueDay: z.number().int().min(1).max(31).nullable().optional(),
       createdAt: isoDate,
       updatedAt: isoDate,
     }),

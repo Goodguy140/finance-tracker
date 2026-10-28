@@ -649,7 +649,13 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const categoryPieSlices = Array.from((tagFilter ? computeSpendByCategory(logExpenses.filter(inHomeCurrency)) : spendByCategory).entries())
     .map(([categoryId, cents]) => {
       const cat = categories.find((c) => c.id === categoryId);
-      return { name: cat?.name ?? "Unknown", cents, color: categoryColor(categoryColors, categoryId), groupName: cat?.groupName ?? null };
+      return {
+        name: cat?.name ?? "Unknown",
+        cents,
+        color: categoryColor(categoryColors, categoryId),
+        groupName: cat?.groupName ?? null,
+        href: cat ? `/reports/category?id=${encodeURIComponent(categoryId)}` : undefined,
+      };
     })
     .filter((s) => s.cents !== 0)
     .sort((a, b) => Math.abs(b.cents) - Math.abs(a.cents));

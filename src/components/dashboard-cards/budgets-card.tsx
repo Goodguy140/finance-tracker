@@ -6,6 +6,8 @@ import type { YearlyBudgetRow } from "@/lib/yearly-budgets";
 
 export type DashboardBudgetProgressItem = {
   id: string;
+  /** When set, the name links to the category's trend page. */
+  categoryId?: string;
   categoryName: string;
   spentCents: number;
   limitCents: number;
@@ -216,9 +218,19 @@ function BudgetRowGrid({
           <div className="mb-1 flex items-center justify-between gap-2 text-sm">
             {/* The name is what the row is about: the dashboard drops a column rather than
                 show less of it than the user's budget-name setting allows. */}
-            <span data-min-visible="budget-name" className="truncate font-medium text-slate-200">
-              {item.categoryName}
-            </span>
+            {item.categoryId ? (
+              <Link
+                href={`/reports/category?id=${encodeURIComponent(item.categoryId)}`}
+                data-min-visible="budget-name"
+                className="truncate font-medium text-slate-200 underline-offset-4 hover:text-blue-200 hover:underline"
+              >
+                {item.categoryName}
+              </Link>
+            ) : (
+              <span data-min-visible="budget-name" className="truncate font-medium text-slate-200">
+                {item.categoryName}
+              </span>
+            )}
             <span className="shrink-0 tabular-nums text-slate-300">
               {formatCurrency(item.spentCents)} / {formatCurrency(item.limitCents)}
             </span>

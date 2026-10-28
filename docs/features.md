@@ -74,8 +74,8 @@ Cards (`src/components/dashboard-cards/`), with their gear settings:
 | Add (`add-expense`) `add-entry-card.tsx` | Expense / Income / Transfer / Plan switch (Plan: see Planned one-offs below), title autocomplete (`expense-title-autocomplete.tsx`), rules applied while typing (`transaction-rules-context.tsx`) | posted date, note, receipt breakdown |
 | Expense Log (`expense-log`) `src/components/expense-log.tsx` | search, tag filter, **Needs review** filter for rows nobody typed in (CSV/OFX imports, recurring auto-posts, API posts; `Transaction.needsReview`; "Mark N shown as reviewed", bulk "Mark reviewed", saving the edit dialog clears it; count on the monthly review), day groups, verified badge, edit dialog (dates, note, tags, splits, credits, owed shares, receipts: photos or PDFs kept in `TransactionAttachment`, type read from the bytes, served by `/api/attachments/[id]`; up to 8 MB each and 500 MB per user; `receipts-section.tsx`, `src/lib/attachments.ts`; kept through Undo; not in JSON backups), **Select** mode for bulk changes (`expense-bulk-bar.tsx`, `bulkEditExpensesAction`: set category, set account, add tag, delete with one Undo; split expenses keep their categories), delete with an Undo toast (`undo-toast.tsx`, `src/lib/transaction-undo.ts`, kept 15 minutes in `DeletedTransaction`); Owed to you (`owed-to-you.tsx`); Transfers list (`transfer-log.tsx`: mark/unmark, pair/unpair, set account); bank review queue | density, list height, show review queue |
 | Income (`income`, conditional) `income-card.tsx`, `income-log.tsx` | list, edit, delete (with Undo); absent from a period with no income | density, list height |
-| Budgets (`budgets`) `budgets-card.tsx` | progress per category with "$X left" / "$X over" on each row and the total, days left in the current month, rollover (`src/lib/budget-rollover.ts`), reallocate (`budget-reallocate-dialog.tsx`), rows under category group headings with group totals, yearly budgets as sinking funds | per row, hide zero spend, period note |
-| Spending by category (`spending-by-category`) `spending-by-category-card.tsx`, `category-spend-pie.tsx` | pie with colors shared with the log (`src/lib/category-colors.ts`), optional savings slice (`src/lib/savings-transfers.ts`) | chart height, slices shown, show savings, add up category groups |
+| Budgets (`budgets`) `budgets-card.tsx` | progress per category with "$X left" / "$X over" on each row and the total, days left in the current month, rollover (`src/lib/budget-rollover.ts`), reallocate (`budget-reallocate-dialog.tsx`), rows under category group headings with group totals, yearly budgets as sinking funds, each name opening its category trend page | per row, hide zero spend, period note |
+| Spending by category (`spending-by-category`) `spending-by-category-card.tsx`, `category-spend-pie.tsx` | pie with colors shared with the log (`src/lib/category-colors.ts`), optional savings slice (`src/lib/savings-transfers.ts`), clicking a category slice opens its trend page | chart height, slices shown, show savings, add up category groups |
 | Cumulative spending (`cumulative-spend`) `cumulative-spend-card.tsx`, `src/lib/cumulative-spend.ts` | running total, expected line, compare with last month / 3-month avg | chart height, expected line, compare with |
 | Recurring (`recurring`) `recurring-card.tsx`, `recurring-transactions-panel.tsx`, `recurring-rule-form.tsx` | rules due in the month as one summary line each (category · account · cadence · date), overdue carry ("Unposted since"), Post, with Skip/Edit/Disable/Remove behind the "⋯" button, auto-post, new/edit/pause/delete, recurring transfers (from/to account, `RecurringTransaction.transferAccountId`, kept out of income and bills), cash-flow summary; `src/lib/recurring-transactions.ts`, `recurring-post.ts` | cash-flow summary, rules shown |
 | Insights (`insights`) `insights-card.tsx` | count per section and the most pressing few, link to `/insights`; leaves out budget and money-owed insights, which this page already shows | insights shown |
@@ -125,7 +125,7 @@ owed money, room, goals or gaps).
 - **Coming up** (an account the recurring bills take below zero, from `projectBalances` and a
   balance read in the last month; a budget over, on pace to go over or nearly used this month,
   left off the dashboard card, which has the budget alerts panel; a yearly charge due within 30
-  days; pay that is late or came in short, `changes.ts`; RRSP room left in the first 60 days of
+  days; a credit card payment due within a week, with its balance and minimum; pay that is late or came in short, `changes.ts`; RRSP room left in the first 60 days of
   the year and FHSA room that will not carry over, Canada only, `standing.ts`): `ahead.ts`
 - **Possible gaps in your data** (pay, savings transfers, card payments and other transfers that
   skipped an occurrence, or are past due, leaving pay that is late right now to Coming up; recent
@@ -177,6 +177,12 @@ Page: `src/app/reports/page.tsx`; data `src/lib/reports/*`; charts
 - Income vs spending by month from the first month with data (table toggle), cash-flow Sankey, year over
   year (says so instead of zeros when there is no earlier year), payees, and "Who paid you" for income
 - **Merchant page** `/reports/merchant`: `src/app/reports/merchant/page.tsx`
+- **Category trend page** `/reports/category?id=`: one category's last 24 months by month
+  against its monthly budget (stepped line), this month, its pace to month end, the average of
+  up to 12 full months, top payees (linking to the merchant page), biggest purchases (split
+  parts count), and a link to its transactions in `/search`. Income categories show income.
+  Opened from category names in Reports' year over year, the Budgets card and the pie's
+  slices. `src/app/reports/category/page.tsx`, `src/lib/reports/category-trend.ts`
 - **Year-end summary** `/reports/year` ("Year-end summary" on Reports; last year by default):
   year totals and comparison with the year before, biggest month, top categories and payees;
   totals per tag with tax-looking names (donation, medical, deductible…) first and marked "Tax
@@ -224,7 +230,7 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     `src/lib/email-digest.ts`, hourly `email-digest-scheduler.ts` (`EMAIL_DIGEST_SCHEDULER`)
   - Bill reminders (off / the day before / 3 days / a week before; one email listing recurring
     bills and transfers coming up, each occurrence reminded once via
-    `RecurringTransaction.reminderSentForDate`; same hourly sweep, after 7am local):
+    `RecurringTransaction.reminderSentForDate`, plus credit card payments by their due day; same hourly sweep, after 7am local):
     `bill-reminder-preferences.tsx`, `src/lib/bill-reminders.ts`
   - Charge alerts (an email when a bank sync brings in money out at or over an amount, home
     currency only, and/or at least 3× and $25 above the merchant's usual from 3+ earlier
@@ -248,6 +254,11 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     `contribution-room-panel.tsx`, `actions/accounts.ts`. Currency is fixed once an account has
     transactions, recurring rules, balances or a bank mapping, and a non-home-currency account
     with transactions can only be archived, not deleted (`src/lib/account-currency-guard.ts`)
+  - **Credit card limit and due day** (a credit card's drawer, "Card": `Account.creditLimitCents`,
+    `.paymentDueDay`, `setCardTermsAction` in `actions/debt.ts`). Utilization (owed ÷ limit,
+    flagged over 30%) on the drawer, Reports Net worth (per card and in total) and Debt payoff;
+    the due day feeds Insights' Coming up and bill reminders (`Account.paymentRemindedFor`; a card
+    a recurring transfer already pays is left to that transfer): `src/lib/credit-cards.ts`
   - Reconcile with a statement (`/settings/accounts/reconcile`, "Reconcile" on Accounts): dates
     and opening/closing balances in, the log's entries with a running balance and the difference
     out (cards and loans as amounts owed); "Mark reconciled" keeps an `AccountReconciliation` and
