@@ -59,6 +59,6 @@ test("a budget's name on the dashboard opens its category's trend page", async (
     "href",
     /\/reports\/merchant\?key=/,
   );
-  await expect(page.getByTestId("category-biggest").locator("li").first()).toContainText("Vet clinic");
+  await expect(page.getByTestId("category-biggest").locator("li")).toHaveText([/Pet Valu.*\$120\.00/, /Vet clinic.*\$95\.00/, /Pet Valu.*\$40\.00/]);
   await expect(page.getByRole("link", { name: "All its transactions" })).toHaveAttribute("href", `/search?category=${pets.id}`);
 });
