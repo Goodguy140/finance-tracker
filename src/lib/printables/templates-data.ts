@@ -352,6 +352,8 @@ export async function loadForecastRules(userId: string, currency: string) {
       cadence: true,
       nextExpectedDate: true,
       anchorDay: true,
+      secondAnchorDay: true,
+      beforeWeekend: true,
       endDate: true,
       enabled: true,
       categoryId: true,

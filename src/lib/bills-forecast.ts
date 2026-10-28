@@ -1,7 +1,7 @@
 import {
   advanceRecurringDate,
   advanceRecurringDateOnOrAfter,
-  recurringAnchorDay,
+  recurringAnchor,
   type RecurringForecastRule,
 } from "./recurring-transactions";
 import { dateFromYmd, ymdFromDateUtc } from "./date-only";
@@ -10,7 +10,7 @@ export const BILLS_FORECAST_DAY_OPTIONS = [30, 60, 90] as const;
 export type BillsForecastDays = (typeof BILLS_FORECAST_DAY_OPTIONS)[number];
 export const DEFAULT_BILLS_FORECAST_DAYS: BillsForecastDays = 30;
 
-type ForecastableRule = Pick<RecurringForecastRule, "type" | "amountCents" | "cadence" | "nextExpectedDate" | "anchorDay" | "endDate" | "enabled">;
+type ForecastableRule = Pick<RecurringForecastRule, "type" | "amountCents" | "cadence" | "nextExpectedDate" | "anchorDay" | "secondAnchorDay" | "beforeWeekend" | "endDate" | "enabled">;
 
 export type BillsForecastOccurrence<T> = {
   rule: T;
@@ -58,14 +58,14 @@ export function forecastRecurringOccurrences<T extends ForecastableRule>(
     if (!rule.enabled || !listed) continue;
     const endYmd = rule.endDate ? ymdFromDateUtc(rule.endDate) : null;
     const nextYmd = ymdFromDateUtc(rule.nextExpectedDate);
-    const anchorDay = recurringAnchorDay(rule);
-    let date = advanceRecurringDateOnOrAfter(rule.nextExpectedDate, rule.cadence, monthStart, anchorDay);
+    const anchor = recurringAnchor(rule);
+    let date = advanceRecurringDateOnOrAfter(rule.nextExpectedDate, rule.cadence, monthStart, anchor);
     // Several missed occurrences this month (a weekly bill) collapse into the latest one:
     // posting it passes over the rest, so listing each would count money that is not owed.
     for (
-      let next = advanceRecurringDate(date, rule.cadence, anchorDay);
+      let next = advanceRecurringDate(date, rule.cadence, anchor);
       ;
-      next = advanceRecurringDate(date, rule.cadence, anchorDay)
+      next = advanceRecurringDate(date, rule.cadence, anchor)
     ) {
       const candidateYmd = ymdFromDateUtc(next);
       if (candidateYmd >= options.todayYmd || (endYmd && candidateYmd > endYmd)) break;
@@ -78,7 +78,7 @@ export function forecastRecurringOccurrences<T extends ForecastableRule>(
       if (ymd > windowEndYmd || (endYmd && ymd > endYmd)) break;
       occurrences.push({ rule, date, overdue: ymd < options.todayYmd, missedSince });
       missedSince = null;
-      date = advanceRecurringDate(date, rule.cadence, anchorDay);
+      date = advanceRecurringDate(date, rule.cadence, anchor);
       guard++;
     }
   }

@@ -83,7 +83,7 @@ export type ScoreRecurringRule = {
   name: string;
   type: "EXPENSE" | "INCOME" | "TRANSFER";
   amountCents: number;
-  cadence: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL";
+  cadence: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL" | "SEMI_MONTHLY";
   enabled: boolean;
   endDate: Date | null;
 };

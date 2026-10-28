@@ -1,7 +1,7 @@
 import type { RecurringCadence } from "@prisma/client";
 import { advanceRecurringDate } from "@/lib/recurring-transactions";
 import { factsOf } from "./facts";
-import { CADENCE_WORDS, classifyCadence, merchantGroups, MIN_REGULAR_SHARE, seriesOf } from "./recurring-detection";
+import { CADENCE_WORDS, classifyCadence, merchantGroups, MIN_REGULAR_SHARE, seriesAnchor, seriesOf } from "./recurring-detection";
 import type { Insight, InsightRecurringRule, InsightTx } from "./types";
 import { daysBetween, median, wholeDaysSince, type MoneyFormatter } from "./util";
 
@@ -29,7 +29,7 @@ const ymd = (d: Date) => d.toISOString().slice(0, 10);
 // --- Missed or smaller pay -------------------------------------------------------------------
 
 /** Days past the expected date before pay counts as late: weekends and bank holidays. */
-const PAY_GRACE_DAYS: Partial<Record<RecurringCadence, number>> = { WEEKLY: 3, BIWEEKLY: 4, MONTHLY: 5 };
+const PAY_GRACE_DAYS: Partial<Record<RecurringCadence, number>> = { WEEKLY: 3, BIWEEKLY: 4, SEMI_MONTHLY: 4, MONTHLY: 5 };
 /** Pay this far below its usual is worth a word, if the gap is at least the minimum too. */
 const PAY_SHORT_PCT = 0.15;
 const PAY_SHORT_MIN_CENTS = 5_000;
@@ -46,7 +46,7 @@ function payChanges(groups: Map<string, InsightTx[]>, { now, fmt }: ChangesInput
     const last = txs[txs.length - 1];
     const { merchantKey, merchantLabel } = factsOf(last);
     const every = CADENCE_WORDS[band.cadence];
-    const expected = advanceRecurringDate(last.date, band.cadence);
+    const expected = advanceRecurringDate(last.date, band.cadence, seriesAnchor(series, last.date));
     const late = wholeDaysSince(expected, now);
     // Late, but not so long ago that the job, or the account it is paid into, plainly changed.
     if (late > grace && late <= band.typicalDays) {
@@ -83,7 +83,7 @@ function payChanges(groups: Map<string, InsightTx[]>, { now, fmt }: ChangesInput
 // --- A recurring entry whose charges stopped -------------------------------------------------
 
 /** Typical days per cycle, for the cadences a year of history can show stopping. */
-const CYCLE_DAYS: Partial<Record<RecurringCadence, number>> = { WEEKLY: 7, BIWEEKLY: 14, MONTHLY: 30.4, QUARTERLY: 91 };
+const CYCLE_DAYS: Partial<Record<RecurringCadence, number>> = { WEEKLY: 7, BIWEEKLY: 14, SEMI_MONTHLY: 15.2, MONTHLY: 30.4, QUARTERLY: 91 };
 /** Missed half a cycle past the next due date: the same test as a series being over. */
 const STOPPED_AFTER_CYCLES = 1.5;
 /** Only charges that kept coming before: one posting is not a pattern that stopped. */

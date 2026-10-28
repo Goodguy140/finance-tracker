@@ -29,7 +29,7 @@ export const PROJECTION_DAYS = BILLS_FORECAST_DAY_OPTIONS;
 
 export type ProjectableRule = Pick<
   RecurringForecastRule,
-  "type" | "amountCents" | "cadence" | "nextExpectedDate" | "anchorDay" | "endDate" | "enabled"
+  "type" | "amountCents" | "cadence" | "nextExpectedDate" | "anchorDay" | "secondAnchorDay" | "beforeWeekend" | "endDate" | "enabled"
 > & {
   accountId: string;
   name?: string;

@@ -98,7 +98,9 @@ async function createMinimalSchema(prisma: PrismaClient) {
       "cancelUrl" TEXT,
       "decideBy" DATETIME,
       "decideRemindedFor" DATETIME,
-      "cancelledAt" DATETIME
+      "cancelledAt" DATETIME,
+      "secondAnchorDay" INTEGER,
+      "beforeWeekend" BOOLEAN NOT NULL DEFAULT false
     )
   `);
 

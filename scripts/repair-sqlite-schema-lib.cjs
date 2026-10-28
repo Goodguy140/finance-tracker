@@ -1,5 +1,5 @@
 /** Keep in sync with SCHEMA_REPAIR_VERSION in src/lib/migration-health.ts */
-const SCHEMA_REPAIR_VERSION = "24";
+const SCHEMA_REPAIR_VERSION = "25";
 const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
 
@@ -229,6 +229,16 @@ const COLUMN_REPAIRS = [
     table: "Account",
     column: "paymentRemindedFor",
     ddl: 'ALTER TABLE "Account" ADD COLUMN "paymentRemindedFor" DATETIME',
+  },
+  {
+    table: "RecurringTransaction",
+    column: "secondAnchorDay",
+    ddl: 'ALTER TABLE "RecurringTransaction" ADD COLUMN "secondAnchorDay" INTEGER',
+  },
+  {
+    table: "RecurringTransaction",
+    column: "beforeWeekend",
+    ddl: 'ALTER TABLE "RecurringTransaction" ADD COLUMN "beforeWeekend" BOOLEAN NOT NULL DEFAULT false',
   },
 ];
 

@@ -1,5 +1,6 @@
 "use client";
 
+import type { SemiMonthlyDays } from "@/lib/recurring-transactions";
 import { useState } from "react";
 import {
   createSubscriptionMemberAction,
@@ -39,8 +40,10 @@ export type SubscriptionView = {
   accountLabel: string;
   categoryId: string;
   categoryLabel: string;
-  cadence: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL";
+  cadence: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL" | "SEMI_MONTHLY";
   cadenceLabel: string;
+  /** A twice-a-month rule's days; null on other cadences. */
+  semiMonthly?: SemiMonthlyDays | null;
   nextExpectedDateYmd: string;
   nextExpectedDateDisplay: string;
   endDateYmd: string | null;

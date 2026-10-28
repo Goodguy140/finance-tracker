@@ -18,6 +18,7 @@ import {
   textAreaClass,
   type Option,
 } from "@/components/forms/shared";
+import { DEFAULT_SEMI_MONTHLY_DAYS, SEMI_MONTHLY_MIN_GAP_DAYS, type SemiMonthlyDays } from "@/lib/recurring-transactions";
 
 /**
  * The one form for creating and editing a recurring rule.
@@ -31,11 +32,12 @@ import {
 
 export type RecurringRuleType = "EXPENSE" | "INCOME" | "TRANSFER";
 
-export type RecurringRuleCadence = "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL";
+export type RecurringRuleCadence = "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL" | "SEMI_MONTHLY";
 
 export const RECURRING_CADENCE_OPTIONS: { value: RecurringRuleCadence; label: string }[] = [
   { value: "WEEKLY", label: "Weekly" },
   { value: "BIWEEKLY", label: "Biweekly" },
+  { value: "SEMI_MONTHLY", label: "Twice a month" },
   { value: "MONTHLY", label: "Monthly" },
   { value: "QUARTERLY", label: "Quarterly" },
   { value: "YEARLY", label: "Yearly" },
@@ -53,6 +55,8 @@ export type RecurringRuleValues = {
   /** A transfer rule's other side, the account the money goes to. */
   transferAccountId?: string | null;
   cadence: RecurringRuleCadence;
+  /** A twice-a-month rule's days; null on other cadences. */
+  semiMonthly?: SemiMonthlyDays | null;
   nextExpectedDateYmd: string;
   endDateYmd: string | null;
   postMode: "REVIEW" | "AUTO";
@@ -93,6 +97,8 @@ export function RecurringRuleForm({
 }) {
   const fieldIds = useId();
   const [type, setType] = useState<RecurringRuleType>(fixedType ?? rule?.type ?? "EXPENSE");
+  const [cadence, setCadence] = useState<RecurringRuleCadence>(rule?.cadence ?? "MONTHLY");
+  const semiMonthly = rule?.semiMonthly ?? DEFAULT_SEMI_MONTHLY_DAYS;
   const transfer = type === "TRANSFER";
   const categories = type === "INCOME" ? incomeCategories : expenseCategories;
   // Switching type swaps the category list; the rule's category only applies to its own type.
@@ -205,7 +211,8 @@ export function RecurringRuleForm({
           name="cadence"
           aria-label="Cadence"
           className={selectClass}
-          defaultValue={rule?.cadence ?? "MONTHLY"}
+          value={cadence}
+          onChange={(event) => setCadence(event.target.value as RecurringRuleCadence)}
         >
           {RECURRING_CADENCE_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -215,9 +222,55 @@ export function RecurringRuleForm({
         </select>
       </LabeledField>
 
+      {cadence === "SEMI_MONTHLY" ? (
+        <>
+          <LabeledField label="First day" hint="Day of the month of the first one.">
+            <select
+              id={`${fieldIds}-first-day`}
+              name="firstDay"
+              aria-label="First day"
+              className={selectClass}
+              defaultValue={semiMonthly.day}
+            >
+              {Array.from({ length: 31 - SEMI_MONTHLY_MIN_GAP_DAYS }, (_, i) => i + 1).map((day) => (
+                <option key={day} value={day}>
+                  {day}
+                </option>
+              ))}
+            </select>
+          </LabeledField>
+          <LabeledField label="Second day" hint="At least a week after the first. Short months use their last day.">
+            <select
+              id={`${fieldIds}-second-day`}
+              name="secondDay"
+              aria-label="Second day"
+              className={selectClass}
+              defaultValue={semiMonthly.secondDay}
+            >
+              {Array.from({ length: 31 - SEMI_MONTHLY_MIN_GAP_DAYS }, (_, i) => i + 1 + SEMI_MONTHLY_MIN_GAP_DAYS).map((day) => (
+                <option key={day} value={day}>
+                  {day === 31 ? "Last day of the month" : day}
+                </option>
+              ))}
+            </select>
+          </LabeledField>
+          <label className={`${spanFullSm} flex items-start gap-2 text-sm text-slate-300`}>
+            <input
+              type="checkbox"
+              name="beforeWeekend"
+              aria-label="Move to the Friday before a weekend"
+              defaultChecked={semiMonthly.beforeWeekend}
+              className="mt-1 h-4 w-4 shrink-0 rounded border-slate-600 bg-slate-900 text-blue-500"
+            />
+            <span>Move to the Friday before when a day lands on a Saturday or Sunday, as most payrolls do.</span>
+          </label>
+        </>
+      ) : null}
+
       <DateField
         name="nextExpectedDate"
         label={dateLabel}
+        hint={cadence === "SEMI_MONTHLY" ? "Starts on the first of the two days on or after this date." : undefined}
         defaultValue={rule?.nextExpectedDateYmd ?? getTodayIsoDate()}
         required
       />

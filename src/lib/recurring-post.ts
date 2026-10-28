@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import {
   advanceRecurringDate,
   isRecurringOccurrenceOnOrAfterNext,
+  recurringAnchor,
   recurringAnchorDay,
 } from "@/lib/recurring-transactions";
 import { recomputeSubscriptionTransactionCredits } from "@/lib/subscription-credit";
@@ -50,7 +51,8 @@ export async function postRecurringOccurrence(
   // A later occurrence on the rule's cadence may be posted directly; it passes over the
   // ones before it (the dashboard offers this month's occurrence of an overdue rule).
   const anchorDay = recurringAnchorDay(rule);
-  if (!isRecurringOccurrenceOnOrAfterNext(rule.nextExpectedDate, rule.cadence, expectedDate, anchorDay)) {
+  const anchor = recurringAnchor(rule);
+  if (!isRecurringOccurrenceOnOrAfterNext(rule.nextExpectedDate, rule.cadence, expectedDate, anchor)) {
     const posted = await tx.transaction.findFirst({
       where: { userId, recurringTransactionId: rule.id, recurringExpectedDate: expectedDate },
       select: { id: true },
@@ -67,7 +69,7 @@ export async function postRecurringOccurrence(
     throw new Error("Recurring transaction has passed its end date.");
   }
 
-  const nextExpectedDate = advanceRecurringDate(expectedDate, rule.cadence, anchorDay);
+  const nextExpectedDate = advanceRecurringDate(expectedDate, rule.cadence, anchor);
   const stillEnabled = !rule.endDate || ymdFromDateUtc(nextExpectedDate) <= ymdFromDateUtc(rule.endDate);
   const updated = await tx.recurringTransaction.updateMany({
     where: { id: rule.id, userId, enabled: true, nextExpectedDate: rule.nextExpectedDate },

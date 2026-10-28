@@ -6,9 +6,12 @@ import {
   bucketIncomeCentsByYm,
   computeRecurringCashFlowSummary,
   computeThreeMonthAverageIncomeCents,
+  DEFAULT_SEMI_MONTHLY_DAYS,
+  firstSemiMonthlyDateOnOrAfter,
   getPastMonthYmsBefore,
   getRecurringDateStatus,
   isRecurringOccurrenceOnOrAfterNext,
+  recurringAnchor,
   recurringOccurrenceInMonth,
 } from "./recurring-transactions";
 
@@ -267,5 +270,70 @@ describe("isRecurringOccurrenceOnOrAfterNext", () => {
     expect(isRecurringOccurrenceOnOrAfterNext(next, "MONTHLY", dateFromYmd("2026-10-20"))).toBe(true);
     expect(isRecurringOccurrenceOnOrAfterNext(next, "MONTHLY", dateFromYmd("2026-10-21"))).toBe(false);
     expect(isRecurringOccurrenceOnOrAfterNext(next, "MONTHLY", dateFromYmd("2026-07-20"))).toBe(false);
+  });
+});
+
+describe("twice-a-month rules", () => {
+  const walk = (startYmd: string, days: Parameters<typeof advanceRecurringDate>[2], count: number) => {
+    const out = [startYmd];
+    let date = dateFromYmd(startYmd);
+    for (let i = 1; i < count; i++) {
+      date = advanceRecurringDate(date, "SEMI_MONTHLY", days);
+      out.push(ymdFromDateUtc(date));
+    }
+    return out;
+  };
+
+  it("lands on the 15th and the last day of each month, February included", () => {
+    expect(walk("2027-01-15", DEFAULT_SEMI_MONTHLY_DAYS, 5)).toEqual([
+      "2027-01-15",
+      "2027-01-31",
+      "2027-02-15",
+      "2027-02-28",
+      "2027-03-15",
+    ]);
+  });
+
+  it("moves a weekend date to the Friday before and carries on from the usual days", () => {
+    const days = { ...DEFAULT_SEMI_MONTHLY_DAYS, beforeWeekend: true };
+    // Oct 31 2026 is a Saturday and Nov 15 a Sunday; Nov 30 is a Monday.
+    expect(walk("2026-10-15", days, 4)).toEqual(["2026-10-15", "2026-10-30", "2026-11-13", "2026-11-30"]);
+  });
+
+  it("moves a Saturday 1st back into the month before without skipping it", () => {
+    // Aug 1 2026 is a Saturday.
+    expect(walk("2026-07-15", { day: 1, secondDay: 15, beforeWeekend: true }, 3)).toEqual([
+      "2026-07-15",
+      "2026-07-31",
+      "2026-08-14",
+    ]);
+  });
+
+  it("starts on the first of its days on or after the date entered", () => {
+    expect(ymdFromDateUtc(firstSemiMonthlyDateOnOrAfter(dateFromYmd("2026-10-03"), DEFAULT_SEMI_MONTHLY_DAYS))).toBe(
+      "2026-10-15",
+    );
+    expect(ymdFromDateUtc(firstSemiMonthlyDateOnOrAfter(dateFromYmd("2026-10-15"), DEFAULT_SEMI_MONTHLY_DAYS))).toBe(
+      "2026-10-15",
+    );
+  });
+
+  it("counts both paydays in a month's cash flow", () => {
+    const rule = {
+      type: "INCOME" as const,
+      amountCents: 200_000,
+      cadence: "SEMI_MONTHLY" as const,
+      nextExpectedDate: dateFromYmd("2026-11-15"),
+      anchorDay: 15,
+      secondAnchorDay: 31,
+      endDate: null,
+      enabled: true,
+    };
+    const summary = computeRecurringCashFlowSummary([rule], {
+      start: dateFromYmd("2026-11-01"),
+      endExclusive: dateFromYmd("2026-12-01"),
+    });
+    expect(summary.incomeCents).toBe(400_000);
+    expect(recurringAnchor(rule)).toEqual({ day: 15, secondDay: 31, beforeWeekend: false });
   });
 });

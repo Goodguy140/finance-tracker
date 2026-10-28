@@ -171,8 +171,13 @@ export const recurringTransactionSchema = z.object({
   transferAccountId: z.string().min(1).optional(),
   name: z.string().trim().min(2).max(80),
   amount: positiveAmount,
-  cadence: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "BIENNIAL"]),
+  cadence: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "BIENNIAL", "SEMI_MONTHLY"]),
   nextExpectedDate: z.string().min(1),
+  /** A twice-a-month rule's two days of the month; 31 is the last day. Ignored on other cadences. */
+  firstDay: z.coerce.number().int().min(1).max(31).optional(),
+  secondDay: z.coerce.number().int().min(1).max(31).optional(),
+  /** A twice-a-month rule's dates on a weekend move to the Friday before. */
+  beforeWeekend: z.enum(["on"]).optional(),
   endDate: z.string().optional(),
   note: z.string().trim().max(250).optional(),
   /** REVIEW: post from the dashboard by hand. AUTO: posted when due, no click needed. */

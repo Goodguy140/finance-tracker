@@ -128,10 +128,12 @@ export type UserBackupPayload = {
     type: "EXPENSE" | "INCOME" | "TRANSFER";
     name: string;
     amountCents: number;
-    cadence: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL";
+    cadence: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL" | "SEMI_MONTHLY";
     nextExpectedDate: IsoString;
     /** Day of the month the rule falls on; null for a rule saved before it was stored. */
     anchorDay: number | null;
+    secondAnchorDay: number | null;
+    beforeWeekend: boolean;
     /** A transfer rule's other side; null on bills and income. */
     transferAccountId: string | null;
     endDate: IsoString | null;
@@ -453,6 +455,8 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       cadence: row.cadence,
       nextExpectedDate: row.nextExpectedDate.toISOString(),
       anchorDay: row.anchorDay,
+      secondAnchorDay: row.secondAnchorDay,
+      beforeWeekend: row.beforeWeekend,
       transferAccountId: row.transferAccountId,
       endDate: toIso(row.endDate),
       postMode: row.postMode,
