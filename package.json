@@ -1,7 +1,7 @@
 {
   "name": "finance-tracker-app",
-  "version": "0.5.0",
-  "private": true,
+  "version": "0.5.1",
+  "private": false,
   "engines": {
     "node": ">=22 <23"
   },
