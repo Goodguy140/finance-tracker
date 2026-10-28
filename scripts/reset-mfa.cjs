@@ -22,8 +22,9 @@ async function main() {
       console.error(`reset-mfa: no user with email ${email}`);
       process.exit(1);
     }
-    const [passkeys, codes] = await prisma.$transaction([
+    const [passkeys, apps, codes] = await prisma.$transaction([
       prisma.webAuthnCredential.deleteMany({ where: { userId: user.id } }),
+      prisma.totpCredential.deleteMany({ where: { userId: user.id } }),
       prisma.recoveryCode.deleteMany({ where: { userId: user.id } }),
       prisma.mfaChallenge.deleteMany({ where: { userId: user.id } }),
       // Every open session may belong to whoever prompted this reset; make them all log in again.
@@ -39,7 +40,7 @@ async function main() {
       }),
     ]);
     console.log(
-      `reset-mfa: removed ${passkeys.count} passkey(s) and ${codes.count} recovery code(s) for ${email}; all sessions revoked.`,
+      `reset-mfa: removed ${passkeys.count} passkey(s), ${apps.count} authenticator app(s) and ${codes.count} recovery code(s) for ${email}; all sessions revoked.`,
     );
   } finally {
     await prisma.$disconnect();

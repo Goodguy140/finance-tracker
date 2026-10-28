@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback, useState } from "react";
 import {
   browserSupportsWebAuthn,
   startAuthentication,
@@ -13,7 +12,6 @@ import {
   finishPasskeyAuthenticationAction,
   finishPasskeyRegistrationAction,
 } from "@/app/actions/mfa";
-import { MFA_STEP_UP_MAX_AGE_MS } from "@/lib/auth-constants";
 import type { MfaStepUpCode } from "@/lib/session";
 
 export type PasskeyOutcome =
@@ -75,39 +73,4 @@ export async function registerPasskey(input: { name: string; currentPassword?: s
   const finish = await finishPasskeyRegistrationAction({ challengeId: begin.challengeId, response, name: input.name });
   if (!finish.ok) return { ok: false, cancelled: false, error: finish.error, code: finish.code };
   return { ok: true, recoveryCodes: finish.recoveryCodes };
-}
-
-/**
- * Step-up gate for the client. `freshUntil` is the server's view when the page rendered;
- * a successful prompt extends it locally so several gated actions in a row need one prompt.
- */
-export function usePasskeyStepUp(initialFreshUntil: number | null, enrolled: boolean) {
-  const [localFreshUntil, setFreshUntil] = useState<number | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  // Whichever is newer: the server's view at render time, or a prompt passed since.
-  const freshUntil = Math.max(initialFreshUntil ?? 0, localFreshUntil ?? 0) || null;
-  const isFresh = useCallback(() => freshUntil != null && Date.now() < freshUntil - 5_000, [freshUntil]);
-
-  const ensureFresh = useCallback(async (): Promise<PasskeyOutcome> => {
-    if (!enrolled) {
-      return {
-        ok: false,
-        cancelled: false,
-        code: "mfa_required",
-        error: "Add a passkey in Settings → Security before linking external accounts.",
-      };
-    }
-    if (isFresh()) return { ok: true };
-    setBusy(true);
-    try {
-      const outcome = await verifyWithPasskey();
-      if (outcome.ok) setFreshUntil(Date.now() + MFA_STEP_UP_MAX_AGE_MS);
-      return outcome;
-    } finally {
-      setBusy(false);
-    }
-  }, [enrolled, isFresh]);
-
-  return { ensureFresh, isFresh, busy, enrolled };
 }

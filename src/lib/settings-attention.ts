@@ -33,7 +33,7 @@ export type SettingsAttention = {
  * someone who happens to open the right page.
  */
 export const loadSettingsAttention = cache(async (userId: string): Promise<SettingsAttention> => {
-  const [items, passkeys, recoveryCodes, plaidConfig] = await Promise.all([
+  const [items, secondFactors, recoveryCodes, plaidConfig] = await Promise.all([
     prisma.plaidItem.findMany({
       where: { userId },
       orderBy: { createdAt: "asc" },
@@ -48,7 +48,10 @@ export const loadSettingsAttention = cache(async (userId: string): Promise<Setti
         plaidAccounts: { select: { accountId: true, syncEnabled: true } },
       },
     }),
-    prisma.webAuthnCredential.count({ where: { userId } }),
+    // Any second factor counts: a passkey or an authenticator app.
+    Promise.all([prisma.webAuthnCredential.count({ where: { userId } }), prisma.totpCredential.count({ where: { userId } })]).then(
+      ([passkeyCount, totpCount]) => passkeyCount + totpCount,
+    ),
     prisma.recoveryCode.count({ where: { userId, usedAt: null } }),
     getPlaidConfig(),
   ]);
@@ -68,18 +71,18 @@ export const loadSettingsAttention = cache(async (userId: string): Promise<Setti
     });
     if (cost) out.push({ section: "banks", title, message: cost, tone: "warn" });
   }
-  if (passkeys === 0) {
+  if (secondFactors === 0) {
     out.push({
       section: "security",
-      title: "No passkey yet",
-      message: "Add a passkey to protect this account. Connecting a bank and creating API tokens need one.",
+      title: "No second factor yet",
+      message: "Add a passkey or an authenticator app to protect this account. Connecting a bank and creating API tokens need one.",
       tone: "warn",
     });
   } else if (recoveryCodes < LOW_RECOVERY_CODES) {
     out.push({
       section: "security",
       title: "Recovery codes running out",
-      message: `${recoveryCodes} unused recovery code${recoveryCodes === 1 ? "" : "s"} left. Make a new set so you can still get in without your passkey.`,
+      message: `${recoveryCodes} unused recovery code${recoveryCodes === 1 ? "" : "s"} left. Make a new set so you can still get in without your passkey or authenticator app.`,
       tone: "warn",
     });
   }

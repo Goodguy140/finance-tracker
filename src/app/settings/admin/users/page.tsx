@@ -15,7 +15,7 @@ export default async function AdminUsersPage() {
   const rows = users.map((user) => ({ ...user, lastSignInAt: lastSignIns.get(user.id) ?? null }));
 
   const suspended = users.filter((u) => u.disabledAt !== null).length;
-  const withPasskey = users.filter((u) => u.passkeyCount > 0).length;
+  const withMfa = users.filter((u) => u.passkeyCount > 0 || u.hasAuthenticatorApp).length;
   const withSso = users.filter((u) => u.ssoProviders.length > 0).length;
 
   return (
@@ -34,9 +34,9 @@ export default async function AdminUsersPage() {
           detail={adminCount <= 1 ? "Consider a second admin" : "Able to sign in"}
         />
         <StatTile
-          label="Passkey adoption"
-          value={users.length ? `${Math.round((withPasskey / users.length) * 100)}%` : "—"}
-          detail={`${withPasskey} of ${users.length} accounts`}
+          label="Second factor adoption"
+          value={users.length ? `${Math.round((withMfa / users.length) * 100)}%` : "—"}
+          detail={`${withMfa} of ${users.length} accounts (passkey or authenticator app)`}
         />
         <StatTile label="Single sign-on" value={withSso} detail="accounts with a linked provider" />
       </div>

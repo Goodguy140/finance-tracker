@@ -46,32 +46,36 @@ Three ways in, all of which may be active at once:
 
 ### Multi-factor
 
-**Passkeys are the second factor.** Once an account has enrolled at least one, *every*
-subsequent sign-in — password or SSO — stops at the `/mfa` wall until a passkey is asserted.
-There is no opt-out per session.
+**The second factor is a passkey or an authenticator app (TOTP).** Once an account has either,
+*every* subsequent sign-in — password or SSO — stops at the `/mfa` wall until a passkey is
+asserted or a six-digit code is entered. There is no opt-out per session.
 
-Enrolment is per-user and self-service, under **Settings → Security**. Recovery codes are
-issued at enrolment, shown once, and stored only as hashes; each is single-use.
+Enrolment is per-user and self-service, under **Settings → Security**. Adding the first factor
+needs the password (or, SSO-only, a sign-in in the last five minutes); adding another needs a
+step-up with the one already there. An authenticator app is confirmed by its first code before
+it counts. Its secret is stored encrypted (`SERVER_SETTINGS_ENCRYPTION_KEY`), and each code's
+30-second step is recorded so a code cannot be used twice. Recovery codes are issued with the
+first factor, shown once, and stored only as hashes; each is single-use.
 
 **Step-up.** Linking anything external — an SSO provider, a new personal access token —
-requires a passkey assertion from the last five minutes, not merely a valid session. This is
+requires a passkey assertion or authenticator code from the last five minutes, not merely a valid session. This is
 what stops a stolen session cookie from being turned into permanent access.
 
 **Confirm it's you.** Actions that destroy data or change who can get in also need a recent
 confirmation (`requireRecentIdentity`, `src/lib/recent-identity.ts`): deleting the account,
 clearing or restoring its data, and the admin controls for roles, suspensions, deleting users,
 sign-in providers, password login, public sign-up and Plaid credentials; and making a calendar feed link. An account with a
-passkey confirms with it; one without re-enters its password; an SSO-only account must have
+passkey or authenticator app confirms with it; one without re-enters its password; an SSO-only account must have
 signed in within the last five minutes. One confirmation covers five minutes.
 
-**Break-glass.** A user who has lost every passkey and recovery code is recovered by an
+**Break-glass.** A user who has lost every passkey, their authenticator app and their recovery codes is recovered by an
 operator with shell access to the deployment:
 
 ```bash
 node scripts/reset-mfa.cjs user@example.com
 ```
 
-This strips that account's passkeys and recovery codes and signs it out everywhere. It
+This strips that account's passkeys, authenticator app and recovery codes and signs it out everywhere. It
 requires shell access deliberately — there is no in-app path, because an in-app path would be
 a way around the second factor.
 

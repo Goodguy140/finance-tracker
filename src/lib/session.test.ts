@@ -20,7 +20,7 @@ const { mfaRedirectPath, safeNextPath, MfaStepUpRequiredError, resolveSession, r
   await import("./session");
 
 describe("resolveSession", () => {
-  const dbUser = { id: "u1", email: "a@b.c", tokenVersion: 1, _count: { webAuthnCredentials: 0 } };
+  const dbUser = { id: "u1", email: "a@b.c", tokenVersion: 1, _count: { webAuthnCredentials: 0 }, totpCredential: null };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -65,6 +65,13 @@ describe("resolveSession", () => {
       expect(resolution.loaded.authAt).toBe(5);
       expect(resolution.loaded.mfa.required).toBe(false);
     }
+  });
+
+  it("requires the second step for an authenticator app as for a passkey", async () => {
+    getServerSession.mockResolvedValue({ user: { id: "u1", tokenVersion: 1, sid: "s1" } });
+    findUnique.mockResolvedValue({ ...dbUser, totpCredential: { userId: "u1" } });
+    const resolution = await resolveSession();
+    expect(resolution.status === "ok" && resolution.loaded.mfa).toMatchObject({ required: true, totp: true, passkeyCount: 0 });
   });
 });
 

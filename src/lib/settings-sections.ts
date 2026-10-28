@@ -48,8 +48,8 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     id: "security",
     group: "you",
     label: "Security",
-    summary: "Passkeys, recovery codes, password and linked sign-ins.",
-    keywords: ["password", "passkey", "mfa", "2fa", "recovery", "google", "sign in"],
+    summary: "Passkeys, authenticator app, recovery codes, password and linked sign-ins.",
+    keywords: ["password", "passkey", "mfa", "2fa", "authenticator", "totp", "code", "recovery", "google", "sign in"],
   },
   {
     id: "notifications",

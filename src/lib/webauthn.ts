@@ -33,6 +33,7 @@ export class MfaVerificationError extends Error {
 }
 
 export type ChallengePurpose = "register" | "authenticate" | "signin" | "sso-link";
+// "totp-enroll" rows are written and read by `totp-credentials.ts`, not through these helpers.
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 /** Delete expired challenge rows roughly once in this many `createChallenge` calls. */

@@ -11,6 +11,8 @@ export type AdminUserRow = {
   /** Provider ids this account can sign in through, e.g. ["google", "authentik"]. */
   ssoProviders: string[];
   passkeyCount: number;
+  /** An authenticator app (TOTP) is set up. */
+  hasAuthenticatorApp: boolean;
   /** Personal access tokens that are neither revoked nor expired. */
   activeTokenCount: number;
   hasPassword: boolean;
@@ -48,6 +50,7 @@ export async function listUsersForAdmin(prisma: PrismaClient): Promise<AdminUser
         createdAt: true,
         passwordHash: true,
         authAccounts: { select: { provider: true } },
+        totpCredential: { select: { userId: true } },
         _count: {
           select: {
             webAuthnCredentials: true,
@@ -76,6 +79,7 @@ export async function listUsersForAdmin(prisma: PrismaClient): Promise<AdminUser
       createdAt: row.createdAt.toISOString(),
       ssoProviders: [...new Set(row.authAccounts.map((a) => a.provider))].sort(),
       passkeyCount: row._count.webAuthnCredentials,
+      hasAuthenticatorApp: Boolean(row.totpCredential),
       activeTokenCount: row.personalAccessTokens.length,
       hasPassword: row.passwordHash !== null,
       transactionCount: row._count.transactions ?? 0,

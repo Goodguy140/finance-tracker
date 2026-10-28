@@ -6,7 +6,8 @@ import { ServerActionForm } from "@/components/server-action-form";
 import { createApiTokenAction, type CreateApiTokenState } from "@/app/actions/api-tokens";
 import { revokeApiTokenAction } from "@/app/actions";
 import { inputClass, primaryBtnClass, secondaryBtnClass } from "@/components/forms/shared";
-import { usePasskeyStepUp } from "@/components/mfa/passkey-client";
+import { useStepUp } from "@/components/mfa/second-factor";
+import type { MfaFactors } from "@/lib/recent-identity";
 
 export type ApiTokenRow = {
   id: string;
@@ -18,7 +19,7 @@ export type ApiTokenRow = {
   expiresAt: string | null;
 };
 
-export type ApiTokensMfaState = { enrolled: boolean; freshUntil: number | null };
+export type ApiTokensMfaState = { enrolled: boolean; factors: MfaFactors; freshUntil: number | null };
 
 const initialState: CreateApiTokenState = { ok: null };
 
@@ -62,7 +63,7 @@ function CopyButton({ value }: { value: string }) {
 
 export function ApiTokensPanel({ tokens, mfa }: { tokens: ApiTokenRow[]; mfa: ApiTokensMfaState }) {
   const [state, formAction, pending] = useActionState(createApiTokenAction, initialState);
-  const stepUp = usePasskeyStepUp(mfa.freshUntil, mfa.enrolled);
+  const stepUp = useStepUp(mfa.freshUntil, mfa.factors);
   const [stepUpError, setStepUpError] = useState<string | null>(null);
   const [verifying, startVerify] = useTransition();
 
@@ -111,7 +112,7 @@ export function ApiTokensPanel({ tokens, mfa }: { tokens: ApiTokenRow[]; mfa: Ap
 
       {needsPasskey ? (
         <div className="rounded-2xl border border-amber-800/80 bg-amber-950/40 p-4 text-sm text-amber-100">
-          Creating a token requires a passkey.{" "}
+          Creating a token requires a passkey or an authenticator app.{" "}
           <Link href="/settings/security" className="font-medium underline underline-offset-4">
             Add one in Security
           </Link>{" "}

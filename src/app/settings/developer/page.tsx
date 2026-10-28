@@ -32,7 +32,8 @@ export default async function DeveloperSettingsPage() {
           expiresAt: token.expiresAt ? token.expiresAt.toISOString() : null,
         }))}
         mfa={{
-          enrolled: mfa.passkeyCount > 0,
+          enrolled: mfa.required,
+          factors: { passkey: mfa.passkeyCount > 0, totp: mfa.totp },
           freshUntil: mfa.verified && mfa.verifiedAt != null ? mfa.verifiedAt + MFA_STEP_UP_MAX_AGE_MS : null,
         }}
       />

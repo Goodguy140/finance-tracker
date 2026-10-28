@@ -247,8 +247,11 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
 
 - **You**
   - Profile (name, country, timezone): `settings/you-forms.tsx`, `actions/auth.ts`
-  - Security (password, passkeys, recovery codes, linked Google/SSO, sign out everywhere):
-    `security-panel.tsx`, `actions/mfa.ts`
+  - Security (password, passkeys, authenticator app, recovery codes, linked Google/SSO, sign out
+    everywhere): `security-panel.tsx`, `actions/mfa.ts`. Authenticator app (TOTP: QR code or key
+    to type, confirmed by the first code; accepted on `/mfa` and for step-up and Confirm it's
+    you, where an in-page dialog asks for the code): `src/lib/totp.ts`, `totp-credentials.ts`,
+    `src/components/mfa/second-factor.tsx`, `TotpCredential` table
   - Notifications (budget alert emails): `budget-alert-preferences.tsx`,
     `src/lib/budget-alert-dispatch.ts`
   - Email digest (off / weekly on Mondays / monthly on the 1st, after 7am local; spent and
@@ -384,12 +387,13 @@ Nav `src/components/admin/admin-nav.tsx`; actions `actions/admin*.ts`.
 
 ## Signing in
 
-- `/login` (password, passkey, passwordless, Google/SSO), `/mfa`, `/signup`,
+- `/login` (password, passkey, passwordless, Google/SSO), `/mfa` (passkey, authenticator code or
+  recovery code), `/signup`,
   `/forgot-password`, `/reset-password`: `forms/auth-forms.tsx`, `sso-sign-in-forms.tsx`,
   `src/components/mfa/*`, `src/lib/auth-options.ts`, `webauthn.ts`, `mfa-session.ts`
 - **Confirm it's you** before deleting the account, clearing or restoring its data, and the
   admin controls for roles, suspensions, deleting users, sign-in providers, password login,
-  public sign-up and Plaid credentials: a passkey if the account has one, else the password,
+  public sign-up and Plaid credentials: a passkey or authenticator code if the account has one, else the password,
   else (SSO only) a sign-in in the last five minutes; one confirmation covers five minutes.
   `src/components/mfa/confirm-identity.tsx`, `requireRecentIdentity` in
   `src/lib/recent-identity.ts`; see `docs/access-control.md`

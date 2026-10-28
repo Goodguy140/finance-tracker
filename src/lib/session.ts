@@ -9,9 +9,11 @@ import { getMfaState, MFA_STEP_UP_MAX_AGE_MS, sessionSid, type MfaState } from "
 import { prisma } from "@/lib/prisma";
 
 export type MfaGate = MfaState & {
-  /** True once the user has at least one passkey — from then on every login must verify. */
+  /** True once the user has a passkey or an authenticator app — from then on every login must verify. */
   required: boolean;
   passkeyCount: number;
+  /** An authenticator app (TOTP) is set up. */
+  totp: boolean;
 };
 
 /**
@@ -88,10 +90,10 @@ export async function resolveSession(): Promise<SessionResolution> {
   if (!session?.user?.id) return { status: "anonymous" };
   const row = await prisma.user.findUnique({
     where: { id: session.user.id },
-    include: { _count: { select: { webAuthnCredentials: true } } },
+    include: { _count: { select: { webAuthnCredentials: true } }, totpCredential: { select: { userId: true } } },
   });
   if (!row) return { status: "stale", reason: "user_deleted" };
-  const { _count, ...user } = row;
+  const { _count, totpCredential, ...user } = row;
   // A suspended account is treated like a revoked one rather than merely refused: the
   // cookies have to be cleared, or the proxy (which only checks that a token exists) sends
   // /login back to / and / back to /login. Suspending bumps `tokenVersion` too, so this is
@@ -106,7 +108,12 @@ export async function resolveSession(): Promise<SessionResolution> {
       user,
       sid: sessionSid(session),
       authAt: typeof session.user.authAt === "number" ? session.user.authAt : null,
-      mfa: { ...state, required: _count.webAuthnCredentials > 0, passkeyCount: _count.webAuthnCredentials },
+      mfa: {
+        ...state,
+        required: _count.webAuthnCredentials > 0 || Boolean(totpCredential),
+        passkeyCount: _count.webAuthnCredentials,
+        totp: Boolean(totpCredential),
+      },
     },
   };
 }
@@ -203,7 +210,8 @@ export async function requireAdmin() {
 
 /**
  * Step-up for linking anything external (SSO provider, API token, a future Plaid item):
- * the user must have a passkey and must have asserted it within `maxAgeMs`. Throws a
+ * the user must have a second factor (passkey or authenticator app) and must have used it
+ * within `maxAgeMs`. Throws a
  * typed error so the caller can prompt for a fresh assertion and retry.
  */
 export async function requireFreshMfa(maxAgeMs = MFA_STEP_UP_MAX_AGE_MS): Promise<LoadedSession> {
