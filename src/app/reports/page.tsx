@@ -11,6 +11,7 @@ import { PROJECTION_DAYS, projectBalances, type ProjectedBalances } from "@/lib/
 import { getCountryConfig } from "@/lib/country-config";
 import { loadFinancialScore } from "@/lib/financial-score-data";
 import { loadInsights } from "@/lib/insights/load";
+import { cardUtilization, HIGH_UTILIZATION_PCT, totalUtilization } from "@/lib/credit-cards";
 import { ymdFromDateUtc } from "@/lib/date-only";
 import { formatCurrency } from "@/lib/money";
 import { currentYmdInTimeZone } from "@/lib/period-month";
@@ -509,6 +510,7 @@ function NetWorthSection({ netWorth, fmt }: { netWorth: Awaited<ReturnType<typeo
   const withBalance = netWorth.accounts.filter((a) => a.latest);
   const missing = netWorth.accounts.length - withBalance.length;
   const otherCurrency = withBalance.filter((a) => !a.counted);
+  const cards = totalUtilization(withBalance.filter((a) => a.counted));
   return (
     <section aria-labelledby="report-net-worth" className={card} data-testid="report-net-worth">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -553,6 +555,12 @@ function NetWorthSection({ netWorth, fmt }: { netWorth: Awaited<ReturnType<typeo
             ))}
           </div>
           {netWorth.points.length > 1 ? <NetWorthChart data={netWorth.points} currency={netWorth.currency} /> : null}
+          {cards ? (
+            <p className={`mt-3 text-sm ${cards.high ? "text-amber-200" : "text-slate-400"}`} data-testid="card-utilization">
+              Credit cards: {cards.pct}% of your limits used
+              {cards.high ? `, over the ${HIGH_UTILIZATION_PCT}% that starts to weigh on a credit score` : ""}.
+            </p>
+          ) : null}
           <details className="mt-3 text-sm">
             <summary className="cursor-pointer select-none text-slate-400">By account</summary>
             <ul className="mt-2 divide-y divide-slate-800">
@@ -563,6 +571,7 @@ function NetWorthSection({ netWorth, fmt }: { netWorth: Awaited<ReturnType<typeo
                     {a.counted ? null : <span className="ml-2 text-xs text-slate-500">not in the total ({a.currency})</span>}
                   </span>
                   <span className={`shrink-0 tabular-nums ${a.liability ? "text-amber-300" : "text-slate-200"}`}>
+                    <UtilizationChip owedCents={a.latest!.cents} limitCents={a.creditLimitCents} />
                     {a.liability ? "−" : ""}
                     {formatCurrency(a.latest!.cents, a.currency)}
                   </span>
@@ -579,6 +588,19 @@ function NetWorthSection({ netWorth, fmt }: { netWorth: Awaited<ReturnType<typeo
         </>
       )}
     </section>
+  );
+}
+
+function UtilizationChip({ owedCents, limitCents }: { owedCents: number; limitCents?: number | null }) {
+  const u = cardUtilization(owedCents, limitCents);
+  if (!u) return null;
+  return (
+    <span
+      className={`mr-2 rounded-md border px-1.5 py-0.5 text-[11px] ${u.high ? "border-amber-500/40 text-amber-200" : "border-slate-700 text-slate-400"}`}
+      title="Share of the credit limit used"
+    >
+      {u.pct}% used
+    </span>
   );
 }
 

@@ -22,7 +22,7 @@ export async function loadBalanceInputs(userId: string): Promise<{
   const [accounts, balances, portfolio] = await Promise.all([
     prisma.account.findMany({
       where: { userId },
-      select: { id: true, name: true, type: true, currency: true, archived: true, countsAsSavings: true },
+      select: { id: true, name: true, type: true, currency: true, archived: true, countsAsSavings: true, creditLimitCents: true },
     }),
     prisma.accountBalanceSnapshot.findMany({
       where: { userId },

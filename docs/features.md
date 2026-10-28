@@ -123,7 +123,7 @@ owed money, room, goals or gaps).
 - **Coming up** (an account the recurring bills take below zero, from `projectBalances` and a
   balance read in the last month; a budget over, on pace to go over or nearly used this month,
   left off the dashboard card, which has the budget alerts panel; a yearly charge due within 30
-  days; pay that is late or came in short, `changes.ts`; RRSP room left in the first 60 days of
+  days; a credit card payment due within a week, with its balance and minimum; pay that is late or came in short, `changes.ts`; RRSP room left in the first 60 days of
   the year and FHSA room that will not carry over, Canada only, `standing.ts`): `ahead.ts`
 - **Possible gaps in your data** (pay, savings transfers, card payments and other transfers that
   skipped an occurrence, or are past due, leaving pay that is late right now to Coming up; recent
@@ -228,7 +228,7 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     `src/lib/email-digest.ts`, hourly `email-digest-scheduler.ts` (`EMAIL_DIGEST_SCHEDULER`)
   - Bill reminders (off / the day before / 3 days / a week before; one email listing recurring
     bills and transfers coming up, each occurrence reminded once via
-    `RecurringTransaction.reminderSentForDate`; same hourly sweep, after 7am local):
+    `RecurringTransaction.reminderSentForDate`, plus credit card payments by their due day; same hourly sweep, after 7am local):
     `bill-reminder-preferences.tsx`, `src/lib/bill-reminders.ts`
   - Charge alerts (an email when a bank sync brings in money out at or over an amount, home
     currency only, and/or at least 3× and $25 above the merchant's usual from 3+ earlier
@@ -244,6 +244,11 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     `contribution-room-panel.tsx`, `actions/accounts.ts`. Currency is fixed once an account has
     transactions, recurring rules, balances or a bank mapping, and a non-home-currency account
     with transactions can only be archived, not deleted (`src/lib/account-currency-guard.ts`)
+  - **Credit card limit and due day** (a credit card's drawer, "Card": `Account.creditLimitCents`,
+    `.paymentDueDay`, `setCardTermsAction` in `actions/debt.ts`). Utilization (owed ÷ limit,
+    flagged over 30%) on the drawer, Reports Net worth (per card and in total) and Debt payoff;
+    the due day feeds Insights' Coming up and bill reminders (`Account.paymentRemindedFor`; a card
+    a recurring transfer already pays is left to that transfer): `src/lib/credit-cards.ts`
   - Reconcile with a statement (`/settings/accounts/reconcile`, "Reconcile" on Accounts): dates
     and opening/closing balances in, the log's entries with a running balance and the difference
     out (cards and loans as amounts owed); "Mark reconciled" keeps an `AccountReconciliation` and

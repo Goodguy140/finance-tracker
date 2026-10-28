@@ -1,5 +1,6 @@
 import { TransactionType, type PrismaClient, type RecurringCadence } from "@prisma/client";
 import { forecastRecurringOccurrences } from "@/lib/bills-forecast";
+import { cardsDueWithin, type CardDue, type CardTerms } from "@/lib/credit-cards";
 import { dateFromYmd, ymdFromDateUtc } from "@/lib/date-only";
 import { DIGEST_SEND_HOUR, localHour } from "@/lib/email-digest";
 import { isSmtpConfigured, sendEmail } from "@/lib/email";
@@ -40,6 +41,7 @@ export type ReminderRule = {
   enabled: boolean;
   reminderSentForDate: Date | null;
   account: { name: string };
+  transferAccountId?: string | null;
   transferAccount: { name: string } | null;
 };
 
@@ -70,6 +72,32 @@ export function dueBillReminders(rules: readonly ReminderRule[], todayYmd: strin
     }));
 }
 
+export type CardReminderTerms = CardTerms & { paymentRemindedFor: Date | null };
+
+/**
+ * Card payments due from today through `days` days ahead that have not been reminded yet. A card
+ * a recurring transfer already pays is left out: that transfer is in the list as a bill.
+ */
+export function dueCardReminders(
+  cards: readonly CardReminderTerms[],
+  rules: readonly Pick<ReminderRule, "type" | "enabled" | "transferAccountId">[],
+  todayYmd: string,
+  days: number,
+): CardDue[] {
+  const paidByRule = new Set(
+    rules.filter((r) => r.enabled && r.type === TransactionType.TRANSFER && r.transferAccountId).map((r) => r.transferAccountId),
+  );
+  const remindedFor = new Map(cards.map((c) => [c.id, c.paymentRemindedFor]));
+  return cardsDueWithin(
+    cards.filter((c) => !paidByRule.has(c.id)),
+    todayYmd,
+    days,
+  ).filter((due) => {
+    const last = remindedFor.get(due.accountId);
+    return !last || due.date > last;
+  });
+}
+
 const dayLabel = new Intl.DateTimeFormat("en-CA", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 
 function whenLabel(date: Date, todayYmd: string): string {
@@ -85,6 +113,7 @@ export function renderBillReminder(
   reminders: readonly BillReminder[],
   options: { todayYmd: string; currency: string; days: number; baseUrl?: string },
   decisions: readonly DecisionReminder[] = [],
+  cards: readonly CardDue[] = [],
 ): { subject: string; text: string } {
   const money = (cents: number) => formatCurrency(cents, options.currency);
   const total = reminders.reduce((sum, r) => sum + r.cents, 0);
@@ -97,6 +126,13 @@ export function renderBillReminder(
       reminders.length === 1
         ? `${first.name} is due ${when === "Today" || when === "Tomorrow" ? when.toLowerCase() : `on ${when}`}: ${money(first.cents)}`
         : `${reminders.length} bills due soon: ${money(total)}`;
+  } else if (cards.length > 0) {
+    const first = cards[0];
+    const when = whenLabel(first.date, options.todayYmd);
+    subject =
+      cards.length === 1
+        ? `${first.name} payment is due ${when === "Today" || when === "Tomorrow" ? when.toLowerCase() : `on ${when}`}`
+        : `${cards.length} card payments due soon`;
   } else {
     const first = decisions[0];
     subject =
@@ -110,7 +146,7 @@ export function renderBillReminder(
     for (const d of decisions) {
       lines.push(`  ${whenLabel(d.decideBy, options.todayYmd)}  ${d.name}: ${money(d.cents)}${d.cancelUrl ? ` (to cancel: ${d.cancelUrl})` : ""}`);
     }
-    if (reminders.length > 0) lines.push("");
+    if (reminders.length > 0 || cards.length > 0) lines.push("");
   }
   if (reminders.length > 0) {
     lines.push("Coming up", "");
@@ -118,6 +154,17 @@ export function renderBillReminder(
       lines.push(`  ${whenLabel(r.date, options.todayYmd)}  ${r.name}: ${money(r.cents)} (${r.transfer ? "transfer, " : ""}${r.accountName})`);
     }
     if (reminders.length > 1) lines.push("", `Total: ${money(total)}`);
+    if (cards.length > 0) lines.push("");
+  }
+  if (cards.length > 0) {
+    lines.push("Card payments", "");
+    for (const c of cards) {
+      const details = [
+        c.owedCents === null ? null : `${money(c.owedCents)} owed`,
+        c.minimumCents ? `minimum ${money(c.minimumCents)}` : null,
+      ].filter(Boolean);
+      lines.push(`  ${whenLabel(c.date, options.todayYmd)}  ${c.name}${details.length ? `: ${details.join(", ")}` : ""}`);
+    }
   }
   if (options.baseUrl) lines.push("", `Open the app: ${options.baseUrl}/`);
   lines.push(
@@ -143,6 +190,7 @@ const RULE_SELECT = {
   enabled: true,
   reminderSentForDate: true,
   account: { select: { name: true } },
+  transferAccountId: true,
   transferAccount: { select: { name: true } },
 } as const;
 
@@ -179,7 +227,8 @@ export async function sendDueBillReminders(
     todayYmd,
     user.billReminderDays,
   );
-  if (reminders.length === 0 && decisions.length === 0) return "none";
+  const cards = dueCardReminders(await loadCardTerms(client, user.id, homeCurrencyOf(user.countryCode)), rules, todayYmd, user.billReminderDays);
+  if (reminders.length === 0 && decisions.length === 0 && cards.length === 0) return "none";
 
   const { subject, text } = renderBillReminder(
     reminders,
@@ -190,6 +239,7 @@ export async function sendDueBillReminders(
       baseUrl: deps.baseUrl,
     },
     decisions,
+    cards,
   );
   try {
     if (!(await send({ to: user.email, subject, text })).sent) return "failed";
@@ -208,7 +258,27 @@ export async function sendDueBillReminders(
   for (const d of decisions) {
     await client.recurringTransaction.update({ where: { id: d.ruleId }, data: { decideRemindedFor: d.decideBy } });
   }
+  for (const c of cards) {
+    await client.account.update({ where: { id: c.accountId }, data: { paymentRemindedFor: c.date } });
+  }
   return "sent";
+}
+
+/** Home-currency cards with a due day, each with its latest balance reading. */
+async function loadCardTerms(client: PrismaClient, userId: string, currency: string): Promise<CardReminderTerms[]> {
+  const cards = await client.account.findMany({
+    where: { userId, archived: false, currency, type: "CREDIT_CARD", paymentDueDay: { not: null } },
+    select: { id: true, name: true, paymentDueDay: true, minimumPaymentCents: true, paymentRemindedFor: true },
+  });
+  if (cards.length === 0) return [];
+  const readings = await client.accountBalanceSnapshot.findMany({
+    where: { accountId: { in: cards.map((c) => c.id) } },
+    orderBy: { date: "desc" },
+    select: { accountId: true, date: true, balanceCents: true },
+  });
+  const latest = new Map<string, { cents: number; date: Date }>();
+  for (const r of readings) if (!latest.has(r.accountId)) latest.set(r.accountId, { cents: r.balanceCents, date: r.date });
+  return cards.map((c) => ({ ...c, owed: latest.get(c.id) ?? null }));
 }
 
 /** One hourly tick over every user with bill reminders on. */

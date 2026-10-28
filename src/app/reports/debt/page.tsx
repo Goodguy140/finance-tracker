@@ -4,6 +4,7 @@ import { AppNav, APP_TAB_BAR_PAD_CLASS } from "@/components/app-nav";
 import { inputClass } from "@/components/forms/shared";
 import { ServerActionForm } from "@/components/server-action-form";
 import { getCountryConfig } from "@/lib/country-config";
+import { cardUtilization } from "@/lib/credit-cards";
 import { formatYmLongLabel, shiftYm } from "@/lib/dashboard-period";
 import { formatDateOnlyUtc } from "@/lib/date-only";
 import { minimumsTotal, simulatePayoff, type Debt, type PayoffResult, type PayoffStrategy } from "@/lib/debt-payoff";
@@ -115,6 +116,12 @@ export default async function DebtPayoffPage({ searchParams }: { searchParams: S
                           <>
                             {fmt(owed)} owed
                             <span className="text-xs text-slate-500"> · {formatDateOnlyUtc(row!.latest!.date)}</span>
+                            {(() => {
+                              const u = cardUtilization(owed, row!.creditLimitCents);
+                              return u ? (
+                                <span className={`text-xs ${u.high ? "text-amber-200" : "text-slate-500"}`}> · {u.pct}% of limit</span>
+                              ) : null;
+                            })()}
                           </>
                         )}
                       </span>

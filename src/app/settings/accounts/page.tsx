@@ -57,6 +57,8 @@ export default async function AccountsSettingsPage() {
         ? { cents: balance.latest.cents, dateYmd: ymdFromDateUtc(balance.latest.date), source: balance.latest.source }
         : null,
       manualBalances: manualByAccount.get(account.id) ?? [],
+      creditLimitCents: account.creditLimitCents,
+      paymentDueDay: account.paymentDueDay,
     };
   });
 
