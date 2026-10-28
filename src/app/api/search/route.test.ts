@@ -4,6 +4,7 @@ vi.mock("@/lib/session", () => ({ requireUserApiUser: vi.fn() }));
 vi.mock("@/lib/search/search-data", () => ({
   searchUserData: vi.fn(async () => ({ groups: [], transactionTotal: 0 })),
 }));
+vi.mock("@/lib/search/quick-add-server", () => ({ previewQuickAdd: vi.fn(async () => null) }));
 vi.mock("@/lib/prisma", () => ({
   prisma: { plaidItem: { count: vi.fn(async () => 2) } },
 }));
@@ -37,6 +38,11 @@ describe("GET /api/search", () => {
     expect(res.status).toBe(200);
     expect(vi.mocked(searchUserData).mock.calls[0][1]).toMatchObject({ id: "u1" });
     expect(vi.mocked(searchUserData).mock.calls[0][2]).toHaveLength(100);
-    expect(await res.json()).toEqual({ groups: [], transactionTotal: 0, context: { isAdmin: false, hasBanks: true } });
+    expect(await res.json()).toEqual({
+      groups: [],
+      transactionTotal: 0,
+      quickAdd: null,
+      context: { isAdmin: false, hasBanks: true },
+    });
   });
 });

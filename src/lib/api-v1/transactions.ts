@@ -139,6 +139,8 @@ export async function createTransactionFromApi(
   db: PrismaClient,
   user: { id: string; timezone: string | null },
   body: unknown,
+  /** "search": typed into the master search by the user, so nothing is left to review. */
+  source: "api" | "search" = "api",
 ): Promise<CreateResult> {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {
@@ -218,7 +220,7 @@ export async function createTransactionFromApi(
         title: rule.title ?? input.title ?? null,
         note: appendRuleNote(input.note ?? null, rule.appendNote) ?? null,
         // Posted by a script, not typed in the app.
-        needsReview: true,
+        needsReview: source === "api",
       },
       select: { id: true },
     });
@@ -233,7 +235,7 @@ export async function createTransactionFromApi(
     amountCents: created.amountCents,
     date: created.date.toISOString().slice(0, 10),
     title: created.title,
-    source: "api",
+    source: source === "api" ? "api" : "manual",
   });
   return { ok: true, transaction: serializeTransaction(created) };
 }

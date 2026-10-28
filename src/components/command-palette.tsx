@@ -25,10 +25,13 @@ import {
   Wand2,
 } from "lucide-react";
 import { refreshLinkedAccountsAction } from "@/app/actions/plaid";
+import { quickAddExpenseAction, undoQuickAddAction } from "@/app/actions/quick-add";
 import { isActionFailure } from "@/lib/action-result";
 import { availableCommands, matchCommands, type Command, type CommandContext } from "@/lib/search/commands";
 import { requestQuickAdd } from "@/lib/search/dashboard-requests";
 import { formatHitAmount } from "@/lib/search/format";
+import { formatCurrency } from "@/lib/money";
+import type { QuickAddPreview } from "@/lib/search/quick-add-server";
 import type { SearchHit, SearchHitGroup, SearchHitKind } from "@/lib/search/search-data";
 import { searchPageHref, MIN_SEARCH_QUERY_LENGTH } from "@/lib/search/search-paths";
 import { signOutOfDevice } from "@/lib/sign-out";
@@ -37,6 +40,8 @@ import { canReachServer } from "@/lib/use-online-status";
 type SearchResponse = {
   groups: SearchHitGroup[];
   transactionTotal: number;
+  /** The expense the query would add, when it reads as one ("12.50 tim hortons yesterday"). */
+  quickAdd: QuickAddPreview | null;
   context: CommandContext;
 };
 
@@ -44,7 +49,8 @@ type SearchResponse = {
 type Item =
   | { key: string; source: "command"; command: Command }
   | { key: string; source: "hit"; hit: SearchHit }
-  | { key: string; source: "all"; href: string; total: number; query: string };
+  | { key: string; source: "all"; href: string; total: number; query: string }
+  | { key: string; source: "quick-add"; preview: QuickAddPreview; text: string };
 
 type Section = { label: string; items: Item[] };
 
@@ -172,7 +178,11 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
   const [context, setContext] = useState<CommandContext>({ isAdmin: false, hasBanks: false });
   const [active, setActive] = useState(0);
   const [status, setStatus] = useState<{ tone: "neutral" | "error" | "success" | "warning"; message: string } | null>(null);
+  /** Sync banks and type-to-add share it: one thing at a time from the box. */
   const [syncing, startSync] = useTransition();
+  /** The expense just added from the box, while "Undo" can still take it back. */
+  const [undoId, setUndoId] = useState<string | null>(null);
+  const [busyLabel, setBusyLabel] = useState("");
 
   // Keep the page behind still, and give focus back to whatever had it.
   useEffect(() => {
@@ -224,6 +234,13 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
 
   const sections = useMemo<Section[]>(() => {
     const out: Section[] = [];
+    // First, so Enter adds it: the text only reads as an expense when it has an amount and a title.
+    if (response?.quickAdd && answered === trimmed) {
+      out.push({
+        label: "Add",
+        items: [{ key: "quick-add", source: "quick-add", preview: response.quickAdd, text: trimmed }],
+      });
+    }
     const matched = matchCommands(commands, query, trimmed ? 6 : 8);
     if (matched.length > 0) {
       out.push({
@@ -281,6 +298,7 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
       setStatus({ tone: "error", message: "You're offline, so the banks can't be checked right now." });
       return;
     }
+    setBusyLabel("Checking your banks…");
     startSync(async () => {
       try {
         const result = await refreshLinkedAccountsAction();
@@ -296,8 +314,42 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
     });
   }, [router]);
 
+  const quickAdd = useCallback(
+    (text: string) => {
+      setStatus(null);
+      setUndoId(null);
+      setBusyLabel("Adding…");
+      startSync(async () => {
+        const result = await quickAddExpenseAction(text);
+        if (!result.ok) {
+          setStatus({ tone: "error", message: result.error });
+          return;
+        }
+        setQuery("");
+        setStatus({ tone: "success", message: result.message });
+        setUndoId(result.transactionId);
+        router.refresh();
+      });
+    },
+    [router],
+  );
+
+  const undoQuickAdd = useCallback(() => {
+    if (!undoId) return;
+    setStatus(null);
+    setBusyLabel("Removing it…");
+    startSync(async () => {
+      const result = await undoQuickAddAction(undoId);
+      setUndoId(null);
+      setStatus(result.ok ? { tone: "neutral", message: "Removed it again." } : { tone: "error", message: result.error });
+      router.refresh();
+      inputRef.current?.focus();
+    });
+  }, [router, undoId]);
+
   const runItem = useCallback(
     (item: Item) => {
+      if (item.source === "quick-add") return quickAdd(item.text);
       if (item.source === "hit") return go(item.hit.href);
       if (item.source === "all") return go(item.href);
       const run = item.command.run;
@@ -328,7 +380,7 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
           return;
       }
     },
-    [go, onClose, pathname, router, syncBanks],
+    [go, onClose, pathname, quickAdd, router, syncBanks],
   );
 
   function onKeyDown(e: React.KeyboardEvent) {
@@ -391,6 +443,7 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
               setQuery(e.target.value);
               setActive(0);
               setStatus(null);
+              setUndoId(null);
             }}
             autoComplete="off"
             autoCorrect="off"
@@ -409,9 +462,21 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <p role="status" aria-live="polite" className={status ? statusClass(status.tone) : "sr-only"}>
-          {syncing ? "Checking your banks…" : (status?.message ?? "")}
-        </p>
+        <div className={status || syncing ? statusClass(status?.tone ?? "neutral") : "sr-only"}>
+          <p role="status" aria-live="polite" className="min-w-0 flex-1">
+            {syncing && !status ? busyLabel : (status?.message ?? "")}
+          </p>
+          {undoId && status ? (
+            <button
+              type="button"
+              onClick={undoQuickAdd}
+              disabled={syncing}
+              className="touch-manipulation shrink-0 rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-200 hover:bg-slate-800"
+            >
+              Undo
+            </button>
+          ) : null}
+        </div>
 
         <div
           id={listId}
@@ -457,7 +522,7 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
           <span className="inline-flex items-center gap-1">
             <CornerDownLeft className="h-3 w-3" aria-hidden /> to open
           </span>
-          <span>Amounts like 12.50 find transactions too</span>
+          <span>Type “12.50 coffee yesterday” to add it</span>
         </div>
       </div>
     </div>,
@@ -468,7 +533,19 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
 function statusClass(tone: "neutral" | "error" | "success" | "warning"): string {
   const color =
     tone === "error" ? "text-red-300" : tone === "success" ? "text-emerald-300" : tone === "warning" ? "text-amber-300" : "text-slate-300";
-  return `shrink-0 border-b border-slate-800 px-4 py-2 text-sm ${color}`;
+  return `flex shrink-0 items-center gap-3 border-b border-slate-800 px-4 py-2 text-sm ${color}`;
+}
+
+/** "Oct 27", with the year only when it is not this one. */
+function quickAddDate(ymd: string): string {
+  const date = new Date(`${ymd}T00:00:00.000Z`);
+  const sameYear = ymd.slice(0, 4) === String(new Date().getFullYear());
+  return date.toLocaleDateString("en-CA", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
 }
 
 function ResultRow({
@@ -488,7 +565,14 @@ function ResultRow({
   let title: string;
   let detail: string;
   let trailing: string | null = null;
-  if (item.source === "command") {
+  if (item.source === "quick-add") {
+    const { preview } = item;
+    icon = "add";
+    title = `Add expense ${formatCurrency(preview.amountCents)} ${preview.title}, ${quickAddDate(preview.dateYmd)}`;
+    detail = preview.split
+      ? `Split ${preview.split}${preview.accountName ? ` · ${preview.accountName}` : ""}`
+      : [preview.categoryName, preview.accountName].filter(Boolean).join(" · ");
+  } else if (item.source === "command") {
     icon = commandIconName(item.command);
     title = item.command.label;
     detail = item.command.hint;
