@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { ChevronRight, Plus, Trash2 } from "lucide-react";
 import {
@@ -296,6 +297,9 @@ function AccountDrawer({
           <AccountTypePill accountType={account.type} />
           <span>{account.currency}</span>
           {account.archived ? <span className="text-slate-500">Archived</span> : null}
+          <Link href={`/accounts/${account.id}`} className="text-sky-300 hover:text-sky-200">
+            Open account page
+          </Link>
         </span>
       }
       onClose={onClose}

@@ -17,12 +17,20 @@ same PR.
   accounts, categories, tags, rules, recurring rules, savings goals.
   `src/components/command-palette.tsx`, fixed entries `src/lib/search/commands.ts`, data
   `src/lib/search/search-data.ts` behind `GET /api/search`. A found transaction or recurring
-  rule opens on the dashboard at its month (`?open=<id>`, read by the expense, income and
+  rule opens on the dashboard at its month and a found account opens its account page (`?open=<id>`, read by the expense, income and
   transfer logs and the Recurring card); an add opens the Add card on desktop or the quick-add
   sheet on phones (`?add=<kind>`, `src/lib/search/dashboard-requests.ts`)
 - **Search all transactions** (`/search`): every match across months, grouped by month, with
-  type / account / category / tag filters and spent/received totals; where an account,
-  category or tag found by the master search lists its transactions. `src/app/search/page.tsx`
+  type / account / category / tag filters and spent/received totals; where a category or tag
+  found by the master search lists its transactions. `src/app/search/page.tsx`
+- **Account pages** (`/accounts/[id]`): balance now and month-end balances over the year (the
+  readings net worth uses), money in and out this month, card limit/utilization/due day, the
+  register for 3 or 12 months with a running balance worked back (and forward, marked) from the
+  latest reading, linked bank status and rows waiting in the queue, recurring rules and savings
+  goals on the account, and links to all transactions, Reconcile and Settings. Linked from the
+  master search, Reports Net worth by account, Debt payoff, the Settings → Accounts drawer and the
+  expense edit dialog. `src/app/accounts/[id]/page.tsx`, `src/lib/account-page-data.ts`,
+  `src/lib/account-register.ts` (on `moneyIntoAccount` from `reconciliation.ts`)
 - **Not-found and error pages** in the app's dark style: `src/app/not-found.tsx`, `src/app/error.tsx`,
   `src/components/status-page.tsx`
 - **Installable web app**: `src/app/manifest.ts`, `src/components/pwa/*` (install prompt, offline

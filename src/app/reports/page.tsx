@@ -567,7 +567,9 @@ function NetWorthSection({ netWorth, fmt }: { netWorth: Awaited<ReturnType<typeo
               {withBalance.map((a) => (
                 <li key={a.accountId} className="flex items-baseline justify-between gap-3 py-1.5">
                   <span className="min-w-0 truncate text-slate-300">
-                    {a.name}
+                    <Link href={`/accounts/${a.accountId}`} className="hover:text-sky-200 hover:underline">
+                      {a.name}
+                    </Link>
                     {a.counted ? null : <span className="ml-2 text-xs text-slate-500">not in the total ({a.currency})</span>}
                   </span>
                   <span className={`shrink-0 tabular-nums ${a.liability ? "text-amber-300" : "text-slate-200"}`}>

@@ -5,6 +5,7 @@ import { isActionFailure } from "@/lib/action-result";
 import { useActionState, useEffect, useId, useRef, useMemo, useState } from "react";
 import { LIST_MAX_HEIGHT_CLASS } from "@/lib/dashboard-layout/display";
 import type { ListHeight } from "@/lib/dashboard-layout/schema";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { showUndoToast } from "@/components/undo-toast";
 import { bulkEditExpensesAction, deleteExpenseTransactionAction, updateExpenseAction } from "@/app/actions";
@@ -471,6 +472,11 @@ function EditExpenseModal({
             accountRemovedFallback={!entry.accountId}
             hideCategory={isSplit}
           />
+          {entry.accountId ? (
+            <Link href={`/accounts/${entry.accountId}`} className="mt-1 inline-block text-xs text-sky-300 hover:text-sky-200">
+              Open {entry.accountLabel} account page
+            </Link>
+          ) : null}
           </div>
 
           <div className={`${spanFullSm} flex flex-wrap gap-2`}>
