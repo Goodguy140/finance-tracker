@@ -18,6 +18,7 @@ export const CANCELLED_INSIGHT_DAYS = 90;
 const PER_YEAR: Record<RecurringCadence, number> = {
   WEEKLY: 52,
   BIWEEKLY: 26,
+  SEMI_MONTHLY: 24,
   MONTHLY: 12,
   QUARTERLY: 4,
   YEARLY: 1,

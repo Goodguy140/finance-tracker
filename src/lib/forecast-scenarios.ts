@@ -1,7 +1,7 @@
 import type { RecurringCadence } from "@prisma/client";
 import { dateFromYmd, ymdFromDateUtc } from "./date-only";
 import type { ProjectableRule } from "./projected-balances";
-import { advanceRecurringDateOnOrAfter, recurringAnchorDay } from "./recurring-transactions";
+import { advanceRecurringDateOnOrAfter, recurringAnchor, recurringAnchorDay } from "./recurring-transactions";
 
 /**
  * What-if scenarios on the projected balances: changes tried against the recurring rules
@@ -63,7 +63,7 @@ export function applyScenario(rules: readonly ProjectableRule[], changes: readon
         if (r.endDate && ymdFromDateUtc(r.endDate) < change.fromYmd) return [r];
         const amountCents = Math.max(0, Math.round(r.amountCents * (1 + change.pct / 100)));
         const anchorDay = recurringAnchorDay(r);
-        const firstChanged = advanceRecurringDateOnOrAfter(r.nextExpectedDate, r.cadence, from, anchorDay);
+        const firstChanged = advanceRecurringDateOnOrAfter(r.nextExpectedDate, r.cadence, from, recurringAnchor(r));
         if (ymdFromDateUtc(r.nextExpectedDate) >= change.fromYmd) return [{ ...r, amountCents }];
         return [
           { ...r, endDate: dayBefore(change.fromYmd) },

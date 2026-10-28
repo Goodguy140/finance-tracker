@@ -1,4 +1,5 @@
 import { CategoryKind, RecurringCadence, TransactionType } from "@prisma/client";
+import { semiMonthlyDaysLabel, semiMonthlyDaysOfRule, type RecurringAnchorFields } from "@/lib/recurring-transactions";
 import { SettingsPage } from "@/components/settings/ui";
 import { SubscriptionsPanel, type SubscriptionView } from "@/components/subscriptions-panel";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
@@ -11,11 +12,18 @@ export const dynamic = "force-dynamic";
 const cadenceLabels: Record<RecurringCadence, string> = {
   WEEKLY: "Weekly",
   BIWEEKLY: "Biweekly",
+  SEMI_MONTHLY: "Twice a month",
   MONTHLY: "Monthly",
   QUARTERLY: "Quarterly",
   YEARLY: "Yearly",
   BIENNIAL: "Every 2 years",
 };
+
+/** A twice-a-month rule names its days: "Twice a month, 15th and last day". */
+function cadenceLabelOf(rule: RecurringAnchorFields): string {
+  const days = semiMonthlyDaysOfRule(rule);
+  return days ? `${cadenceLabels.SEMI_MONTHLY}, ${semiMonthlyDaysLabel(days)}` : cadenceLabels[rule.cadence];
+}
 
 export default async function SubscriptionsSettingsPage() {
   const { user } = await requireLoadedUser();
@@ -47,7 +55,8 @@ export default async function SubscriptionsSettingsPage() {
       categoryId: rule.categoryId,
       categoryLabel: rule.category.name,
       cadence: rule.cadence,
-      cadenceLabel: cadenceLabels[rule.cadence],
+      cadenceLabel: cadenceLabelOf(rule),
+      semiMonthly: semiMonthlyDaysOfRule(rule),
       nextExpectedDateYmd: nextYmd,
       nextExpectedDateDisplay: formatDateOnlyUtc(rule.nextExpectedDate),
       endDateYmd: rule.endDate ? ymdFromDateUtc(rule.endDate) : null,

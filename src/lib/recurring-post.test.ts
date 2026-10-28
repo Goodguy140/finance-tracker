@@ -15,7 +15,7 @@ type Rule = {
   type: "EXPENSE" | "INCOME";
   name: string;
   amountCents: number;
-  cadence: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL";
+  cadence: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY" | "BIENNIAL" | "SEMI_MONTHLY";
   nextExpectedDate: Date;
   anchorDay?: number | null;
   endDate: Date | null;

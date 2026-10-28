@@ -56,6 +56,7 @@ const GROUP_LABELS: Record<SearchHitKind, string> = {
 const CADENCE_LABELS: Record<RecurringCadence, string> = {
   WEEKLY: "Weekly",
   BIWEEKLY: "Every 2 weeks",
+  SEMI_MONTHLY: "Twice a month",
   MONTHLY: "Monthly",
   QUARTERLY: "Quarterly",
   YEARLY: "Yearly",

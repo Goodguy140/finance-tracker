@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { CategoryKind, Prisma, RecurringPostMode, TransactionType } from "@prisma/client";
+import { CategoryKind, Prisma, RecurringPostMode, TransactionType, type RecurringCadence } from "@prisma/client";
 import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
 import { ensureFallbackCategoryFor } from "@/lib/fallback-categories";
 import { toCents } from "@/lib/money";
@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { dateFromYmd } from "@/lib/date-only";
 import { requireUser } from "@/lib/session";
 import { postRecurringOccurrence } from "@/lib/recurring-post";
+import { DEFAULT_SEMI_MONTHLY_DAYS, firstSemiMonthlyDateOnOrAfter, isValidSemiMonthlyDays } from "@/lib/recurring-transactions";
 import { parseCancelFields } from "@/lib/subscription-cancel";
 import {
   postRecurringTransactionSchema,
@@ -51,6 +52,30 @@ async function resolveRuleSides(
   return { categoryId: payload.categoryId, transferAccountId: null };
 }
 
+/**
+ * Where a rule's dates land. A twice-a-month rule falls on its two days, and starts on the first
+ * of them on or after the date entered. Any other rule falls on its next date's day of the month.
+ */
+function scheduleFor(payload: { cadence: RecurringCadence; firstDay?: number; secondDay?: number; beforeWeekend?: "on" }, entered: Date) {
+  if (payload.cadence !== "SEMI_MONTHLY") {
+    return { nextExpectedDate: entered, anchorDay: entered.getUTCDate(), secondAnchorDay: null, beforeWeekend: false };
+  }
+  const days = {
+    day: payload.firstDay ?? DEFAULT_SEMI_MONTHLY_DAYS.day,
+    secondDay: payload.secondDay ?? DEFAULT_SEMI_MONTHLY_DAYS.secondDay,
+    beforeWeekend: payload.beforeWeekend === "on",
+  };
+  if (!isValidSemiMonthlyDays(days.day, days.secondDay)) {
+    throw new Error("Choose two days at least a week apart, the second later in the month.");
+  }
+  return {
+    nextExpectedDate: firstSemiMonthlyDateOnOrAfter(entered, days),
+    anchorDay: days.day,
+    secondAnchorDay: days.secondDay,
+    beforeWeekend: days.beforeWeekend,
+  };
+}
+
 /** Only bills carry a cancel link and decide-by date; income and transfers clear them. */
 function cancelFieldsFor(type: TransactionType, formData: FormData) {
   if (type !== TransactionType.EXPENSE) return { cancelUrl: null, decideBy: null };
@@ -70,13 +95,17 @@ export const createRecurringTransactionAction = formAction(async (formData: Form
     amount: getFormValue(formData, "amount"),
     cadence: getFormValue(formData, "cadence"),
     nextExpectedDate: getFormValue(formData, "nextExpectedDate"),
+    firstDay: getFormValue(formData, "firstDay") || undefined,
+    secondDay: getFormValue(formData, "secondDay") || undefined,
+    beforeWeekend: getFormValue(formData, "beforeWeekend") || undefined,
     endDate: getFormValue(formData, "endDate") || undefined,
     note: getFormValue(formData, "note") || undefined,
     postMode: getFormValue(formData, "postMode") || undefined,
   });
   const type = payload.type as TransactionType;
   const sides = await resolveRuleSides(user.id, { ...payload, type });
-  const nextExpectedDate = dateFromYmd(payload.nextExpectedDate);
+  const schedule = scheduleFor(payload, dateFromYmd(payload.nextExpectedDate));
+  const { nextExpectedDate } = schedule;
   const endDate = payload.endDate ? dateFromYmd(payload.endDate) : null;
   if (endDate && endDate.getTime() < nextExpectedDate.getTime()) {
     throw new Error("End date must be on or after the next expected date.");
@@ -93,9 +122,8 @@ export const createRecurringTransactionAction = formAction(async (formData: Form
       type,
       name: payload.name,
       amountCents: toCents(payload.amount),
+      ...schedule,
       cadence: payload.cadence,
-      nextExpectedDate,
-      anchorDay: nextExpectedDate.getUTCDate(),
       endDate,
       postMode: payload.postMode as RecurringPostMode,
       note: payload.note || null,
@@ -116,6 +144,9 @@ export const updateRecurringTransactionAction = formAction(async (formData: Form
     amount: getFormValue(formData, "amount"),
     cadence: getFormValue(formData, "cadence"),
     nextExpectedDate: getFormValue(formData, "nextExpectedDate"),
+    firstDay: getFormValue(formData, "firstDay") || undefined,
+    secondDay: getFormValue(formData, "secondDay") || undefined,
+    beforeWeekend: getFormValue(formData, "beforeWeekend") || undefined,
     endDate: getFormValue(formData, "endDate") || undefined,
     note: getFormValue(formData, "note") || undefined,
     postMode: getFormValue(formData, "postMode") || undefined,
@@ -126,7 +157,8 @@ export const updateRecurringTransactionAction = formAction(async (formData: Form
   const payload = parsed.data;
   const type = payload.type as TransactionType;
   const sides = await resolveRuleSides(user.id, { ...payload, type });
-  const nextExpectedDate = dateFromYmd(payload.nextExpectedDate);
+  const { anchorDay, ...schedule } = scheduleFor(payload, dateFromYmd(payload.nextExpectedDate));
+  const { nextExpectedDate } = schedule;
   const endDate = payload.endDate ? dateFromYmd(payload.endDate) : null;
   if (endDate && endDate.getTime() < nextExpectedDate.getTime()) {
     throw new Error("End date must be on or after the next expected date.");
@@ -134,7 +166,7 @@ export const updateRecurringTransactionAction = formAction(async (formData: Form
 
   const existing = await prisma.recurringTransaction.findFirst({
     where: { id: payload.recurringTransactionId, userId: user.id },
-    select: { id: true, nextExpectedDate: true },
+    select: { id: true, nextExpectedDate: true, cadence: true },
   });
   if (!existing) throw new Error("Recurring transaction not found.");
 
@@ -143,11 +175,16 @@ export const updateRecurringTransactionAction = formAction(async (formData: Form
     where: { id: existing.id },
     data: {
       ...cancel,
+      ...schedule,
       // A new date sets the day the rule falls on. An unchanged one keeps the anchor, which
-      // can be later than the date shown (a rule on the 31st waiting on Feb 28).
-      ...(existing.nextExpectedDate.getTime() === nextExpectedDate.getTime()
+      // can be later than the date shown (a rule on the 31st waiting on Feb 28). A
+      // twice-a-month rule's days are chosen in the form, so they are always saved, and its
+      // first day is no anchor for a rule it is changed to.
+      ...(payload.cadence !== "SEMI_MONTHLY" &&
+      existing.cadence !== "SEMI_MONTHLY" &&
+      existing.nextExpectedDate.getTime() === nextExpectedDate.getTime()
         ? {}
-        : { anchorDay: nextExpectedDate.getUTCDate() }),
+        : { anchorDay }),
       accountId: payload.accountId,
       categoryId: sides.categoryId,
       transferAccountId: sides.transferAccountId,
@@ -155,7 +192,6 @@ export const updateRecurringTransactionAction = formAction(async (formData: Form
       name: payload.name.trim(),
       amountCents: toCents(payload.amount),
       cadence: payload.cadence,
-      nextExpectedDate,
       endDate,
       postMode: payload.postMode as RecurringPostMode,
       note: payload.note || null,

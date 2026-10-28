@@ -35,6 +35,12 @@ describe("proxy matcher", () => {
     expect(matcher.test("/api/plaid")).toBe(true);
   });
 
+  it("lets calendar apps fetch a calendar feed link, and nothing beside it", () => {
+    expect(matcher.test("/api/calendar/cal_abc.ics")).toBe(false);
+    expect(matcher.test("/api/calendar")).toBe(true);
+    expect(matcher.test("/api/calendars/x")).toBe(true);
+  });
+
   it("leaves the PWA files public so a signed-out device can install the app", () => {
     for (const path of [
       "/manifest.webmanifest",

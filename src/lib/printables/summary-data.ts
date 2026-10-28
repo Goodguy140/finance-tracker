@@ -122,6 +122,8 @@ export async function loadSummaryData(
           cadence: true,
           nextExpectedDate: true,
           anchorDay: true,
+          secondAnchorDay: true,
+          beforeWeekend: true,
           endDate: true,
           enabled: true,
           account: { select: { name: true, currency: true } },

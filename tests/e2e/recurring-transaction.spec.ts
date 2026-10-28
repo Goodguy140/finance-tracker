@@ -192,3 +192,55 @@ test("desktop: edit a recurring rule from the Recurring card", async ({ page }) 
     )
     .toEqual({ amountCents: 2550, note: "Price went up", categoryId: category.id, type: "EXPENSE" });
 });
+
+test("a twice-a-month pay rule posts on its two days of the month", async ({ page }) => {
+  const stamp = uniqueStamp();
+  const email = `e2e-recurring-semi-${stamp}@example.com`;
+  const password = "e2e-password-123";
+  const user = await prisma.user.create({
+    data: {
+      email,
+      passwordHash: await hashTestPassword(password),
+      displayName: "E2E Recurring User",
+      countryCode: "CA",
+      timezone: "America/Toronto",
+      role: "USER",
+    },
+  });
+  await ensureDefaultDataForUser(user);
+
+  await signInWithPassword(page, email, password);
+  await expectDashboardHome(page);
+
+  const recurringPanel = page.getByRole("region", { name: "Recurring transactions" });
+  await recurringPanel.getByRole("button", { name: "New rule" }).click();
+  const addDialog = page.getByRole("dialog", { name: "New recurring transaction" });
+
+  const currentYm = currentYmInTimeZone(user.timezone);
+  const name = `Paycheque ${stamp}`;
+  await addDialog.locator('[name="name"]').fill(name);
+  await addDialog.locator('select[name="type"]').selectOption("INCOME");
+  await addDialog.locator('input[name="amount"]').fill("2500.00");
+  await addDialog.locator('select[name="cadence"]').selectOption("SEMI_MONTHLY");
+  // Defaults to the 15th and the last day; this one is paid on the 1st and the 15th, and a
+  // start on the 2nd begins on the 15th.
+  await expect(addDialog.locator('select[name="firstDay"]')).toHaveValue("15");
+  await expect(addDialog.locator('select[name="secondDay"]')).toHaveValue("31");
+  await addDialog.locator('select[name="firstDay"]').selectOption("1");
+  await addDialog.locator('select[name="secondDay"]').selectOption("15");
+  await addDialog.locator('input[name="nextExpectedDate"]').fill(`${currentYm}-02`);
+  await addDialog.getByRole("button", { name: "Add recurring transaction" }).click();
+  await expect(addDialog).toHaveCount(0);
+
+  await expect(recurringPanel.getByText("Twice a month, 1st and 15th")).toBeVisible({ timeout: 15_000 });
+  await recurringPanel.getByRole("button", { name: "Post transaction" }).click();
+
+  // Posting the 15th moves the rule to the 1st of next month, not a month on. The posted
+  // transaction is written after the rule moves, so it is the one waited on.
+  await expect
+    .poll(async () => prisma.transaction.count({ where: { userId: user.id, title: name } }), { timeout: 15_000 })
+    .toBe(1);
+  const rule = await prisma.recurringTransaction.findFirstOrThrow({ where: { userId: user.id, name } });
+  expect(ymdFromDateUtc(rule.nextExpectedDate)).toBe(`${shiftYm(currentYm, 1)}-01`);
+  expect(rule).toMatchObject({ anchorDay: 1, secondAnchorDay: 15 });
+});

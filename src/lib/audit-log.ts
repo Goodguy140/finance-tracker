@@ -33,6 +33,8 @@ export const AUDIT_ACTIONS = {
   api_token_revoked: "api_token_revoked",
   webhook_created: "webhook_created",
   webhook_deleted: "webhook_deleted",
+  calendar_feed_created: "calendar_feed_created",
+  calendar_feed_removed: "calendar_feed_removed",
   api_budgets_read: "api_budgets_read",
   api_transactions_read: "api_transactions_read",
   api_transaction_created: "api_transaction_created",
