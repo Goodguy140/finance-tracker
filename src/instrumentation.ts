@@ -20,5 +20,8 @@ export async function register() {
 
     const { startEmailDigestScheduler } = await import("@/lib/email-digest-scheduler");
     startEmailDigestScheduler();
+
+    const { startDatabaseBackupScheduler } = await import("@/lib/database-backup-scheduler");
+    startDatabaseBackupScheduler();
   }
 }

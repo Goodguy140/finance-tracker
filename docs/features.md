@@ -304,6 +304,14 @@ Nav `src/components/admin/admin-nav.tsx`; actions `actions/admin*.ts`.
 - Integrations (Plaid credentials, all bank connections): `src/lib/admin-plaid-overview.ts`
 - Operations (sync interval, auto-post recurring, audit retention):
   `src/components/admin/admin-ops-forms.tsx`, `src/lib/ops-settings.ts`
+- **Automatic database backups** (Operations; on by default): once a day, from the backup hour in
+  server time, a `VACUUM INTO` copy of the whole SQLite database into a `backups` folder beside it
+  (`BACKUP_DIR` to move it). Keeps the last N days (default 14) plus the newest copy of each of the
+  last six months, and never deletes the newest. Settings for on/off, days kept and hour (env vars
+  `DATABASE_BACKUPS`, `BACKUP_KEEP_DAYS`, `BACKUP_HOUR` win), the saved copies with sizes, and
+  "Back up now" (audited). An attention item on Overview and a dot on Operations when the last
+  backup failed or none is newer than two days. `src/lib/database-backups.ts`,
+  `src/lib/database-backup-scheduler.ts`, `actions/admin-ops.ts`
 - Audit log (search, filter, CSV export): `admin-audit-*.tsx`, `src/lib/audit-log.ts`,
   `src/app/api/admin/audit/export`
 - System (health, storage, migration health, env config, runtime metrics, backup):
@@ -327,7 +335,8 @@ Nav `src/components/admin/admin-nav.tsx`; actions `actions/admin*.ts`.
 
 - Schedulers started in `src/instrumentation.ts`: Plaid sweep
   (`src/lib/plaid-sync-scheduler.ts`), recurring auto-post
-  (`src/lib/recurring-auto-post-scheduler.ts`)
+  (`src/lib/recurring-auto-post-scheduler.ts`), daily database backup
+  (`src/lib/database-backup-scheduler.ts`, hourly check)
 - Email digest, bill reminders, charge alerts and outbound webhook deliveries (retries, bill-due
   events, pruning), hourly: `src/lib/email-digest-scheduler.ts`
 - Budget alert emails: `src/lib/budget-alert-dispatch.ts`, `budget-alert-email.ts` (sent after any

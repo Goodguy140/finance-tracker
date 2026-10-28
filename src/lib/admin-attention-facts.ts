@@ -12,6 +12,10 @@ import {
 } from "@/lib/admin-attention";
 import { countActiveAdmins } from "@/lib/admin-users";
 import { AUDIT_ACTIONS } from "@/lib/audit-log";
+import { databaseBackupSchedulerEnabled } from "@/lib/database-backup-scheduler";
+import { getBackupDirectory, listBackupFiles } from "@/lib/database-backups";
+import { getOpsSettingsStatus } from "@/lib/ops-settings";
+import { getSchedulerHeartbeat } from "@/lib/scheduler-status";
 import { getPlaidAdminStatus } from "@/lib/plaid/config";
 import { prisma as defaultPrisma } from "@/lib/prisma";
 
@@ -46,6 +50,8 @@ export async function gatherAttentionFacts(prisma: PrismaClient, now = new Date(
     ]);
 
   const runtime = getAdminRuntimeMetrics();
+  const [ops, backupDir] = await Promise.all([getOpsSettingsStatus(prisma), getBackupDirectory(prisma)]);
+  const backupBeat = getSchedulerHeartbeat("databaseBackup");
   const { migrationHealth, env } = system;
 
   return {
@@ -65,6 +71,10 @@ export async function gatherAttentionFacts(prisma: PrismaClient, now = new Date(
     activeServerAdmins: activeAdmins,
     diskFreeGb: runtime.databaseFile.diskFreeGb,
     diskTotalGb: runtime.databaseFile.diskTotalGb,
+    backupsExpected: ops.backupEnabled.value && backupDir !== null && databaseBackupSchedulerEnabled(),
+    newestBackupAt: backupDir ? (listBackupFiles(backupDir)[0]?.createdAt ?? null) : null,
+    backupFailure: backupBeat?.lastOk === false ? backupBeat.lastResult : null,
+    backupSchedulerStartedAt: backupBeat ? new Date(backupBeat.startedAt) : null,
   };
 }
 

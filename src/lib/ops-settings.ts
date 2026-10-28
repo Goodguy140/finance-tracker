@@ -18,6 +18,9 @@ export const OPS_SETTING_KEYS = {
   auditRetentionDays: "ops.auditRetentionDays",
   plaidSyncIntervalMinutes: "ops.plaidSyncIntervalMinutes",
   recurringAutoPost: "ops.recurringAutoPost",
+  backupEnabled: "ops.backupEnabled",
+  backupKeepDays: "ops.backupKeepDays",
+  backupHour: "ops.backupHour",
 } as const;
 
 export const OPS_SETTING_ENV = {
@@ -25,6 +28,9 @@ export const OPS_SETTING_ENV = {
   auditRetentionDays: "AUDIT_LOG_RETENTION_DAYS",
   plaidSyncIntervalMinutes: "PLAID_SYNC_INTERVAL_MINUTES",
   recurringAutoPost: "RECURRING_AUTO_POST_SCHEDULER",
+  backupEnabled: "DATABASE_BACKUPS",
+  backupKeepDays: "BACKUP_KEEP_DAYS",
+  backupHour: "BACKUP_HOUR",
 } as const;
 
 export type OpsSettingSource = "environment" | "database" | "default";
@@ -49,6 +55,12 @@ export const DEFAULT_PLAID_SYNC_INTERVAL_MINUTES = 60;
  */
 export const MIN_PLAID_SYNC_INTERVAL_MINUTES = 15;
 export const MAX_PLAID_SYNC_INTERVAL_MINUTES = 24 * 60;
+
+export const DEFAULT_BACKUP_KEEP_DAYS = 14;
+export const BACKUP_KEEP_MIN_DAYS = 1;
+export const BACKUP_KEEP_MAX_DAYS = 365;
+/** 3am in the server's time zone: after the day's activity, before anyone is up. */
+export const DEFAULT_BACKUP_HOUR = 3;
 
 type Raw = string | undefined | null;
 
@@ -129,11 +141,51 @@ export function resolveRecurringAutoPost(input: { envRaw: Raw; storedRaw: Raw })
   return { value: true, source: "default", envName, stored };
 }
 
+/**
+ * On unless switched off: a backup nobody turned on is the one that is missing when it is
+ * needed. Like the recurring sweep, the env var can only force it off.
+ */
+export function resolveBackupEnabled(input: { envRaw: Raw; storedRaw: Raw }): ResolvedSetting<boolean> {
+  const envName = OPS_SETTING_ENV.backupEnabled;
+  const stored = parseBool(input.storedRaw);
+  if (parseBool(input.envRaw) === false) return { value: false, source: "environment", envName, stored };
+  if (stored !== null) return { value: stored, source: "database", envName, stored };
+  return { value: true, source: "default", envName, stored };
+}
+
+function parseIntInRange(raw: Raw, min: number, max: number): number | null {
+  const value = trimmed(raw);
+  if (!/^\d+$/.test(value)) return null;
+  const n = Number.parseInt(value, 10);
+  return n >= min && n <= max ? n : null;
+}
+
+export function resolveBackupKeepDays(input: { envRaw: Raw; storedRaw: Raw }): ResolvedSetting<number> {
+  const envName = OPS_SETTING_ENV.backupKeepDays;
+  const stored = parseIntInRange(input.storedRaw, BACKUP_KEEP_MIN_DAYS, BACKUP_KEEP_MAX_DAYS);
+  const fromEnv = parseIntInRange(input.envRaw, BACKUP_KEEP_MIN_DAYS, BACKUP_KEEP_MAX_DAYS);
+  if (fromEnv !== null) return { value: fromEnv, source: "environment", envName, stored };
+  if (stored !== null) return { value: stored, source: "database", envName, stored };
+  return { value: DEFAULT_BACKUP_KEEP_DAYS, source: "default", envName, stored };
+}
+
+export function resolveBackupHour(input: { envRaw: Raw; storedRaw: Raw }): ResolvedSetting<number> {
+  const envName = OPS_SETTING_ENV.backupHour;
+  const stored = parseIntInRange(input.storedRaw, 0, 23);
+  const fromEnv = parseIntInRange(input.envRaw, 0, 23);
+  if (fromEnv !== null) return { value: fromEnv, source: "environment", envName, stored };
+  if (stored !== null) return { value: stored, source: "database", envName, stored };
+  return { value: DEFAULT_BACKUP_HOUR, source: "default", envName, stored };
+}
+
 export type OpsSettingsStatus = {
   publicSignup: ResolvedSetting<boolean>;
   auditRetentionDays: ResolvedSetting<number>;
   plaidSyncIntervalMinutes: ResolvedSetting<number>;
   recurringAutoPost: ResolvedSetting<boolean>;
+  backupEnabled: ResolvedSetting<boolean>;
+  backupKeepDays: ResolvedSetting<number>;
+  backupHour: ResolvedSetting<number>;
 };
 
 export function resolveOpsSettings(
@@ -158,6 +210,12 @@ export function resolveOpsSettings(
       envRaw: env[OPS_SETTING_ENV.recurringAutoPost],
       storedRaw: stored.recurringAutoPost,
     }),
+    backupEnabled: resolveBackupEnabled({ envRaw: env[OPS_SETTING_ENV.backupEnabled], storedRaw: stored.backupEnabled }),
+    backupKeepDays: resolveBackupKeepDays({
+      envRaw: env[OPS_SETTING_ENV.backupKeepDays],
+      storedRaw: stored.backupKeepDays,
+    }),
+    backupHour: resolveBackupHour({ envRaw: env[OPS_SETTING_ENV.backupHour], storedRaw: stored.backupHour }),
   };
 }
 
@@ -243,5 +301,19 @@ export function parsePlaidSyncIntervalInput(raw: string): number {
       `Sync interval must be between ${MIN_PLAID_SYNC_INTERVAL_MINUTES} and ${MAX_PLAID_SYNC_INTERVAL_MINUTES} minutes.`,
     );
   }
+  return n;
+}
+
+export function parseBackupKeepDaysInput(raw: string): number {
+  const n = parseIntInRange(raw, BACKUP_KEEP_MIN_DAYS, BACKUP_KEEP_MAX_DAYS);
+  if (n === null) {
+    throw new Error(`Keep backups for a whole number of days between ${BACKUP_KEEP_MIN_DAYS} and ${BACKUP_KEEP_MAX_DAYS}.`);
+  }
+  return n;
+}
+
+export function parseBackupHourInput(raw: string): number {
+  const n = parseIntInRange(raw, 0, 23);
+  if (n === null) throw new Error("Backup hour must be a whole number from 0 to 23.");
   return n;
 }

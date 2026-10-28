@@ -1,9 +1,18 @@
 import { AdminBackupPanel } from "@/components/admin-backup-panel";
-import { AdminOperationsForm } from "@/components/admin/admin-ops-forms";
+import {
+  AdminBackupNowButton,
+  AdminBackupSettingsForm,
+  AdminOperationsForm,
+} from "@/components/admin/admin-ops-forms";
 import { AdminPageHeader, AdminSection, StatusDot, formatRelative } from "@/components/admin/ui";
 import type { DotStatus } from "@/components/admin/ui";
+import { databaseBackupSchedulerEnabled } from "@/lib/database-backup-scheduler";
+import { getBackupDirectory, listBackupFiles } from "@/lib/database-backups";
+import { prisma } from "@/lib/prisma";
 import {
   AUDIT_RETENTION_MAX_DAYS,
+  BACKUP_KEEP_MAX_DAYS,
+  BACKUP_KEEP_MIN_DAYS,
   AUDIT_RETENTION_MIN_DAYS,
   getOpsSettingsStatus,
 } from "@/lib/ops-settings";
@@ -61,9 +70,16 @@ function SchedulerRow({
   );
 }
 
+function formatSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default async function AdminOperationsPage() {
   await requireAdmin();
   const ops = await getOpsSettingsStatus();
+  const backupDir = await getBackupDirectory(prisma);
+  const backups = backupDir ? listBackupFiles(backupDir) : [];
 
   return (
     <>
@@ -98,6 +114,13 @@ export default async function AdminOperationsPage() {
             envEnabled={emailDigestSchedulerEnabled()}
             envName="EMAIL_DIGEST_SCHEDULER"
           />
+          <SchedulerRow
+            name="Database backup"
+            description={`Hourly check. Copies the database once a day from ${ops.backupHour.value}:00 server time.`}
+            beat={getSchedulerHeartbeat("databaseBackup")}
+            envEnabled={databaseBackupSchedulerEnabled()}
+            envName="DATABASE_BACKUPS"
+          />
         </ul>
       </AdminSection>
 
@@ -107,6 +130,46 @@ export default async function AdminOperationsPage() {
         minDays={AUDIT_RETENTION_MIN_DAYS}
         maxDays={AUDIT_RETENTION_MAX_DAYS}
       />
+
+      <AdminBackupSettingsForm
+        enabled={ops.backupEnabled}
+        keepDays={ops.backupKeepDays}
+        hour={ops.backupHour}
+        minDays={BACKUP_KEEP_MIN_DAYS}
+        maxDays={BACKUP_KEEP_MAX_DAYS}
+      />
+
+      <AdminSection
+        title="Saved backups"
+        description={
+          backupDir
+            ? `In ${backupDir} on the server. To restore, stop the app, put a copy in place of the database file, and start it again.`
+            : "The database is not a SQLite file, so the app cannot copy it. Back it up with your database's own tools."
+        }
+      >
+        {backupDir ? (
+          <div className="space-y-3">
+            {backups.length === 0 ? (
+              <p className="text-sm text-slate-400">No backups yet.</p>
+            ) : (
+              <ul className="divide-y divide-slate-800 text-sm" aria-label="Saved backups">
+                {backups.slice(0, 10).map((file) => (
+                  <li key={file.name} className="flex flex-wrap items-baseline justify-between gap-2 py-1.5">
+                    <span className="font-mono text-xs text-slate-200 break-all">{file.name}</span>
+                    <span className="text-xs text-slate-400">
+                      {formatRelative(file.createdAt.toISOString())} · {formatSize(file.sizeBytes)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {backups.length > 10 ? (
+              <p className="text-xs text-slate-500">And {backups.length - 10} older.</p>
+            ) : null}
+            <AdminBackupNowButton />
+          </div>
+        ) : null}
+      </AdminSection>
 
       <AdminBackupPanel />
     </>

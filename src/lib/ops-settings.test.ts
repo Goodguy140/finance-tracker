@@ -118,6 +118,16 @@ describe("resolveOpsSettings", () => {
     expect(status.publicSignup).toMatchObject({ value: false, source: "default" });
     expect(status.recurringAutoPost).toMatchObject({ value: true, source: "default" });
   });
+
+  it("keeps backups on by default, lets the env var only turn them off, and ignores out-of-range numbers", () => {
+    expect(resolveOpsSettings({}, {}).backupEnabled).toMatchObject({ value: true, source: "default" });
+    expect(resolveOpsSettings({ backupEnabled: "false" }, {}).backupEnabled).toMatchObject({ value: false, source: "database" });
+    expect(resolveOpsSettings({}, { DATABASE_BACKUPS: "false" }).backupEnabled).toMatchObject({ value: false, source: "environment" });
+    expect(resolveOpsSettings({ backupEnabled: "false" }, { DATABASE_BACKUPS: "true" }).backupEnabled.value).toBe(false);
+    const status = resolveOpsSettings({ backupKeepDays: "30", backupHour: "24" }, { BACKUP_KEEP_DAYS: "0" });
+    expect(status.backupKeepDays).toMatchObject({ value: 30, source: "database" });
+    expect(status.backupHour).toMatchObject({ value: 3, source: "default" });
+  });
 });
 
 describe("form input parsing", () => {
