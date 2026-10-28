@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AccountTypePill } from "@/components/account-type-pill";
 import { AppNav, APP_TAB_BAR_PAD_CLASS } from "@/components/app-nav";
+import { formatRate } from "@/components/reports/investment-returns-section";
 import { AccountBalanceChart } from "@/components/reports/report-charts";
+import { loadInvestmentReturns } from "@/lib/investment-returns-data";
 import { loadAccountPage, REGISTER_MONTH_OPTIONS } from "@/lib/account-page-data";
 import { cardUtilization, dueDayLabel, HIGH_UTILIZATION_PCT } from "@/lib/credit-cards";
 import { formatDateOnlyUtc } from "@/lib/date-only";
@@ -27,12 +29,13 @@ export default async function AccountPage({ params, searchParams }: { params: Pa
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   const monthsRaw = Number(Array.isArray(sp.months) ? sp.months[0] : sp.months);
   const months = (REGISTER_MONTH_OPTIONS as readonly number[]).includes(monthsRaw) ? monthsRaw : REGISTER_MONTH_OPTIONS[0];
-  const data = await loadAccountPage(user, id, months);
+  const [data, returns] = await Promise.all([loadAccountPage(user, id, months), loadInvestmentReturns(user)]);
   if (!data) notFound();
 
   const { account, liability, latest } = data;
   const fmt = (cents: number) => formatCurrency(cents, account.currency);
   const utilization = account.type === "CREDIT_CARD" ? cardUtilization(latest?.cents, account.creditLimitCents) : null;
+  const own = returns.accounts.find((r) => r.accountId === account.id)?.windows ?? null;
   const signedIn = (cents: number) => (cents >= 0 ? `+${fmt(cents)}` : `−${fmt(-cents)}`);
 
   return (
@@ -89,6 +92,13 @@ export default async function AccountPage({ params, searchParams }: { params: Pa
               {utilization ? `, ${utilization.pct}% used${utilization.high ? ` (over ${HIGH_UTILIZATION_PCT}%)` : ""}` : null}
               {account.creditLimitCents !== null && account.paymentDueDay !== null ? ". " : null}
               {account.paymentDueDay !== null ? `Payment due on ${dueDayLabel(account.paymentDueDay)} of each month.` : null}
+            </p>
+          ) : null}
+          {own?.sinceStart ? (
+            <p className="mt-3 text-sm text-slate-400" data-testid="account-returns">
+              Growth {fmt(own.sinceStart.growthCents)} after {fmt(own.sinceStart.startCents + own.sinceStart.netContributedCents)} put in since{" "}
+              {formatDateOnlyUtc(own.sinceStart.startDate)}. Return: this year {formatRate(own.thisYear)}, 12 months{" "}
+              {formatRate(own.twelveMonths)}, since first value {formatRate(own.sinceStart)}.
             </p>
           ) : null}
           {data.history.length > 1 ? (
