@@ -23,7 +23,13 @@ export {
   unpairTransferAction,
   setTransferAccountAction,
 } from "./actions/transactions";
-export { upsertBudgetAction, updateBudgetAction, deleteBudgetAction, reallocateBudgetAction } from "./actions/budgets";
+export {
+  upsertBudgetAction,
+  updateBudgetAction,
+  deleteBudgetAction,
+  reallocateBudgetAction,
+  applyBudgetSuggestionsAction,
+} from "./actions/budgets";
 export {
   createRecurringTransactionAction,
   updateRecurringTransactionAction,
