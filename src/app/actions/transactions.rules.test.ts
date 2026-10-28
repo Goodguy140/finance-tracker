@@ -7,6 +7,7 @@ const mockPrisma = vi.hoisted(() => ({
   category: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
   transaction: { createMany: vi.fn(), findMany: vi.fn() },
   transactionTag: { createMany: vi.fn() },
+  splitTransactionPart: { createMany: vi.fn() },
   $transaction: vi.fn(),
 }));
 const ruleContext = vi.hoisted(() => ({ current: null as null | RuleContext }));
@@ -44,6 +45,7 @@ const baseRule: TransactionRuleInput = {
   addTagId: null,
   markAsTransfer: false,
   setTransferAccountId: null,
+  splitBy: [],
 };
 
 function csvForm(rows: Record<string, string>[], mapping: Record<string, string>) {
@@ -123,6 +125,41 @@ describe("importExpensesCsvAction with rules", () => {
   it("writes no tags when no rule adds one", async () => {
     await importExpensesCsvAction(csvForm([{ Amount: "15.99", Desc: "NETFLIX.COM" }], { amount: "Amount", title: "Desc" }));
     expect(mockPrisma.transactionTag.createMany).not.toHaveBeenCalled();
+  });
+
+  it("splits the rows a splitting rule matches, unless the row names its category", async () => {
+    ruleContext.current = {
+      ...ruleContext.current!,
+      rules: [
+        {
+          ...baseRule,
+          titlePattern: "costco",
+          setCategoryId: null,
+          splitBy: [
+            { categoryId: "cat-food", basisPoints: 7000 },
+            { categoryId: "cat-default", basisPoints: 3000 },
+          ],
+        },
+      ],
+    };
+    await importExpensesCsvAction(
+      csvForm(
+        [
+          { Amount: "100.01", Desc: "COSTCO WHOLESALE", Cat: "" },
+          { Amount: "40", Desc: "COSTCO GAS", Cat: "Subscriptions" },
+        ],
+        { amount: "Amount", title: "Desc", categoryName: "Cat" },
+      ),
+    );
+    const [split, whole] = writtenRows();
+    expect(split).toMatchObject({ categoryId: "cat-food", amountCents: 10001 });
+    expect(whole).toMatchObject({ categoryId: "cat-subs", amountCents: 4000 });
+    expect(mockPrisma.splitTransactionPart.createMany).toHaveBeenCalledWith({
+      data: [
+        { userId: "user-1", transactionId: split.id, categoryId: "cat-food", amountCents: 7001 },
+        { userId: "user-1", transactionId: split.id, categoryId: "cat-default", amountCents: 3000 },
+      ],
+    });
   });
 
   it("lets a category or account named by the row win over the rule", async () => {

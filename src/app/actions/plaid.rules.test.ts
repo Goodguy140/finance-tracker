@@ -6,6 +6,7 @@ const mockPrisma = vi.hoisted(() => ({
   category: { findMany: vi.fn(), findFirst: vi.fn() },
   transaction: { create: vi.fn() },
   transactionVerification: { create: vi.fn() },
+  splitTransactionPart: { deleteMany: vi.fn(), createMany: vi.fn() },
   $transaction: vi.fn(),
 }));
 const ruleContext = vi.hoisted(() => ({ current: null as null | RuleContext }));
@@ -77,6 +78,7 @@ describe("bulkAddStagedTransactionsAction with rules", () => {
           addTagId: null,
           markAsTransfer: false,
           setTransferAccountId: null,
+          splitBy: [],
         },
       ],
       learned: [],
@@ -136,6 +138,73 @@ describe("bulkAddStagedTransactionsAction with rules", () => {
       }),
       select: { id: true },
     });
+  });
+});
+
+describe("bulkAddStagedTransactionsAction with a splitting rule", () => {
+  const splitting = {
+    id: "r-split",
+    priority: 0,
+    enabled: true,
+    titleOperator: "CONTAINS" as const,
+    titlePattern: "costco",
+    transactionType: "EXPENSE" as const,
+    matchAccountId: null,
+    minAmountCents: null,
+    maxAmountCents: null,
+    setCategoryId: null,
+    setTitle: null,
+    setAmountCents: null,
+    setAccountId: null,
+    appendNote: null,
+    addTagId: null,
+    markAsTransfer: false,
+    setTransferAccountId: null,
+    splitBy: [
+      { categoryId: "cat-groceries", basisPoints: 7000 },
+      { categoryId: "cat-household", basisPoints: 3000 },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<void>) => fn(mockPrisma));
+    mockPrisma.transaction.create.mockResolvedValue({ id: "txn-1" });
+    mockPrisma.plaidStagedTransaction.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.plaidStagedTransaction.findMany.mockResolvedValue([staged({ name: "COSTCO WHOLESALE", amountCents: 12000 })]);
+    mockPrisma.category.findMany.mockResolvedValue([
+      { id: "cat-pfc", kind: "EXPENSE" },
+      { id: "cat-groceries", kind: "EXPENSE" },
+      { id: "cat-household", kind: "EXPENSE" },
+    ]);
+    ruleContext.current = { rules: [splitting], learned: [], hiddenTitleKeys: [] };
+  });
+
+  it("books the bank's amount split as the rule says, labelled with the first share", async () => {
+    const data = new FormData();
+    data.set("stagedIdsJson", JSON.stringify(["s1"]));
+
+    expect(await bulkAddStagedTransactionsAction(data)).toBeUndefined();
+    expect(mockPrisma.transaction.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ categoryId: "cat-groceries", amountCents: 12000 }) }),
+    );
+    expect(mockPrisma.splitTransactionPart.createMany).toHaveBeenCalledWith({
+      data: [
+        { userId: "user-1", transactionId: "txn-1", categoryId: "cat-groceries", amountCents: 8400 },
+        { userId: "user-1", transactionId: "txn-1", categoryId: "cat-household", amountCents: 3600 },
+      ],
+    });
+  });
+
+  it("books it whole when a category is chosen for the batch", async () => {
+    mockPrisma.category.findFirst.mockResolvedValue({ kind: "EXPENSE" });
+    const data = new FormData();
+    data.set("stagedIdsJson", JSON.stringify(["s1"]));
+    data.set("categoryId", "cat-household");
+
+    expect(await bulkAddStagedTransactionsAction(data)).toBeUndefined();
+    expect(mockPrisma.transaction.create.mock.calls[0][0].data).toMatchObject({ categoryId: "cat-household" });
+    expect(mockPrisma.splitTransactionPart.createMany).not.toHaveBeenCalled();
   });
 });
 

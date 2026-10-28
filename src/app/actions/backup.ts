@@ -574,36 +574,43 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
       }),
     });
 
-    await tx.transactionRule.createMany({
-      data: (parsed.transactionRules ?? []).map((row) => {
-        const mapped = (map: Map<string, string>, id: string | null) => {
-          if (!id) return null;
-          const next = map.get(id);
-          if (!next) throw new Error("Backup references unknown rule account or category.");
-          return next;
-        };
-        return {
-          userId: user.id,
-          priority: row.priority,
-          enabled: row.enabled,
-          titleOperator: row.titleOperator,
-          titlePattern: row.titlePattern,
-          transactionType: row.transactionType,
-          matchAccountId: mapped(accountIdMap, row.matchAccountId),
-          minAmountCents: row.minAmountCents,
-          maxAmountCents: row.maxAmountCents,
-          setCategoryId: mapped(categoryIdMap, row.setCategoryId),
-          setTitle: row.setTitle,
-          setAmountCents: row.setAmountCents,
-          setAccountId: mapped(accountIdMap, row.setAccountId),
-          appendNote: row.appendNote,
-          addTagId: row.addTagId ? mappedTagId(row.addTagId) : null,
-          markAsTransfer: row.markAsTransfer ?? false,
-          setTransferAccountId: mapped(accountIdMap, row.setTransferAccountId ?? null),
-          createdAt: new Date(row.createdAt),
-        };
-      }),
+    const rules = (parsed.transactionRules ?? []).map((row) => {
+      const mapped = (map: Map<string, string>, id: string | null) => {
+        if (!id) return null;
+        const next = map.get(id);
+        if (!next) throw new Error("Backup references unknown rule account or category.");
+        return next;
+      };
+      return {
+        userId: user.id,
+        priority: row.priority,
+        enabled: row.enabled,
+        titleOperator: row.titleOperator,
+        titlePattern: row.titlePattern,
+        transactionType: row.transactionType,
+        matchAccountId: mapped(accountIdMap, row.matchAccountId),
+        minAmountCents: row.minAmountCents,
+        maxAmountCents: row.maxAmountCents,
+        setCategoryId: mapped(categoryIdMap, row.setCategoryId),
+        setTitle: row.setTitle,
+        setAmountCents: row.setAmountCents,
+        setAccountId: mapped(accountIdMap, row.setAccountId),
+        appendNote: row.appendNote,
+        addTagId: row.addTagId ? mappedTagId(row.addTagId) : null,
+        markAsTransfer: row.markAsTransfer ?? false,
+        setTransferAccountId: mapped(accountIdMap, row.setTransferAccountId ?? null),
+        createdAt: new Date(row.createdAt),
+        splits: {
+          create: (row.splits ?? []).map((line, position) => ({
+            position,
+            categoryId: mapped(categoryIdMap, line.categoryId)!,
+            basisPoints: line.basisPoints,
+          })),
+        },
+      };
     });
+    // One at a time rather than createMany, so each rule's split lines can name it.
+    for (const data of rules) await tx.transactionRule.create({ data });
     const hiddenTitleKeys = new Set((parsed.hiddenTitleSuggestions ?? []).map((row) => row.titleKey));
     await tx.hiddenTitleSuggestion.createMany({
       data: [...hiddenTitleKeys].map((titleKey) => ({ userId: user.id, titleKey })),

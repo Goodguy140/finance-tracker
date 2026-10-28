@@ -1,4 +1,4 @@
-import { TransactionType, type TransactionRule } from "@prisma/client";
+import { TransactionType, type TransactionRule, type TransactionRuleSplit } from "@prisma/client";
 import { buildExpenseTitleSuggestions, type ExpenseTitleSuggestion } from "@/lib/expense-title-suggestions";
 import { prisma } from "@/lib/prisma";
 import { sortRules, type TransactionRuleInput } from "@/lib/transaction-rules";
@@ -13,7 +13,12 @@ export type RuleContext = {
   hiddenTitleKeys: string[];
 };
 
-export function toTransactionRuleInput(row: TransactionRule): TransactionRuleInput {
+/** What every rule read includes, so `toTransactionRuleInput` sees the rule's split. */
+export const RULE_SPLITS_INCLUDE = { splits: { orderBy: { position: "asc" } } } as const;
+
+export function toTransactionRuleInput(
+  row: TransactionRule & { splits: Pick<TransactionRuleSplit, "categoryId" | "basisPoints">[] },
+): TransactionRuleInput {
   return {
     id: row.id,
     priority: row.priority,
@@ -32,12 +37,17 @@ export function toTransactionRuleInput(row: TransactionRule): TransactionRuleInp
     addTagId: row.addTagId,
     markAsTransfer: row.markAsTransfer,
     setTransferAccountId: row.setTransferAccountId,
+    splitBy: row.splits.map(({ categoryId, basisPoints }) => ({ categoryId, basisPoints })),
   };
 }
 
 export async function loadRuleContext(userId: string): Promise<RuleContext> {
   const [rules, history, hidden] = await Promise.all([
-    prisma.transactionRule.findMany({ where: { userId }, orderBy: [{ priority: "asc" }, { id: "asc" }] }),
+    prisma.transactionRule.findMany({
+      where: { userId },
+      include: RULE_SPLITS_INCLUDE,
+      orderBy: [{ priority: "asc" }, { id: "asc" }],
+    }),
     prisma.transaction.findMany({
       where: {
         userId,

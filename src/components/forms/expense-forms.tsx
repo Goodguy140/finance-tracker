@@ -29,7 +29,7 @@ import {
   floatingFieldLabelClass,
 } from "./shared";
 import type { ExpenseTitleSuggestion } from "@/lib/expense-title-suggestions";
-import type { RuleOutcome } from "@/lib/transaction-rules";
+import { describeRuleSplit, type RuleOutcome } from "@/lib/transaction-rules";
 import { RuleAutofillHint, useRuleAutofill, useTagOptions } from "@/components/transaction-rules-context";
 import { TagInput, type TagInputHandle } from "@/components/tag-input";
 import { createExpenseAction, importExpensesCsvAction } from "@/app/actions";
@@ -47,6 +47,7 @@ export function ExpenseTitleAndCategoryFields({
   onRuleFill,
   reevaluateRef,
   hideCategory = false,
+  offerRuleSplit = false,
 }: {
   expenseCategories: Option[];
   titleSuggestions: ExpenseTitleSuggestion[];
@@ -66,6 +67,8 @@ export function ExpenseTitleAndCategoryFields({
   reevaluateRef?: RefObject<(() => void) | null>;
   /** A split expense's category comes from its lines, edited by the parent. */
   hideCategory?: boolean;
+  /** Adding, not editing: a rule's split is offered, and saved when kept. */
+  offerRuleSplit?: boolean;
 }) {
   const initialCategoryId =
     defaultCategoryId && expenseCategories.some((c) => c.id === defaultCategoryId)
@@ -182,6 +185,9 @@ export function ExpenseTitleAndCategoryFields({
         />
         <RuleAutofillHint outcome={rules.outcome} />
       </LabeledField>
+      {offerRuleSplit ? (
+        <RuleSplitOffer outcome={rules.outcome} categoryId={categoryId} expenseCategories={expenseCategories} />
+      ) : null}
       {hideCategory ? <input type="hidden" name="categoryId" value={categoryId} /> : null}
       {accountField && categoryField ? (
         <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3">
@@ -195,6 +201,44 @@ export function ExpenseTitleAndCategoryFields({
   );
 }
 
+
+/**
+ * A rule's split for the expense being added: shown while the category is the one the split
+ * gave it, and saved as the rule's split (the server works the cents out from the amount
+ * saved). Choosing another category, or "Book whole", adds it in one category instead.
+ */
+function RuleSplitOffer({
+  outcome,
+  categoryId,
+  expenseCategories,
+}: {
+  outcome: RuleOutcome | null;
+  categoryId: string;
+  expenseCategories: Option[];
+}) {
+  const [declinedRuleId, setDeclinedRuleId] = useState<string | null>(null);
+  const split = outcome?.split;
+  const ruleId = outcome?.splitRuleId;
+  if (!split || !ruleId || categoryId !== split[0].categoryId) return null;
+  if (declinedRuleId === ruleId) return null;
+  const name = (id: string) => expenseCategories.find((c) => c.id === id)?.name ?? "Deleted category";
+  return (
+    <div
+      className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-500/25 bg-blue-500/5 px-3 py-2 text-xs text-blue-100"
+      data-testid="rule-split-offer"
+    >
+      <input type="hidden" name="splitRuleId" value={ruleId} />
+      <span>Split by your rule: {describeRuleSplit(split, name)}</span>
+      <button
+        type="button"
+        className="rounded-md border border-slate-700 px-2 py-1 text-slate-200 hover:bg-slate-800"
+        onClick={() => setDeclinedRuleId(ruleId)}
+      >
+        Book whole
+      </button>
+    </div>
+  );
+}
 
 export function ExpenseCsvImportForm({
   accounts,
@@ -761,6 +805,7 @@ export function ExpenseForm({
           amountCents={amountCents}
           onRuleFill={fillFromRules}
           reevaluateRef={reevaluateRules}
+          offerRuleSplit
         />
       </div>
 

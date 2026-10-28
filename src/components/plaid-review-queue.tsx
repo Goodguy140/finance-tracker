@@ -37,6 +37,8 @@ export type ReviewProposal = {
   title: string;
   note: string | null;
   tagNames: string[];
+  /** A rule's split, described ("70% Groceries, 30% Household"), kept only in its category. */
+  split: string | null;
   /** Why the title/category differ from the bank's own: one of the user's rules, or a
    * category learned from a past entry with the same title. */
   reason: "rule" | "learned" | null;
@@ -177,6 +179,9 @@ function ReviewQueueRow({
                     : null,
                 committed?.note ? (
                   <span data-testid="review-rule-extras">{committed.note}</span>
+                ) : null,
+                committed?.split && !bookedAsTransfer && categoryId === row.suggestedCategoryId ? (
+                  <span data-testid="review-rule-split">split {committed.split}</span>
                 ) : null,
               ]}
             />

@@ -6,7 +6,8 @@ import { ensureFallbackCategoryFor } from "@/lib/fallback-categories";
 import { MAX_AMOUNT_CENTS } from "@/lib/money";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import { addTagsToTransaction, resolveTagIds } from "@/lib/tags-server";
-import { appendRuleNote, resolveRuleOutcome } from "@/lib/transaction-rules";
+import { appendRuleNote, resolveRuleOutcome, ruleSplitLines } from "@/lib/transaction-rules";
+import { saveSplitLines } from "@/lib/split-lines";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
 
 /**
@@ -201,7 +202,10 @@ export async function createTransactionFromApi(
       : undefined);
 
   const created = await db.$transaction(async (tx) => {
-    const resolvedCategoryId = categoryId ?? rule.categoryId ?? (await ensureFallbackCategoryFor(tx, user.id, kind));
+    // A rule's split is its way of setting the category, so a category the request names wins.
+    const splitLines = categoryId ? null : ruleSplitLines(rule.split, cents);
+    const resolvedCategoryId =
+      splitLines?.[0].categoryId ?? categoryId ?? rule.categoryId ?? (await ensureFallbackCategoryFor(tx, user.id, kind));
     const row = await tx.transaction.create({
       data: {
         userId: user.id,
@@ -218,6 +222,7 @@ export async function createTransactionFromApi(
       },
       select: { id: true },
     });
+    if (splitLines) await saveSplitLines(tx, { userId: user.id, transactionId: row.id, lines: splitLines });
     const tagIds = [...new Set([...(await resolveTagIds(tx, user.id, input.tags ?? [])), ...rule.tagIds])];
     await addTagsToTransaction(tx, row.id, tagIds);
     return tx.transaction.findUniqueOrThrow({ where: { id: row.id }, include: transactionInclude });

@@ -13,8 +13,9 @@ import { toCents } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { planRuleApplication, type RuleChange, type RuleTransactionType } from "@/lib/transaction-rules";
-import { toTransactionRuleInput } from "@/lib/transaction-rules-server";
+import { RULE_SPLITS_INCLUDE, toTransactionRuleInput } from "@/lib/transaction-rules-server";
 import { normalizeTagName } from "@/lib/tags";
+import { saveSplitLines } from "@/lib/split-lines";
 import { addTagsToTransaction, resolveTagIds } from "@/lib/tags-server";
 import { markAsTransfer } from "@/lib/transfer-marking";
 import {
@@ -39,6 +40,16 @@ function optional(formData: FormData, key: string) {
   return getFormValue(formData, key).trim() || undefined;
 }
 
+/** The editor's split lines: parallel category and percent fields, a wholly blank line skipped. */
+function readSplitLines(formData: FormData) {
+  const categoryIds = formData.getAll("ruleSplitCategoryId").map((v) => String(v ?? "").trim());
+  const percents = formData.getAll("ruleSplitPercent").map((v) => String(v ?? "").trim());
+  if (categoryIds.length !== percents.length) throw new Error("The split lines could not be read. Try again.");
+  return categoryIds
+    .map((categoryId, i) => ({ categoryId, basisPoints: percents[i] }))
+    .filter((line) => line.categoryId !== "" || line.basisPoints !== "");
+}
+
 /** Parses and ownership-checks the rule form into the columns both create and update write. */
 async function readRuleForm(userId: string, formData: FormData) {
   const payload = transactionRuleSchema.parse({
@@ -56,6 +67,7 @@ async function readRuleForm(userId: string, formData: FormData) {
     addTag: optional(formData, "addTag"),
     markAsTransfer: getFormValue(formData, "markAsTransfer") === "on" || undefined,
     setTransferAccountId: optional(formData, "setTransferAccountId"),
+    split: readSplitLines(formData),
   });
 
   let transactionType = (payload.transactionType as TransactionType | undefined) ?? null;
@@ -77,6 +89,13 @@ async function readRuleForm(userId: string, formData: FormData) {
     }
     transactionType = kind;
   }
+  if (payload.split.length > 0) {
+    const owned = await prisma.category.count({
+      where: { userId, kind: "EXPENSE", id: { in: payload.split.map((line) => line.categoryId) } },
+    });
+    if (owned !== payload.split.length) throw new Error("A split category was not found. Reload and try again.");
+    transactionType = TransactionType.EXPENSE;
+  }
   await Promise.all([
     payload.matchAccountId ? assertUserOwnsAccount(userId, payload.matchAccountId) : undefined,
     payload.setAccountId ? assertUserOwnsActiveAccount(userId, payload.setAccountId) : undefined,
@@ -86,7 +105,7 @@ async function readRuleForm(userId: string, formData: FormData) {
   if (payload.addTag && !tagName) throw new Error("Enter a tag name for the rule to add.");
   const [addTagId] = tagName ? await resolveTagIds(prisma, userId, [tagName]) : [null];
 
-  return {
+  const rule = {
     titleOperator: payload.titleOperator as TransactionRuleTextOperator,
     titlePattern: payload.titlePatterns,
     transactionType,
@@ -102,6 +121,12 @@ async function readRuleForm(userId: string, formData: FormData) {
     markAsTransfer: payload.markAsTransfer ?? false,
     setTransferAccountId: payload.setTransferAccountId ?? null,
   } satisfies Omit<Prisma.TransactionRuleUncheckedCreateInput, "userId" | "priority">;
+  return { rule, split: payload.split };
+}
+
+/** The rule's split lines as the editor listed them, replacing any it had. */
+function splitRows(split: { categoryId: string; basisPoints: number }[]) {
+  return split.map((line, position) => ({ position, categoryId: line.categoryId, basisPoints: line.basisPoints }));
 }
 
 function revalidateRules() {
@@ -110,14 +135,14 @@ function revalidateRules() {
 }
 
 async function findOwnedRule(userId: string, ruleId: string) {
-  const rule = await prisma.transactionRule.findFirst({ where: { id: ruleId, userId } });
+  const rule = await prisma.transactionRule.findFirst({ where: { id: ruleId, userId }, include: RULE_SPLITS_INCLUDE });
   if (!rule) throw new Error("Rule not found.");
   return rule;
 }
 
 export const createTransactionRuleAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const data = await readRuleForm(user.id, formData);
+  const { rule: data, split } = await readRuleForm(user.id, formData);
   const [count, last] = await Promise.all([
     prisma.transactionRule.count({ where: { userId: user.id } }),
     prisma.transactionRule.findFirst({
@@ -130,7 +155,12 @@ export const createTransactionRuleAction = formAction(async (formData: FormData)
     throw new Error(`You can have up to ${MAX_TRANSACTION_RULES} rules. Delete one you no longer need first.`);
   }
   await prisma.transactionRule.create({
-    data: { ...data, userId: user.id, priority: (last?.priority ?? -1) + 1 },
+    data: {
+      ...data,
+      userId: user.id,
+      priority: (last?.priority ?? -1) + 1,
+      splits: { create: splitRows(split) },
+    },
   });
   revalidateRules();
 });
@@ -139,8 +169,11 @@ export const updateTransactionRuleAction = formAction(async (formData: FormData)
   const user = await requireUser();
   const { ruleId } = updateTransactionRuleSchema.parse({ ruleId: getFormValue(formData, "ruleId") });
   const rule = await findOwnedRule(user.id, ruleId);
-  const data = await readRuleForm(user.id, formData);
-  await prisma.transactionRule.update({ where: { id: rule.id }, data });
+  const { rule: data, split } = await readRuleForm(user.id, formData);
+  await prisma.transactionRule.update({
+    where: { id: rule.id },
+    data: { ...data, splits: { deleteMany: {}, create: splitRows(split) } },
+  });
   revalidateRules();
 });
 
@@ -269,8 +302,8 @@ export type RuleApplyResult = { ok: true; updated: number } | ActionFailure;
 /**
  * Rewrites past transactions the rule matches. Re-plans on the server rather than trusting
  * the preview the client saw, so a stale preview can never write values the rule no longer
- * produces. Title, category, account, note, tag and transfer only — never the amount (a
- * transfer converts it to the transfer sign, the same money counted differently).
+ * produces. Title, category, account, note, tag, split and transfer only — never the amount
+ * (a transfer converts it to the transfer sign, the same money counted differently).
  */
 export async function applyTransactionRuleAction(ruleId: string): Promise<RuleApplyResult> {
   try {
@@ -288,6 +321,9 @@ export async function applyTransactionRuleAction(ruleId: string): Promise<RuleAp
               note: change.after.note,
             },
           });
+          if (change.splitLines) {
+            await saveSplitLines(tx, { userId: user.id, transactionId: change.id, lines: change.splitLines });
+          }
           if (change.addTagId) await addTagsToTransaction(tx, change.id, [change.addTagId]);
           if (change.markAsTransfer) {
             const marked = await markAsTransfer(tx, { userId: user.id, transactionId: change.id });
