@@ -127,6 +127,17 @@ export const reallocateBudgetSchema = z.object({
     .min(1),
 });
 
+/** "Suggest budgets": the rows ticked, each a category and the monthly amount to set. */
+export const applyBudgetSuggestionsSchema = z
+  .array(
+    z.object({
+      categoryId: z.string().min(1),
+      limitCents: z.number().int().positive().max(MAX_AMOUNT_CENTS),
+    }),
+  )
+  .min(1)
+  .max(500);
+
 /** Calendar month `YYYY-MM` query/param, e.g. for the budgets API. */
 export const monthParamSchema = z
   .string()

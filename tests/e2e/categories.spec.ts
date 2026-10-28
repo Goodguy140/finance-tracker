@@ -279,3 +279,40 @@ test("a yearly budget set in Settings shows on the Budgets card as a sinking fun
     fundCents >= 0 ? `${dollars(fundCents)} in the fund` : `${dollars(-fundCents)} spent ahead of the fund`,
   );
 });
+
+test("Suggest budgets proposes a typical month from past spending and sets the ticked ones", async ({ page }) => {
+  const { user, stamp } = await createUserAndLogin(page);
+  const thisYm = currentYmInTimeZone("America/Toronto");
+  const account = await prisma.account.findFirstOrThrow({ where: { userId: user.id } });
+  const pets = await prisma.category.create({ data: { userId: user.id, name: `Pets ${stamp}`, kind: CategoryKind.EXPENSE } });
+  // $80, a one-off $500 vet bill, then $82: the typical month is $82, rounded up to $85.
+  for (const [back, cents] of [[3, 8_000], [2, 50_000], [1, 8_200]] as const) {
+    await prisma.transaction.create({
+      data: {
+        userId: user.id,
+        accountId: account.id,
+        categoryId: pets.id,
+        type: TransactionType.EXPENSE,
+        amountCents: cents,
+        date: new Date(`${shiftYm(thisYm, -back)}-10T12:00:00Z`),
+        title: `Pet store ${stamp}`,
+      },
+    });
+  }
+
+  // The Budgets card's empty state links straight to the open dialog.
+  await page.goto("/settings/categories?suggest=1");
+  const dialog = page.getByRole("dialog", { name: "Suggest budgets" });
+  const row = dialog.getByTestId("budget-suggestion-row").filter({ hasText: pets.name });
+  await expect(row.getByLabel(`${pets.name} monthly budget`)).toHaveValue("85");
+  await expect(row).toContainText("one-off, passed over");
+  await dialog.getByRole("button", { name: "Set 1 budget" }).click();
+  await expect(dialog).toBeHidden();
+
+  const panel = page.getByRole("region", { name: "Categories & budgets" });
+  await expect(panel.getByTestId("category-row").filter({ hasText: pets.name })).toContainText("$85.00/mo");
+  expect(await prisma.budget.findFirst({ where: { userId: user.id, categoryId: pets.id }, select: { periodMonth: true, limitCents: true } })).toEqual({
+    periodMonth: thisYm,
+    limitCents: 8_500,
+  });
+});

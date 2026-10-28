@@ -50,8 +50,8 @@ export function getStartedSteps(facts: GetStartedFacts): GetStartedStep[] {
     {
       id: "budget",
       label: "Set a budget",
-      hint: "Give a category a monthly amount and the Budgets card shows what is left.",
-      href: "/settings/categories",
+      hint: "Start from amounts suggested by your past spending, and the Budgets card shows what is left.",
+      href: "/settings/categories?suggest=1",
       action: "Set budgets",
       done: facts.budgetCount > 0,
     },
