@@ -131,3 +131,35 @@ test("See all lists every match across months on the search page", async ({ page
   await expect(page.getByTestId("search-total")).toContainText("1 transaction");
   await expect(page.getByTestId("search-results")).toContainText(title);
 });
+
+test("an amount and a title typed into the search add an expense, with Undo", async ({ page }) => {
+  // The same server action on any screen size; the phone layout is covered above.
+  test.skip(isPhone());
+  const stamp = uniqueStamp();
+  const { user } = await seedUser(stamp);
+  const word = `bakery${stamp.replace(/[^a-z0-9]/gi, "")}`;
+  const category = await prisma.category.create({ data: { userId: user.id, kind: CategoryKind.EXPENSE, name: `Treats ${stamp}` } });
+  await prisma.transactionRule.create({
+    data: { userId: user.id, priority: 0, titleOperator: "CONTAINS", titlePattern: word, transactionType: "EXPENSE", setCategoryId: category.id },
+  });
+  await signInWithPassword(page, user.email);
+  await expectDashboardHome(page);
+
+  const dialog = await openSearch(page);
+  await dialog.getByRole("combobox").fill(`12.50 ${word} yesterday`);
+  const offer = dialog.getByRole("option").first();
+  await expect(offer).toContainText(`Add expense $12.50 ${word.charAt(0).toUpperCase()}${word.slice(1)}`);
+  await expect(offer).toContainText(category.name);
+  await dialog.getByRole("combobox").press("Enter");
+
+  await expect(dialog.getByRole("status")).toContainText("Added $12.50");
+  const added = await prisma.transaction.findFirstOrThrow({
+    where: { userId: user.id, amountCents: 1250 },
+    select: { id: true, categoryId: true, needsReview: true, date: true },
+  });
+  expect(added).toMatchObject({ categoryId: category.id, needsReview: false });
+
+  await dialog.getByRole("button", { name: "Undo" }).click();
+  await expect(dialog.getByRole("status")).toContainText("Removed it again");
+  expect(await prisma.transaction.count({ where: { id: added.id } })).toBe(0);
+});
