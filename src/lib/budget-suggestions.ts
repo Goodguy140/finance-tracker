@@ -2,6 +2,7 @@ import { TransactionType } from "@prisma/client";
 import { shiftYm } from "@/lib/dashboard-period";
 import { categoryAmounts } from "@/lib/insights/facts";
 import type { InsightTx } from "@/lib/insights/types";
+import { median } from "@/lib/insights/util";
 
 /** How far back a suggestion looks: the last 3 or 6 full months. */
 export const SUGGESTION_WINDOWS = [3, 6] as const;
@@ -35,13 +36,6 @@ export type BudgetSuggestionSet = {
 
 /** A month this far above the median counts as a spike. */
 const SPIKE_FACTOR = 2;
-
-function median(values: readonly number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
-}
 
 /**
  * Rounded up to an amount a person would type: to $5 up to $100, $10 up to $1,000, then $25.
