@@ -219,7 +219,9 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     charges; each staged row looked at once via `ChargeAlertSetting.checkedThrough`; turning
     on starts from now; same hourly sweep, any hour): `charge-alert-preferences.tsx`,
     `src/lib/charge-alerts.ts`
-  - Appearance (dashboard readability, install app): `src/lib/dashboard-readability.ts`
+  - Appearance (dashboard readability, install app): `src/lib/dashboard-readability.ts`;
+    the check counts every tab of a stack, so switching tabs never changes the column count
+    (`src/lib/dashboard-layout/text-visibility.ts`)
 - **Money**
   - Accounts (add/edit/archive/delete, default expense account, currency, balances, counts as
     savings, contribution room): `settings/accounts-manager.tsx`, `account-balances-panel.tsx`,

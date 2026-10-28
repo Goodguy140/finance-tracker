@@ -14,6 +14,10 @@
  * long notes as cramped at every width and collapse the dashboard to one column for good.
  * (Chromium also reports a clamped node's range as overflowing sideways, so it cannot simply
  * be let through the horizontal check.)
+ *
+ * Every panel of a tabbed stack is counted, not only the one on show. Counting only the active
+ * tab made the column count depend on which tab was picked: switching to a tab that cut off
+ * more text merged a column away, and the whole dashboard reflowed under the click.
  */
 export type TextVisibility = {
   total: number;
@@ -31,6 +35,13 @@ export type TextVisibility = {
  */
 export const MIN_VISIBLE_ATTR = "data-min-visible";
 
+/**
+ * Set on each panel of a card stack. A panel behind the active one is laid out at the width it
+ * would have on show, but translated outside a clipped viewport, so it is judged against its
+ * own edges rather than the viewport's — and is not skipped as hidden.
+ */
+export const STACK_PANEL_ATTR = "data-stack-panel";
+
 /** Text in these is either not prose or not on screen for reasons unrelated to width. */
 const SKIP_SELECTOR = [
   "svg", // chart labels are positioned by the chart, not by the column
@@ -41,9 +52,8 @@ const SKIP_SELECTOR = [
   "script",
   "style",
   ".sr-only",
-  // Inactive panels of a card stack sit beside the active one inside a clipped viewport.
-  '[aria-hidden="true"]',
-  "[inert]",
+  `[aria-hidden="true"]:not([${STACK_PANEL_ATTR}])`,
+  `[inert]:not([${STACK_PANEL_ATTR}])`,
 ].join(",");
 
 type Clip = { rect: DOMRect; clipsX: boolean; clamps: boolean };
@@ -79,7 +89,7 @@ export function measureTextVisibility(
         rect: element.getBoundingClientRect(),
         // The column is a boundary whether or not it clips: text past its edge sits on top of
         // the next column, which is no more readable than text that is hidden.
-        clipsX: element === column || style.overflowX !== "visible",
+        clipsX: element === column || element.hasAttribute(STACK_PANEL_ATTR) || style.overflowX !== "visible",
         clamps: clamp !== "" && clamp !== "none",
       };
       clips.set(element, clip);
@@ -113,7 +123,9 @@ export function measureTextVisibility(
         break;
       }
       if (clip.clipsX) overflow = Math.max(overflow, clip.rect.left - text.left, text.right - clip.rect.right);
-      if (element === column) break;
+      // A stack panel is as wide as the viewport it sits in, which sits inside the column, so its
+      // edge is the binding one; past it, an inactive panel would read as wholly cut off.
+      if (element === column || element.hasAttribute(STACK_PANEL_ATTR)) break;
     }
     if (ignored) continue;
 
