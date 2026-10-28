@@ -64,6 +64,7 @@ async function mergeCategoryInto(tx: Tx, userId: string, fromId: string, toId: s
   await tx.transaction.updateMany(move);
   await tx.splitTransactionPart.updateMany(move);
   await tx.recurringTransaction.updateMany(move);
+  await tx.plannedTransaction.updateMany(move);
   await tx.plaidCategoryMapping.updateMany(move);
   await tx.plaidItem.updateMany({ where: { userId, defaultCategoryId: fromId }, data: { defaultCategoryId: toId } });
   await tx.transactionRule.updateMany({ where: { userId, setCategoryId: fromId }, data: { setCategoryId: toId } });
@@ -188,12 +189,13 @@ export const deleteCategoryAction = formAction(async (formData: FormData) => {
       await mergeCategoryInto(tx, user.id, category.id, target.id);
       return;
     }
-    const [transactions, splitParts, recurring] = await Promise.all([
+    const [transactions, splitParts, recurring, planned] = await Promise.all([
       tx.transaction.count({ where: { userId: user.id, categoryId: category.id } }),
       tx.splitTransactionPart.count({ where: { userId: user.id, categoryId: category.id } }),
       tx.recurringTransaction.count({ where: { userId: user.id, categoryId: category.id } }),
+      tx.plannedTransaction.count({ where: { userId: user.id, categoryId: category.id } }),
     ]);
-    if (transactions + splitParts + recurring > 0) {
+    if (transactions + splitParts + recurring + planned > 0) {
       throw new Error("This category is in use. Choose a category to move its transactions to.");
     }
     await tx.budget.deleteMany({ where: { userId: user.id, categoryId: category.id } });

@@ -8,7 +8,7 @@
 
 export type AttentionSeverity = "bad" | "warn";
 
-export type AdminNavSection = "overview" | "users" | "authentication" | "integrations" | "system";
+export type AdminNavSection = "overview" | "users" | "authentication" | "integrations" | "operations" | "system";
 
 export type AttentionItem = {
   id: string;
@@ -39,12 +39,22 @@ export type AttentionFacts = {
   activeServerAdmins: number;
   diskFreeGb: number | null;
   diskTotalGb: number | null;
+  /** Automatic backups are on, the database is a file, and the sweep runs in this process. */
+  backupsExpected: boolean;
+  newestBackupAt: Date | null;
+  /** The backup sweep's last error, if its last tick failed. */
+  backupFailure: string | null;
+  backupSchedulerStartedAt: Date | null;
 };
 
 export const REVIEW_BACKLOG_STALE_DAYS = 14;
 export const FAILED_LOGIN_SPIKE_THRESHOLD = 20;
 /** Below this share of the volume free, SQLite writes are at risk soon enough to mention. */
 export const LOW_DISK_FREE_RATIO = 0.1;
+/** A daily backup missed twice in a row. */
+export const BACKUP_STALE_DAYS = 2;
+/** How long a fresh server may run before having no backup at all is worth a mention. */
+const FIRST_BACKUP_GRACE_MS = 26 * 60 * 60 * 1000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -182,6 +192,43 @@ export function buildAttentionItems(facts: AttentionFacts, now = new Date()): At
         detail: `${facts.diskFreeGb} GB free of ${facts.diskTotalGb} GB.`,
         href: "/settings/admin/system",
         section: "system",
+      });
+    }
+  }
+
+  if (facts.backupsExpected) {
+    if (facts.backupFailure) {
+      items.push({
+        id: "backup-failed",
+        severity: "bad",
+        title: "The last database backup failed",
+        detail: facts.backupFailure,
+        href: "/settings/admin/operations",
+        section: "operations",
+      });
+    } else if (facts.newestBackupAt) {
+      const ageDays = Math.floor((now.getTime() - facts.newestBackupAt.getTime()) / DAY_MS);
+      if (ageDays >= BACKUP_STALE_DAYS) {
+        items.push({
+          id: "backup-stale",
+          severity: "warn",
+          title: "No recent database backup",
+          detail: `The newest backup is ${ageDays} days old.`,
+          href: "/settings/admin/operations",
+          section: "operations",
+        });
+      }
+    } else if (
+      facts.backupSchedulerStartedAt &&
+      now.getTime() - facts.backupSchedulerStartedAt.getTime() >= FIRST_BACKUP_GRACE_MS
+    ) {
+      items.push({
+        id: "backup-stale",
+        severity: "warn",
+        title: "No database backup yet",
+        detail: "Backups are on but none has been saved. Check the backups folder can be written.",
+        href: "/settings/admin/operations",
+        section: "operations",
       });
     }
   }

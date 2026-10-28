@@ -140,9 +140,19 @@ export function BudgetsCardBody({
       </div>
       {items.length === 0 && yearlyBudgets.length > 0 && budgetProgressItems.length === 0 ? null : items.length === 0 ? (
         <p className="mt-3 text-sm text-slate-400">
-          {hideZeroSpend && budgetProgressItems.length > 0
-            ? "No spending against a budget in this period."
-            : "No budgets set for this period."}
+          {hideZeroSpend && budgetProgressItems.length > 0 ? (
+            "No spending against a budget in this period."
+          ) : (
+            <>
+              No budgets set for this period.{" "}
+              <Link
+                href="/settings/categories?suggest=1"
+                className="text-blue-300 underline-offset-4 hover:text-blue-200 hover:underline"
+              >
+                Suggest budgets from your spending
+              </Link>
+            </>
+          )}
         </p>
       ) : (
         <BudgetRowSections items={items} perRow={perRow} />

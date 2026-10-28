@@ -127,6 +127,17 @@ export const reallocateBudgetSchema = z.object({
     .min(1),
 });
 
+/** "Suggest budgets": the rows ticked, each a category and the monthly amount to set. */
+export const applyBudgetSuggestionsSchema = z
+  .array(
+    z.object({
+      categoryId: z.string().min(1),
+      limitCents: z.number().int().positive().max(MAX_AMOUNT_CENTS),
+    }),
+  )
+  .min(1)
+  .max(500);
+
 /** Calendar month `YYYY-MM` query/param, e.g. for the budgets API. */
 export const monthParamSchema = z
   .string()
@@ -498,4 +509,15 @@ export const habitDetectionSchema = z.object({ enabled: z.enum(["true", "false"]
 
 export const trackHabitSchema = z.object({
   habit: z.enum(["TOBACCO_VAPE", "CANNABIS", "ALCOHOL", "GAMBLING", "GAMING_PURCHASES"]),
+});
+
+/** A planned one-off expense or income (the Add card's Plan tab). */
+export const plannedTransactionSchema = z.object({
+  type: z.enum(["EXPENSE", "INCOME"]),
+  name: z.string().trim().min(1, { message: "Name what you are planning for." }).max(120),
+  amount: positiveAmount,
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { message: "Pick the date you expect it." }),
+  accountId: z.string().min(1, { message: "Choose an account." }),
+  categoryId: z.string().min(1, { message: "Choose a category." }),
+  note: z.string().trim().max(250).optional(),
 });

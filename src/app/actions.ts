@@ -23,7 +23,13 @@ export {
   unpairTransferAction,
   setTransferAccountAction,
 } from "./actions/transactions";
-export { upsertBudgetAction, updateBudgetAction, deleteBudgetAction, reallocateBudgetAction } from "./actions/budgets";
+export {
+  upsertBudgetAction,
+  updateBudgetAction,
+  deleteBudgetAction,
+  reallocateBudgetAction,
+  applyBudgetSuggestionsAction,
+} from "./actions/budgets";
 export {
   createRecurringTransactionAction,
   updateRecurringTransactionAction,
@@ -101,6 +107,8 @@ export {
   updatePublicSignupAction,
   updateOperationsSettingsAction,
   updatePlaidSyncIntervalAction,
+  updateBackupSettingsAction,
+  backupDatabaseNowAction,
 } from "./actions/admin-ops";
 export {
   setUserRoleAction,
@@ -144,3 +152,9 @@ export {
 } from "./actions/insights";
 export { deleteReconciliationAction, saveReconciliationAction } from "./actions/reconciliation";
 export { setDebtTermsAction } from "./actions/debt";
+export {
+  createPlannedTransactionAction,
+  updatePlannedTransactionAction,
+  deletePlannedTransactionAction,
+  recordPlannedTransactionAction,
+} from "./actions/planned";

@@ -5,7 +5,7 @@ import { dateFromYmd, ymdFromDateUtc } from "./date-only";
 
 /**
  * Projected balances: where each account, and net worth, stands 30, 60 and 90 days out if the
- * recurring bills and income come in as scheduled.
+ * recurring bills and income, and the one-off plans, come in as scheduled.
  *
  * It starts from each account's latest balance (the net-worth reading) and applies the same
  * occurrences the Upcoming bills card lists, each to the account its rule books to. Only
@@ -30,7 +30,14 @@ export const PROJECTION_DAYS = BILLS_FORECAST_DAY_OPTIONS;
 export type ProjectableRule = Pick<
   RecurringForecastRule,
   "type" | "amountCents" | "cadence" | "nextExpectedDate" | "anchorDay" | "endDate" | "enabled"
-> & { accountId: string; name?: string; transferAccountId?: string | null; id?: string };
+> & {
+  accountId: string;
+  name?: string;
+  transferAccountId?: string | null;
+  id?: string;
+  /** A one-off plan, given the shape of a rule with one occurrence (`plannedAsForecastRules`). */
+  planned?: true;
+};
 
 export type ProjectedAccount = {
   accountId: string;
@@ -90,7 +97,7 @@ export function projectBalances(input: {
     { todayYmd: input.todayYmd, currentYm: input.currentYm, days: Math.max(...horizonDays), includeTransfers },
   );
   const rulesLeftOut = input.rules.filter(
-    (r) => r.enabled && (r.type === "EXPENSE" || r.type === "INCOME") && !byId.has(r.accountId),
+    (r) => r.enabled && !r.planned && (r.type === "EXPENSE" || r.type === "INCOME") && !byId.has(r.accountId),
   ).length;
   const transfersLeftOut = includeTransfers
     ? input.rules.filter((r) => r.enabled && r.type === "TRANSFER" && !transferApplies(r)).length
