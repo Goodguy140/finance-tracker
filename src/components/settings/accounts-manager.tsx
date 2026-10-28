@@ -7,6 +7,7 @@ import {
   deleteAccountBalanceAction,
   deleteFinancialAccountAction,
   setAccountBalanceAction,
+  setCardTermsAction,
   setFinancialAccountArchivedAction,
   updateDefaultExpenseAccountAction,
   updateFinancialAccountAction,
@@ -25,6 +26,7 @@ import {
   type ContributionRoomData,
   type RegisteredAccountType,
 } from "@/lib/contribution-room";
+import { cardUtilization, dueDayLabel, HIGH_UTILIZATION_PCT } from "@/lib/credit-cards";
 import { formatCurrency } from "@/lib/money";
 
 export type ManagedAccount = {
@@ -41,6 +43,9 @@ export type ManagedAccount = {
   latest: { cents: number; dateYmd: string; source: "PLAID" | "MANUAL" | "PORTFOLIO" } | null;
   /** Balances entered by hand, newest first. Bank-synced ones are not listed: a sync rewrites them. */
   manualBalances: { id: string; cents: number; dateYmd: string }[];
+  /** A credit card's limit and the day of the month its payment is due. */
+  creditLimitCents: number | null;
+  paymentDueDay: number | null;
 };
 
 const SOURCE_LABEL = { PLAID: "from your bank", MANUAL: "entered by you", PORTFOLIO: "portfolio snapshot" } as const;
@@ -457,6 +462,8 @@ function AccountDrawer({
         </section>
       ) : null}
 
+      {!account.archived && account.type === "CREDIT_CARD" ? <CardTerms account={account} onSaved={onClose} /> : null}
+
       {room ? (
         <section aria-label="Contribution room" className="space-y-2 border-t border-slate-800 pt-4">
           <h3 className="text-sm font-semibold text-slate-100">Contribution room</h3>
@@ -482,5 +489,57 @@ function AccountDrawer({
       ) : null}
       {confirmDialog}
     </Drawer>
+  );
+}
+
+function CardTerms({ account, onSaved }: { account: ManagedAccount; onSaved: () => void }) {
+  const utilization = cardUtilization(account.latest?.cents, account.creditLimitCents);
+  return (
+    <section aria-label="Card" data-testid="card-terms" className="space-y-3 border-t border-slate-800 pt-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-sm font-semibold text-slate-100">Card</h3>
+        {utilization ? (
+          <span className={`text-sm tabular-nums ${utilization.high ? "text-amber-200" : "text-slate-300"}`}>
+            {utilization.pct}% used
+          </span>
+        ) : null}
+      </div>
+      <p className="text-xs text-slate-500">
+        {utilization?.high
+          ? `Over ${HIGH_UTILIZATION_PCT}% of the limit, which weighs on a credit score. Paying it down before the statement date helps.`
+          : `The limit shows how much of it is used (keeping under ${HIGH_UTILIZATION_PCT}% helps a credit score). The due day puts the payment in Insights and bill reminders.`}
+        {account.paymentDueDay ? ` Due on ${dueDayLabel(account.paymentDueDay)} of each month.` : ""}
+      </p>
+      <ServerActionForm action={setCardTermsAction} onSuccess={onSaved} className="grid grid-cols-2 gap-3">
+        <input type="hidden" name="accountId" value={account.id} />
+        <label className="block space-y-1.5">
+          <span className="text-xs font-medium text-slate-400">Credit limit ({account.currency})</span>
+          <input
+            name="creditLimit"
+            aria-label="Credit limit"
+            inputMode="decimal"
+            placeholder="5000.00"
+            defaultValue={account.creditLimitCents === null ? "" : (account.creditLimitCents / 100).toFixed(2)}
+            className={inputClass}
+          />
+        </label>
+        <label className="block space-y-1.5">
+          <span className="text-xs font-medium text-slate-400">Payment due day</span>
+          <input
+            name="dueDay"
+            aria-label="Payment due day"
+            type="number"
+            min={1}
+            max={31}
+            placeholder="21"
+            defaultValue={account.paymentDueDay ?? ""}
+            className={inputClass}
+          />
+        </label>
+        <button type="submit" className={`${secondaryBtnClass} col-span-2`}>
+          Save card details
+        </button>
+      </ServerActionForm>
+    </section>
   );
 }

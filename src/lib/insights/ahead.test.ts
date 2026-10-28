@@ -109,3 +109,19 @@ describe("yearly renewals", () => {
     ).toEqual([]);
   });
 });
+
+describe("card payments due", () => {
+  const card = { id: "visa", name: "Visa", paymentDueDay: 28, minimumPaymentCents: 2_500, owed: { cents: 81_000, date: day("2026-09-20") } };
+
+  it("notes a card payment due within a week, with the balance and minimum", () => {
+    const [insight] = run({ cards: [card] });
+    expect(insight).toMatchObject({ key: "ahead:card-due:visa:2026-09-28", severity: "medium" });
+    expect(insight.title).toBe("Visa payment due in 3 days, balance $810");
+    expect(insight.body).toContain("The minimum is $25.00");
+  });
+
+  it("says nothing further out, or when the card owes nothing", () => {
+    expect(run({ cards: [{ ...card, paymentDueDay: 3 }] })).toEqual([]);
+    expect(run({ cards: [{ ...card, owed: { cents: 0, date: day("2026-09-20") } }] })).toEqual([]);
+  });
+});

@@ -4,6 +4,7 @@ import {
   daysLeftInMonthYm,
   type BudgetProgressInput,
 } from "@/lib/budget-alerts";
+import { cardsDueWithin, type CardTerms } from "@/lib/credit-cards";
 import type { ProjectedBalances } from "@/lib/projected-balances";
 import type { Insight, InsightRecurringRule } from "./types";
 import { DAY_MS, type MoneyFormatter } from "./util";
@@ -21,12 +22,14 @@ export type AheadInput = {
   /** This month's budget progress; null under a tag filter. */
   budgets: BudgetProgressInput[] | null;
   rules: InsightRecurringRule[];
+  /** Credit cards with a due day; null or left out says nothing about card payments. */
+  cards?: CardTerms[] | null;
   now: Date;
   fmt: MoneyFormatter;
 };
 
 export function detectAhead(input: AheadInput): Insight[] {
-  return [...lowBalances(input), ...budgetPace(input), ...renewals(input)];
+  return [...lowBalances(input), ...cardPayments(input), ...budgetPace(input), ...renewals(input)];
 }
 
 const shortDate = new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", timeZone: "UTC" });
@@ -69,6 +72,29 @@ function lowBalances({ projection, now, fmt }: AheadInput): Insight[] {
         action: { kind: "link", href: "/reports", label: "See projected balances" },
       },
     ];
+  });
+}
+
+// --- Card payments due ----------------------------------------------------------------------
+
+/** A week is time to move money for it without it being news a month early. */
+export const CARD_DUE_NOTICE_DAYS = 7;
+const CARD_DUE_SOON_DAYS = 3;
+
+function cardPayments({ cards, now, fmt }: AheadInput): Insight[] {
+  if (!cards?.length) return [];
+  return cardsDueWithin(cards, now.toISOString().slice(0, 10), CARD_DUE_NOTICE_DAYS).map((due): Insight => {
+    const when = due.daysAway === 0 ? "today" : due.daysAway === 1 ? "tomorrow" : `in ${due.daysAway} days`;
+    return {
+      key: `ahead:card-due:${due.accountId}:${due.date.toISOString().slice(0, 10)}`,
+      section: "ahead",
+      severity: due.daysAway <= CARD_DUE_SOON_DAYS ? "medium" : "low",
+      title: `${due.name} payment due ${when}${due.owedCents === null ? "" : `, balance ${fmt(due.owedCents)}`}`,
+      body:
+        `Due ${shortDate.format(due.date)}.${due.minimumCents ? ` The minimum is ${fmt(due.minimumCents)}.` : ""} ` +
+        "Paying the full statement balance by then avoids interest.",
+      evidenceTxIds: [],
+    };
   });
 }
 

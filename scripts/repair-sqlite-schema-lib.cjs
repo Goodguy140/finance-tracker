@@ -1,5 +1,5 @@
 /** Keep in sync with SCHEMA_REPAIR_VERSION in src/lib/migration-health.ts */
-const SCHEMA_REPAIR_VERSION = "23";
+const SCHEMA_REPAIR_VERSION = "24";
 const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
 
@@ -214,6 +214,21 @@ const COLUMN_REPAIRS = [
     table: "User",
     column: "zeroBasedBudgeting",
     ddl: 'ALTER TABLE "User" ADD COLUMN "zeroBasedBudgeting" BOOLEAN NOT NULL DEFAULT false',
+  },
+  {
+    table: "Account",
+    column: "creditLimitCents",
+    ddl: 'ALTER TABLE "Account" ADD COLUMN "creditLimitCents" INTEGER',
+  },
+  {
+    table: "Account",
+    column: "paymentDueDay",
+    ddl: 'ALTER TABLE "Account" ADD COLUMN "paymentDueDay" INTEGER',
+  },
+  {
+    table: "Account",
+    column: "paymentRemindedFor",
+    ddl: 'ALTER TABLE "Account" ADD COLUMN "paymentRemindedFor" DATETIME',
   },
 ];
 

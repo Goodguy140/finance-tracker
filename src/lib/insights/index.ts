@@ -38,6 +38,7 @@ export type BuildInsightsInput = {
   /** See `AheadInput`; left out, nothing about balances or budgets is said. */
   projection?: AheadInput["projection"];
   budgetProgress?: AheadInput["budgets"];
+  cards?: AheadInput["cards"];
   /** See `StandingInput`; each left out says nothing. */
   owed?: StandingInput["owed"];
   room?: StandingInput["room"];
@@ -112,7 +113,14 @@ export function buildInsights(input: BuildInsightsInput): BuiltInsights {
   const txs = input.txs.filter((tx) => tx.date <= now);
   const candidates = detectRecurringCandidates(txs, rules, now);
   const all = [
-    ...detectAhead({ projection: input.projection ?? null, budgets: input.budgetProgress ?? null, rules, now, fmt }),
+    ...detectAhead({
+      projection: input.projection ?? null,
+      budgets: input.budgetProgress ?? null,
+      rules,
+      cards: input.cards ?? null,
+      now,
+      fmt,
+    }),
     ...(input.gaps ? detectDataGaps({ txs, transfers: input.gaps.transfers, accounts: input.gaps.accounts, now, fmt }) : []),
     ...(input.gaps && input.score && input.scoreGapAccounts
       ? detectScoreGaps({

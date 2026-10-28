@@ -62,7 +62,10 @@ async function createMinimalSchema(prisma: PrismaClient) {
       "archived" BOOLEAN NOT NULL DEFAULT false,
       "countsAsSavings" BOOLEAN NOT NULL DEFAULT false,
       "interestRateBps" INTEGER,
-      "minimumPaymentCents" INTEGER
+      "minimumPaymentCents" INTEGER,
+      "creditLimitCents" INTEGER,
+      "paymentDueDay" INTEGER,
+      "paymentRemindedFor" DATETIME
     )
   `);
 

@@ -109,7 +109,16 @@ export const loadInsights = cache(async (
     // Balances and budgets for "Coming up": neither has a meaning under a tag.
     tagId
       ? null
-      : Promise.all([loadNetWorth(user), loadProjectionInputs(userId), buildMonthlyBudgetProgress(userId, ym)]),
+      : Promise.all([
+          loadNetWorth(user),
+          loadProjectionInputs(userId),
+          buildMonthlyBudgetProgress(userId, ym),
+          prisma.account.findMany({
+            // Same currency only: the insight is worded in the home currency.
+            where: { userId, archived: false, currency, type: "CREDIT_CARD", paymentDueDay: { not: null } },
+            select: { id: true, name: true, paymentDueDay: true, minimumPaymentCents: true },
+          }),
+        ]),
     // Money owed back, registered-account room (Canada only) and savings goals.
     tagId
       ? null
@@ -189,6 +198,7 @@ export const loadInsights = cache(async (
       ? projectBalances({ accounts: ahead[0].accounts, ...ahead[1], todayYmd: now.toISOString().slice(0, 10), currentYm: ym })
       : null,
     budgetProgress: ahead ? ahead[2].budgets : null,
+    cards: ahead ? ahead[3].map((card) => ({ ...card, owed: latestBalance.get(card.id) ?? null })) : null,
     score: financial?.score ?? null,
     owed: standing
       ? standing[0]

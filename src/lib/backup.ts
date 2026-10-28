@@ -47,6 +47,10 @@ export type UserBackupPayload = {
     provider: string | null;
     archived: boolean;
     countsAsSavings: boolean;
+    interestRateBps: number | null;
+    minimumPaymentCents: number | null;
+    creditLimitCents: number | null;
+    paymentDueDay: number | null;
     createdAt: IsoString;
     updatedAt: IsoString;
   }>;
@@ -358,6 +362,10 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       provider: row.provider,
       archived: row.archived,
       countsAsSavings: row.countsAsSavings,
+      interestRateBps: row.interestRateBps,
+      minimumPaymentCents: row.minimumPaymentCents,
+      creditLimitCents: row.creditLimitCents,
+      paymentDueDay: row.paymentDueDay,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     })),

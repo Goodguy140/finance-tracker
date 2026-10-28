@@ -28,6 +28,8 @@ export type NetWorthAccount = {
   type: AccountType | string;
   currency: string;
   archived: boolean;
+  /** A credit card's limit, carried onto its row for utilization. */
+  creditLimitCents?: number | null;
 };
 
 export type BalanceReadingSource = "PLAID" | "MANUAL" | "PORTFOLIO";
@@ -58,6 +60,8 @@ export type AccountBalanceRow = {
   latest: { cents: number; date: Date; source: BalanceReadingSource } | null;
   /** False when the account's currency differs from the total's. */
   counted: boolean;
+  /** A credit card's limit, when one is set. */
+  creditLimitCents?: number | null;
 };
 
 export type NetWorth = {
@@ -142,6 +146,7 @@ export function computeNetWorth(input: {
       liability: isLiabilityType(a.type),
       latest: r ? { cents: r.cents, date: r.date, source: r.source } : null,
       counted: counted.includes(a),
+      creditLimitCents: a.creditLimitCents ?? null,
     };
   });
   rows.sort(

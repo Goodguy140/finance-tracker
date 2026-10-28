@@ -109,6 +109,23 @@ describe("bill reminders", () => {
     expect(await reminders.sendDueBillReminders(await user(), new Date("2026-10-23T13:00:00Z"), { send })).toBe("none");
   });
 
+  it("reminds a card payment once with what is owed, unless a recurring transfer already pays it", async () => {
+    await db.account.update({ where: { id: cardId }, data: { paymentDueDay: 25, minimumPaymentCents: 2_500 } });
+    await db.accountBalanceSnapshot.create({
+      data: { userId, accountId: cardId, date: new Date("2026-10-20T00:00:00Z"), balanceCents: 64_000, source: "MANUAL" },
+    });
+    const amex = await db.account.create({ data: { userId, name: "Amex", type: "CREDIT_CARD", paymentDueDay: 24 } });
+    await rule("Amex payment", "2026-11-24", { type: "TRANSFER", transferAccountId: amex.id });
+
+    const send = vi.fn(async (_message: { to: string; subject: string; text: string }) => ({ sent: true }));
+    expect(await reminders.sendDueBillReminders(await user(), now, { send })).toBe("sent");
+    const message = send.mock.calls[0][0];
+    expect(message.subject).toBe("Visa payment is due on Sun, Oct 25");
+    expect(message.text).toContain("  Sun, Oct 25  Visa: $640.00 owed, minimum $25.00");
+    expect(message.text).not.toContain("Amex");
+    expect(await reminders.sendDueBillReminders(await user(), new Date("2026-10-23T13:00:00Z"), { send })).toBe("none");
+  });
+
   it("waits for 7am in the user's time zone and does nothing when off", async () => {
     await rule("Phone", "2026-10-24");
     const send = vi.fn(async () => ({ sent: true }));

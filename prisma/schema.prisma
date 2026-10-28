@@ -432,6 +432,12 @@ model Account {
   /// the minimum monthly payment. Both feed the debt payoff plan on Reports; null until set.
   interestRateBps     Int?
   minimumPaymentCents Int?
+  /// For a credit card: the credit limit, for utilization (balance ÷ limit), and the day of the
+  /// month the payment is due (1–31; a short month uses its last day). Null until set.
+  creditLimitCents    Int?
+  paymentDueDay       Int?
+  /// The due date a payment reminder email last covered, so each due date is reminded once.
+  paymentRemindedFor  DateTime?
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 

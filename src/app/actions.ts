@@ -137,4 +137,4 @@ export {
   trackHabitSeparatelyAction,
 } from "./actions/insights";
 export { deleteReconciliationAction, saveReconciliationAction } from "./actions/reconciliation";
-export { setDebtTermsAction } from "./actions/debt";
+export { setCardTermsAction, setDebtTermsAction } from "./actions/debt";
