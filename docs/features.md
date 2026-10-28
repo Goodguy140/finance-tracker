@@ -251,7 +251,13 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     shown applying; `src/lib/yearly-budgets.ts`, "Yearly budget" in a category's settings): shown
     as sinking funds in a "Yearly budgets" section of the Budgets card (spent this year of the
     limit, a twelfth a month, and what the fund holds: set aside so far less spent), kept out of
-    the monthly totals and alerts; in backups
+    the monthly totals and alerts; in backups. **Suggest budgets** (button above the list; the
+    Budgets card's empty state and Get started link to `?suggest=1`, which opens it): a monthly
+    amount per expense category from the last 3 or 6 full months since the first transaction,
+    the median month (a one-off month is marked and passed over) rounded up, with a tick box
+    and an editable amount per row and the total against average income; ticked rows are set
+    from this month on. `src/lib/budget-suggestions.ts`, `budget-suggestions-data.ts`,
+    `settings/budget-suggestions.tsx`, `applyBudgetSuggestionsAction`
   - Rules (title/type/account/amount conditions, the title matching any of up to 20 texts —
     "contains Bell Aliant Pap or Internet", stored one per line in `titlePattern`; set category, title, amount, account, note,
     tag, mark as transfer; priority, enable, preview and apply, learned suggestions):
