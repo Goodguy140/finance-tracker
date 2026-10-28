@@ -28,7 +28,7 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
   { href: "/settings/admin/users", label: "Users", icon: Users, badgeKey: "users" },
   { href: "/settings/admin/authentication", label: "Authentication", icon: KeyRound, badgeKey: "authentication" },
   { href: "/settings/admin/integrations", label: "Integrations", icon: Plug, badgeKey: "integrations" },
-  { href: "/settings/admin/operations", label: "Operations", icon: Cog },
+  { href: "/settings/admin/operations", label: "Operations", icon: Cog, badgeKey: "operations" },
   { href: "/settings/admin/audit", label: "Audit log", icon: ScrollText },
   { href: "/settings/admin/system", label: "System", icon: Server, badgeKey: "system" },
 ];

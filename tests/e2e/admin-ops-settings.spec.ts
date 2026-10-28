@@ -83,3 +83,26 @@ test("an out-of-range retention is refused and nothing is written", async ({ pag
   await expect(page.getByText(/between 30 and 3650 days/)).toBeVisible();
   expect(await prisma.auditLog.count({ where: { action: "admin_ops_settings_updated", userId: user.id } })).toBe(0);
 });
+
+test("Back up now saves a database copy and lists it under Saved backups", async ({ page }) => {
+  const email = `ops-admin-backup-${uniqueStamp()}@example.com`;
+  const user = await createAdmin(email);
+  await signIn(page, email);
+
+  await page.goto("/settings/admin/operations");
+  await page.getByRole("button", { name: "Back up now" }).click();
+
+  // The audit row is written after the copy is renamed into place and the folder pruned.
+  await expect
+    .poll(
+      async () => prisma.auditLog.count({ where: { action: "admin_database_backup_created", userId: user.id } }),
+      { timeout: 15_000 },
+    )
+    .toBe(1);
+  const audit = await prisma.auditLog.findFirst({ where: { action: "admin_database_backup_created", userId: user.id } });
+  const file = (JSON.parse(audit?.metadataJson ?? "{}") as { file?: string }).file ?? "";
+  expect(file).toMatch(/^app-\d{4}-\d{2}-\d{2}T\d{6}Z\.db$/);
+
+  await page.reload();
+  await expect(page.getByRole("list", { name: "Saved backups" }).getByText(file)).toBeVisible();
+});

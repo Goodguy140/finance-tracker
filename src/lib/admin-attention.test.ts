@@ -25,6 +25,10 @@ function healthy(overrides: Partial<AttentionFacts> = {}): AttentionFacts {
     activeServerAdmins: 2,
     diskFreeGb: 50,
     diskTotalGb: 100,
+    backupsExpected: true,
+    newestBackupAt: new Date(now.getTime() - 9 * 60 * 60 * 1000),
+    backupFailure: null,
+    backupSchedulerStartedAt: new Date(now.getTime() - 30 * DAY),
     ...overrides,
   };
 }
@@ -65,6 +69,20 @@ describe("buildAttentionItems", () => {
     expect(buildAttentionItems(healthy({ diskFreeGb: 8, diskTotalGb: 100 }), now)[0]?.severity).toBe("warn");
     expect(buildAttentionItems(healthy({ diskFreeGb: 3, diskTotalGb: 100 }), now)[0]?.severity).toBe("bad");
     expect(ids(healthy({ diskFreeGb: null, diskTotalGb: null }))).toEqual([]);
+  });
+
+  it("flags a failed or missed database backup, only while backups are expected", () => {
+    expect(ids(healthy({ backupFailure: "Backup failed: disk I/O error" }))).toEqual(["backup-failed"]);
+    expect(ids(healthy({ newestBackupAt: new Date(now.getTime() - 1.5 * DAY) }))).toEqual([]);
+    expect(ids(healthy({ newestBackupAt: new Date(now.getTime() - 2 * DAY) }))).toEqual(["backup-stale"]);
+    expect(ids(healthy({ backupsExpected: false, newestBackupAt: null, backupFailure: "x" }))).toEqual([]);
+  });
+
+  it("gives a new server a day before it mentions having no backup at all", () => {
+    const startedAgo = (hours: number) => new Date(now.getTime() - hours * 60 * 60 * 1000);
+    expect(ids(healthy({ newestBackupAt: null, backupSchedulerStartedAt: startedAgo(20) }))).toEqual([]);
+    expect(ids(healthy({ newestBackupAt: null, backupSchedulerStartedAt: startedAgo(27) }))).toEqual(["backup-stale"]);
+    expect(ids(healthy({ newestBackupAt: null, backupSchedulerStartedAt: null }))).toEqual([]);
   });
 
   it("lists problems before warnings", () => {

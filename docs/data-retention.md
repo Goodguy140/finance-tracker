@@ -187,7 +187,15 @@ it down here, and tell users what it is:
 > Snapshot retention for this deployment: `____` days. Erasure requests are fully effective
 > after this period; rollbacks within it will restore erased data.
 
-**3. Exported files.** Covered below — they are the most dangerous artifacts this system
+**3. The app's own daily backups.** Unless turned off (Admin → Operations, or
+`DATABASE_BACKUPS=false`), the app copies the whole database once a day into a `backups`
+folder beside it (`/data/backups` in the image). It keeps the last 14 days of copies by default
+(`BACKUP_KEEP_DAYS`) **plus the newest copy of each of the last six months**, so a deleted
+account survives in those copies for up to about six months. To complete an erasure sooner,
+delete the copies made before it from that folder. The copies sit on the same volume as the
+database, so they also inherit its snapshots.
+
+**4. Exported files.** Covered below — they are the most dangerous artifacts this system
 produces.
 
 ### Disposing of exports and backups
@@ -389,6 +397,7 @@ Once a year, alongside the quarterly access review in the access control policy:
 | Variable | Effect on retention |
 |----------|---------------------|
 | `AUDIT_LOG_RETENTION_DAYS` | How long audit rows — including IPs and deleted users' emails — are kept. Default 365. `0` is rejected. |
+| `DATABASE_BACKUPS` / `BACKUP_KEEP_DAYS` / `BACKUP_DIR` | The app's daily database copies: off when `false`; daily copies kept (default 14) on top of one copy per month for six months; where they are written (default `backups` beside the database). |
 | `DATABASE_URL` | Where the data lives. Defaults to `file:/data/app.db`; that volume's snapshot policy is part of your real retention period. |
 | `SMTP_HOST` / `SMTP_USER` / `SMTP_FROM` | Sends financial detail to a third party under their retention policy. Unset means no alert mail leaves the deployment. |
 | `SERVER_SETTINGS_ENCRYPTION_KEY` | Encrypts `ServerSetting` **and every Plaid access token** at rest. Rotate on decommission — note that rotating it on a live deployment makes linked banks unreadable and they must be relinked. |
