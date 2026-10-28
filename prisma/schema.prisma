@@ -191,6 +191,7 @@ model User {
   monthCloses               MonthClose[]
   webhookEndpoints          WebhookEndpoint[]
   pushDevices               PushDevice[]
+  calendarFeed              CalendarFeed?
   recurringTransactions     RecurringTransaction[]
   investmentFlows           InvestmentFlow[]
   contributionRooms         ContributionRoom[]
@@ -1361,4 +1362,17 @@ model WebhookDelivery {
 
   @@unique([endpointId, dedupeKey])
   @@index([deliveredAt, nextAttemptAt])
+}
+
+/// A private calendar (.ics) link a user's calendar app subscribes to: recurring bills, pay,
+/// transfers and subscription decide-by dates. One per user; making a new link replaces it.
+model CalendarFeed {
+  userId        String    @id
+  /// SHA-256 of the secret in the link, like personal access tokens; the link is shown once.
+  tokenHash     String    @unique
+  createdAt     DateTime  @default(now())
+  /// When a calendar last fetched it, so Settings can show the link is in use.
+  lastFetchedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
