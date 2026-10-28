@@ -68,6 +68,7 @@ async function mergeCategoryInto(tx: Tx, userId: string, fromId: string, toId: s
   await tx.plaidCategoryMapping.updateMany(move);
   await tx.plaidItem.updateMany({ where: { userId, defaultCategoryId: fromId }, data: { defaultCategoryId: toId } });
   await tx.transactionRule.updateMany({ where: { userId, setCategoryId: fromId }, data: { setCategoryId: toId } });
+  await tx.savedSearch.updateMany(move);
   await tx.transactionRuleSplit.updateMany({
     where: { categoryId: fromId, rule: { userId } },
     data: { categoryId: toId },

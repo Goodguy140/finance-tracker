@@ -29,6 +29,11 @@ same PR.
 - **Search all transactions** (`/search`): every match across months, grouped by month, with
   type / account / category / tag filters and spent/received totals; where a category or tag
   found by the master search lists its transactions. `src/app/search/page.tsx`
+  - **Saved searches**: "Save this search" names the filters on screen (`SavedSearch` table, up to
+    50); they are listed on `/search` and in the master search (all when the box is empty, by name
+    otherwise), each with how many transactions it finds and their spent/received total, worked
+    out each time. Deleting an account, category or tag a search uses deletes it; merging moves it.
+    `src/lib/search/saved-searches.ts`, `src/app/actions/saved-searches.ts`; in backups
 - **Account pages** (`/accounts/[id]`): balance now and month-end balances over the year (the
   readings net worth uses), money in and out this month, card limit/utilization/due day, the
   register for 3 or 12 months with a running balance worked back (and forward, marked) from the

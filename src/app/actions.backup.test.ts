@@ -25,6 +25,7 @@ const mockPrisma = vi.hoisted(() => ({
   transactionAttachment: { deleteMany: vi.fn() },
   deletedTransaction: { deleteMany: vi.fn() },
   transactionRule: { deleteMany: vi.fn(), create: vi.fn() },
+  savedSearch: { deleteMany: vi.fn(), createMany: vi.fn() },
   hiddenTitleSuggestion: { deleteMany: vi.fn(), createMany: vi.fn() },
   tag: { deleteMany: vi.fn(), create: vi.fn() },
   transactionTag: { createMany: vi.fn() },

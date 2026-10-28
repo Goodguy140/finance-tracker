@@ -163,3 +163,30 @@ test("an amount and a title typed into the search add an expense, with Undo", as
   await expect(dialog.getByRole("status")).toContainText("Removed it again");
   expect(await prisma.transaction.count({ where: { id: added.id } })).toBe(0);
 });
+
+test("a saved search is listed with its running total and opens from the search box", async ({ page }) => {
+  test.skip(isPhone());
+  const stamp = uniqueStamp();
+  const { user, title, expense } = await seedUser(stamp);
+  await signInWithPassword(page, user.email);
+  await expectDashboardHome(page);
+  await page.goto(`/search?q=${encodeURIComponent(title)}`);
+
+  await page.getByRole("textbox", { name: "Name for this search" }).fill(`Espresso runs ${stamp}`);
+  await page.getByRole("button", { name: "Save this search" }).click();
+  const saved = page.getByTestId("saved-searches");
+  await expect(saved).toContainText(`Espresso runs ${stamp}`);
+  await expect(saved).toContainText("1 transaction · Spent $12.34");
+
+  // The total is worked out each time, so a new match counts at once.
+  await prisma.transaction.create({
+    data: { ...expense, id: undefined, amountCents: 1000, createdAt: undefined, updatedAt: undefined },
+  });
+  await page.goto("/");
+  await expectDashboardHome(page);
+  const dialog = await openSearch(page);
+  const entry = dialog.getByRole("option").filter({ hasText: `Espresso runs ${stamp}` });
+  await expect(entry).toContainText("2 transactions · Spent $22.34");
+  await entry.click();
+  await expect(page).toHaveURL((url) => url.pathname === "/search" && url.searchParams.get("q") === title);
+});

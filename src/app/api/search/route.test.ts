@@ -5,6 +5,7 @@ vi.mock("@/lib/search/search-data", () => ({
   searchUserData: vi.fn(async () => ({ groups: [], transactionTotal: 0 })),
 }));
 vi.mock("@/lib/search/quick-add-server", () => ({ previewQuickAdd: vi.fn(async () => null) }));
+vi.mock("@/lib/search/saved-searches", () => ({ savedSearchHits: vi.fn(async () => []) }));
 vi.mock("@/lib/prisma", () => ({
   prisma: { plaidItem: { count: vi.fn(async () => 2) } },
 }));
@@ -42,6 +43,7 @@ describe("GET /api/search", () => {
       groups: [],
       transactionTotal: 0,
       quickAdd: null,
+      saved: [],
       context: { isAdmin: false, hasBanks: true },
     });
   });

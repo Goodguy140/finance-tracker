@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition
 import { createPortal } from "react-dom";
 import {
   ArrowLeftRight,
+  Bookmark,
   CornerDownLeft,
   Download,
   FileSearch,
@@ -42,6 +43,8 @@ type SearchResponse = {
   transactionTotal: number;
   /** The expense the query would add, when it reads as one ("12.50 tim hortons yesterday"). */
   quickAdd: QuickAddPreview | null;
+  /** Saved searches: all of them (a few) for an empty box, otherwise those named like the query. */
+  saved: SearchHit[];
   context: CommandContext;
 };
 
@@ -95,6 +98,8 @@ function ItemIcon({ name, className }: { name: IconName; className: string }) {
       return <Repeat {...props} />;
     case "goal":
       return <Target {...props} />;
+    case "saved":
+      return <Bookmark {...props} />;
     case "add":
       return <Plus {...props} />;
     case "sync":
@@ -246,6 +251,12 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
       out.push({
         label: trimmed ? "Pages, settings and actions" : "Suggested",
         items: matched.map((command) => ({ key: `c:${command.id}`, source: "command", command })),
+      });
+    }
+    if (response && response.saved.length > 0 && answered === (wantsData ? trimmed : "") && trimmed.length !== 1) {
+      out.push({
+        label: "Saved searches",
+        items: response.saved.map((hit) => ({ key: `h:saved:${hit.id}`, source: "hit", hit })),
       });
     }
     if (wantsData && response && answered === trimmed) {

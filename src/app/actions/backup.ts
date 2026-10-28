@@ -39,6 +39,7 @@ export const clearUserFinancialDataAction = formAction(async (formData: FormData
     });
     await tx.transactionRule.deleteMany({ where: { userId: user.id } });
     await tx.hiddenTitleSuggestion.deleteMany({ where: { userId: user.id } });
+    await tx.savedSearch.deleteMany({ where: { userId: user.id } });
     await tx.tag.deleteMany({ where: { userId: user.id } });
     await tx.insightDismissal.deleteMany({ where: { userId: user.id } });
     await tx.insightPreference.deleteMany({ where: { userId: user.id } });
@@ -121,6 +122,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
     await tx.passwordResetToken.deleteMany({ where: { userId: user.id } });
     await tx.transactionRule.deleteMany({ where: { userId: user.id } });
     await tx.hiddenTitleSuggestion.deleteMany({ where: { userId: user.id } });
+    await tx.savedSearch.deleteMany({ where: { userId: user.id } });
     await tx.tag.deleteMany({ where: { userId: user.id } });
     await tx.insightDismissal.deleteMany({ where: { userId: user.id } });
     await tx.insightPreference.deleteMany({ where: { userId: user.id } });
@@ -611,6 +613,18 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
     });
     // One at a time rather than createMany, so each rule's split lines can name it.
     for (const data of rules) await tx.transactionRule.create({ data });
+    await tx.savedSearch.createMany({
+      data: (parsed.savedSearches ?? []).map((row) => ({
+        userId: user.id,
+        name: row.name,
+        query: row.query,
+        type: row.type,
+        accountId: row.accountId ? (accountIdMap.get(row.accountId) ?? null) : null,
+        categoryId: row.categoryId ? (categoryIdMap.get(row.categoryId) ?? null) : null,
+        tagId: row.tagId ? mappedTagId(row.tagId) : null,
+        createdAt: new Date(row.createdAt),
+      })),
+    });
     const hiddenTitleKeys = new Set((parsed.hiddenTitleSuggestions ?? []).map((row) => row.titleKey));
     await tx.hiddenTitleSuggestion.createMany({
       data: [...hiddenTitleKeys].map((titleKey) => ({ userId: user.id, titleKey })),
