@@ -163,7 +163,7 @@ export function WhatIfPanel({
                     setRemoveIds((prev) => (e.target.checked ? [...prev, r.id!] : prev.filter((id) => id !== r.id)))
                   }
                 />
-                {r.name} · {fmt(r.amountCents)} {r.cadence.toLowerCase()}
+                {r.name} · {fmt(r.amountCents)} {r.planned ? `planned for ${r.nextExpectedDate.toISOString().slice(0, 10)}` : r.cadence.toLowerCase()}
               </label>
             ))}
           </fieldset>

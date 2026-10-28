@@ -510,3 +510,14 @@ export const habitDetectionSchema = z.object({ enabled: z.enum(["true", "false"]
 export const trackHabitSchema = z.object({
   habit: z.enum(["TOBACCO_VAPE", "CANNABIS", "ALCOHOL", "GAMBLING", "GAMING_PURCHASES"]),
 });
+
+/** A planned one-off expense or income (the Add card's Plan tab). */
+export const plannedTransactionSchema = z.object({
+  type: z.enum(["EXPENSE", "INCOME"]),
+  name: z.string().trim().min(1, { message: "Name what you are planning for." }).max(120),
+  amount: positiveAmount,
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { message: "Pick the date you expect it." }),
+  accountId: z.string().min(1, { message: "Choose an account." }),
+  categoryId: z.string().min(1, { message: "Choose a category." }),
+  note: z.string().trim().max(250).optional(),
+});

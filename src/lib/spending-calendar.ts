@@ -1,10 +1,18 @@
 /**
  * The Calendar card's month grid: each day's spending and income from the log, and the
- * recurring bills and pay still to come. Weeks start on Sunday; days outside the month pad the
+ * recurring bills and pay, and the one-off plans, still to come. Weeks start on Sunday; days outside the month pad the
  * first and last week so every row has seven cells.
  */
 export type CalendarEntry = { dateYmd: string; cents: number };
-export type CalendarBill = { dateYmd: string; name: string; type: "INCOME" | "EXPENSE"; cents: number; overdue: boolean };
+export type CalendarBill = {
+  dateYmd: string;
+  name: string;
+  type: "INCOME" | "EXPENSE";
+  cents: number;
+  overdue: boolean;
+  /** A one-off plan rather than a recurring rule's occurrence. */
+  planned?: boolean;
+};
 
 export type CalendarDay = {
   dateYmd: string;

@@ -4,6 +4,8 @@ import { shiftYm } from "@/lib/dashboard-period";
 import { computeNetWorth, type BalanceReading, type BalanceReadingSource, type NetWorth, type NetWorthAccount } from "@/lib/net-worth";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import type { ProjectableRule } from "@/lib/projected-balances";
+import { plannedAsForecastRules } from "@/lib/planned-transactions";
+import { loadOpenPlannedTransactions } from "@/lib/planned-transactions-data";
 
 /** Months the net-worth chart covers, ending with the current one. */
 export const NET_WORTH_MONTHS = 12;
@@ -60,13 +62,13 @@ export async function loadNetWorth(user: {
 }
 
 /**
- * What a balance projection applies: the user's recurring rules (`projectBalances` picks the
- * ones it can) and whether they asked for transfers to be included.
+ * What a balance projection applies: the user's recurring rules and open one-off plans
+ * (`projectBalances` picks the ones it can) and whether they asked for transfers to be included.
  */
 export async function loadProjectionInputs(
   userId: string,
 ): Promise<{ rules: ProjectableRule[]; includeTransfers: boolean }> {
-  const [rules, user] = await Promise.all([
+  const [rules, user, plans] = await Promise.all([
     prisma.recurringTransaction.findMany({
       where: { userId, enabled: true, type: { in: ["EXPENSE", "INCOME", "TRANSFER"] } },
       select: {
@@ -84,6 +86,10 @@ export async function loadProjectionInputs(
       },
     }),
     prisma.user.findUnique({ where: { id: userId }, select: { projectionIncludesTransfers: true } }),
+    loadOpenPlannedTransactions(userId),
   ]);
-  return { rules, includeTransfers: user?.projectionIncludesTransfers ?? false };
+  const planned = plannedAsForecastRules(
+    plans.map((p) => ({ id: p.id, accountId: p.accountId, name: p.name, type: p.type, amountCents: p.amountCents, date: p.date })),
+  );
+  return { rules: [...rules, ...planned], includeTransfers: user?.projectionIncludesTransfers ?? false };
 }

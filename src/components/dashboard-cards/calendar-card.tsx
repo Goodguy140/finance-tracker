@@ -42,7 +42,7 @@ export function CalendarCardBody({ month, showBills = true }: CalendarCardBodyPr
               role="gridcell"
               data-calendar-day={day.dateYmd}
               aria-label={`${day.dateYmd}: spent ${formatCurrency(day.spentCents)}${
-                day.bills.length ? `, ${day.bills.length} recurring due` : ""
+                day.bills.length ? `, ${day.bills.length} recurring or planned due` : ""
               }`}
               className={`flex min-h-14 min-w-0 flex-col items-stretch rounded-lg border p-1 text-left transition hover:border-sky-500/60 hover:bg-slate-800 ${
                 day.isToday ? "border-sky-500/70 bg-sky-950/30" : "border-slate-800 bg-slate-950/50"
@@ -60,10 +60,11 @@ export function CalendarCardBody({ month, showBills = true }: CalendarCardBodyPr
                   {day.bills.slice(0, 4).map((b, i) => (
                     <span
                       key={i}
-                      title={`${b.name}: ${formatCurrency(b.cents)}`}
+                      title={`${b.planned ? "Planned: " : ""}${b.name}: ${formatCurrency(b.cents)}`}
+                      data-planned={b.planned ? "" : undefined}
                       className={`h-1.5 w-1.5 rounded-full ${
                         b.type === "INCOME" ? "bg-emerald-400" : b.overdue ? "bg-red-400" : "bg-amber-300"
-                      }`}
+                      } ${b.planned ? "ring-1 ring-sky-300 ring-offset-1 ring-offset-slate-950" : ""}`}
                     />
                   ))}
                 </span>
@@ -87,6 +88,10 @@ export function CalendarCardBody({ month, showBills = true }: CalendarCardBodyPr
           <span>
             <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-red-400" />
             unposted
+          </span>
+          <span>
+            <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-slate-500 ring-1 ring-sky-300 ring-offset-1 ring-offset-slate-950" />
+            planned
           </span>
           <span>Tap a day to see its entries.</span>
         </p>

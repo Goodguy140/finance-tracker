@@ -55,11 +55,21 @@ Card registry is `DASHBOARD_CARDS` in `src/lib/dashboard-layout/cards.ts`; per-c
   ticks off from the user's own data; the card goes when all are done or on Hide
   (`User.getStartedDismissedAt`): `get-started-card.tsx`, `src/lib/get-started.ts`
 
+**Planned one-offs** (`PlannedTransaction`): a car repair in March, a tax refund in April. Added on
+the Add card's Plan tab or Upcoming bills' **+ Plan** (`src/components/planned-transactions.tsx`,
+`src/app/actions/planned.ts`): kind, name, amount, date, account, category. Each open plan is a
+single occurrence in Upcoming bills, Calendar, Safe to spend, projected balances and What if
+(`plannedAsForecastRules` in `src/lib/planned-transactions.ts`). An entry arriving in the log by any
+route settles it (`settlePlannedTransactions`, run before plans are read): same account and type,
+recorded after the plan, dated a week before to two weeks after it, and the same amount, or the
+same category within 10%. Deleting that entry reopens the plan. A plan past its date asks "Did this
+happen?": **Yes, add it** records it on its date; **No, remove it** drops it. In JSON backups.
+
 Cards (`src/components/dashboard-cards/`), with their gear settings:
 
 | Card (id) | Features | Settings |
 | --- | --- | --- |
-| Add (`add-expense`) `add-entry-card.tsx` | Expense / Income / Transfer switch, title autocomplete (`expense-title-autocomplete.tsx`), rules applied while typing (`transaction-rules-context.tsx`) | posted date, note, receipt breakdown |
+| Add (`add-expense`) `add-entry-card.tsx` | Expense / Income / Transfer / Plan switch (Plan: see Planned one-offs below), title autocomplete (`expense-title-autocomplete.tsx`), rules applied while typing (`transaction-rules-context.tsx`) | posted date, note, receipt breakdown |
 | Expense Log (`expense-log`) `src/components/expense-log.tsx` | search, tag filter, **Needs review** filter for rows nobody typed in (CSV/OFX imports, recurring auto-posts, API posts; `Transaction.needsReview`; "Mark N shown as reviewed", bulk "Mark reviewed", saving the edit dialog clears it; count on the monthly review), day groups, verified badge, edit dialog (dates, note, tags, splits, credits, owed shares, receipts: photos or PDFs kept in `TransactionAttachment`, type read from the bytes, served by `/api/attachments/[id]`; up to 8 MB each and 500 MB per user; `receipts-section.tsx`, `src/lib/attachments.ts`; kept through Undo; not in JSON backups), **Select** mode for bulk changes (`expense-bulk-bar.tsx`, `bulkEditExpensesAction`: set category, set account, add tag, delete with one Undo; split expenses keep their categories), delete with an Undo toast (`undo-toast.tsx`, `src/lib/transaction-undo.ts`, kept 15 minutes in `DeletedTransaction`); Owed to you (`owed-to-you.tsx`); Transfers list (`transfer-log.tsx`: mark/unmark, pair/unpair, set account); bank review queue | density, list height, show review queue |
 | Income (`income`, conditional) `income-card.tsx`, `income-log.tsx` | list, edit, delete (with Undo); absent from a period with no income | density, list height |
 | Budgets (`budgets`) `budgets-card.tsx` | progress per category with "$X left" / "$X over" on each row and the total, days left in the current month, rollover (`src/lib/budget-rollover.ts`), reallocate (`budget-reallocate-dialog.tsx`), rows under category group headings with group totals, yearly budgets as sinking funds | per row, hide zero spend, period note |
@@ -67,9 +77,9 @@ Cards (`src/components/dashboard-cards/`), with their gear settings:
 | Cumulative spending (`cumulative-spend`) `cumulative-spend-card.tsx`, `src/lib/cumulative-spend.ts` | running total, expected line, compare with last month / 3-month avg | chart height, expected line, compare with |
 | Recurring (`recurring`) `recurring-card.tsx`, `recurring-transactions-panel.tsx`, `recurring-rule-form.tsx` | rules due in the month as one summary line each (category · account · cadence · date), overdue carry ("Unposted since"), Post, with Skip/Edit/Disable/Remove behind the "⋯" button, auto-post, new/edit/pause/delete, recurring transfers (from/to account, `RecurringTransaction.transferAccountId`, kept out of income and bills), cash-flow summary; `src/lib/recurring-transactions.ts`, `recurring-post.ts` | cash-flow summary, rules shown |
 | Insights (`insights`) `insights-card.tsx` | count per section and the most pressing few, link to `/insights`; leaves out budget and money-owed insights, which this page already shows | insights shown |
-| Upcoming bills (`bills-forecast`) `bills-forecast-card.tsx`, `src/lib/bills-forecast.ts` | bills and income due by day, running net | days ahead (30/60/90) |
-| Safe to spend (`safe-to-spend`, tab beside Budgets) `safe-to-spend-card.tsx`, `src/lib/safe-to-spend.ts`, `safe-to-spend-data.ts` | what is free to spend until month end, always for the month now running: income received − spent + recurring income still due − recurring bills still due (outside budgeted categories) − what is left in budgets (with rollover) − savings goals' monthly need; a-day figure for the days left; also a line in the email digest. Opt-in zero-based mode (checkbox on the card, `User.zeroBasedBudgeting`, `zero-based-card.tsx`, `src/lib/zero-based.ts`): shows "To assign" instead = this month's income received and still expected − budgets as set (rollover carries left out) − bills and spending outside budgets − savings goals, plus overspent budgets to cover from another budget | show breakdown |
-| Calendar (`calendar`, tab on Cumulative spending) `calendar-card.tsx`, `src/lib/spending-calendar.ts` | the month on screen as a Sunday-first grid: each day's spending and income, dots for recurring bills and pay still due (red when unposted), busiest day outlined; a day opens the dashboard on that one day (`?range=custom&from=&to=`); asks for a single month otherwise | show recurring due |
+| Upcoming bills (`bills-forecast`) `bills-forecast-card.tsx`, `src/lib/bills-forecast.ts` | bills and income due by day, running net; open one-off plans with a **Planned** chip, "Did this happen?" for plans past their date, **+ Plan** button (the phone's way to plan) | days ahead (30/60/90) |
+| Safe to spend (`safe-to-spend`, tab beside Budgets) `safe-to-spend-card.tsx`, `src/lib/safe-to-spend.ts`, `safe-to-spend-data.ts` | what is free to spend until month end, always for the month now running: income received − spent + recurring and planned income still due − recurring and planned bills still due (outside budgeted categories) − what is left in budgets (with rollover) − savings goals' monthly need; a-day figure for the days left; also a line in the email digest. Opt-in zero-based mode (checkbox on the card, `User.zeroBasedBudgeting`, `zero-based-card.tsx`, `src/lib/zero-based.ts`): shows "To assign" instead = this month's income received and still expected − budgets as set (rollover carries left out) − bills and spending outside budgets − savings goals, plus overspent budgets to cover from another budget | show breakdown |
+| Calendar (`calendar`, tab on Cumulative spending) `calendar-card.tsx`, `src/lib/spending-calendar.ts` | the month on screen as a Sunday-first grid: each day's spending and income, dots for recurring bills and pay still due (red when unposted), ringed for one-off plans, busiest day outlined; a day opens the dashboard on that one day (`?range=custom&from=&to=`); asks for a single month otherwise | show recurring due |
 | Investments (`investments`, tab on Insights) `investments-card.tsx` | contributions/withdrawals, count a transfer toward room, portfolio snapshots, room left (`src/lib/contribution-room.ts`); `actions/investments.ts` | room left, add forms, recent activity |
 
 ## Bank sync (Plaid)
@@ -156,9 +166,9 @@ Page: `src/app/reports/page.tsx`; data `src/lib/reports/*`; charts
   (`src/lib/projected-balances.ts`); "Include recurring transfers" option
   (`projection-transfers-toggle.tsx`, `User.projectionIncludesTransfers`, off by default) moves
   each recurring transfer out of one account and into the other, also in Insights' Coming up and
-  the printable summary
+  the printable summary. Open one-off plans are applied too (`loadProjectionInputs`)
 - **What if…** under projected balances: try a new recurring bill or income from a date, an
-  income change by a percentage from a date, or dropping recurring bills, and see net worth at
+  income change by a percentage from a date, or dropping recurring bills or planned one-offs, and see net worth at
   30 / 90 / 180 days and a year against today's plan, with any account that would go below zero.
   Held only in the browser; nothing is saved. `src/components/reports/what-if-panel.tsx`,
   `src/lib/forecast-scenarios.ts` (on `projectBalances`, which takes other horizons via `days`)
