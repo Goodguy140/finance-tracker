@@ -113,7 +113,7 @@ test("the extra templates carry the user's bills, pay and accounts", async ({ pa
   const nextMonth = await page.getByTestId("template-paycheque").getByRole("combobox").locator("option").nth(1).getAttribute("value");
   const pay = await (await page.request.get(`/api/printables/templates/paycheque?mode=filled&format=csv&month=${nextMonth}`)).text();
   expect(pay).toMatch(new RegExp(`${nextMonth}-15 Northwind Payroll,${nextMonth}-20,Phone plan,55\\.00,Main Chequing,`));
-  expect(await csv("accounts")).toContain("Account,Car Loan,Loan or mortgage,");
+  expect(await csv("accounts")).toContain("Account,Car Loan,Loan,");
   const log = await page.request.get("/api/printables/templates/spending-log?mode=filled&format=pdf");
   const text = (await pdfPageTexts(await log.body())).join("\n");
   expect(text).toContain("Budgets this month");

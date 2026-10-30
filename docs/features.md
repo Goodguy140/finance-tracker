@@ -132,11 +132,24 @@ order: Coming up, Possible gaps, Recurring, Habits, Ways to save, Suggestions, G
 a `?tag=` filter only what is worked out from transactions shows (no score, balances, budgets,
 owed money, room, goals or gaps).
 
-- **Financial score** (savings rate, emergency fund, fixed bills, budgets kept, spending trend,
-  months in the black; a "possible gaps in your data could change this" line linking to Possible
-  gaps, here and on Reports; accounts in another currency it leaves out, named under "How this is
-  worked out"): `financial-score-card.tsx`, `src/lib/financial-score.ts`,
-  `financial-score-data.ts`
+- **Financial score** in four pillars with their own scores (FinHealth-style): **Spend** (savings
+  rate, fixed bills plus the debt payments that count, budgets kept monthly and yearly, spending
+  trend, cash buffer: how low chequing and cash got in days of spending, or months in the black
+  without balances), **Save** (emergency fund, aiming for 6 months instead of 3 when income swings;
+  long-term savings into TFSA/RRSP/FHSA/investments, against an age benchmark with
+  `User.birthYear`), **Borrow**, only when debt is a problem (a card carrying more than its last
+  60 days of charges, with utilization; a loan or mortgage paid less than its minimum; interest
+  and fees, capped on an NSF or late fee), **Plan** (net worth direction without hand-typed
+  property, cash outlook from `projectBalances` 60 days out, dated savings goals on pace). A
+  mortgage payment counts with the bills, as housing. Needs/wants/saved split (50/30/20) from
+  `Category.spendingRole` or a guess from the name and group. Each closed month is saved once
+  (`FinancialScoreSnapshot`), so the card says how the score moved and which factor moved most,
+  and the Monthly review shows the month's score. A "possible gaps in your data could change
+  this" line links to Possible gaps, here and on Reports; accounts in another currency it leaves
+  out are named under "How this is worked out": `financial-score-card.tsx`,
+  `src/lib/financial-score.ts`, `financial-score-inputs.ts` (balances walked back by
+  `buildRegister`, loan payments, net worth movement), `financial-score-data.ts`,
+  `src/lib/card-charges.ts` (shared with the action plan)
 - **Savings goals card** (progress, what a dated goal needs a month, and an estimated completion
   date with or without a target date: from the linked balance's growth, or from net transfers
   into the account when the balance has too few readings): `savings-goals-card.tsx`,
@@ -152,8 +165,9 @@ owed money, room, goals or gaps).
   quiet for three weeks or more): `gaps.ts`; what would move the financial score (an emergency-fund
   balance older than the account's latest entries, or none; bills noticed but not set up as
   recurring; card payments and moves between accounts booked as spending or income; transfers
-  that name no destination, or keep going into an account not marked "Counts as savings"):
-  `score-gaps.ts`
+  that name no destination, or keep going into an account not marked "Counts as savings"; a card
+  the score counts with no limit, a loan or mortgage with no minimum, or one with a minimum and no
+  payment seen): `score-gaps.ts`
 - **Recurring charges we noticed** (track as recurring): `recurring-detection.ts` (pay on two fixed days of the month is told apart from every two weeks by its dates, `semiMonthlyScheduleOf`); a new
   streaming subscription or a trial turned paid, and a recurring entry with no charge for 1.5
   cycles: `changes.ts`
@@ -211,11 +225,12 @@ Page: `src/app/reports/page.tsx`; data `src/lib/reports/*`; charts
   finished by default; linked from the monthly email digest): month totals against the month
   before, categories that moved most, where it went, biggest purchases, budgets kept and missed
   with whether each leftover or overspend rolls into next month, bank rows still waiting for
-  review, and "Mark month closed" / Reopen (`MonthClose`, a record only: nothing is locked).
+  review, the month's saved financial score against the month before, and "Mark month closed" /
+  Reopen (`MonthClose`, a record only: nothing is locked).
   `src/app/reports/month/page.tsx`, `src/lib/reports/month-recap.ts`, `actions/month-close.ts`,
   `src/components/reports/month-close-button.tsx`
 - **Debt payoff** `/reports/debt` (linked from Net worth when there is a card or loan): each
-  card's and loan's balance, interest rate and minimum (`Account.interestRateBps`,
+  card's, loan's and mortgage's balance, interest rate and minimum (`Account.interestRateBps`,
   `.minimumPaymentCents`, set on the page), and a plan for a monthly amount comparing highest
   rate first, smallest balance first and minimums only (debt-free month, interest, payoff order):
   `src/app/reports/debt/page.tsx`, `src/lib/debt-payoff.ts`, `actions/debt.ts`
@@ -229,7 +244,8 @@ Page: `src/app/reports/page.tsx`; data `src/lib/reports/*`; charts
   `investment-returns-data.ts`, `src/components/reports/investment-returns-section.tsx`
 - **Retirement** `/reports/retirement` (linked from Net worth): a deterministic Canadian FIRE projection in today's
   dollars (return net of inflation, no Monte Carlo). Starts from the last 12 months' income and spending, TFSA/RRSP/FHSA/
-  non-registered balances and this year's entered contribution room; all inputs editable in a GET form. Savings go TFSA,
+  non-registered balances and this year's entered contribution room; your age starts from the year of birth on
+  Profile when one is set; all inputs editable in a GET form. Savings go TFSA,
   then RRSP (18% of income up to the dollar limit), then FHSA (if saving for a first home; $8,000/yr, $40,000 lifetime),
   then non-registered; retirement spending comes from non-registered, FHSA/RRSP, then TFSA, before tax. Shows the FI
   number (spending ÷ withdrawal rate), FI age, savings at retirement, the age money runs out, and a year-by-year table:
@@ -246,7 +262,8 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
 `src/components/settings/settings-nav.tsx`.
 
 - **You**
-  - Profile (name, country, timezone): `settings/you-forms.tsx`, `actions/auth.ts`
+  - Profile (name, country, timezone, optional year of birth for the financial score and the
+    Retirement page's starting age): `settings/you-forms.tsx`, `actions/auth.ts`
   - Security (password, passkeys, authenticator app, recovery codes, linked Google/SSO, sign out
     everywhere): `security-panel.tsx`, `actions/mfa.ts`. Authenticator app (TOTP: QR code or key
     to type, confirmed by the first code; accepted on `/mfa` and for step-up and Confirm it's
@@ -286,7 +303,7 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     (`src/lib/dashboard-layout/text-visibility.ts`)
 - **Money**
   - Accounts (add/edit/archive/delete, default expense account, currency, balances, counts as
-    savings, contribution room): `settings/accounts-manager.tsx`, `account-balances-panel.tsx`,
+    savings, contribution room; types include Loan and Mortgage, kept apart for the score): `settings/accounts-manager.tsx`, `account-balances-panel.tsx`,
     `contribution-room-panel.tsx`, `actions/accounts.ts`. Currency is fixed once an account has
     transactions, recurring rules, balances or a bank mapping, and a non-home-currency account
     with transactions can only be archived, not deleted (`src/lib/account-currency-guard.ts`)
@@ -303,7 +320,8 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
   - Savings goals: `settings/savings-goals-panel.tsx`, `actions/savings-goals.ts`
   - Connected banks: see Bank sync
   - Categories & budgets (add, rename, merge, delete with reassign, budget, rollover, earlier
-    budgets, bank mapping, group): `categories-panel.tsx`, `settings/budget-history.tsx`,
+    budgets, bank mapping, group, need or want for the score's 50/30/20 split):
+    `categories-panel.tsx`, `settings/budget-history.tsx`,
     `actions/categories.ts`, `actions/budgets.ts`. **Category groups** (`Category.groupName`, a
     shared label, matched ignoring case; `src/lib/category-groups.ts`): the list is shown under
     group headings with each group's budget and spend; the Budgets card shows its rows under

@@ -53,7 +53,8 @@ async function createMinimalSchema(prisma: PrismaClient) {
       "getStartedDismissedAt" DATETIME,
       "digestFrequency" TEXT NOT NULL DEFAULT 'OFF',
       "digestLastPeriodKey" TEXT,
-      "billReminderDays" INTEGER
+      "billReminderDays" INTEGER,
+      "birthYear" INTEGER
     )
   `);
   await prisma.$executeRawUnsafe(`
@@ -117,7 +118,8 @@ async function createMinimalSchema(prisma: PrismaClient) {
     CREATE TABLE "Category" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "rolloverSinceMonth" TEXT,
-      "groupName" TEXT
+      "groupName" TEXT,
+      "spendingRole" TEXT
     )
   `);
   await prisma.$executeRawUnsafe(`

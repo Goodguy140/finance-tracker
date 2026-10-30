@@ -31,7 +31,7 @@ export default async function ProfileSettingsPage() {
       </div>
       <SettingsCard title="Personal details">
         <ProfileForm
-          defaults={{ displayName: user.displayName, countryCode: user.countryCode, timezone: user.timezone }}
+          defaults={{ displayName: user.displayName, countryCode: user.countryCode, timezone: user.timezone, birthYear: user.birthYear }}
         />
       </SettingsCard>
     </SettingsPage>

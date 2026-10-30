@@ -1,5 +1,6 @@
 import { CategoryKind } from "@prisma/client";
 import { CategoriesPanel } from "@/components/categories-panel";
+import { guessSpendingRole } from "@/lib/financial-score";
 import { BudgetHistory } from "@/components/settings/budget-history";
 import { BudgetSuggestions } from "@/components/settings/budget-suggestions";
 import { SettingsFold, SettingsPage } from "@/components/settings/ui";
@@ -24,7 +25,7 @@ export default async function CategoriesSettingsPage({ searchParams }: { searchP
   const autoSuggest = (await searchParams).suggest === "1";
   const [categories, budgets, suggestionContext, transactionCounts, splitCounts, recurringCounts, plaidItemCount, progress, yearly, budgetSuggestions] =
     await Promise.all([
-      prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true, rolloverSinceMonth: true, groupName: true } }),
+      prisma.category.findMany({ where: { userId: user.id }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true, rolloverSinceMonth: true, groupName: true, spendingRole: true } }),
       prisma.budget.findMany({
         where: { userId: user.id },
         include: { category: { select: { name: true } } },
@@ -84,6 +85,8 @@ export default async function CategoriesSettingsPage({ searchParams }: { searchP
                   name: c.name,
                   kind: c.kind,
                   groupName: c.groupName,
+                  spendingRole: c.spendingRole,
+                  guessedRole: guessSpendingRole(c),
                   transactionCount: countByCategory.get(c.id) ?? 0,
                   splitCount: splitsByCategory.get(c.id) ?? 0,
                   recurringCount: recurringByCategory.get(c.id) ?? 0,

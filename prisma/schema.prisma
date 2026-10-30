@@ -27,10 +27,20 @@ enum AccountType {
   FHSA
   NON_REGISTERED
   CASH
-  /// A loan or mortgage. A liability: its balance is what is owed.
+  /// A car loan, student loan, line of credit or other loan. A liability: its balance is what is owed.
   LOAN
+  /// A home mortgage. A liability like LOAN, kept apart so the financial score can treat its
+  /// payment as housing rather than as debt to clear.
+  MORTGAGE
   /// A home, car or other thing of value with no bank feed. Balance entered by hand.
   PROPERTY
+}
+
+/// What an expense category's spending is for, in the 50/30/20 sense the financial score
+/// reports: a need (rent, groceries, utilities) or a want (dining out, fun).
+enum SpendingRole {
+  NEED
+  WANT
 }
 
 enum CategoryKind {
@@ -169,6 +179,9 @@ model User {
   /// Email a reminder this many days before a recurring bill or transfer is due (1, 3 or 7).
   /// Null when bill reminders are off.
   billReminderDays              Int?
+  /// Year of birth, optional: the financial score compares long-term savings with age, and the
+  /// Retirement page starts from it. Never leaves this server.
+  birthYear                     Int?
   createdAt                     DateTime        @default(now())
   updatedAt                     DateTime        @updatedAt
 
@@ -214,6 +227,7 @@ model User {
   dashboardLayout           DashboardLayout?
   transactionRules          TransactionRule[]
   savedSearches             SavedSearch[]
+  financialScoreSnapshots   FinancialScoreSnapshot[]
   hiddenTitleSuggestions    HiddenTitleSuggestion[]
   tags                      Tag[]
   insightDismissals         InsightDismissal[]
@@ -493,6 +507,9 @@ model Category {
   /// A heading the user files categories under ("Food" over Groceries and Restaurants), for
   /// totals on the Budgets card, the category pie and Reports. Null when not grouped.
   groupName          String?
+  /// Need or want, for the financial score's 50/30/20 split. Null until the user picks: the
+  /// score then guesses from the name and group (`guessSpendingRole`).
+  spendingRole       SpendingRole?
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 
@@ -1443,4 +1460,21 @@ model SavedSearch {
   tag      Tag?      @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@index([userId, name])
+}
+
+/// The financial score as it stood for one month, written the first time the score is worked
+/// out after that month ends, so the card can say how it moved and which factor moved it.
+model FinancialScoreSnapshot {
+  id        String   @id @default(cuid())
+  userId    String
+  /// The last full month the score covered, `YYYY-MM`.
+  month     String
+  score     Int
+  /// Each factor's 0–100 score by id, as JSON: {"savings":72,"cards":40}.
+  factors   String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, month])
 }

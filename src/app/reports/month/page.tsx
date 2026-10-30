@@ -40,7 +40,7 @@ export default async function MonthReviewPage({ searchParams }: { searchParams: 
   const fmt = (cents: number) => formatCurrency(cents, currency);
   const range = { gte: startOfMonthYm(ym), lt: endExclusiveOfMonthYm(ym) };
 
-  const [txs, progress, categories, needsReview, closed, unreviewedPosted] = await Promise.all([
+  const [txs, progress, categories, needsReview, closed, unreviewedPosted, scores] = await Promise.all([
     loadReportTxs(user.id, startOfMonthYm(shiftYm(ym, -1)), currency),
     buildMonthlyBudgetProgress(user.id, ym),
     prisma.category.findMany({ where: { userId: user.id }, select: { id: true, rolloverSinceMonth: true } }),
@@ -50,7 +50,14 @@ export default async function MonthReviewPage({ searchParams }: { searchParams: 
     prisma.monthClose.findUnique({ where: { userId_ym: { userId: user.id, ym } } }),
     // Imported, auto-posted or API rows nobody has looked at (the log's Needs review filter).
     prisma.transaction.count({ where: { userId: user.id, needsReview: true, date: range } }),
+    // The financial score as saved for this month and the one before (`FinancialScoreSnapshot`).
+    prisma.financialScoreSnapshot.findMany({
+      where: { userId: user.id, month: { in: [ym, shiftYm(ym, -1)] } },
+      select: { month: true, score: true },
+    }),
   ]);
+  const scoreNow = scores.find((s) => s.month === ym) ?? null;
+  const scoreBefore = scores.find((s) => s.month === shiftYm(ym, -1)) ?? null;
   const rolloverOn = new Set(
     categories.filter((c) => c.rolloverSinceMonth !== null && c.rolloverSinceMonth <= ym).map((c) => c.id),
   );
@@ -84,6 +91,16 @@ export default async function MonthReviewPage({ searchParams }: { searchParams: 
           <p className="mt-1 text-sm text-slate-400">
             {running ? "This month is still running; the totals are to today." : "How the month went, and what to tidy before closing it."}
           </p>
+          {scoreNow ? (
+            <p className="mt-1 text-sm text-slate-300" data-testid="month-score">
+              <Link href="/insights" className="hover:text-slate-100">
+                Financial score {scoreNow.score}
+                {scoreBefore && scoreBefore.score !== scoreNow.score
+                  ? `, ${scoreNow.score > scoreBefore.score ? "up" : "down"} ${Math.abs(scoreNow.score - scoreBefore.score)} on ${formatYmLongLabel(shiftYm(ym, -1))}`
+                  : ""}
+              </Link>
+            </p>
+          ) : null}
         </div>
 
         <nav aria-label="Month" className="flex flex-wrap items-center gap-2">

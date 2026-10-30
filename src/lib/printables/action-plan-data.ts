@@ -1,5 +1,6 @@
 import { AccountType, PlaidStagedStatus } from "@prisma/client";
 import { forecastRecurringOccurrences } from "@/lib/bills-forecast";
+import { loadRecentCardCharges } from "@/lib/card-charges";
 import { loadContributionRoomData } from "@/lib/contribution-room-data";
 import { computeRoomYear, REGISTERED_ACCOUNT_TYPES, roomFlowsFromData, roomYearFor, type RegisteredAccountType } from "@/lib/contribution-room";
 import { getCountryConfig } from "@/lib/country-config";
@@ -19,7 +20,6 @@ import {
   blankPlanSteps,
   buildActionPlan,
   monthlyAverages,
-  PAID_IN_FULL_WINDOW_DAYS,
   STALE_BALANCE_DAYS,
   type ActionPlan,
   type PlanBill,
@@ -82,36 +82,16 @@ async function loadPlanFacts(user: PlanUser, todayYmd: string, currency: string)
   const owed = (type: AccountType) => owing(type).map((a) => ({ name: a.name, balanceCents: a.latest!.cents }));
   // What each card with a balance had charged to it in the window before that balance was read:
   // a balance no larger than that is being paid off each statement.
-  const cards = await Promise.all(
-    owing(AccountType.CREDIT_CARD).map(async (a) => {
-      const end = a.latest!.date;
-      const date = { gt: new Date(end.getTime() - PAID_IN_FULL_WINDOW_DAYS * 86_400_000), lte: end };
-      const [logged, waiting] = await Promise.all([
-        prisma.transaction.aggregate({
-          where: { userId: user.id, accountId: a.accountId, type: "EXPENSE", date },
-          _sum: { amountCents: true },
-        }),
-        // A synced balance already includes charges still waiting in the review queue; the
-        // ones the matcher paired with an entry are counted above already.
-        prisma.plaidStagedTransaction.aggregate({
-          where: {
-            userId: user.id,
-            status: PlaidStagedStatus.NEEDS_REVIEW,
-            type: "EXPENSE",
-            matchTransactionId: null,
-            plaidAccount: { accountId: a.accountId },
-            date,
-          },
-          _sum: { amountCents: true },
-        }),
-      ]);
-      return {
-        name: a.name,
-        balanceCents: a.latest!.cents,
-        recentChargesCents: (logged._sum.amountCents ?? 0) + (waiting._sum.amountCents ?? 0),
-      };
-    }),
+  const owingCards = owing(AccountType.CREDIT_CARD);
+  const charges = await loadRecentCardCharges(
+    user.id,
+    owingCards.map((a) => ({ accountId: a.accountId, balanceDate: a.latest!.date })),
   );
+  const cards = owingCards.map((a) => ({
+    name: a.name,
+    balanceCents: a.latest!.cents,
+    recentChargesCents: charges.get(a.accountId) ?? 0,
+  }));
 
   // Bills: overdue and the next 30 days, and the irregular ones over the next year.
   const forecast = forecastRecurringOccurrences(rules, { todayYmd, currentYm, days: 365 });

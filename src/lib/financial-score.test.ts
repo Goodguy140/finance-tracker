@@ -100,14 +100,23 @@ describe("computeFinancialScore", () => {
 
     const withFund = scored({ txs, emergencyFundCents: 0 });
     expect(withFund.omitted.map((o) => o.label)).not.toContain("Emergency fund");
-    expect(withFund.factors.find((f) => f.id === "emergency")!.weight).toBeCloseTo(20 / 80);
+    expect(withFund.factors.find((f) => f.id === "emergency")!.weight).toBeCloseTo(15 / 60);
     expect(withFund.score).toBeLessThan(without.score);
   });
 
   it("drops factors it has no data for and reweights the rest", () => {
     const result = scored({ txs: steadyMonths(500_000, 350_000) });
     expect(result.factors.map((f) => f.id).sort()).toEqual(["consistency", "savings", "trend"]);
-    expect(result.omitted.map((o) => o.label).sort()).toEqual(["Budgets kept", "Emergency fund", "Fixed bills"]);
+    expect(result.omitted.map((o) => o.label).sort()).toEqual([
+      "Budgets kept",
+      "Cash outlook",
+      "Emergency fund",
+      "Fixed bills",
+      "Interest and fees",
+      "Long-term savings",
+      "Net worth direction",
+      "Savings goals",
+    ]);
     expect(result.factors.reduce((s, f) => s + f.weight, 0)).toBeCloseTo(1);
   });
 

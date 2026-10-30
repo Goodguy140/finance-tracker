@@ -56,7 +56,7 @@ function timezoneOptions(current: string): string[] {
 export function ProfileForm({
   defaults,
 }: {
-  defaults: { displayName: string; countryCode: string; timezone: string };
+  defaults: { displayName: string; countryCode: string; timezone: string; birthYear: number | null };
 }) {
   const countries = useMemo(() => countryOptions(defaults.countryCode), [defaults.countryCode]);
   const zones = useMemo(() => timezoneOptions(defaults.timezone), [defaults.timezone]);
@@ -121,6 +121,22 @@ export function ProfileForm({
           ) : (
             <span className="block text-xs text-slate-500">Decides when a month starts and ends.</span>
           )}
+        </label>
+        <label className="space-y-1.5">
+          <span className="text-sm font-medium text-slate-300">Year of birth (optional)</span>
+          <input
+            name="birthYear"
+            inputMode="numeric"
+            autoComplete="bday-year"
+            placeholder="1990"
+            maxLength={4}
+            defaultValue={defaults.birthYear ?? ""}
+            className={inputClass}
+          />
+          <span className="block text-xs text-slate-500">
+            Lets the financial score compare your long-term savings with your age, and starts the Retirement page from it. It
+            stays on this server.
+          </span>
         </label>
       </div>
       <div className="flex items-center gap-3 sm:col-span-2">

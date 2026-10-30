@@ -26,6 +26,7 @@ export const countryConfigMap: Record<string, CountryConfig> = {
       AccountType.NON_REGISTERED,
       AccountType.CASH,
       AccountType.LOAN,
+      AccountType.MORTGAGE,
       AccountType.PROPERTY,
     ],
     defaultExpenseCategories: [
@@ -57,6 +58,7 @@ export const countryConfigMap: Record<string, CountryConfig> = {
       AccountType.NON_REGISTERED,
       AccountType.CASH,
       AccountType.LOAN,
+      AccountType.MORTGAGE,
       AccountType.PROPERTY,
     ],
     defaultExpenseCategories: [

@@ -1,5 +1,5 @@
 import { toCsv } from "@/lib/csv";
-import { EMERGENCY_FUND_TARGET_MONTHS, type FinancialScore, type FinancialScoreFactorId } from "@/lib/financial-score";
+import { EMERGENCY_FUND_TARGET_MONTHS, paidInFull, type FinancialScore, type FinancialScoreFactorId } from "@/lib/financial-score";
 import { fromCents } from "@/lib/money";
 import type { ReportTx } from "@/lib/reports";
 import type { GoalStatus } from "@/lib/savings-goals";
@@ -193,22 +193,7 @@ export function monthlyAverages(
   };
 }
 
-/**
- * How far back a card's charges can explain its balance. A card cleared every statement owes at
- * most the cycle that just closed (and is due in a few weeks) plus the one running now: under two
- * months of charges.
- */
-export const PAID_IN_FULL_WINDOW_DAYS = 60;
-
-/**
- * Whether a card looks paid in full each month: everything it owes was charged in the last
- * {@link PAID_IN_FULL_WINDOW_DAYS} days, so no older balance is being carried and no interest is
- * running. A balance larger than its recent charges is carried debt. With no charges recorded on
- * the card there is nothing to tell by, and the balance is taken as debt.
- */
-export function paidInFull(card: { balanceCents: number; recentChargesCents: number }): boolean {
-  return card.recentChargesCents > 0 && card.balanceCents <= card.recentChargesCents;
-}
+export { paidInFull, PAID_IN_FULL_WINDOW_DAYS } from "@/lib/financial-score";
 
 /** Months of cover to one decimal, rounded down: 5.98 months is not yet "6.0". */
 export function monthsText(months: number): string {

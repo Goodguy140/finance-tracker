@@ -159,6 +159,12 @@ export const updateProfileAction = formAction(async (formData: FormData) => {
     displayName: getFormValue(formData, "displayName") || user.displayName,
     countryCode: getFormValue(formData, "countryCode") || user.countryCode,
     timezone: getFormValue(formData, "timezone") || user.timezone,
+    // Absent from the form leaves it alone; an empty field clears it.
+    birthYear: formData.has("birthYear")
+      ? getFormValue(formData, "birthYear").trim() === ""
+        ? null
+        : Number(getFormValue(formData, "birthYear").trim())
+      : undefined,
   });
   await prisma.user.update({
     where: { id: user.id },

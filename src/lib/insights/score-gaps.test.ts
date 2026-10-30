@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { FinancialScore, FinancialScoreFactor } from "@/lib/financial-score";
+import { FACTOR_PILLAR, type FinancialScore, type FinancialScoreFactor } from "@/lib/financial-score";
 import { NOW, tx } from "./test-fixtures";
 import type { GapTransferTx } from "./gaps";
 import type { ScoreGapAccount } from "./score-gaps";
@@ -17,6 +17,7 @@ const MONTHS = ["2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08"
 
 const factor = (id: FinancialScoreFactor["id"]): FinancialScoreFactor => ({
   id,
+  pillar: FACTOR_PILLAR[id],
   label: id,
   score: 60,
   weight: 0.5,
@@ -26,6 +27,11 @@ const factor = (id: FinancialScoreFactor["id"]): FinancialScoreFactor => ({
 
 const score = (factors: FinancialScoreFactor[] = [factor("savings")]): FinancialScore => ({
   status: "scored",
+  pillars: [],
+  emergencyTargetMonths: 3,
+  monthsInBlack: { positive: 0, total: 0 },
+  split: null,
+  change: null,
   score: 60,
   band: "Fair",
   months: MONTHS,
@@ -69,6 +75,26 @@ function run(input: Partial<Parameters<typeof detectScoreGaps>[0]> = {}) {
 const keys = (insights: ReturnType<typeof run>) => insights.map((i) => i.key.split(":").slice(0, 2).join(":"));
 
 describe("detectScoreGaps", () => {
+  it("asks for card limits, loan minimums and loan payments the score needs", () => {
+    const owingVisa: ScoreGapAccount = { ...visa, latest: { cents: 200_000, date: d("2026-08-20") }, creditLimitCents: null };
+    const car: ScoreGapAccount = { id: "car", name: "Car loan", type: "LOAN", countsAsSavings: false, latest: { cents: 900_000, date: d("2026-08-20") }, minimumPaymentCents: null };
+    const home: ScoreGapAccount = { id: "home", name: "Mortgage", type: "MORTGAGE", countsAsSavings: false, latest: { cents: 30_000_000, date: d("2026-08-20") }, minimumPaymentCents: 180_000 };
+
+    const [gap] = run({ score: score([factor("savings"), factor("cards")]), accounts: [chequing, owingVisa, car, home] });
+    expect(gap.key).toBe("gap:score-debt-terms:car,home,visa");
+    expect(gap.body).toContain("Visa has no credit limit");
+    expect(gap.body).toContain("Car loan has no minimum payment");
+    expect(gap.body).toContain("No payment to Mortgage shows up in the months scored.");
+
+    // A card the score doesn't count needs no limit, and a mortgage being paid needs nothing.
+    expect(
+      run({
+        accounts: [chequing, owingVisa, home],
+        transfers: [transfer("2026-08-01", 180_000, "chq", "home")],
+      }),
+    ).toEqual([]);
+  });
+
   it("says nothing without a score", () => {
     expect(
       run({ score: { status: "insufficient", reason: "no" }, accounts: [{ ...chequing, latest: null }], txs: [spend("2026-08-03", "Grocer", 5_000)] }),

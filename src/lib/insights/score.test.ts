@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { FinancialScore, FinancialScoreFactor } from "@/lib/financial-score";
+import { FACTOR_PILLAR, type FinancialScore, type FinancialScoreFactor } from "@/lib/financial-score";
 import { scoreInsights } from "./score";
 
 const factor = (id: FinancialScoreFactor["id"], score: number, suggestion: string | null): FinancialScoreFactor => ({
   id,
-  label: { savings: "Savings rate", emergency: "Emergency fund", bills: "Fixed bills", budgets: "Budgets kept", trend: "Spending trend", consistency: "Months in the black" }[id],
+  pillar: FACTOR_PILLAR[id],
+  label: { savings: "Savings rate", emergency: "Emergency fund", bills: "Fixed bills", budgets: "Budgets kept", trend: "Spending trend", consistency: "Months in the black" }[id as string] ?? id,
   score,
   weight: 1 / 6,
   detail: `Detail for ${id}`,
@@ -13,6 +14,11 @@ const factor = (id: FinancialScoreFactor["id"], score: number, suggestion: strin
 
 const scored = (factors: FinancialScoreFactor[]): FinancialScore => ({
   status: "scored",
+  pillars: [],
+  emergencyTargetMonths: 3,
+  monthsInBlack: { positive: 0, total: 0 },
+  split: null,
+  change: null,
   score: 50,
   band: "Fair",
   months: ["2026-07", "2026-08", "2026-09"],

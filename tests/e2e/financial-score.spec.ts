@@ -88,17 +88,22 @@ test("the financial score shows on Insights, with a one-line summary on Reports"
 
   await page.goto("/insights");
   const card = page.getByTestId("financial-score");
-  // Savings 84, emergency fund 40, bills 70, budgets 0, trend 17, months in the black 100,
-  // weighted 35/20/20/20/15/10.
-  await expect(card.getByTestId("financial-score-value")).toHaveText("53");
+  // Savings 83.75, emergency fund 40, bills 70, budgets 0, trend 16.7, and a cash buffer of 72 (chequing
+  // got down to about 23 days of spending, walked back from its balance), weighted 25/15/15/10/10/10.
+  await expect(card.getByTestId("financial-score-value")).toHaveText("54");
   await expect(card.getByTestId("financial-score-band")).toHaveText("Fair");
   await expect(card.getByTestId("financial-score-factors").getByRole("listitem")).toHaveCount(6);
+  await expect(card.getByTestId("financial-score-factors")).toContainText("Everyday accounts got down to about 23 days of spending");
+  // Nothing owed and nothing to plan with: those pillars say why they have no score.
+  const pillars = card.getByTestId("financial-score-pillars");
+  await expect(pillars.getByRole("listitem")).toHaveCount(4);
+  await expect(pillars).toContainText("No debt counted");
   await card.screenshot({ path: testInfo.outputPath("score-insights.png") });
 
   // Reports shows the same score in one line, linking to the full card on Insights.
   await page.goto("/reports");
   const chip = page.getByTestId("financial-score-chip");
-  await expect(chip.getByTestId("financial-score-value")).toHaveText("53");
+  await expect(chip.getByTestId("financial-score-value")).toHaveText("54");
   await expect(chip.getByTestId("financial-score-band")).toHaveText("Fair");
   await expect(page.getByTestId("financial-score")).toHaveCount(0);
   await expect(chip.getByRole("link", { name: /How it.s worked out/ })).toHaveAttribute("href", "/insights");

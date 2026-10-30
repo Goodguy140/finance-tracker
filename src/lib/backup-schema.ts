@@ -60,7 +60,7 @@ export const userBackupSchema = z.object({
     z.object({
       id: z.string().min(1),
       name: z.string().min(1).max(80),
-      type: z.enum(["CHEQUING", "SAVINGS", "CREDIT_CARD", "TFSA", "RRSP", "FHSA", "NON_REGISTERED", "CASH", "LOAN", "PROPERTY"]),
+      type: z.enum(["CHEQUING", "SAVINGS", "CREDIT_CARD", "TFSA", "RRSP", "FHSA", "NON_REGISTERED", "CASH", "LOAN", "MORTGAGE", "PROPERTY"]),
       currency: z.string().min(1),
       countryCode: z.string().min(1),
       provider: z.string().nullable(),
@@ -86,6 +86,8 @@ export const userBackupSchema = z.object({
       rolloverSinceMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).nullable().optional(),
       /** Absent from backups made before category groups existed; the category is then ungrouped. */
       groupName: z.string().max(40).nullable().optional(),
+      /** Absent from backups made before needs and wants existed; the score then guesses. */
+      spendingRole: z.enum(["NEED", "WANT"]).nullable().optional(),
       createdAt: isoDate,
       updatedAt: isoDate,
     }),

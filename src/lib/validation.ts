@@ -46,6 +46,14 @@ export const updateProfileSchema = z.object({
     .min(3)
     .max(64)
     .regex(/^[A-Za-z][A-Za-z0-9+\-_]*(\/[A-Za-z0-9+\-_]+)*$/, "Enter a valid IANA time zone."),
+  /** Optional; null clears it. */
+  birthYear: z
+    .number({ message: "Enter a four-digit year." })
+    .int("Enter a four-digit year.")
+    .min(1900, "Enter a four-digit year.")
+    .max(new Date().getUTCFullYear(), "That year hasn't happened yet.")
+    .nullable()
+    .optional(),
 });
 
 const nonZeroExpenseAmount = z.coerce
@@ -470,7 +478,7 @@ export const expenseCsvImportSchema = z.object({
 
 export const accountSchema = z.object({
   name: z.string().trim().min(2).max(80),
-  type: z.enum(["CHEQUING", "SAVINGS", "CREDIT_CARD", "TFSA", "RRSP", "FHSA", "NON_REGISTERED", "CASH", "LOAN", "PROPERTY"]),
+  type: z.enum(["CHEQUING", "SAVINGS", "CREDIT_CARD", "TFSA", "RRSP", "FHSA", "NON_REGISTERED", "CASH", "LOAN", "MORTGAGE", "PROPERTY"]),
 });
 
 export const updateAccountSchema = accountSchema.extend({

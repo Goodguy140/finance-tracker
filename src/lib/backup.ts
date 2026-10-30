@@ -64,6 +64,8 @@ export type UserBackupPayload = {
     rolloverSinceMonth: string | null;
     /** The category group it is filed under, or null. */
     groupName: string | null;
+    /** Marked a need or a want, or null when left to the financial score's guess. */
+    spendingRole: "NEED" | "WANT" | null;
     createdAt: IsoString;
     updatedAt: IsoString;
   }>;
@@ -411,6 +413,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       isDefault: row.isDefault,
       rolloverSinceMonth: row.rolloverSinceMonth,
       groupName: row.groupName,
+      spendingRole: row.spendingRole,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     })),
