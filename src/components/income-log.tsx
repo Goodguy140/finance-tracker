@@ -21,6 +21,7 @@ import { groupTransactionsByDay, homeCurrencyDayTotal } from "@/lib/transaction-
 import { TagInput } from "@/components/tag-input";
 import { useTagOptions } from "@/components/transaction-rules-context";
 import { MarkAsTransferSection } from "@/components/transfer-log";
+import { NeedsReviewFilter } from "@/components/needs-review-filter";
 import { EditSheet, EditSheetFooter, editSheetDeleteBtnClass } from "@/components/edit-sheet";
 import { VerifiedBadge, verificationTooltip, type VerificationInfo } from "@/components/verified-badge";
 import { formatCurrency } from "@/lib/money";
@@ -55,6 +56,8 @@ export type IncomeLogEntry = {
   tags: string[];
   /** The account's currency when it is not the home one: shown in it, and left out of totals. */
   currency?: string | null;
+  /** Came in by import, recurring auto-post or the API and nobody has looked at it yet. */
+  needsReview?: boolean;
 };
 
 type UpdateState = { ok: true } | { ok: false; error: string | null };
@@ -94,7 +97,18 @@ function IncomeLogRow({
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium leading-snug text-slate-100">{incomeHeading(entry)}</span>
         <TransactionMetaLine density={density} title={fullTitle}>
-          <MetaParts parts={[hasTitle ? entry.sourceLabel : null, entry.accountLabel, entry.note]} />
+          <MetaParts
+            parts={[
+              entry.needsReview ? (
+                <span key="review" data-testid="needs-review-chip" className="font-medium text-amber-300">
+                  Needs review
+                </span>
+              ) : null,
+              hasTitle ? entry.sourceLabel : null,
+              entry.accountLabel,
+              entry.note,
+            ]}
+          />
           <InlineTags tags={entry.tags} />
         </TransactionMetaLine>
         {/* `title` never fires on touch, so touch screens get the badge's detail spelled out. */}
@@ -367,11 +381,37 @@ export function IncomeLogPanel({
   useOpenRequest((id) => {
     if (entries.some((e) => e.id === id)) setEditingId(id);
   });
+  const [reviewOnly, setReviewOnly] = useState(false);
+  const [reviewMessage, setReviewMessage] = useState("");
+  const reviewCount = entries.filter((e) => e.needsReview).length;
+  const shown = useMemo(() => (reviewOnly ? entries.filter((e) => e.needsReview) : entries), [entries, reviewOnly]);
 
-  const days = useMemo(() => groupTransactionsByDay(entries, (entry) => entry), [entries]);
+  const days = useMemo(() => groupTransactionsByDay(shown, (entry) => entry), [shown]);
 
   return (
     <>
+      {reviewCount > 0 || reviewOnly || reviewMessage ? (
+        <div className="mb-3 space-y-1">
+          <NeedsReviewFilter
+            reviewCount={reviewCount}
+            reviewOnly={reviewOnly}
+            onToggle={() => {
+              setReviewOnly((v) => !v);
+              setReviewMessage("");
+            }}
+            shownIds={shown.map((e) => e.id)}
+            onMarked={(changed) => {
+              setReviewOnly(false);
+              setReviewMessage(`Marked ${changed} income ${changed === 1 ? "entry" : "entries"} reviewed.`);
+            }}
+          />
+          {reviewMessage ? (
+            <p role="status" className="text-xs text-slate-400">
+              {reviewMessage}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       <div className={`${COMPACT_LIST_MAX_HEIGHT_CLASS[maxHeight]} min-h-0 overflow-y-auto overflow-x-hidden pr-1 [-webkit-overflow-scrolling:touch]`}>
         {entries.length === 0 ? (
           <p className="text-sm text-slate-400">No income in this period.</p>

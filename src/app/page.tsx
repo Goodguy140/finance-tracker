@@ -17,7 +17,7 @@ import { AddEntryCardBody } from "@/components/dashboard-cards/add-entry-card";
 import { BillsForecastCardBody } from "@/components/dashboard-cards/bills-forecast-card";
 import { PlansDialogButton } from "@/components/planned-transactions";
 import { CalendarCardBody } from "@/components/dashboard-cards/calendar-card";
-import { buildCalendarMonth } from "@/lib/spending-calendar";
+import { buildCalendarMonth, type CalendarBill } from "@/lib/spending-calendar";
 import { SafeToSpendCardBody } from "@/components/dashboard-cards/safe-to-spend-card";
 import { loadSafeToSpendInput } from "@/lib/safe-to-spend-data";
 import { computeSafeToSpend } from "@/lib/safe-to-spend";
@@ -29,7 +29,13 @@ import { ZeroBasedToggle } from "@/components/dashboard-cards/zero-based-toggle"
 import { ExpenseLogPanel } from "@/components/expense-log";
 import { loadContributionRoomData } from "@/lib/contribution-room-data";
 import { isRegisteredAccountType } from "@/lib/contribution-room";
-import { InvestmentsCardBody, type InvestmentActivityItem } from "@/components/dashboard-cards/investments-card";
+import {
+  InvestmentsCardBody,
+  type InvestmentActivityItem,
+  type InvestmentReturnRow,
+} from "@/components/dashboard-cards/investments-card";
+import { formatRate } from "@/components/reports/investment-returns-section";
+import { loadInvestmentReturns } from "@/lib/investment-returns-data";
 import { RefreshLinkedAccountsButton } from "@/components/refresh-linked-accounts";
 import { reconcileDashboardLayout } from "@/lib/dashboard-layout/normalize";
 import { readDashboardLayoutJson } from "@/lib/dashboard-layout/read";
@@ -115,9 +121,18 @@ import {
   inCurrencyWhere,
   sumOtherCurrencies,
 } from "@/lib/home-currency";
-import { DEFAULT_BILLS_FORECAST_DAYS, forecastRecurringOccurrences, groupForecastByDay } from "@/lib/bills-forecast";
+import {
+  DEFAULT_BILLS_FORECAST_DAYS,
+  forecastRecurringOccurrences,
+  groupForecastByDay,
+  type BillsForecastOccurrence,
+} from "@/lib/bills-forecast";
+import { cardPaymentsDue, type CardDue } from "@/lib/credit-cards";
+import { loadCardTerms } from "@/lib/credit-cards-data";
+import type { BillsForecastItem } from "@/components/dashboard-cards/bills-forecast-card";
 import { requireUser } from "@/lib/session";
 import { paidCentsOf } from "@/lib/owed-shares";
+import { formatCurrency } from "@/lib/money";
 import { OwedToYouList, type OwedToYouItem } from "@/components/owed-to-you";
 
 const cadenceLabels: Record<RecurringCadence, string> = {
@@ -209,12 +224,26 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       console.error("[safe-to-spend] loading failed", err);
       return null;
     });
+  // Each investment account's value and return, as Reports works them out. A failure costs that part of the card.
+  const investmentReturnsPromise = layoutJsonPromise
+    .then((json) =>
+      isCardPlaced(reconcileDashboardLayout(json, CARD_IDS).stored, "investments") ? loadInvestmentReturns(user) : null,
+    )
+    .catch((err) => {
+      console.error("[investments] loading returns failed", err);
+      return null;
+    });
   // Open one-off plans, settled against the log first. Every currency, for the Plan tab's list.
   const plannedPromise = loadOpenPlannedTransactions(user.id);
   const anchorYm = currentYmInTimeZone(user.timezone, now);
   // Every total is in this currency. Entries on accounts in another one are still listed, at
   // their own currency, but kept out of the sums: there is no conversion to add them with.
   const homeCurrency = homeCurrencyOf(user.countryCode);
+  // Card due days, for card payments in Upcoming bills and the Calendar. A failure costs those rows.
+  const cardTermsPromise = loadCardTerms(prisma, user.id, homeCurrency).catch((err) => {
+    console.error("[cards] loading due days failed", err);
+    return [];
+  });
   const homeOnly = inCurrencyWhere(homeCurrency);
   const period = parseDashboardSearchParams(sp, now, user.timezone);
   const periodDescription = describeDashboardPeriod(period);
@@ -371,7 +400,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         transferAccount: true,
         verification: true,
         investmentFlow: { select: { id: true } },
-        transferPeer: { select: { id: true } },
+        transferPeer: { select: { id: true, needsReview: true } },
         tags: { select: { tagId: true } },
       },
       orderBy: { date: "desc" },
@@ -863,6 +892,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       : (txn.accountDescription ?? "Removed account"),
     verification: toVerificationInfo(txn.verification),
     tags: tagNamesOf(txn),
+    needsReview: txn.needsReview,
   }));
 
   // A paired transfer is listed once, from the leg the money left. When only the arriving leg
@@ -887,6 +917,10 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       paired: txn.transferPeer !== null,
       verification: toVerificationInfo(txn.verification),
       tags: tagNamesOf(txn),
+      currency: foreignCurrencyOf(txn.account, homeCurrency),
+      // A pair is one row, so either leg waiting for a look is the row's, and marking it marks both.
+      needsReview: txn.needsReview || (txn.transferPeer?.needsReview ?? false),
+      reviewIds: [txn.id, ...(txn.transferPeer ? [txn.transferPeer.id] : [])],
     }));
 
   // A single month lists only the rules that fall in it: due there, or already posted there
@@ -936,6 +970,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     decideByDisplay: rule.decideBy ? formatDateOnlyUtc(rule.decideBy) : null,
     cancelledAtDisplay: rule.cancelledAt ? formatDateOnlyUtc(rule.cancelledAt) : null,
     annualCostCents: annualCostCents(rule.amountCents, rule.cadence),
+    currency: rule.account.currency === homeCurrency ? null : rule.account.currency,
   });
   const recurringListItems = periodRecurringRules.map(toRecurringListItem);
   // The rest, at their next date, for the card's "show them" control: a rule due next quarter
@@ -1077,12 +1112,84 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     ...homeRecurringRules,
     ...plannedAsForecastRules(openPlans.filter((plan) => plan.account.currency === homeCurrency)),
   ];
+  // Transfers between the user's own accounts and card payments are listed beside the bills,
+  // outside the totals: the forecast counts only income and bills, and the running net skips them.
+  const billsShowTransfers = cardSettings["bills-forecast"]?.showTransfers ?? true;
+  const cardTerms = await cardTermsPromise;
   const billsForecast = forecastRecurringOccurrences(forecastRules, {
     todayYmd,
     currentYm: anchorYm,
     days: billsForecastDays,
+    includeTransfers: billsShowTransfers,
   });
-  const billsForecastDayGroups = groupForecastByDay(billsForecast.occurrences).map((day) => ({
+  const billsCardPayments = billsShowTransfers ? cardPaymentsDue(cardTerms, homeRecurringRules, todayYmd, billsForecastDays) : [];
+  // A subscription's "Decide by" date goes on its first charge in the list, while still ahead.
+  const decideByShown = new Set<string>();
+  type ForecastRow = BillsForecastOccurrence<{ type: TransactionType; amountCents: number; item: BillsForecastItem }>;
+  const forecastRuleRow = ({ rule, date, overdue, missedSince }: (typeof billsForecast.occurrences)[number]): ForecastRow => {
+    const decideBy =
+      "decideBy" in rule && rule.decideBy && ymdFromDateUtc(rule.decideBy) >= todayYmd && !decideByShown.has(rule.id)
+        ? rule.decideBy
+        : null;
+    if (decideBy) decideByShown.add(rule.id);
+    const transferTo = "transferAccount" in rule ? rule.transferAccount : null;
+    return {
+      rule: {
+        type: rule.type,
+        amountCents: rule.amountCents,
+        item: {
+          key: `${rule.id}:${ymdFromDateUtc(date)}`,
+          name: rule.name,
+          type: rule.type,
+          amountCents: rule.amountCents,
+          categoryLabel:
+            rule.type === TransactionType.TRANSFER
+              ? `${rule.account.name} to ${transferTo?.name ?? "another account"}`
+              : rule.category.name,
+          overdue,
+          missedSinceDisplay: missedSince ? formatDateOnlyUtc(missedSince) : null,
+          planned: "planned" in rule,
+          decideByDisplay: decideBy ? formatDateOnlyUtc(decideBy) : null,
+        },
+      },
+      date,
+      overdue,
+      missedSince,
+    };
+  };
+  const cardPaymentRow = (due: CardDue): ForecastRow => {
+    // The latest balance reading when there is one, else the minimum on record.
+    const amountCents = due.owedCents ?? due.minimumCents;
+    return {
+      rule: {
+        type: TransactionType.TRANSFER,
+        amountCents: amountCents ?? 0,
+        item: {
+          key: `card:${due.accountId}:${ymdFromDateUtc(due.date)}`,
+          name: `${due.name} payment`,
+          type: "TRANSFER",
+          amountCents,
+          categoryLabel:
+            due.owedCents !== null
+              ? `Balance owed${due.minimumCents ? `, minimum ${formatCurrency(due.minimumCents)}` : ""}`
+              : due.minimumCents
+                ? "Minimum payment"
+                : "No balance recorded",
+          overdue: false,
+          missedSinceDisplay: null,
+          planned: false,
+          cardPayment: true,
+        },
+      },
+      date: due.date,
+      overdue: false,
+      missedSince: null,
+    };
+  };
+  const billsForecastRows = [...billsForecast.occurrences.map(forecastRuleRow), ...billsCardPayments.map(cardPaymentRow)].sort(
+    (a, b) => a.date.getTime() - b.date.getTime(),
+  );
+  const billsForecastDayGroups = groupForecastByDay(billsForecastRows).map((day) => ({
     dateYmd: day.dateYmd,
     label:
       day.dateYmd === todayYmd
@@ -1091,16 +1198,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           ? "Tomorrow"
           : formatDateOnlyUtc(day.occurrences[0].date),
     runningNetCents: day.runningNetCents,
-    items: day.occurrences.map(({ rule, date, overdue, missedSince }) => ({
-      key: `${rule.id}:${ymdFromDateUtc(date)}`,
-      name: rule.name,
-      type: rule.type === TransactionType.INCOME ? ("INCOME" as const) : ("EXPENSE" as const),
-      amountCents: rule.amountCents,
-      categoryLabel: rule.category.name,
-      overdue,
-      missedSinceDisplay: missedSince ? formatDateOnlyUtc(missedSince) : null,
-      planned: "planned" in rule,
-    })),
+    items: day.occurrences.map(({ rule }) => rule.item),
   }));
 
   // The Calendar card: the month on screen as a grid, with recurring still due from today on.
@@ -1109,18 +1207,36 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     const viewedYm = period.ym;
     const lastDay = new Date(Date.UTC(Number(viewedYm.slice(0, 4)), Number(viewedYm.slice(5, 7)), 0));
     const daysAhead = Math.round((lastDay.getTime() - dateFromYmd(todayYmd).getTime()) / 86_400_000);
-    const calendarBills =
+    const inViewedMonth = (date: Date) => ymdFromDateUtc(date).slice(0, 7) === viewedYm;
+    const calendarBills: CalendarBill[] =
       viewedYm >= anchorYm && daysAhead >= 0
-        ? forecastRecurringOccurrences(forecastRules, { todayYmd, currentYm: anchorYm, days: daysAhead }).occurrences
-            .filter((o) => ymdFromDateUtc(o.date).slice(0, 7) === viewedYm)
-            .map((o) => ({
-              dateYmd: ymdFromDateUtc(o.date),
-              name: o.rule.name,
-              type: o.rule.type === TransactionType.INCOME ? ("INCOME" as const) : ("EXPENSE" as const),
-              cents: o.rule.amountCents,
-              overdue: o.overdue,
-              planned: "planned" in o.rule,
-            }))
+        ? [
+            ...forecastRecurringOccurrences(forecastRules, {
+              todayYmd,
+              currentYm: anchorYm,
+              days: daysAhead,
+              includeTransfers: true,
+            })
+              .occurrences.filter((o) => inViewedMonth(o.date))
+              .map((o) => ({
+                dateYmd: ymdFromDateUtc(o.date),
+                name: o.rule.name,
+                type: o.rule.type,
+                cents: o.rule.amountCents,
+                overdue: o.overdue,
+                planned: "planned" in o.rule,
+              })),
+            ...cardPaymentsDue(cardTerms, homeRecurringRules, todayYmd, daysAhead)
+              .filter((due) => inViewedMonth(due.date))
+              .map((due) => ({
+                dateYmd: ymdFromDateUtc(due.date),
+                name: `${due.name} payment`,
+                type: "TRANSFER" as const,
+                cents: due.owedCents ?? due.minimumCents ?? 0,
+                overdue: false,
+                cardPayment: true,
+              })),
+          ]
         : [];
     calendarMonth = buildCalendarMonth({
       ym: viewedYm,
@@ -1172,6 +1288,25 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         : [],
     ),
   ].sort((a, b) => b.dateYmd.localeCompare(a.dateYmd));
+
+  const investmentReturns = await investmentReturnsPromise;
+  const investmentReturnRows: InvestmentReturnRow[] = [
+    ...(investmentReturns?.accounts ?? []).map((a) => ({ accountId: a.accountId, name: a.name, currency: a.currency, windows: a.windows })),
+    ...(investmentReturns?.total && investmentReturns.accounts.length > 1
+      ? [{ accountId: null, name: "All together", currency: investmentReturns.currency, windows: investmentReturns.total }]
+      : []),
+  ].flatMap(({ windows, ...row }) =>
+    windows.sinceStart
+      ? [
+          {
+            ...row,
+            valueCents: windows.sinceStart.endCents,
+            thisYear: formatRate(windows.thisYear),
+            twelveMonths: formatRate(windows.twelveMonths),
+          },
+        ]
+      : [],
+  );
 
   // The slot map: card bodies rendered here, on the server, and handed to the client grid as
   // props. The grid arranges them without importing a single card, so none of this page's
@@ -1315,7 +1450,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           incomeCents={billsForecast.incomeCents}
           expenseCents={billsForecast.expenseCents}
           netCents={billsForecast.netCents}
-          ruleCount={recurringTransactions.filter((rule) => rule.enabled).length + plannedItems.length}
+          ruleCount={recurringTransactions.filter((rule) => rule.enabled).length + plannedItems.length + billsCardPayments.length}
           pastDuePlans={plannedItems.filter((plan) => plan.pastDue)}
         />
       ),
@@ -1368,10 +1503,12 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           accounts={accountOptions}
           contributionRoom={contributionRoom}
           activity={investmentActivity}
+          returns={investmentReturnRows}
           periodLabel={periodDescription}
           todayYmd={todayYmd}
           showRoom={cardSettings.investments?.showRoom}
           showForms={cardSettings.investments?.showForms}
+          showReturns={cardSettings.investments?.showReturns}
           showActivity={cardSettings.investments?.showActivity}
         />
       ),

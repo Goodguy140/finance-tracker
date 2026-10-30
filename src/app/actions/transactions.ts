@@ -775,6 +775,32 @@ export const bulkEditExpensesAction = formActionWithResult(async (formData: Form
   return { ok: true, changed, skipped, undoIds };
 });
 
+/**
+ * Marks imported, auto-posted or API entries of any kind as looked at: the Income card's and
+ * the Transfers list's "Mark reviewed", as the Expense Log's bulk bar does for spending. Rows
+ * that are not the user's are ignored. Nothing else about them changes.
+ */
+export const markTransactionsReviewedAction = formActionWithResult(
+  async (formData: FormData): Promise<{ ok: true; changed: number }> => {
+    const user = await requireUser();
+    const ids = parseJsonField<unknown>(
+      getFormValue(formData, "transactionIdsJson"),
+      [],
+      "The entries to mark could not be read. Reload and try again.",
+    );
+    if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
+      throw new Error("The entries to mark could not be read. Reload and try again.");
+    }
+    if (ids.length > BULK_EDIT_LIMIT) throw new Error(`Mark at most ${BULK_EDIT_LIMIT} entries at a time.`);
+    const { count } = await prisma.transaction.updateMany({
+      where: { id: { in: ids as string[] }, userId: user.id, needsReview: true },
+      data: { needsReview: false },
+    });
+    revalidatePath("/");
+    return { ok: true, changed: count };
+  },
+);
+
 const TRANSFER_MARK_REFUSALS: Record<TransferMarkRefusal, string> = {
   "not-found": "Transaction not found.",
   split: "A split expense cannot be a transfer. Remove the split first.",

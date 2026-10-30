@@ -80,15 +80,29 @@ export type InvestmentActivityItem =
       title: string | null;
     };
 
+/** One investment account's value and money-weighted return, as Reports shows them, rates already worded. */
+export type InvestmentReturnRow = {
+  /** Null for the "All together" row. */
+  accountId: string | null;
+  name: string;
+  currency: string;
+  valueCents: number;
+  thisYear: string;
+  twelveMonths: string;
+};
+
 export type InvestmentsCardBodyProps = {
   accounts: Option[];
   contributionRoom: ContributionRoomData;
   activity: InvestmentActivityItem[];
+  /** Accounts with at least two values recorded; empty when none has. */
+  returns: InvestmentReturnRow[];
   periodLabel: string;
   /** Today in the user's timezone, so the room year matches the rest of the dashboard. */
   todayYmd: string;
   showRoom?: boolean;
   showForms?: boolean;
+  showReturns?: boolean;
   showActivity?: boolean;
 };
 
@@ -96,18 +110,21 @@ export function InvestmentsCardBody({
   accounts,
   contributionRoom,
   activity,
+  returns,
   periodLabel,
   todayYmd,
   showRoom = true,
   showForms = true,
+  showReturns = true,
   showActivity = true,
 }: InvestmentsCardBodyProps) {
-  if (!showRoom && !showForms && !showActivity) {
+  if (!showRoom && !showForms && !showReturns && !showActivity) {
     return <p className="text-sm text-slate-400">Every part of this card is turned off in its settings.</p>;
   }
   return (
     <div className="space-y-4">
       {showRoom ? <RoomSummary data={contributionRoom} todayYmd={todayYmd} /> : null}
+      {showReturns && returns.length > 0 ? <ReturnsSummary rows={returns} /> : null}
       {showForms ? <InvestmentForms accounts={accounts} contributionRoom={contributionRoom} /> : null}
       {showActivity ? <ActivityList items={activity} accounts={accounts} periodLabel={periodLabel} /> : null}
     </div>
@@ -152,6 +169,39 @@ function RoomSummary({ data, todayYmd }: { data: ContributionRoomData; todayYmd:
           })}
         </ul>
       )}
+    </section>
+  );
+}
+
+/** Each account's latest value and return, from the readings Reports' Investment returns uses. */
+function ReturnsSummary({ rows }: { rows: InvestmentReturnRow[] }) {
+  return (
+    <section aria-label="Value and return" className="rounded-xl border border-slate-800 bg-slate-950/50 p-3" data-testid="investments-returns">
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-100">Value and return</h3>
+        <Link href="/reports#report-returns" className="text-xs text-slate-400 underline underline-offset-2 hover:text-slate-200">
+          More on Reports
+        </Link>
+      </div>
+      <ul className="mt-1 space-y-1 text-sm">
+        {rows.map((row) => (
+          <li key={row.accountId ?? "total"} className={`flex flex-wrap items-baseline justify-between gap-x-2 ${row.accountId ? "" : "border-t border-slate-800 pt-1 font-medium"}`}>
+            {row.accountId ? (
+              <Link href={`/accounts/${row.accountId}`} className="min-w-0 truncate text-slate-300 hover:text-sky-200 hover:underline">
+                {row.name}
+              </Link>
+            ) : (
+              <span className="text-slate-300">{row.name}</span>
+            )}
+            <span className="flex items-baseline gap-2 tabular-nums">
+              <span className="text-slate-100">{formatCurrency(row.valueCents, row.currency)}</span>
+              <span className="text-xs text-slate-400" title="Money-weighted return this calendar year, and over the last 12 months">
+                {row.thisYear} this year · {row.twelveMonths} 12 mo
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

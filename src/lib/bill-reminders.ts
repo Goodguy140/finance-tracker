@@ -1,6 +1,7 @@
 import { TransactionType, type PrismaClient, type RecurringCadence } from "@prisma/client";
 import { forecastRecurringOccurrences } from "@/lib/bills-forecast";
-import { cardsDueWithin, type CardDue, type CardTerms } from "@/lib/credit-cards";
+import { cardPaymentsDue, type CardDue, type CardTerms } from "@/lib/credit-cards";
+import { loadCardTerms } from "@/lib/credit-cards-data";
 import { dateFromYmd, ymdFromDateUtc } from "@/lib/date-only";
 import { DIGEST_SEND_HOUR, localHour } from "@/lib/email-digest";
 import { isSmtpConfigured, sendEmail } from "@/lib/email";
@@ -87,15 +88,8 @@ export function dueCardReminders(
   todayYmd: string,
   days: number,
 ): CardDue[] {
-  const paidByRule = new Set(
-    rules.filter((r) => r.enabled && r.type === TransactionType.TRANSFER && r.transferAccountId).map((r) => r.transferAccountId),
-  );
   const remindedFor = new Map(cards.map((c) => [c.id, c.paymentRemindedFor]));
-  return cardsDueWithin(
-    cards.filter((c) => !paidByRule.has(c.id)),
-    todayYmd,
-    days,
-  ).filter((due) => {
+  return cardPaymentsDue(cards, rules, todayYmd, days).filter((due) => {
     const last = remindedFor.get(due.accountId);
     return !last || due.date > last;
   });
@@ -285,23 +279,6 @@ export async function sendDueBillReminders(
     await client.account.update({ where: { id: c.accountId }, data: { paymentRemindedFor: c.date } });
   }
   return "sent";
-}
-
-/** Home-currency cards with a due day, each with its latest balance reading. */
-async function loadCardTerms(client: PrismaClient, userId: string, currency: string): Promise<CardReminderTerms[]> {
-  const cards = await client.account.findMany({
-    where: { userId, archived: false, currency, type: "CREDIT_CARD", paymentDueDay: { not: null } },
-    select: { id: true, name: true, paymentDueDay: true, minimumPaymentCents: true, paymentRemindedFor: true },
-  });
-  if (cards.length === 0) return [];
-  const readings = await client.accountBalanceSnapshot.findMany({
-    where: { accountId: { in: cards.map((c) => c.id) } },
-    orderBy: { date: "desc" },
-    select: { accountId: true, date: true, balanceCents: true },
-  });
-  const latest = new Map<string, { cents: number; date: Date }>();
-  for (const r of readings) if (!latest.has(r.accountId)) latest.set(r.accountId, { cents: r.balanceCents, date: r.date });
-  return cards.map((c) => ({ ...c, owed: latest.get(c.id) ?? null }));
 }
 
 /** One hourly tick over every user with bill reminders on. */

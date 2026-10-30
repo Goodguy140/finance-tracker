@@ -29,12 +29,17 @@ test("imported expenses wait under Needs review until marked reviewed", async ({
     });
   const imported = await make(`Imported ${stamp}`, true);
   await make(`Typed ${stamp}`, false);
+  // Pay auto-posted from a recurring rule waits on the Income card the same way.
+  const salary = await prisma.category.findFirstOrThrow({ where: { userId: user.id, kind: CategoryKind.INCOME } });
+  const pay = await prisma.transaction.create({
+    data: { userId: user.id, type: TransactionType.INCOME, amountCents: 200_000, date, title: `Pay ${stamp}`, categoryId: salary.id, accountId: account.id, needsReview: true },
+  });
 
   await signInWithPassword(page, email, "e2e-password-123");
   await expectDashboardHome(page);
   // The monthly review counts what is waiting.
   await page.goto(`/reports/month?month=${date.toISOString().slice(0, 7)}`);
-  await expect(page.getByTestId("month-unreviewed")).toContainText("1 imported or automatically posted entry needs a look");
+  await expect(page.getByTestId("month-unreviewed")).toContainText("2 imported or automatically posted entries need a look");
   await page.goto("/");
   await expectDashboardHome(page);
   const log = expenseLogLocator(page);
@@ -46,4 +51,11 @@ test("imported expenses wait under Needs review until marked reviewed", async ({
   await expect.poll(async () => (await prisma.transaction.findUniqueOrThrow({ where: { id: imported.id } })).needsReview).toBe(false);
   await expect(log.getByTestId("needs-review-filter")).toHaveCount(0);
   await expect(log.getByText(`Typed ${stamp}`).filter({ visible: true })).toHaveCount(1);
+
+  const income = page.locator('[data-card-id="income"]').filter({ visible: true });
+  await expect(income.getByTestId("needs-review-chip")).toHaveCount(1);
+  await income.getByTestId("needs-review-filter").click();
+  await income.getByRole("button", { name: "Mark 1 shown as reviewed" }).click();
+  await expect.poll(async () => (await prisma.transaction.findUniqueOrThrow({ where: { id: pay.id } })).needsReview).toBe(false);
+  await expect(income.getByTestId("needs-review-chip")).toHaveCount(0);
 });

@@ -235,7 +235,7 @@ export default async function MonthReviewPage({ searchParams }: { searchParams: 
             <li>
               {unreviewedPosted === 0
                 ? "Every imported or automatically posted entry has been looked at."
-                : `${unreviewedPosted} imported or automatically posted entr${unreviewedPosted === 1 ? "y needs" : "ies need"} a look (Needs review in the Expense Log).`}
+                : `${unreviewedPosted} imported or automatically posted entr${unreviewedPosted === 1 ? "y needs" : "ies need"} a look (Needs review in the Expense Log and the Income card, or marked in Transfers).`}
               {unreviewedPosted > 0 ? (
                 <>
                   {" "}

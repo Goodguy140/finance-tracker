@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   markAsTransferAction,
+  markTransactionsReviewedAction,
   setTransferAccountAction,
   unmarkTransferAction,
   unpairTransferAction,
@@ -31,6 +32,12 @@ export type TransferLogEntry = {
   verification: VerificationInfo | null;
   /** Tag names, sorted. */
   tags: string[];
+  /** The account's currency when it is not the home one. */
+  currency?: string | null;
+  /** Came in by import, recurring auto-post or the API and nobody has looked at it yet. */
+  needsReview?: boolean;
+  /** What "Mark reviewed" marks: the row, and the other leg of a pair. */
+  reviewIds?: string[];
 };
 
 type AccountOption = { id: string; name: string };
@@ -51,6 +58,7 @@ export function TransferLog({ entries, accounts }: { entries: TransferLogEntry[]
     flashElement(transferRowId(id));
   });
   if (entries.length === 0) return null;
+  const reviewCount = entries.filter((e) => e.needsReview).length;
 
   return (
     <section className="mt-3 space-y-2 border-t border-slate-800/80 pt-3" data-testid="transfer-log">
@@ -62,6 +70,11 @@ export function TransferLog({ entries, accounts }: { entries: TransferLogEntry[]
       >
         <span className="font-medium text-slate-200">
           Transfers <span className="text-slate-500">· {entries.length}</span>
+          {reviewCount > 0 ? (
+            <span className="ml-2 text-xs font-medium text-amber-300" data-testid="transfers-needs-review">
+              {reviewCount} need{reviewCount === 1 ? "s" : ""} review
+            </span>
+          ) : null}
         </span>
         <span className="text-xs text-slate-400">{open ? "Hide" : "Show"}</span>
       </button>
@@ -91,6 +104,14 @@ function TransferRow({ entry, accounts }: { entry: TransferLogEntry; accounts: A
         <div className="min-w-0 flex-1">
           <p className="font-semibold leading-snug text-slate-100">{entry.title?.trim() || "Transfer"}</p>
           <div className="mt-1 flex flex-wrap gap-1.5">
+            {entry.needsReview ? (
+              <span
+                className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium leading-tight text-amber-100 sm:text-xs"
+                data-testid="needs-review-chip"
+              >
+                Needs review
+              </span>
+            ) : null}
             <MetaChip label="From">{arrived ? otherLabel : entry.accountLabel}</MetaChip>
             <MetaChip label="To">{arrived ? entry.accountLabel : otherLabel}</MetaChip>
             <MetaChip label="Date">{entry.dateDisplay}</MetaChip>
@@ -101,7 +122,7 @@ function TransferRow({ entry, accounts }: { entry: TransferLogEntry; accounts: A
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1 text-right">
           <span className="rounded-full border border-sky-500/35 bg-sky-500/10 px-2.5 py-1 text-sm font-semibold tabular-nums text-sky-100">
-            {arrived ? "In" : "Out"} {formatCurrency(Math.abs(entry.amountCents))}
+            {arrived ? "In" : "Out"} {formatCurrency(Math.abs(entry.amountCents), entry.currency ?? undefined)}
           </span>
           {entry.verification ? <VerifiedBadge info={entry.verification} variant="text" /> : null}
         </div>
@@ -141,6 +162,14 @@ function TransferRow({ entry, accounts }: { entry: TransferLogEntry; accounts: A
               : `Not a transfer: count as ${arrived ? "income" : "an expense"}`}
           </button>
         </ServerActionForm>
+        {entry.needsReview ? (
+          <ServerActionForm action={markTransactionsReviewedAction}>
+            <input type="hidden" name="transactionIdsJson" value={JSON.stringify(entry.reviewIds ?? [entry.id])} />
+            <button type="submit" className={`${secondaryBtnClass} text-xs`}>
+              Mark reviewed
+            </button>
+          </ServerActionForm>
+        ) : null}
         {entry.paired ? (
           <ServerActionForm action={unpairTransferAction}>
             <input type="hidden" name="transactionId" value={entry.id} />

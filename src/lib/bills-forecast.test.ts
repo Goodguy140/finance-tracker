@@ -184,4 +184,28 @@ describe("groupForecastByDay", () => {
       { dateYmd: "2026-10-20", names: ["Phone"], runningNetCents: 45_000 },
     ]);
   });
+
+  it("lists a transfer on its day without moving the running net", () => {
+    const { occurrences, netCents } = forecastRecurringOccurrences(
+      [
+        rule("Pay", { type: "INCOME", next: "2026-10-15", amountCents: 200_000 }),
+        rule("To savings", { type: "TRANSFER", next: "2026-10-16", amountCents: 50_000 }),
+        rule("Phone", { next: "2026-10-20", amountCents: 5_000 }),
+      ],
+      { ...TODAY, days: 15, includeTransfers: true },
+    );
+
+    expect(netCents).toBe(195_000);
+    expect(
+      groupForecastByDay(occurrences).map((day) => ({
+        dateYmd: day.dateYmd,
+        names: day.occurrences.map((o) => o.rule.name),
+        runningNetCents: day.runningNetCents,
+      })),
+    ).toEqual([
+      { dateYmd: "2026-10-15", names: ["Pay"], runningNetCents: 200_000 },
+      { dateYmd: "2026-10-16", names: ["To savings"], runningNetCents: 200_000 },
+      { dateYmd: "2026-10-20", names: ["Phone"], runningNetCents: 195_000 },
+    ]);
+  });
 });

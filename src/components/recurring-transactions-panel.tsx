@@ -53,6 +53,8 @@ export type RecurringTransactionListItem = {
   decideByDisplay?: string | null;
   cancelledAtDisplay?: string | null;
   annualCostCents?: number;
+  /** The account's currency when it is not the home one: the amount is in it, and kept out of the cash-flow summary. */
+  currency?: string | null;
 };
 
 type Option = { id: string; name: string };
@@ -121,7 +123,7 @@ function RecurringCard({
           }`}
         >
           {item.type === "INCOME" ? "+" : item.type === "TRANSFER" ? "" : "-"}
-          {formatCurrency(item.amountCents)}
+          {formatCurrency(item.amountCents, item.currency ?? undefined)}
         </span>
       </div>
       <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -145,7 +147,7 @@ function RecurringCard({
         <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" data-testid="subscription-cancel-info">
           {item.cancelledAtDisplay && !item.enabled ? (
             <span className="text-emerald-200">
-              Cancelled {item.cancelledAtDisplay} · saves {formatCurrency(item.annualCostCents ?? 0)} a year
+              Cancelled {item.cancelledAtDisplay} · saves {formatCurrency(item.annualCostCents ?? 0, item.currency ?? undefined)} a year
             </span>
           ) : item.decideByDisplay ? (
             <span className="rounded-full border border-amber-400/45 bg-amber-400/10 px-2 py-0.5 text-amber-100">
@@ -219,7 +221,7 @@ function RecurringCard({
         >
           <span className="mr-auto text-xs text-amber-100">
             Cancelled {item.name} with the provider? The rule is turned off and Insights counts the{" "}
-            {formatCurrency(item.annualCostCents ?? 0)} a year saved. Enable undoes it.
+            {formatCurrency(item.annualCostCents ?? 0, item.currency ?? undefined)} a year saved. Enable undoes it.
           </span>
           <button type="button" className={secondaryBtnClass} onClick={() => setConfirmingCancel(false)}>
             Not yet
