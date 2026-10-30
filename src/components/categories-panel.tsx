@@ -8,6 +8,7 @@ import {
   renameCategoryAction,
   setCategoryBudgetAction,
   setCategoryGroupAction,
+  setCategorySpendingRoleAction,
   setCategoryRolloverAction,
   setCategoryYearlyBudgetAction,
   setPlaidCategoryMappingAction,
@@ -26,6 +27,10 @@ export type CategoryRow = {
   kind: Kind;
   /** The group it is filed under, or null. */
   groupName: string | null;
+  /** Need or want as the user marked it; null leaves it to `guessedRole`. */
+  spendingRole: "NEED" | "WANT" | null;
+  /** What the financial score takes it as when unmarked. */
+  guessedRole: "NEED" | "WANT";
   transactionCount: number;
   /** Split lines and recurring rules filed under it; with transactions, what blocks a plain delete. */
   splitCount: number;
@@ -349,6 +354,36 @@ function CategoryItem({
               to take it out of a group.
             </p>
           </ServerActionForm>
+
+          {category.kind === "EXPENSE" ? (
+            <ServerActionForm
+              key={category.spendingRole ?? "auto"}
+              action={setCategorySpendingRoleAction}
+              className="flex flex-wrap items-end gap-2"
+            >
+              <input type="hidden" name="categoryId" value={category.id} />
+              <label className="min-w-0 flex-1 space-y-1">
+                <span className="text-xs font-medium text-slate-400">Need or want</span>
+                <select
+                  name="spendingRole"
+                  aria-label={`Need or want for ${category.name}`}
+                  className={selectClass}
+                  defaultValue={category.spendingRole ?? "auto"}
+                >
+                  <option value="auto">Automatic ({category.guessedRole === "NEED" ? "need" : "want"})</option>
+                  <option value="NEED">Need</option>
+                  <option value="WANT">Want</option>
+                </select>
+              </label>
+              <button type="submit" className={smallBtnClass}>
+                Save
+              </button>
+              <p className="w-full text-xs text-slate-500">
+                Needs are what you can&apos;t go without (rent, groceries, utilities). The financial score splits your
+                income into needs, wants and savings, 50/30/20 style.
+              </p>
+            </ServerActionForm>
+          ) : null}
 
           {category.kind === "EXPENSE" ? (
             <ServerActionForm

@@ -10,7 +10,8 @@ export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
   FHSA: "FHSA",
   NON_REGISTERED: "Non-registered",
   CASH: "Cash",
-  LOAN: "Loan or mortgage",
+  LOAN: "Loan",
+  MORTGAGE: "Mortgage",
   PROPERTY: "Property",
 };
 
@@ -25,6 +26,7 @@ export const ACCOUNT_TYPE_ORDER: AccountType[] = [
   AccountType.NON_REGISTERED,
   AccountType.CASH,
   AccountType.LOAN,
+  AccountType.MORTGAGE,
   AccountType.PROPERTY,
 ];
 

@@ -10,6 +10,7 @@ const typeTone: Record<string, string> = {
   NON_REGISTERED: "border-slate-500/40 bg-slate-500/10 text-slate-200",
   CASH: "border-lime-500/35 bg-lime-500/10 text-lime-100",
   LOAN: "border-rose-500/35 bg-rose-500/10 text-rose-100",
+  MORTGAGE: "border-rose-500/35 bg-rose-500/10 text-rose-100",
   PROPERTY: "border-teal-500/35 bg-teal-500/10 text-teal-100",
 };
 

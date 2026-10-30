@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { CategoryKind, type Prisma } from "@prisma/client";
+import { CategoryKind, SpendingRole, type Prisma } from "@prisma/client";
 import { z } from "zod";
 import { normalizeGroupName } from "@/lib/category-groups";
 import { toCents } from "@/lib/money";
@@ -299,6 +299,21 @@ export const setCategoryYearlyBudgetAction = formAction(async (formData: FormDat
     });
   }
   revalidatePath("/");
+  revalidatePath("/settings", "layout");
+});
+
+/**
+ * Marks an expense category as a need or a want for the financial score's 50/30/20 split, or
+ * goes back to the guess from its name ("auto").
+ */
+export const setCategorySpendingRoleAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  const category = await findManagedCategory(prisma, user.id, getFormValue(formData, "categoryId"));
+  if (category.kind !== CategoryKind.EXPENSE) throw new Error("Only spending categories are needs or wants.");
+  const raw = getFormValue(formData, "spendingRole");
+  const spendingRole = raw === "NEED" ? SpendingRole.NEED : raw === "WANT" ? SpendingRole.WANT : null;
+  await prisma.category.update({ where: { id: category.id }, data: { spendingRole } });
+  revalidatePath("/insights");
   revalidatePath("/settings", "layout");
 });
 

@@ -48,7 +48,8 @@ export default async function RetirementPage({ searchParams }: { searchParams: S
     return `/reports/retirement?${params.toString()}`;
   };
 
-  const ageRaw = one(sp.age).trim();
+  // Starts from the year of birth on the profile when the form hasn't said otherwise.
+  const ageRaw = one(sp.age).trim() || (user.birthYear ? String(d.year - user.birthYear) : "");
   const age = ageRaw === "" ? null : Math.round(num(ageRaw, 35, 16, 90));
   const retireAge = Math.round(num(one(sp.retire), 65, 30, 90));
   const incomeCents = Math.max(0, parseCentsInput(one(sp.income)) ?? d.incomeCents);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FinancialScore, FinancialScoreFactor } from "@/lib/financial-score";
+import { FACTOR_PILLAR, type FinancialScore, type FinancialScoreFactor } from "@/lib/financial-score";
 import type { GoalProgress } from "@/lib/savings-goals";
 import { detectStanding, type StandingInput } from "./standing";
 import { NOW, tx } from "./test-fixtures";
@@ -44,14 +44,24 @@ describe("registered account deadlines", () => {
 
 const factor = (id: FinancialScoreFactor["id"], score: number, detail = ""): FinancialScoreFactor => ({
   id,
+  pillar: FACTOR_PILLAR[id],
   label: id,
   score,
   weight: 0.5,
   detail,
   suggestion: null,
 });
-const scored = (factors: FinancialScoreFactor[], cushion: { fundCents: number; monthlySpendingCents: number } | null = null): FinancialScore => ({
+const scored = (
+  factors: FinancialScoreFactor[],
+  cushion: { fundCents: number; monthlySpendingCents: number } | null = null,
+  monthsInBlack = { positive: 0, total: 0 },
+): FinancialScore => ({
   status: "scored",
+  pillars: [],
+  emergencyTargetMonths: 3,
+  monthsInBlack,
+  split: null,
+  change: null,
   score: 80,
   band: "Good",
   months: ["2026-04", "2026-05", "2026-06", "2026-07", "2026-08"],
@@ -115,8 +125,10 @@ describe("good news", () => {
   });
 
   it("celebrates every month in the black and every budget kept", () => {
-    const keys = run({ score: scored([factor("consistency", 100), factor("budgets", 100, "6 of 6 monthly budgets kept in the last 3 months")]) }).map((i) => i.key);
+    const keys = run({
+      score: scored([factor("buffer", 70), factor("budgets", 100, "6 of 6 monthly budgets kept in the last 3 months")], null, { positive: 6, total: 6 }),
+    }).map((i) => i.key);
     expect(keys).toEqual(["good:black:2026-08", "good:budgets:2026-08"]);
-    expect(run({ score: scored([factor("consistency", 80), factor("budgets", 90)]) })).toEqual([]);
+    expect(run({ score: scored([factor("consistency", 80), factor("budgets", 90)], null, { positive: 5, total: 6 }) })).toEqual([]);
   });
 });

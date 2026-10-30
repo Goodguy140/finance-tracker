@@ -74,6 +74,7 @@ export {
   setCategoryBudgetAction,
   setCategoryRolloverAction,
   setCategoryGroupAction,
+  setCategorySpendingRoleAction,
   setCategoryYearlyBudgetAction,
   setPlaidCategoryMappingAction,
 } from "./actions/categories";

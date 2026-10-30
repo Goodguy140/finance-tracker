@@ -21,6 +21,8 @@ import { DAY_MS, daysBetween, displayTextFor, evidenceIds, ymOf, type MoneyForma
  * - Once any account counts as savings, the savings rate is what reached those accounts by
  *   transfer. A transfer with no destination, or regular transfers into an account that is not
  *   marked, are savings it cannot see.
+ * - Card utilization needs a limit, and the loan check needs a minimum and payments it can see:
+ *   a loan paid from an account the app doesn't track looks like one nobody pays.
  *
  * Only the months the score covers are looked at, and nothing here is said without a score.
  */
@@ -32,6 +34,10 @@ export type ScoreGapAccount = {
   countsAsSavings: boolean;
   /** Latest balance reading on or before today; null when there is none. */
   latest: { cents: number; date: Date } | null;
+  /** A card's limit, for utilization. */
+  creditLimitCents?: number | null;
+  /** A card's, loan's or mortgage's minimum payment, for whether it is paid on time. */
+  minimumPaymentCents?: number | null;
 };
 
 export type ScoreGapsInput = {
@@ -59,6 +65,7 @@ export function detectScoreGaps(input: ScoreGapsInput): Insight[] {
   };
   return [
     ...balanceGaps(input),
+    ...debtTermGaps(scoped),
     ...untrackedBills(input),
     ...transferLikeEntries(scoped),
     ...unseenSavings(scoped),
@@ -128,6 +135,38 @@ function balanceGaps({ accounts, txs, transfers, now }: ScoreGapsInput): Insight
       body: `${parts.join(" ")} Entering today's balance keeps the emergency fund part of your score accurate.`,
       evidenceTxIds: [],
       action: { kind: "link", href: "/settings/accounts", label: "Update balances" },
+    },
+  ];
+}
+
+// --- Card and loan terms ------------------------------------------------------------------------
+
+const LOAN_TYPES: ReadonlySet<string> = new Set(["LOAN", "MORTGAGE"]);
+
+function debtTermGaps({ score, accounts, transfers }: ScoreGapsInput): Insight[] {
+  const paidInto = new Set(transfers.flatMap((tx) => (tx.amountCents < 0 && tx.accountId ? [tx.accountId] : tx.transferAccountId ? [tx.transferAccountId] : [])));
+  const owing = accounts.filter((a) => a.latest && a.latest.cents > 0);
+  // A limit only matters once a card carries a balance and the score counts it.
+  const cardsCounted = score.status === "scored" && score.factors.some((f) => f.id === "cards");
+  const noLimit = cardsCounted ? owing.filter((a) => a.type === "CREDIT_CARD" && a.creditLimitCents == null) : [];
+  const noMinimum = owing.filter((a) => LOAN_TYPES.has(String(a.type)) && a.minimumPaymentCents == null);
+  const unpaid = owing.filter((a) => LOAN_TYPES.has(String(a.type)) && a.minimumPaymentCents != null && !paidInto.has(a.id));
+  if (noLimit.length + noMinimum.length + unpaid.length === 0) return [];
+
+  const parts: string[] = [];
+  if (noLimit.length) parts.push(`${listWords(noLimit.map((a) => a.name))} ${noLimit.length === 1 ? "has" : "have"} no credit limit, so the score can't tell how much of ${noLimit.length === 1 ? "it" : "them"} you use.`);
+  if (noMinimum.length) parts.push(`${listWords(noMinimum.map((a) => a.name))} ${noMinimum.length === 1 ? "has" : "have"} no minimum payment, so the score can't tell whether ${noMinimum.length === 1 ? "it is" : "they are"} paid on time.`);
+  if (unpaid.length) parts.push(`No payment to ${listWords(unpaid.map((a) => a.name))} shows up in the months scored. If you pay ${unpaid.length === 1 ? "it" : "them"} from an account the app doesn't track, record the payments as transfers so they count.`);
+  const names = [...noLimit, ...noMinimum, ...unpaid];
+  return [
+    {
+      key: `gap:score-debt-terms:${names.map((a) => a.id).sort().join(",")}`,
+      section: "gap",
+      severity: "low",
+      title: names.length === 1 ? `The score can't fully judge ${names[0].name}` : `The score can't fully judge ${names.length} cards and loans`,
+      body: parts.join(" "),
+      evidenceTxIds: [],
+      action: { kind: "link", href: "/reports/debt", label: "Set rates and minimums" },
     },
   ];
 }
@@ -251,7 +290,7 @@ function transferLikeEntries({ txs, fmt }: ScoreGapsInput): Insight[] {
 // --- Savings the score cannot see -------------------------------------------------------------
 
 /** Account kinds money is never saved into. */
-const NEVER_SAVINGS: ReadonlySet<string> = new Set(["CREDIT_CARD", "LOAN", "PROPERTY"]);
+const NEVER_SAVINGS: ReadonlySet<string> = new Set(["CREDIT_CARD", "LOAN", "MORTGAGE", "PROPERTY"]);
 /** Months with money moving in before an unmarked account looks like where savings go. */
 const MIN_SAVING_MONTHS = 2;
 /** Below this, a transfer with no destination is not worth asking about. */

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { EMERGENCY_FUND_TARGET_MONTHS, scoreBand, type FinancialScore, type FinancialScoreBand } from "@/lib/financial-score";
+import { scoreBand, type FinancialScore, type FinancialScoreBand } from "@/lib/financial-score";
 import { formatYmShortLabel } from "@/lib/dashboard-period";
 
 /** Ring and bar colour per band; the band's name is always printed beside it. */
@@ -91,6 +91,11 @@ export function FinancialScoreCard({
             Based on {span}
             {note ? `. ${note}` : ""}.
           </p>
+          {score.change ? (
+            <p className="mt-0.5 text-sm text-slate-400" data-testid="financial-score-change">
+              {changeText(score.change, score.score)}
+            </p>
+          ) : null}
           {gapCount > 0 ? (
             <p className="mt-0.5 text-sm text-amber-200" data-testid="financial-score-gaps">
               <Link href="/insights#insights-gap" className="underline-offset-2 hover:underline">
@@ -101,23 +106,60 @@ export function FinancialScoreCard({
         </div>
       </div>
 
-      <ul className="mt-4 space-y-2.5" data-testid="financial-score-factors">
-        {score.factors.map((factor) => {
-          const factorTone = BAND_TONE[scoreBand(factor.score)];
-          return (
-            <li key={factor.id} className="text-sm">
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="text-slate-200">{factor.label}</span>
-                <span className="shrink-0 tabular-nums text-slate-300">{factor.score}</span>
-              </div>
-              <div className="mt-1 h-1.5 rounded-full bg-slate-800" aria-hidden>
-                <div className={`h-1.5 rounded-full ${factorTone.bar}`} style={{ width: `${Math.max(factor.score, 2)}%` }} />
-              </div>
-              <p className="mt-1 text-xs text-slate-500">{factor.detail}</p>
-            </li>
-          );
-        })}
+      <ul className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="financial-score-pillars">
+        {score.pillars.map((pillar) => (
+          <li key={pillar.id} className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-sm text-slate-300">{pillar.label}</span>
+              <span
+                className={`text-lg font-semibold tabular-nums ${pillar.score === null ? "text-slate-500" : BAND_TONE[scoreBand(pillar.score)].text}`}
+              >
+                {pillar.score ?? "—"}
+              </span>
+            </div>
+            {pillar.note ? <p className="mt-0.5 text-xs text-slate-500">{pillar.note}</p> : null}
+          </li>
+        ))}
       </ul>
+
+      <div className="mt-4 space-y-4" data-testid="financial-score-factors">
+        {score.pillars
+          .filter((pillar) => pillar.score !== null)
+          .map((pillar) => (
+            <div key={pillar.id}>
+              <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">{pillar.label}</h3>
+              <ul className="mt-1.5 space-y-2.5">
+                {score.factors
+                  .filter((factor) => factor.pillar === pillar.id)
+                  .map((factor) => {
+                    const factorTone = BAND_TONE[scoreBand(factor.score)];
+                    return (
+                      <li key={factor.id} className="text-sm">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span className="text-slate-200">{factor.label}</span>
+                          <span className="shrink-0 tabular-nums text-slate-300">{factor.score}</span>
+                        </div>
+                        <div className="mt-1 h-1.5 rounded-full bg-slate-800" aria-hidden>
+                          <div className={`h-1.5 rounded-full ${factorTone.bar}`} style={{ width: `${Math.max(factor.score, 2)}%` }} />
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">{factor.detail}</p>
+                      </li>
+                    );
+                  })}
+              </ul>
+            </div>
+          ))}
+      </div>
+
+      {score.split ? (
+        <p className="mt-4 text-sm text-slate-400" data-testid="financial-score-split">
+          Of your income, {Math.round(score.split.needs * 100)}% went to needs, {Math.round(score.split.wants * 100)}% to wants
+          and {Math.round(score.split.saved * 100)}% was saved. The 50/30/20 guide aims for about 50, 30 and 20.{" "}
+          <Link href="/settings/categories" className="text-sky-300 hover:text-sky-200">
+            Mark needs and wants
+          </Link>
+        </p>
+      ) : null}
 
       {showSuggestions && score.suggestions.length ? (
         <div className="mt-4 border-t border-slate-800 pt-3">
@@ -128,9 +170,9 @@ export function FinancialScoreCard({
             ))}
           </ol>
         </div>
-      ) : (
+      ) : score.suggestions.length === 0 ? (
         <p className="mt-4 border-t border-slate-800 pt-3 text-sm text-slate-400">Nothing stands out to work on. Keep it up.</p>
-      )}
+      ) : null}
 
       <details className="mt-3 text-sm">
         <summary className="cursor-pointer select-none text-slate-400">How this is worked out</summary>
@@ -162,13 +204,32 @@ export function FinancialScoreCard({
           ) : null}
           <p>
             The emergency fund is the latest balance of your chequing, savings and cash accounts, plus any other account marked
-            &ldquo;Counts as savings&rdquo; except an RRSP, against {EMERGENCY_FUND_TARGET_MONTHS} months of your average spending.
-            Debt isn&apos;t part of the score.
+            &ldquo;Counts as savings&rdquo; except an RRSP, against {score.emergencyTargetMonths} months of your average spending
+            {score.emergencyTargetMonths > 3 ? " (six, because your income changes a lot from month to month)" : ""}. The cash
+            buffer is how low chequing and cash got each month, in days of spending.
+          </p>
+          <p>
+            Debt counts only when it is a problem: a credit card carrying a balance from month to month (more than was charged
+            to it in the last two months), or a loan or mortgage getting less than its minimum. A mortgage payment counts with
+            your bills, as rent would. Long-term savings are what goes into your TFSA, RRSP, FHSA and investment accounts, and,
+            with your year of birth on your profile, what they hold against a common rule of thumb for your age. Net worth
+            leaves out property values you type in.
           </p>
         </div>
       </details>
     </section>
   );
+}
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/** "Up 4 since September, most from Credit cards (+20)." */
+function changeText(change: NonNullable<Extract<FinancialScore, { status: "scored" }>["change"]>, now: number): string {
+  const delta = now - change.fromScore;
+  const month = MONTHS[Number(change.fromMonth.slice(5, 7)) - 1];
+  const head = delta === 0 ? `Same as in ${month}` : `${delta > 0 ? "Up" : "Down"} ${Math.abs(delta)} since ${month}`;
+  if (!change.mover) return `${head}.`;
+  return `${head}; ${change.mover.label.toLowerCase()} moved most (${change.mover.delta > 0 ? "+" : "−"}${Math.abs(change.mover.delta)}).`;
 }
 
 /**

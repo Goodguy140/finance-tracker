@@ -245,8 +245,9 @@ function goodNews({ txs, now, fmt, score }: StandingInput): Insight[] {
   if (score?.status === "scored") {
     const month = score.months[score.months.length - 1];
     const factor = (id: string) => score.factors.find((f) => f.id === id);
-    const black = factor("consistency");
-    if (black && black.score === 100 && score.months.length >= 3) {
+    // Counted whether "Months in the black" is a factor or the cash buffer took its place.
+    const black = score.monthsInBlack;
+    if (black.total > 0 && black.positive === black.total && score.months.length >= 3) {
       out.push({
         key: `good:black:${month}`,
         section: "good",

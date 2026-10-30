@@ -11,12 +11,12 @@ import { dateFromYmd } from "@/lib/date-only";
  * before it, carried forward until the next one; an account with no reading yet is left out
  * rather than counted as zero.
  *
- * Credit cards and loans are liabilities: their readings are what is owed and are
+ * Credit cards, loans and mortgages are liabilities: their readings are what is owed and are
  * subtracted. Archived accounts are left out entirely, and so are accounts in another
  * currency than the total's, since there is no exchange rate to convert them with.
  */
 
-const LIABILITY_TYPES: ReadonlySet<string> = new Set<AccountType>([AccountType.CREDIT_CARD, AccountType.LOAN]);
+const LIABILITY_TYPES: ReadonlySet<string> = new Set<AccountType>([AccountType.CREDIT_CARD, AccountType.LOAN, AccountType.MORTGAGE]);
 
 export function isLiabilityType(type: AccountType | string): boolean {
   return LIABILITY_TYPES.has(type);

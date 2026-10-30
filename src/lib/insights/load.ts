@@ -141,7 +141,7 @@ export const loadInsights = cache(async (
           }),
           prisma.account.findMany({
             where: { userId, archived: false, currency },
-            select: { id: true, name: true, type: true, countsAsSavings: true },
+            select: { id: true, name: true, type: true, countsAsSavings: true, creditLimitCents: true, minimumPaymentCents: true },
           }),
         ]),
   ]);
