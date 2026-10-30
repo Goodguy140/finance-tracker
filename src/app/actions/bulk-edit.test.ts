@@ -142,3 +142,26 @@ describe("bulk edit in the Expense Log", () => {
     expect(await bulk(Array.from({ length: 501 }, (_, i) => `id${i}`), "delete")).toMatchObject({ ok: false });
   });
 });
+
+describe("marking income and transfers reviewed", () => {
+  it("clears Needs review on the user's own rows of any kind, and only those", async () => {
+    const salaryId = (await db.category.create({ data: { userId: session.userId, name: "Salary", kind: "INCOME" } })).id;
+    const income = await expense(session.userId, { type: "INCOME", categoryId: salaryId, needsReview: true });
+    const transfer = await expense(session.userId, { type: "TRANSFER", transferAccountId: chequingId, needsReview: true });
+    const otherUser = (await db.user.create({ data: { email: `other-r${seq}@example.test`, displayName: "Other" } })).id;
+    const otherCategory = (await db.category.create({ data: { userId: otherUser, name: "Pay", kind: "INCOME" } })).id;
+    const theirs = await expense(otherUser, { type: "INCOME", categoryId: otherCategory, needsReview: true });
+
+    const data = new FormData();
+    data.set("transactionIdsJson", JSON.stringify([income.id, transfer.id, theirs.id]));
+    const result = await actions.markTransactionsReviewedAction(data);
+
+    expect(result).toMatchObject({ ok: true, changed: 2 });
+    const rows = await db.transaction.findMany({ where: { id: { in: [income.id, transfer.id, theirs.id] } } });
+    expect(Object.fromEntries(rows.map((r) => [r.id, r.needsReview]))).toEqual({
+      [income.id]: false,
+      [transfer.id]: false,
+      [theirs.id]: true,
+    });
+  });
+});

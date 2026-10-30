@@ -1,17 +1,21 @@
 /**
  * The Calendar card's month grid: each day's spending and income from the log, and the
- * recurring bills and pay, and the one-off plans, still to come. Weeks start on Sunday; days outside the month pad the
- * first and last week so every row has seven cells.
+ * recurring bills, pay and transfers, the one-off plans and the card payments still to come.
+ * Weeks start on Sunday; days outside the month pad the first and last week so every row has
+ * seven cells.
  */
 export type CalendarEntry = { dateYmd: string; cents: number };
 export type CalendarBill = {
   dateYmd: string;
   name: string;
-  type: "INCOME" | "EXPENSE";
+  /** A transfer between the user's own accounts, a card payment among them, adds nothing to the day's spending. */
+  type: "INCOME" | "EXPENSE" | "TRANSFER";
   cents: number;
   overdue: boolean;
   /** A one-off plan rather than a recurring rule's occurrence. */
   planned?: boolean;
+  /** A credit card's payment due date. */
+  cardPayment?: boolean;
 };
 
 export type CalendarDay = {

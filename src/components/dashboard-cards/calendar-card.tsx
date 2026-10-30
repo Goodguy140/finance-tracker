@@ -18,6 +18,7 @@ export function CalendarCardBody({ month, showBills = true }: CalendarCardBodyPr
   if (!month) {
     return <p className="text-sm text-slate-400">Choose a single month in the period filter to see it as a calendar.</p>;
   }
+  const hasMoves = month.weeks.some((week) => week.some((day) => day.bills.some((b) => b.type === "TRANSFER")));
   return (
     <div data-testid="spending-calendar">
       <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
@@ -60,10 +61,19 @@ export function CalendarCardBody({ month, showBills = true }: CalendarCardBodyPr
                   {day.bills.slice(0, 4).map((b, i) => (
                     <span
                       key={i}
-                      title={`${b.planned ? "Planned: " : ""}${b.name}: ${formatCurrency(b.cents)}`}
+                      title={`${b.planned ? "Planned: " : b.type === "TRANSFER" && !b.cardPayment ? "Transfer: " : ""}${b.name}${
+                        b.cents ? `: ${formatCurrency(b.cents)}` : ""
+                      }`}
                       data-planned={b.planned ? "" : undefined}
+                      data-transfer={b.type === "TRANSFER" ? "" : undefined}
                       className={`h-1.5 w-1.5 rounded-full ${
-                        b.type === "INCOME" ? "bg-emerald-400" : b.overdue ? "bg-red-400" : "bg-amber-300"
+                        b.type === "INCOME"
+                          ? "bg-emerald-400"
+                          : b.overdue
+                            ? "bg-red-400"
+                            : b.type === "TRANSFER"
+                              ? "bg-violet-400"
+                              : "bg-amber-300"
                       } ${b.planned ? "ring-1 ring-sky-300 ring-offset-1 ring-offset-slate-950" : ""}`}
                     />
                   ))}
@@ -85,6 +95,12 @@ export function CalendarCardBody({ month, showBills = true }: CalendarCardBodyPr
             <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
             pay due
           </span>
+          {hasMoves ? (
+            <span>
+              <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-violet-400" />
+              transfer or card payment
+            </span>
+          ) : null}
           <span>
             <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-red-400" />
             unposted

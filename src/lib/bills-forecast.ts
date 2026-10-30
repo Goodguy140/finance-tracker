@@ -96,7 +96,9 @@ export function forecastRecurringOccurrences<T extends ForecastableRule>(
 
 /**
  * Groups a forecast's occurrences by date, with the running net (income less bills) from the
- * first listed day through each one. Occurrences must be sorted, as the forecast returns them.
+ * first listed day through each one. A transfer between the user's own accounts (a card payment
+ * among them) is listed on its day but moves no money in or out, so the net passes over it.
+ * Occurrences must be sorted, as the forecast returns them.
  */
 export function groupForecastByDay<T extends Pick<RecurringForecastRule, "type" | "amountCents">>(
   occurrences: readonly BillsForecastOccurrence<T>[],
@@ -105,7 +107,8 @@ export function groupForecastByDay<T extends Pick<RecurringForecastRule, "type" 
   let running = 0;
   for (const occurrence of occurrences) {
     const dateYmd = ymdFromDateUtc(occurrence.date);
-    running += occurrence.rule.type === "INCOME" ? occurrence.rule.amountCents : -occurrence.rule.amountCents;
+    if (occurrence.rule.type === "INCOME") running += occurrence.rule.amountCents;
+    else if (occurrence.rule.type === "EXPENSE") running -= occurrence.rule.amountCents;
     const last = days.at(-1);
     if (last?.dateYmd === dateYmd) {
       last.occurrences.push(occurrence);

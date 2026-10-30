@@ -276,16 +276,24 @@ function CardSettingsFields({
     case "bills-forecast": {
       const current = settings["bills-forecast"] ?? {};
       return (
-        <SettingChoiceRow
-          label="Days ahead"
-          value={current.days ?? 30}
-          options={[
-            { value: 30, label: "30" },
-            { value: 60, label: "60" },
-            { value: 90, label: "90" },
-          ]}
-          onChange={(days) => onChange("bills-forecast", { days })}
-        />
+        <>
+          <SettingChoiceRow
+            label="Days ahead"
+            value={current.days ?? 30}
+            options={[
+              { value: 30, label: "30" },
+              { value: 60, label: "60" },
+              { value: 90, label: "90" },
+            ]}
+            onChange={(days) => onChange("bills-forecast", { days })}
+          />
+          <SettingToggleRow
+            label="Show transfers and card payments"
+            hint="Recurring transfers between your accounts and each credit card's next due date. Listed, not counted in the totals."
+            checked={current.showTransfers ?? true}
+            onChange={(showTransfers) => onChange("bills-forecast", { showTransfers })}
+          />
+        </>
       );
     }
 
@@ -306,6 +314,12 @@ function CardSettingsFields({
             onChange={(showForms) => onChange("investments", { showForms })}
           />
           <SettingToggleRow
+            label="Show value and return"
+            hint="Each investment account's latest value and its return this year, once it has two values recorded."
+            checked={current.showReturns ?? true}
+            onChange={(showReturns) => onChange("investments", { showReturns })}
+          />
+          <SettingToggleRow
             label="Show recent activity"
             hint="Contributions, withdrawals, portfolio values and transfers into registered accounts in the period on screen."
             checked={current.showActivity ?? true}
@@ -320,7 +334,7 @@ function CardSettingsFields({
       return (
         <SettingToggleRow
           label="Show recurring due"
-          hint="Dots for bills and pay due on each day, from your recurring rules."
+          hint="Dots for bills, pay, transfers and card payments due on each day, from your recurring rules, plans and card due days."
           checked={current.showBills ?? true}
           onChange={(showBills) => onChange("calendar", { showBills })}
         />

@@ -106,6 +106,27 @@ export function cardsDueWithin(cards: readonly CardTerms[], todayYmd: string, da
   return out.sort((a, b) => a.date.getTime() - b.date.getTime() || a.name.localeCompare(b.name));
 }
 
+/**
+ * Card payments due from today through `days` days ahead, leaving out a card an enabled
+ * recurring transfer pays: its payment is that transfer's own occurrence, and listing the card's
+ * due date as well would show the same money twice.
+ */
+export function cardPaymentsDue(
+  cards: readonly CardTerms[],
+  rules: ReadonlyArray<{ type: string; enabled: boolean; transferAccountId?: string | null }>,
+  todayYmd: string,
+  days: number,
+): CardDue[] {
+  const paidByRule = new Set(
+    rules.flatMap((r) => (r.enabled && r.type === "TRANSFER" && r.transferAccountId ? [r.transferAccountId] : [])),
+  );
+  return cardsDueWithin(
+    cards.filter((c) => !paidByRule.has(c.id)),
+    todayYmd,
+    days,
+  );
+}
+
 /** "the 15th", "the last day" for 31. */
 export function dueDayLabel(day: number): string {
   if (day === 31) return "the last day";

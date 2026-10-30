@@ -27,7 +27,8 @@ const SECTIONS: Array<{ id: InsightSection; title: string; description: string; 
   {
     id: "ahead",
     title: "Coming up",
-    description: "Pay that is late or short, balances your recurring bills could run low, budgets running ahead this month, and yearly charges due soon.",
+    description:
+      "Pay that is late or short, balances your recurring bills could run low, budgets running ahead this month, yearly charges and card payments due soon, and contribution room to use.",
     empty: "Nothing coming up that needs a look.",
   },
   {

@@ -8,8 +8,8 @@ import type { ListHeight } from "@/lib/dashboard-layout/schema";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { showUndoToast } from "@/components/undo-toast";
-import { bulkEditExpensesAction, deleteExpenseTransactionAction, updateExpenseAction } from "@/app/actions";
-import { ServerActionForm } from "@/components/server-action-form";
+import { deleteExpenseTransactionAction, updateExpenseAction } from "@/app/actions";
+import { NeedsReviewFilter } from "@/components/needs-review-filter";
 import { ExpenseBulkBar } from "@/components/expense-bulk-bar";
 import { InlineTags } from "@/components/meta-chip";
 import { TagInput } from "@/components/tag-input";
@@ -1087,42 +1087,16 @@ export function ExpenseLogPanel({
                 </button>
               ) : null}
             </div>
-            {reviewCount > 0 || reviewOnly ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  aria-pressed={reviewOnly}
-                  data-testid="needs-review-filter"
-                  onClick={() => setReviewOnly((v) => !v)}
-                  className={`touch-manipulation rounded-full border px-3 py-1 text-xs font-medium transition ${
-                    reviewOnly
-                      ? "border-amber-400/60 bg-amber-500/20 text-amber-100"
-                      : "border-slate-700 bg-slate-900/60 text-amber-200 hover:bg-slate-800"
-                  }`}
-                >
-                  Needs review ({reviewCount})
-                </button>
-                {reviewOnly && reviewCount > 0 ? (
-                  <ServerActionForm
-                    action={bulkEditExpensesAction}
-                    onSuccess={(result) => {
-                      setReviewOnly(false);
-                      setBulkMessage(`Marked ${result.changed} expense${result.changed === 1 ? "" : "s"} reviewed.`);
-                    }}
-                  >
-                    <input
-                      type="hidden"
-                      name="transactionIdsJson"
-                      value={JSON.stringify(filteredEntries.map((e) => e.id))}
-                    />
-                    <input type="hidden" name="op" value="reviewed" />
-                    <button type="submit" className="text-xs text-sky-300 hover:text-sky-200">
-                      Mark {filteredEntries.length} shown as reviewed
-                    </button>
-                  </ServerActionForm>
-                ) : null}
-              </div>
-            ) : null}
+            <NeedsReviewFilter
+              reviewCount={reviewCount}
+              reviewOnly={reviewOnly}
+              onToggle={() => setReviewOnly((v) => !v)}
+              shownIds={filteredEntries.map((e) => e.id)}
+              onMarked={(changed) => {
+                setReviewOnly(false);
+                setBulkMessage(`Marked ${changed} expense${changed === 1 ? "" : "s"} reviewed.`);
+              }}
+            />
             {selecting ? (
               <ExpenseBulkBar
                 selectedIds={shownSelectedIds}

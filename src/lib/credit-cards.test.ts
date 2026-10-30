@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardsDueWithin, cardUtilization, nextDueDate, parseDueDayInput, totalUtilization } from "./credit-cards";
+import { cardPaymentsDue, cardsDueWithin, cardUtilization, nextDueDate, parseDueDayInput, totalUtilization } from "./credit-cards";
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -50,6 +50,26 @@ describe("due dates", () => {
       ["Visa", "2026-10-25", 2, 40_000],
       ["Amex", "2026-10-28", 5, null],
     ]);
+  });
+
+  it("leaves a card to the enabled recurring transfer that pays it", () => {
+    const owed = { cents: 40_000, date: new Date() };
+    const cards = [
+      { id: "visa", name: "Visa", paymentDueDay: 25, minimumPaymentCents: null, owed },
+      { id: "amex", name: "Amex", paymentDueDay: 26, minimumPaymentCents: null, owed },
+    ];
+    const due = cardPaymentsDue(
+      cards,
+      [
+        { type: "TRANSFER", enabled: true, transferAccountId: "visa" },
+        // A paused transfer pays nothing, and an expense rule never pays a card.
+        { type: "TRANSFER", enabled: false, transferAccountId: "amex" },
+        { type: "EXPENSE", enabled: true, transferAccountId: "amex" },
+      ],
+      "2026-10-23",
+      7,
+    );
+    expect(due.map((d) => d.name)).toEqual(["Amex"]);
   });
 
   it("accepts a day of the month 1 to 31, or blank", () => {
