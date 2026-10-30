@@ -41,6 +41,13 @@ declare global {
 
 let scriptPromise: Promise<void> | null = null;
 
+/**
+ * How long Link gets to report `OPEN` before the page says it did not appear. Without this a
+ * Link that fails inside its own frame (a blocker, a browser setting) leaves the button doing
+ * nothing at all, with no message anywhere.
+ */
+const LINK_OPEN_TIMEOUT_MS = 15_000;
+
 /** Loads the Link script once per page, shared by every button on it. */
 function loadPlaidScript(): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
@@ -107,6 +114,13 @@ export function usePlaidLink({ linkToken, onSuccess, onExit }: PlaidLinkLauncher
       .then(() => {
         if (cancelled || !window.Plaid) return;
         handlerRef.current?.destroy();
+        let opened = false;
+        const openTimer = window.setTimeout(() => {
+          if (opened || cancelled) return;
+          setScriptError(
+            "Plaid’s sign-in window did not open. Try again with browser extensions or content blockers turned off for this site, or in another browser.",
+          );
+        }, LINK_OPEN_TIMEOUT_MS);
         const handler = window.Plaid.create({
           token: linkToken,
           onSuccess: (publicToken, metadata) => {
@@ -116,6 +130,11 @@ export function usePlaidLink({ linkToken, onSuccess, onExit }: PlaidLinkLauncher
             // A user closing Link is not an error and must not surface as one.
             const message = error?.display_message ?? error?.error_message ?? null;
             onExitRef.current?.(message);
+          },
+          onEvent: (eventName) => {
+            if (eventName !== "OPEN") return;
+            opened = true;
+            window.clearTimeout(openTimer);
           },
         });
         handlerRef.current = handler;

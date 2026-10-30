@@ -103,29 +103,65 @@ export function PlaidConnectionsPanel({
   const [unlinkState, unlink, unlinking] = useActionState(unlinkPlaidItemAction, unlinkInitial);
   const [updateState, completeUpdate, updating] = useActionState(completePlaidUpdateAction, updateInitial);
   const stepUp = useStepUp(mfa.freshUntil, mfa.factors);
+  const { ensureFresh } = stepUp;
   const [stepUpError, setStepUpError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [confirmUnlinkId, setConfirmUnlinkId] = useState<string | null>(null);
   const [showConnect, setShowConnect] = useState(false);
 
+  /**
+   * A dismissed prompt is said plainly rather than ignored. Browsers report a prompt that
+   * never appeared (no user gesture left, the window not focused) the same way as a person
+   * pressing Cancel, so staying silent left "Sign in again" looking like it did nothing.
+   */
+  const showStepUpFailure = useCallback((outcome: { cancelled: boolean; error: string }) => {
+    if (outcome.cancelled) setNotice(`“Confirm it’s you” did not finish (${outcome.error.replace(/\.$/, "")}). Try again.`);
+    else setStepUpError(outcome.error);
+  }, []);
+
+  /**
+   * What Link handed back, held until the server takes it. Finishing is gated like minting
+   * the token was, and that confirmation only lasts `MFA_STEP_UP_MAX_AGE_MS`: a bank sign-in
+   * that runs past it would otherwise be refused at the last step, leaving the bank still
+   * asking to sign in again. So the gate is checked again here, and if the person dismisses
+   * the prompt the result is kept for a "Finish" button rather than thrown away.
+   */
+  const [unfinished, setUnfinished] = useState<FormData | null>(null);
+
+  const finish = useCallback(
+    (form: FormData) => {
+      setStepUpError(null);
+      startTransition(async () => {
+        const outcome = await ensureFresh();
+        if (!outcome.ok) {
+          setUnfinished(form);
+          showStepUpFailure(outcome);
+          return;
+        }
+        setUnfinished(null);
+        if (form.has("publicToken")) exchange(form);
+        else completeUpdate(form);
+      });
+    },
+    [exchange, completeUpdate, ensureFresh, showStepUpFailure],
+  );
+
   const handleSuccess = useCallback(
     (publicToken: string, _institutionName: string | null) => {
+      const form = new FormData();
       // Update mode keeps the item's existing access token, so its public token is not
       // exchanged; the server re-reads the item instead and clears the prompt.
       if (tokenState.ok === true && tokenState.mode === "update") {
-        const form = new FormData();
         form.set("plaidItemId", tokenState.plaidItemId);
         form.set("updateKind", tokenState.updateKind);
-        startTransition(() => completeUpdate(form));
-        return;
+      } else {
+        form.set("publicToken", publicToken);
+        form.set("historyDays", historyDays);
       }
-      const form = new FormData();
-      form.set("publicToken", publicToken);
-      form.set("historyDays", historyDays);
-      startTransition(() => exchange(form));
+      finish(form);
     },
-    [exchange, completeUpdate, historyDays, tokenState],
+    [finish, historyDays, tokenState],
   );
 
   const handleExit = useCallback((message: string | null) => {
@@ -163,10 +199,11 @@ export function PlaidConnectionsPanel({
   const connect = (plaidItemId?: string, updateKind: PlaidUpdateKind = "reauth") => {
     setStepUpError(null);
     setNotice(null);
+    setUnfinished(null);
     startTransition(async () => {
       const outcome = await stepUp.ensureFresh();
       if (!outcome.ok) {
-        if (!outcome.cancelled) setStepUpError(outcome.error);
+        showStepUpFailure(outcome);
         return;
       }
       const form = new FormData();
@@ -184,7 +221,7 @@ export function PlaidConnectionsPanel({
     startTransition(async () => {
       const outcome = await stepUp.ensureFresh();
       if (!outcome.ok) {
-        if (!outcome.cancelled) setStepUpError(outcome.error);
+        showStepUpFailure(outcome);
         return;
       }
       const form = new FormData();
@@ -244,6 +281,24 @@ export function PlaidConnectionsPanel({
 
       {notice ? (
         <div className="rounded-2xl border border-slate-700 bg-slate-900/70 p-4 text-sm text-slate-300">{notice}</div>
+      ) : null}
+
+      {unfinished ? (
+        <div
+          role="status"
+          data-testid="plaid-unfinished"
+          className="flex flex-col gap-2 rounded-2xl border border-amber-500/40 bg-amber-950/30 p-4 text-sm text-amber-100 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p>Your bank sign-in went through, but it is not saved here until you confirm it’s you.</p>
+          <button
+            type="button"
+            className={`${secondaryBtnClass} shrink-0`}
+            onClick={() => finish(unfinished)}
+            disabled={busy}
+          >
+            Finish
+          </button>
+        </div>
       ) : null}
 
       {exchangeState.ok === true ? (
