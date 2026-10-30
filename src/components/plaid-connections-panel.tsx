@@ -111,6 +111,16 @@ export function PlaidConnectionsPanel({
   const [showConnect, setShowConnect] = useState(false);
 
   /**
+   * A dismissed prompt is said plainly rather than ignored. Browsers report a prompt that
+   * never appeared (no user gesture left, the window not focused) the same way as a person
+   * pressing Cancel, so staying silent left "Sign in again" looking like it did nothing.
+   */
+  const showStepUpFailure = useCallback((outcome: { cancelled: boolean; error: string }) => {
+    if (outcome.cancelled) setNotice(`“Confirm it’s you” did not finish (${outcome.error.replace(/\.$/, "")}). Try again.`);
+    else setStepUpError(outcome.error);
+  }, []);
+
+  /**
    * What Link handed back, held until the server takes it. Finishing is gated like minting
    * the token was, and that confirmation only lasts `MFA_STEP_UP_MAX_AGE_MS`: a bank sign-in
    * that runs past it would otherwise be refused at the last step, leaving the bank still
@@ -126,7 +136,7 @@ export function PlaidConnectionsPanel({
         const outcome = await ensureFresh();
         if (!outcome.ok) {
           setUnfinished(form);
-          if (!outcome.cancelled) setStepUpError(outcome.error);
+          showStepUpFailure(outcome);
           return;
         }
         setUnfinished(null);
@@ -134,7 +144,7 @@ export function PlaidConnectionsPanel({
         else completeUpdate(form);
       });
     },
-    [exchange, completeUpdate, ensureFresh],
+    [exchange, completeUpdate, ensureFresh, showStepUpFailure],
   );
 
   const handleSuccess = useCallback(
@@ -193,7 +203,7 @@ export function PlaidConnectionsPanel({
     startTransition(async () => {
       const outcome = await stepUp.ensureFresh();
       if (!outcome.ok) {
-        if (!outcome.cancelled) setStepUpError(outcome.error);
+        showStepUpFailure(outcome);
         return;
       }
       const form = new FormData();
@@ -211,7 +221,7 @@ export function PlaidConnectionsPanel({
     startTransition(async () => {
       const outcome = await stepUp.ensureFresh();
       if (!outcome.ok) {
-        if (!outcome.cancelled) setStepUpError(outcome.error);
+        showStepUpFailure(outcome);
         return;
       }
       const form = new FormData();
