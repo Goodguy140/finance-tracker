@@ -19,7 +19,8 @@ export type QuickAddResult = { ok: true; transactionId: string; message: string 
 /**
  * Adds the expense typed into the master search ("12.50 tim hortons yesterday"). The text is
  * read again here rather than trusting the preview, and booked the way the API books an entry:
- * the user's rules and past titles fill what the text leaves out.
+ * the user's rules and past titles fill what the text leaves out, and a "Mark as transfer" rule
+ * books it as a transfer.
  */
 export async function quickAddExpenseAction(text: string): Promise<QuickAddResult> {
   try {
@@ -39,7 +40,9 @@ export async function quickAddExpenseAction(text: string): Promise<QuickAddResul
     return {
       ok: true,
       transactionId: transaction.id,
-      message: `Added ${formatCurrency(transaction.amountCents)} ${transaction.title ?? entry.title}.`,
+      message: `Added ${formatCurrency(transaction.amountCents)} ${transaction.title ?? entry.title}${
+        transaction.type === "transfer" ? " as a transfer" : ""
+      }.`,
     };
   } catch (err) {
     unstable_rethrow(err);
@@ -47,11 +50,19 @@ export async function quickAddExpenseAction(text: string): Promise<QuickAddResul
   }
 }
 
-/** "Undo" right after a quick add: the expense goes, as a delete from the log would take it. */
+/**
+ * "Undo" right after a quick add: the entry goes, as a delete from the log would take it. An
+ * expense, or a transfer when a rule booked it as one.
+ */
 export async function undoQuickAddAction(transactionId: string): Promise<{ ok: true } | ActionFailure> {
   try {
     const user = await requireUser();
-    const undoId = await deleteTransactionWithUndo(prisma, user.id, String(transactionId ?? ""), TransactionType.EXPENSE);
+    const id = String(transactionId ?? "");
+    const added = await prisma.transaction.findFirst({
+      where: { id, userId: user.id, type: { in: [TransactionType.EXPENSE, TransactionType.TRANSFER] } },
+      select: { type: true },
+    });
+    const undoId = added ? await deleteTransactionWithUndo(prisma, user.id, id, added.type) : null;
     if (!undoId) return { ok: false, error: "That expense was already removed." };
     scheduleBudgetAlertEmails(user.id);
     revalidatePath("/");

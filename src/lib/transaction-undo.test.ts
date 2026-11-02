@@ -149,6 +149,41 @@ describe("deleting with undo", () => {
     expect((await db.investmentFlow.findUniqueOrThrow({ where: { id: flow.id } })).transactionId).toBe(out.id);
   });
 
+  it("keeps the needs-review flag and closes the plan it was booked from again", async () => {
+    const tx = await db.transaction.create({
+      data: { userId, accountId, categoryId: foodId, type: "EXPENSE", amountCents: 900, needsReview: true, date: new Date("2026-09-10T00:00:00Z") },
+    });
+    const plan = await db.plannedTransaction.create({
+      data: { userId, accountId, categoryId: foodId, type: "EXPENSE", name: "Dentist", amountCents: 900, date: new Date("2026-09-10T00:00:00Z"), transactionId: tx.id },
+    });
+
+    const undoId = await deleteTransactionWithUndo(db, userId, tx.id, "EXPENSE");
+    // Deleting reopens the plan, so it would be forecast again alongside the restored entry.
+    expect((await db.plannedTransaction.findUniqueOrThrow({ where: { id: plan.id } })).transactionId).toBeNull();
+
+    expect((await undoDeletedTransaction(db, userId, undoId!)).ok).toBe(true);
+    expect((await db.transaction.findUniqueOrThrow({ where: { id: tx.id } })).needsReview).toBe(true);
+    expect((await db.plannedTransaction.findUniqueOrThrow({ where: { id: plan.id } })).transactionId).toBe(tx.id);
+  });
+
+  it("leaves a plan that was matched to another entry since with that entry", async () => {
+    const tx = await db.transaction.create({
+      data: { userId, accountId, categoryId: foodId, type: "EXPENSE", amountCents: 900, date: new Date("2026-09-10T00:00:00Z") },
+    });
+    const plan = await db.plannedTransaction.create({
+      data: { userId, accountId, categoryId: foodId, type: "EXPENSE", name: "Dentist", amountCents: 900, date: new Date("2026-09-10T00:00:00Z"), transactionId: tx.id },
+    });
+    const undoId = await deleteTransactionWithUndo(db, userId, tx.id, "EXPENSE");
+    const replacement = await db.transaction.create({
+      data: { userId, accountId, categoryId: foodId, type: "EXPENSE", amountCents: 900, date: new Date("2026-09-10T00:00:00Z") },
+    });
+    await db.plannedTransaction.update({ where: { id: plan.id }, data: { transactionId: replacement.id } });
+
+    expect((await undoDeletedTransaction(db, userId, undoId!)).ok).toBe(true);
+    expect((await db.plannedTransaction.findUniqueOrThrow({ where: { id: plan.id } })).transactionId).toBe(replacement.id);
+    expect((await db.transaction.findUniqueOrThrow({ where: { id: tx.id } })).needsReview).toBe(false);
+  });
+
   it("refuses when the category has been deleted since", async () => {
     const tx = await db.transaction.create({
       data: { userId, accountId, categoryId: funId, type: "EXPENSE", amountCents: 100, date: new Date("2026-09-10T00:00:00Z") },

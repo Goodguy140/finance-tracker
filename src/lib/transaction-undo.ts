@@ -4,13 +4,13 @@ import { Prisma, type PrismaClient, type TransactionType } from "@prisma/client"
  * Undo for a deleted expense or income entry.
  *
  * Deleting takes the row and everything that hangs off it (split lines, owed shares, tags, the
- * bank verification, the contribution it was counted as, its transfer pair, its receipts, which
- * are only unlinked rather than copied) and keeps them in
+ * bank verification, the contribution it was counted as, its transfer pair, the one-off plan it
+ * was booked from, its receipts, which are only unlinked rather than copied) and keeps them in
  * a DeletedTransaction row for UNDO_WINDOW_MS. Undo puts the row back with the same id, so the
  * Plaid review queue's references to it (stored as plain ids) line up again, and re-links
  * whatever is still free to be re-linked. Anything that has since been claimed by something
- * else (the bank record verified against another entry, the transfer re-paired) is left where
- * it is rather than taken back.
+ * else (the bank record verified against another entry, the transfer re-paired, the plan
+ * matched to another entry) is left where it is rather than taken back.
  */
 
 export const UNDO_WINDOW_MS = 15 * 60 * 1000;
@@ -22,6 +22,8 @@ type Snapshot = {
     categoryId: string;
     type: TransactionType;
     amountCents: number;
+    /** Missing from snapshots written before it was kept: those come back as reviewed. */
+    needsReview?: boolean;
     preCreditCents: number | null;
     creditCents: number | null;
     creditBreakdownJson: string | null;
@@ -51,6 +53,11 @@ type Snapshot = {
     itemRemovedAt: string | null;
   } | null;
   investmentFlowId: string | null;
+  /**
+   * The one-off plan this entry was matched to or added from. Deleting the entry reopens the
+   * plan (its link is set to null), so Undo has to close it again or the forecast counts both.
+   */
+  plannedTransactionId?: string | null;
   /** Receipts stay in their table, unlinked, until Undo links them back or the record expires. */
   attachmentIds?: string[];
 };
@@ -78,6 +85,7 @@ export async function deleteTransactionWithUndo(
         tags: true,
         verification: true,
         investmentFlow: true,
+        plannedFrom: { select: { id: true } },
         attachments: { select: { id: true } },
       },
     });
@@ -89,6 +97,7 @@ export async function deleteTransactionWithUndo(
         categoryId: row.categoryId,
         type: row.type,
         amountCents: row.amountCents,
+        needsReview: row.needsReview,
         preCreditCents: row.preCreditCents,
         creditCents: row.creditCents,
         creditBreakdownJson: row.creditBreakdownJson,
@@ -126,6 +135,7 @@ export async function deleteTransactionWithUndo(
           }
         : null,
       investmentFlowId: row.investmentFlow?.id ?? null,
+      plannedTransactionId: row.plannedFrom?.id ?? null,
       attachmentIds: row.attachments.map((a) => a.id),
     };
     const expired = await tx.deletedTransaction.findMany({
@@ -186,6 +196,7 @@ export async function undoDeletedTransaction(
           categoryId: t.categoryId,
           type: t.type,
           amountCents: t.amountCents,
+          needsReview: t.needsReview ?? false,
           preCreditCents: t.preCreditCents,
           creditCents: t.creditCents,
           creditBreakdownJson: t.creditBreakdownJson,
@@ -274,6 +285,14 @@ export async function undoDeletedTransaction(
       if (snap.investmentFlowId) {
         await tx.investmentFlow.updateMany({
           where: { id: snap.investmentFlowId, userId, transactionId: null },
+          data: { transactionId: t.id },
+        });
+      }
+
+      if (snap.plannedTransactionId) {
+        // Only while it is still open: the user may have matched the plan to another entry since.
+        await tx.plannedTransaction.updateMany({
+          where: { id: snap.plannedTransactionId, userId, transactionId: null },
           data: { transactionId: t.id },
         });
       }

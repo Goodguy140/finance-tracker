@@ -4,6 +4,7 @@ import { FALLBACK_CATEGORY_NAME, OTHER_CATEGORY_ALIASES } from "@/lib/plaid/cate
 import { parseQuickAdd, type QuickAddEntry } from "@/lib/search/quick-add";
 import { describeRuleSplit, resolveRuleOutcome, type RuleTransactionType } from "@/lib/transaction-rules";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
+import { TRANSFER_CATEGORY_NAME } from "@/lib/transfer-type";
 
 /** What the master search offers to add, as saving it would book it. */
 export type QuickAddPreview = QuickAddEntry & {
@@ -11,13 +12,18 @@ export type QuickAddPreview = QuickAddEntry & {
   accountName: string | null;
   /** A rule's split, described, when the expense would be split. */
   split: string | null;
+  /**
+   * Set when a "Mark as transfer" rule matches, so saving books a transfer rather than an
+   * expense: the account on the other side, when the rule names one.
+   */
+  transfer: { toAccountName: string | null } | null;
 };
 
 /**
  * Reads `text` as an expense to add and fills in what saving it would: the category, account
  * and rename from the user's rules and past titles, otherwise the default account and the
- * catch-all category, the same way `createTransactionFromApi` books it. Null when the text is
- * not an expense to add.
+ * catch-all category, the same way `createTransactionFromApi` books it, including as a
+ * transfer when a "Mark as transfer" rule matches. Null when the text is not an expense to add.
  */
 export async function previewQuickAdd(
   db: PrismaClient,
@@ -43,13 +49,25 @@ export async function previewQuickAdd(
   const accountId =
     (outcome.accountId && accounts.some((a) => a.id === outcome.accountId) ? outcome.accountId : null) ??
     owner.defaultExpenseAccountId;
+  const accountName = (id: string | null | undefined) => accounts.find((a) => a.id === id)?.name ?? null;
+  if (outcome.markAsTransfer) {
+    return {
+      ...entry,
+      title: outcome.title ?? entry.title,
+      categoryName: TRANSFER_CATEGORY_NAME,
+      accountName: accountName(accountId),
+      split: null,
+      transfer: { toAccountName: outcome.transferAccountId !== accountId ? accountName(outcome.transferAccountId) : null },
+    };
+  }
   return {
     ...entry,
     title: outcome.title ?? entry.title,
     categoryName: outcome.categoryId
       ? categoryName(outcome.categoryId)
       : (categories.find((c) => aliases.has(c.name.trim().toLowerCase()))?.name ?? FALLBACK_CATEGORY_NAME),
-    accountName: accounts.find((a) => a.id === accountId)?.name ?? null,
+    accountName: accountName(accountId),
     split: outcome.split ? describeRuleSplit(outcome.split, categoryName) : null,
+    transfer: null,
   };
 }
