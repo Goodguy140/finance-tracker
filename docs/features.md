@@ -367,7 +367,10 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     `forms/expense-forms.tsx`, `forms/csv-import-summary-dialog.tsx`, `src/lib/csv-import.ts`
   - Backup & export (JSON export, transactions as CSV for all time or a date range
     (`src/lib/transactions-csv.ts`, `src/app/api/export/transactions`), restore up to 20 MB, clear data, delete account):
-    `settings/data-forms.tsx`, `src/lib/backup*.ts`, `src/app/api/backup/export/me`
+    `settings/data-forms.tsx`, `src/lib/backup*.ts`, `src/app/api/backup/export/me`. Clear and restore share one
+    wipe list (`src/lib/user-data-wipe.ts`); what the JSON leaves out on purpose (bank connections, receipts,
+    sign-in methods, webhooks, dashboard layout) is listed on `UserBackupPayload`. Text over the length limits
+    (`src/lib/text-limits.ts`) in an older file is cut to fit rather than refused
   - Developer (API tokens with chosen scopes; `GET /api/v1/budgets`, `GET`/`POST /api/v1/transactions`,
     `GET /api/v1/accounts`, `GET /api/v1/categories`): `api-tokens-panel.tsx`, `src/lib/api-token.ts`,
     `src/lib/api-v1/*`, `src/app/api/v1/*`

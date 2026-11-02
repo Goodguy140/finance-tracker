@@ -8,6 +8,7 @@ import { currentYmdInTimeZone } from "@/lib/period-month";
 import { addTagsToTransaction, resolveTagIds } from "@/lib/tags-server";
 import { appendRuleNote, resolveRuleOutcome, ruleSplitLines } from "@/lib/transaction-rules";
 import { saveSplitLines } from "@/lib/split-lines";
+import { TRANSACTION_NOTE_MAX, TRANSACTION_TITLE_MAX } from "@/lib/text-limits";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
 
 /**
@@ -115,8 +116,8 @@ const createSchema = z
     amount: z.union([z.number(), z.string().trim().regex(/^-?\d+(\.\d{1,2})?$/, "'amount' must be a number like 12.50.")]).optional(),
     date: z.string().regex(YMD, "'date' must be YYYY-MM-DD.").optional(),
     postedDate: z.string().regex(YMD, "'postedDate' must be YYYY-MM-DD.").optional(),
-    title: z.string().trim().max(200).optional(),
-    note: z.string().trim().max(2000).optional(),
+    title: z.string().trim().max(TRANSACTION_TITLE_MAX).optional(),
+    note: z.string().trim().max(TRANSACTION_NOTE_MAX).optional(),
     categoryId: z.string().min(1).optional(),
     category: z.string().trim().min(1).max(100).optional(),
     accountId: z.string().min(1).optional(),

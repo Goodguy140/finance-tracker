@@ -22,6 +22,7 @@ export const AUDIT_ACTIONS = {
   admin_ops_settings_updated: "admin_ops_settings_updated",
   admin_database_backup_created: "admin_database_backup_created",
   user_backup_imported: "user_backup_imported",
+  user_financial_data_reset: "user_financial_data_reset",
   financial_account_created: "financial_account_created",
   financial_account_archived: "financial_account_archived",
   financial_account_unarchived: "financial_account_unarchived",

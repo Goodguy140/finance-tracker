@@ -16,6 +16,10 @@ function fifthOfMonthsAgo(monthsBack: number) {
  * latest three against a $300 dining budget, $2,000 rent as a recurring bill, and $3,300 in
  * chequing (one month of the $3,300 average spending). That is a fair score with three things
  * to fix: the dining budget, the rise in spending, and the emergency fund.
+ *
+ * The balance is read two months back, never less than 31 days ago: a reading from the last 31
+ * days also brings in the cash outlook, so one taken last month changed the score in the first
+ * days of every month.
  */
 async function seedUser(page: Page) {
   const email = `e2e-score-${uniqueStamp()}@example.com`;
@@ -58,7 +62,7 @@ async function seedUser(page: Page) {
     ],
   });
   await prisma.accountBalanceSnapshot.create({
-    data: { userId: user.id, accountId: account.id, date: fifthOfMonthsAgo(1), balanceCents: 330_000, source: "MANUAL" },
+    data: { userId: user.id, accountId: account.id, date: fifthOfMonthsAgo(2), balanceCents: 330_000, source: "MANUAL" },
   });
   await prisma.budget.create({ data: { userId: user.id, categoryId: dining.id, periodMonth: "2020-01", limitCents: 30_000 } });
   await prisma.recurringTransaction.create({
@@ -88,12 +92,12 @@ test("the financial score shows on Insights, with a one-line summary on Reports"
 
   await page.goto("/insights");
   const card = page.getByTestId("financial-score");
-  // Savings 83.75, emergency fund 40, bills 70, budgets 0, trend 16.7, and a cash buffer of 72 (chequing
-  // got down to about 23 days of spending, walked back from its balance), weighted 25/15/15/10/10/10.
-  await expect(card.getByTestId("financial-score-value")).toHaveText("54");
+  // Savings 83.75, emergency fund 40, bills 70, budgets 0, trend 16.7, and a cash buffer of 79 (chequing
+  // got down to about 27 days of spending, walked from its balance), weighted 25/15/15/10/10/10.
+  await expect(card.getByTestId("financial-score-value")).toHaveText("55");
   await expect(card.getByTestId("financial-score-band")).toHaveText("Fair");
   await expect(card.getByTestId("financial-score-factors").getByRole("listitem")).toHaveCount(6);
-  await expect(card.getByTestId("financial-score-factors")).toContainText("Everyday accounts got down to about 23 days of spending");
+  await expect(card.getByTestId("financial-score-factors")).toContainText("Everyday accounts got down to about 27 days of spending");
   // Nothing owed and nothing to plan with: those pillars say why they have no score.
   const pillars = card.getByTestId("financial-score-pillars");
   await expect(pillars.getByRole("listitem")).toHaveCount(4);
@@ -103,7 +107,7 @@ test("the financial score shows on Insights, with a one-line summary on Reports"
   // Reports shows the same score in one line, linking to the full card on Insights.
   await page.goto("/reports");
   const chip = page.getByTestId("financial-score-chip");
-  await expect(chip.getByTestId("financial-score-value")).toHaveText("54");
+  await expect(chip.getByTestId("financial-score-value")).toHaveText("55");
   await expect(chip.getByTestId("financial-score-band")).toHaveText("Fair");
   await expect(page.getByTestId("financial-score")).toHaveCount(0);
   await expect(chip.getByRole("link", { name: /How it.s worked out/ })).toHaveAttribute("href", "/insights");

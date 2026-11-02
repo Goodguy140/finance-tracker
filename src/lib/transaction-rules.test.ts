@@ -13,6 +13,7 @@ import {
   type RuleTransactionType,
   type TransactionRuleInput,
 } from "./transaction-rules";
+import { TRANSACTION_NOTE_MAX } from "./text-limits";
 
 function rule(overrides: Partial<TransactionRuleInput> = {}): TransactionRuleInput {
   return {
@@ -173,6 +174,12 @@ describe("appendRuleNote", () => {
     expect(appendRuleNote("paid", "tax")).toBe("paid\ntax");
     expect(appendRuleNote("paid\ntax", "tax")).toBe("paid\ntax");
     expect(appendRuleNote("", undefined)).toBeNull();
+  });
+
+  it("keeps the result within the note limit a backup restore allows", () => {
+    const long = "x".repeat(TRANSACTION_NOTE_MAX);
+    expect(appendRuleNote(long, "tax")!.length).toBe(TRANSACTION_NOTE_MAX);
+    expect(appendRuleNote("paid", "y".repeat(TRANSACTION_NOTE_MAX))!.length).toBe(TRANSACTION_NOTE_MAX);
   });
 });
 
