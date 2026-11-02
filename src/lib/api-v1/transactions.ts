@@ -10,6 +10,9 @@ import { appendRuleNote, resolveRuleOutcome, ruleSplitLines } from "@/lib/transa
 import { saveSplitLines } from "@/lib/split-lines";
 import { TRANSACTION_NOTE_MAX, TRANSACTION_TITLE_MAX } from "@/lib/text-limits";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
+import { transactionSearchWhere } from "@/lib/search/search-data";
+import { replaceTransactionTags } from "@/lib/tags-server";
+import { deleteTransactionWithUndo, undoDeletedTransaction, UNDO_REFUSAL_MESSAGES } from "@/lib/transaction-undo";
 
 /**
  * The personal API's transactions: `GET /api/v1/transactions` lists them and
@@ -31,6 +34,11 @@ const listQuerySchema = z.object({
   type: z.enum(["expense", "income", "transfer"]).optional(),
   accountId: z.string().min(1).optional(),
   categoryId: z.string().min(1).optional(),
+  /** Words or an amount, matched as the website's search matches them (title, note, bank text, amount). */
+  q: z.string().trim().min(1).max(100, "'q' is too long.").optional(),
+  tagId: z.string().min(1).optional(),
+  /** Only entries that came in without being typed and have not been looked at. */
+  needsReview: z.enum(["true", "false"], "'needsReview' must be true or false.").optional(),
   limit: z.coerce.number().int().min(1).max(API_LIST_MAX_LIMIT).default(API_LIST_DEFAULT_LIMIT),
   cursor: z.string().min(1).optional(),
 });
@@ -47,6 +55,8 @@ export function parseListQuery(params: URLSearchParams): { ok: true; query: List
 const transactionInclude = {
   category: { select: { name: true } },
   account: { select: { name: true, currency: true } },
+  transferAccount: { select: { name: true } },
+  _count: { select: { attachments: true } },
   tags: { include: { tag: { select: { name: true } } } },
   splitParts: { select: { categoryId: true, amountCents: true } },
   owedShares: { select: { amountCents: true } },
@@ -69,11 +79,16 @@ export function serializeTransaction(tx: Row) {
     accountId: tx.accountId,
     accountName: tx.account?.name ?? null,
     transferAccountId: tx.transferAccountId,
+    transferAccountName: tx.transferAccount?.name ?? null,
     note: tx.note,
     tags: tx.tags.map((t) => t.tag.name),
     splits: tx.splitParts.map((p) => ({ categoryId: p.categoryId, amountCents: p.amountCents })),
     owedToYouCents: tx.owedShares.reduce((sum, s) => sum + s.amountCents, 0),
     verified: tx.verification !== null,
+    needsReview: tx.needsReview,
+    /** Credits and rewards taken off the purchase total; null when there were none. */
+    creditCents: tx.creditCents,
+    attachmentCount: tx._count.attachments,
   };
 }
 
@@ -88,6 +103,9 @@ export async function listTransactionsForApi(db: PrismaClient, userId: string, q
     ...(query.from || toExclusive
       ? { date: { ...(query.from ? { gte: dateFromYmd(query.from) } : {}), ...(toExclusive ? { lt: toExclusive } : {}) } }
       : {}),
+    ...(query.tagId ? { tags: { some: { tagId: query.tagId } } } : {}),
+    ...(query.needsReview ? { needsReview: query.needsReview === "true" } : {}),
+    ...(query.q ? { AND: [transactionSearchWhere(userId, { query: query.q })] } : {}),
   };
   // A cursor from someone else's data, or a deleted row, starts nothing: it is checked here
   // rather than handed to Prisma, which would throw on an id it cannot find.
@@ -245,4 +263,127 @@ export async function createTransactionFromApi(
   });
   emitTransactionsCreated(user.id, [created.id], source === "api" ? "api" : "manual", { client: db });
   return { ok: true, transaction: serializeTransaction(created) };
+}
+
+/** One of the user's entries as the list shows it, or null. */
+export async function getTransactionForApi(db: PrismaClient, userId: string, id: string) {
+  const row = await db.transaction.findFirst({ where: { id, userId }, include: transactionInclude });
+  return row ? serializeTransaction(row) : null;
+}
+
+const updateSchema = z
+  .object({
+    title: z.string().trim().max(TRANSACTION_TITLE_MAX).nullable().optional(),
+    note: z.string().trim().max(TRANSACTION_NOTE_MAX).nullable().optional(),
+    date: z.string().regex(YMD, "'date' must be YYYY-MM-DD.").optional(),
+    postedDate: z.string().regex(YMD, "'postedDate' must be YYYY-MM-DD.").nullable().optional(),
+    amountCents: amountCents.optional(),
+    categoryId: z.string().min(1).optional(),
+    accountId: z.string().min(1).nullable().optional(),
+    /** The entry's whole tag list: tags left out are taken off. */
+    tags: z.array(z.string().trim().min(1).max(50)).max(20).optional(),
+    /** Only marks the entry looked at; any other change does that too. */
+    reviewed: z.literal(true).optional(),
+  })
+  .strict();
+
+export type UpdateResult =
+  | { ok: true; transaction: ReturnType<typeof serializeTransaction> }
+  | { ok: false; status: 400 | 404; error: string };
+
+/**
+ * Edits one entry from the phone: title, note, dates, amount, category, account and tags, or
+ * just marks it reviewed. Saving any change counts as looking at the entry, as the website's
+ * edit dialog does. What the phone does not edit is refused rather than half-applied, and
+ * stays on the website: a split's lines, amounts owed back, credits, and the accounts and
+ * amount of a transfer.
+ */
+export async function updateTransactionFromApi(
+  db: PrismaClient,
+  userId: string,
+  id: string,
+  body: unknown,
+): Promise<UpdateResult> {
+  const parsed = updateSchema.safeParse(body);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const message = issue?.code === "unrecognized_keys" ? `Unknown field ${issue.keys.map((k) => `'${k}'`).join(", ")}.` : issue?.message;
+    return { ok: false, status: 400, error: message ?? "Invalid body." };
+  }
+  const input = parsed.data;
+  const existing = await db.transaction.findFirst({
+    where: { id, userId },
+    select: {
+      id: true,
+      type: true,
+      accountId: true,
+      categoryId: true,
+      creditCents: true,
+      _count: { select: { splitParts: true, owedShares: true } },
+    },
+  });
+  if (!existing) return { ok: false, status: 404, error: "No transaction with that id." };
+
+  const refuse = (error: string): UpdateResult => ({ ok: false, status: 400, error });
+  const isTransfer = existing.type === TransactionType.TRANSFER;
+  const isSplit = existing._count.splitParts > 0;
+  const changesAccount = input.accountId !== undefined && input.accountId !== existing.accountId;
+  const changesCategory = input.categoryId !== undefined && input.categoryId !== existing.categoryId;
+  if (isTransfer && (input.amountCents !== undefined || changesAccount || changesCategory)) {
+    return refuse("A transfer's amount and accounts are changed on the website.");
+  }
+  if (input.amountCents !== undefined && (isSplit || existing._count.owedShares > 0 || existing.creditCents)) {
+    return refuse("This entry is split, has amounts owed back or credits; change its amount on the website.");
+  }
+  if (changesCategory && isSplit) return refuse("A split entry's categories are changed on the website.");
+  if (existing.type === TransactionType.INCOME && input.amountCents !== undefined && input.amountCents < 0) {
+    return refuse("Income must be positive.");
+  }
+  if (changesCategory) {
+    const kind = existing.type === TransactionType.INCOME ? CategoryKind.INCOME : CategoryKind.EXPENSE;
+    const ok = await db.category.count({ where: { id: input.categoryId, userId, kind } });
+    if (!ok) return { ok: false, status: 404, error: `No ${kind.toLowerCase()} category with that id.` };
+  }
+  if (changesAccount && input.accountId) {
+    const ok = await db.account.count({ where: { id: input.accountId, userId, archived: false } });
+    if (!ok) return { ok: false, status: 404, error: "No open account with that id." };
+  }
+
+  const row = await db.$transaction(async (tx) => {
+    await tx.transaction.update({
+      where: { id: existing.id },
+      data: {
+        needsReview: false,
+        ...(input.title !== undefined ? { title: input.title || null } : {}),
+        ...(input.note !== undefined ? { note: input.note || null } : {}),
+        ...(input.date !== undefined ? { date: dateFromYmd(input.date) } : {}),
+        ...(input.postedDate !== undefined ? { postedDate: input.postedDate ? dateFromYmd(input.postedDate) : null } : {}),
+        ...(input.amountCents !== undefined ? { amountCents: input.amountCents } : {}),
+        ...(changesCategory ? { categoryId: input.categoryId } : {}),
+        ...(changesAccount ? { accountId: input.accountId } : {}),
+      },
+    });
+    if (input.tags) await replaceTransactionTags(tx, existing.id, await resolveTagIds(tx, userId, input.tags));
+    return tx.transaction.findUniqueOrThrow({ where: { id: existing.id }, include: transactionInclude });
+  });
+  return { ok: true, transaction: serializeTransaction(row) };
+}
+
+/**
+ * Deletes one entry, kept for the website's 15-minute Undo (`POST /api/v1/undo/:undoId`).
+ * Null when the user has no such entry.
+ */
+export async function deleteTransactionFromApi(db: PrismaClient, userId: string, id: string) {
+  const row = await db.transaction.findFirst({ where: { id, userId }, select: { type: true } });
+  if (!row) return null;
+  const undoId = await deleteTransactionWithUndo(db, userId, id, row.type);
+  return undoId ? { undoId, type: row.type.toLowerCase() } : null;
+}
+
+/** Puts back an entry deleted in the last 15 minutes. */
+export async function undoDeleteFromApi(db: PrismaClient, userId: string, undoId: string) {
+  const result = await undoDeletedTransaction(db, userId, undoId);
+  if (!result.ok) return { ok: false as const, error: UNDO_REFUSAL_MESSAGES[result.reason] };
+  const transaction = await getTransactionForApi(db, userId, result.transactionId);
+  return { ok: true as const, type: result.type, transaction };
 }

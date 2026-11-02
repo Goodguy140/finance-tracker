@@ -7,6 +7,10 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Icon sf={{ default: 'house', selected: 'house.fill' }} md="home" />
         <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="transactions">
+        <NativeTabs.Trigger.Icon sf="list.bullet" md="list" />
+        <NativeTabs.Trigger.Label>Transactions</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="budgets">
         <NativeTabs.Trigger.Icon sf={{ default: 'chart.pie', selected: 'chart.pie.fill' }} md="pie_chart" />
         <NativeTabs.Trigger.Label>Budgets</NativeTabs.Trigger.Label>

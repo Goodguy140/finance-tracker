@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatDay, relativeDay, shiftMonth } from './dates';
+import { dateFromYmd, formatDay, localMonth, localToday, relativeDay, shiftMonth, ymdFromDate } from './dates';
 
 describe('formatDay', () => {
   it('writes the calendar day the server meant, whatever the phone’s time zone', () => {
@@ -28,5 +28,20 @@ describe('shiftMonth', () => {
     expect(shiftMonth('2026-12', 1)).toBe('2027-01');
     expect(shiftMonth('2026-06', -18)).toBe('2024-12');
     expect(shiftMonth('2026-06', 0)).toBe('2026-06');
+  });
+});
+
+describe('localMonth and localToday', () => {
+  it('read the phone’s own calendar, padded', () => {
+    const date = new Date(2026, 0, 5, 23, 30);
+    expect(localMonth(date)).toBe('2026-01');
+    expect(localToday(date)).toBe('2026-01-05');
+  });
+});
+
+describe('dateFromYmd and ymdFromDate', () => {
+  it('round-trip a day through a UTC date', () => {
+    expect(ymdFromDate(dateFromYmd('2026-03-08'))).toBe('2026-03-08');
+    expect(dateFromYmd('2026-03-08').toISOString()).toBe('2026-03-08T00:00:00.000Z');
   });
 });

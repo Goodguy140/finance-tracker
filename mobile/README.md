@@ -22,12 +22,13 @@ The server side is `src/lib/app-devices.ts` and the `/api/v1/app/*` routes; the 
 
 | Folder | What is in it |
 | --- | --- |
-| `src/app/` | Expo Router routes only: `_layout.tsx`, `sign-in.tsx`, and `(tabs)/` with one stack per tab (`(home)`, `budgets`, `settings`) |
+| `src/app/` | Expo Router routes only: `_layout.tsx`, `sign-in.tsx`, and `(tabs)/` with one stack per tab (`(home)`, `transactions`, `budgets`, `settings`) |
 | `src/screens/` | What each route shows |
 | `src/components/` | Pieces shared between screens: sections, progress bars, budget lines |
 | `src/session/` | The stored sign-in (Keychain), the sign-in flow, the session provider |
 | `src/api/` | Calls to the server's `/api/v1` routes, their types (`types.ts`), and the TanStack Query cache every screen reads through (`query.tsx`) |
 | `src/utils/` | Plain functions with unit tests beside them |
+| `src/state/` | Small app-wide state outside the server cache (the Undo offer after a delete) |
 | `src/constants/theme.ts` | Colours and spacing, matching the web app |
 
 ## Checks
