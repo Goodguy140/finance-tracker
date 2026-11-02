@@ -7,7 +7,7 @@ import { Alert, ScrollView, Switch, Text, TextInput } from 'react-native';
 
 import { useApiMutation } from '@/api/mutations';
 import { errorText, useApiQuery } from '@/api/query';
-import type { Account, Category, Transaction } from '@/api/types';
+import type { Account, Category, TransactionDetail } from '@/api/types';
 import { FormButton, FormField, formStyles } from '@/components/form';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
@@ -25,12 +25,14 @@ import {
   type EditForm,
 } from '@/utils/transactions';
 
+import { Receipts } from './receipts';
+
 const NO_ACCOUNT = '';
 
 /** One entry, editable: what the phone can change, and why the rest is on the website. */
 export function EditTransaction({ id }: { id: string }) {
   const theme = useTheme();
-  const detail = useApiQuery<{ transaction: Transaction }>(`/api/v1/transactions/${encodeURIComponent(id)}`);
+  const detail = useApiQuery<{ transaction: TransactionDetail }>(`/api/v1/transactions/${encodeURIComponent(id)}`);
   const categories = useApiQuery<{ categories: Category[] }>('/api/v1/categories');
   const accounts = useApiQuery<{ accounts: Account[] }>('/api/v1/accounts');
   const row = detail.data?.transaction;
@@ -50,13 +52,13 @@ export function EditTransaction({ id }: { id: string }) {
   return <Editor key={row.id} row={row} categories={categories.data.categories} accounts={accounts.data.accounts} />;
 }
 
-function Editor({ row, categories, accounts }: { row: Transaction; categories: Category[]; accounts: Account[] }) {
+function Editor({ row, categories, accounts }: { row: TransactionDetail; categories: Category[]; accounts: Account[] }) {
   const theme = useTheme();
   const scheme = useColorScheme();
   const router = useRouter();
   const [form, setForm] = useState<EditForm>(() => formFromTransaction(row));
   const [error, setError] = useState<string | null>(null);
-  const save = useApiMutation<Record<string, unknown>, { transaction: Transaction }>(
+  const save = useApiMutation<Record<string, unknown>, { transaction: TransactionDetail }>(
     'PATCH',
     () => `/api/v1/transactions/${encodeURIComponent(row.id)}`,
     (body) => body,
@@ -229,6 +231,7 @@ function Editor({ row, categories, accounts }: { row: Transaction; categories: C
         </Section>
 
         <Details row={row} currency={currency} />
+        {row.attachments ? <Receipts transactionId={row.id} attachments={row.attachments} /> : null}
 
         {row.needsReview && !dirty ? (
           <FormButton label="Mark reviewed" onPress={markReviewed} disabled={busy} />
@@ -245,15 +248,18 @@ function Editor({ row, categories, accounts }: { row: Transaction; categories: C
   );
 }
 
-/** What the phone shows but does not change: split lines, amounts owed back, credits, the bank match, receipts. */
-function Details({ row, currency }: { row: Transaction; currency: string }) {
+/** What the phone shows but does not change: split lines, amounts owed back, credits, the bank match. */
+function Details({ row, currency }: { row: TransactionDetail; currency: string }) {
   const theme = useTheme();
   const lines = [
     row.splits.length > 0 ? `Split across ${row.splits.length} categories` : null,
     row.owedToYouCents > 0 ? `${formatCents(row.owedToYouCents, currency)} owed back to you` : null,
     row.creditCents ? `${formatCents(row.creditCents, currency)} in credits taken off` : null,
     row.verified ? 'Matched to a bank transaction' : null,
-    row.attachmentCount ? `${row.attachmentCount} receipt${row.attachmentCount === 1 ? '' : 's'} (open on the website)` : null,
+    // A server from before receipts reached the phone only counts them.
+    !row.attachments && row.attachmentCount
+      ? `${row.attachmentCount} receipt${row.attachmentCount === 1 ? '' : 's'} (open on the website)`
+      : null,
   ].filter((line): line is string => line !== null);
   if (lines.length === 0) return null;
   return (

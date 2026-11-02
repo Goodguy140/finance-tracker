@@ -349,10 +349,16 @@ async function createTransferFromApi(
   return { ok: true, transaction: serializeTransaction(created) };
 }
 
-/** One of the user's entries as the list shows it, or null. */
+/** One of the user's entries as the list shows it, with its receipts listed (not their bytes), or null. */
 export async function getTransactionForApi(db: PrismaClient, userId: string, id: string) {
-  const row = await db.transaction.findFirst({ where: { id, userId }, include: transactionInclude });
-  return row ? serializeTransaction(row) : null;
+  const row = await db.transaction.findFirst({
+    where: { id, userId },
+    include: {
+      ...transactionInclude,
+      attachments: { select: { id: true, fileName: true, contentType: true, sizeBytes: true }, orderBy: { createdAt: "asc" } },
+    },
+  });
+  return row ? { ...serializeTransaction(row), attachments: row.attachments } : null;
 }
 
 const updateSchema = z

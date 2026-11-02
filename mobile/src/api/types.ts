@@ -106,6 +106,12 @@ export type Transaction = {
   attachmentCount?: number;
 };
 
+/** A receipt kept with an entry, as `GET /api/v1/transactions/:id` lists it. */
+export type Attachment = { id: string; fileName: string; contentType: string; sizeBytes: number };
+
+/** One entry as `GET /api/v1/transactions/:id` answers: the list's fields and its receipts. */
+export type TransactionDetail = Transaction & { attachments?: Attachment[] };
+
 export type TransactionPage = { transactions: Transaction[]; nextCursor: string | null };
 
 export type Category = { id: string; name: string; kind: 'expense' | 'income' | 'transfer' };
