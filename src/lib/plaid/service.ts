@@ -18,7 +18,7 @@ import { encryptSecret, tryDecryptSecret } from "@/lib/security";
 export class PlaidNotConfiguredError extends Error {
   constructor() {
     super(
-      "Plaid is not set up on this server. An administrator can configure it under Settings → Server admin → Plaid.",
+      "Plaid is not set up on this server. An administrator can configure it under Settings → Server admin → Integrations.",
     );
     this.name = "PlaidNotConfiguredError";
   }

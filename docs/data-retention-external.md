@@ -31,10 +31,11 @@ advertising or automated decision-making.
 
 | Category | What it includes | Why it is held |
 |----------|------------------|----------------|
-| **Financial records** | Transactions, amounts, dates, descriptions and notes, categories, accounts, budgets, recurring bills, investment contributions and withdrawals, and portfolio valuations | The service itself — the records you create and review |
-| **Cost-sharing details** | Names of people you split bills with, their share, and whether they have paid | Shared-expense tracking you have chosen to use |
-| **Account and profile** | Email address, display name, time zone, country, and preferences | Identifying you, signing you in, and formatting dates and currency |
-| **Authentication data** | Password (stored only as a one-way hash), registered passkeys, recovery codes (hashed), single sign-on links, and API tokens (stored only as a hash) | Securing access to your account |
+| **Financial records** | Transactions, amounts, dates, descriptions and notes, receipts you attach, categories, tags and rules, accounts and their balances, budgets, recurring bills, savings goals, planned purchases, statement reconciliations, investment contributions and withdrawals, portfolio valuations, and the financial score worked out from them each month | The service itself — the records you create and review |
+| **Cost-sharing details** | Names of people you split bills with or who owe you part of an expense, their share, and whether they have paid | Shared-expense tracking you have chosen to use |
+| **Account and profile** | Email address, display name, time zone, country, birth year if you give it, and preferences | Identifying you, signing you in, formatting dates and currency, and age-based planning figures |
+| **Authentication data** | Password (stored only as a one-way hash), registered passkeys, an authenticator app's secret (encrypted), recovery codes (hashed), single sign-on links, and API tokens (stored only as a hash) | Securing access to your account |
+| **Notification and integration settings** (only if you set them up) | Devices registered for phone notifications, a private calendar link (stored only as a hash), and webhook addresses you add, with a copy of each event sent to them | Delivering the notifications and events you asked for |
 | **Bank connection data** (only if you link a bank) | The bank and accounts linked, an encrypted credential that lets us fetch their transactions, and transactions fetched but not yet reviewed by you | Fetching transactions for you to review — nothing reaches your records until you approve it |
 | **Security and activity records** | Sign-ins and failures, sign-outs, password and passkey changes, permission changes, exports, and account deletions — each with the time, the IP address, and the browser or client used | Detecting and investigating unauthorized access, and keeping privileged actions accountable |
 
@@ -50,7 +51,9 @@ information in its entirety rather than graded by field.
 | Cost-sharing details | Until you delete the person, the bill they relate to, or your account |
 | Account and profile | For the life of your account |
 | Password, passkeys, recovery codes, sign-on links | For the life of your account, or until you remove the individual credential |
-| API tokens | Until you revoke the token or delete your account |
+| API tokens, webhooks, the calendar link, phone notification devices | Until you remove them or delete your account. A phone notification device is also removed once its browser reports it gone or repeated deliveries fail |
+| A just-deleted entry | Kept so the Undo button can restore it for **15 minutes**, then removed the next time you delete something, clear your data, or close your account |
+| Copies of webhook events | **30 days** |
 | Bank connection data | Until you disconnect the bank, or withdraw its access through the bank or our bank-data provider — the connection is ended at the provider, then everything fetched through it is deleted. Transactions you already approved are your records and stay. Fetched transactions the bank later withdrew or replaced are deleted automatically after 30 days |
 | Security and activity records | **[365] days**, then deleted automatically |
 | Password reset links | Unusable 30 minutes after they are issued |
@@ -83,9 +86,10 @@ provided and documented in [section 7](#7-your-rights).**
 
 ## 5. How data is destroyed
 
-**Closing your account** permanently destroys your financial records, cost-sharing details,
-profile, password, passkeys, recovery codes, single sign-on links, and API tokens. It is
-immediate and cannot be undone.
+**Closing your account** permanently destroys your financial records (receipts and score
+history included), cost-sharing details, profile, password, passkeys, authenticator app,
+recovery codes, single sign-on links, API tokens, webhooks, phone notification devices, and
+the calendar link. It is immediate and cannot be undone.
 
 **Two exceptions are retained deliberately, and you should know about them before you ask
 for erasure:**
@@ -102,8 +106,9 @@ for erasure:**
    person who changed it is removed.
 
 **Erasing your financial history without closing your account** is available separately: it
-removes every transaction, account, budget, recurring bill, investment record, and
-valuation, while keeping your login and security history intact.
+removes every transaction and receipt, account and balance, budget, recurring bill, goal,
+plan, investment record, valuation, and the score history worked out from them, while keeping
+your login, your notification settings and your security history intact.
 
 **Destruction is complete, not merely a hidden flag.** Deleted records are removed from the
 live database rather than marked inactive and retained. The storage they occupied is
@@ -130,10 +135,10 @@ Depending on where you live, you have some or all of the following rights. We re
 
 | Right | What you get | How to exercise it |
 |-------|--------------|--------------------|
-| **Access** | A complete copy of the personal information held about you | Export your data in-app, under Settings → Advanced |
+| **Access** | A copy of the personal information held about you | Export your data in-app, under Settings → Backup & export |
 | **Portability** | The same copy in a structured, machine-readable format | As above — the export is JSON |
 | **Correction** | Inaccurate information amended | Edit your records and profile directly in the app |
-| **Erasure** | Your data destroyed, subject to [section 5](#5-how-data-is-destroyed) | Close your account, or erase your financial history only, under Settings |
+| **Erasure** | Your data destroyed, subject to [section 5](#5-how-data-is-destroyed) | Close your account, or erase your financial history only, under Settings → Backup & export |
 | **Withdraw consent** | Processing stopped | Contact us — we will suspend and then close your account on request |
 | **Restrict or object** | Processing halted without destroying data | Contact us to have your account suspended |
 
@@ -142,27 +147,31 @@ you are the account holder — normally by requiring you to be signed in and to 
 your second factor. An erasure request honoured for an impersonator would itself be a
 privacy breach, so we do not waive this step.
 
-**Two limits on the in-app export**, stated so you know what a complete request includes:
+**Three limits on the in-app export**, stated so you know what a complete request includes:
 
-- Registered passkeys are excluded from the export file by design, because a passkey is
-  bound to this service and restoring one into another account would be a means of account
-  takeover. You can see each passkey's name, device, and enrolment date in the app.
+- Anything that lets someone in is excluded from the export file by design: passkeys,
+  authenticator apps, recovery codes, API tokens, webhook secrets and the calendar link.
+  Restoring one into another account would be a means of account takeover. You can see each
+  one's name, device or address, and when it was added, in the app.
+- Receipts are not in the file, because the files themselves would make it very large. You
+  can download each one from its entry.
 - Your security and activity records are not part of the automated export. They are personal
   information about you and are within scope of an access request — **contact us and we will
   provide them.**
 
 > ### Your exported file is sensitive
 >
-> The export contains your complete financial history together with credential material,
-> including your password hash and any active single sign-on tokens. Treat the file as you
-> would a password: store it encrypted, keep it off shared or cloud-synced drives, and
-> delete it when you no longer need it. If an export is exposed, tell us — we will help you
-> reset your credentials.
+> The export contains your complete financial history and the names of anyone you split
+> costs with. Your password, sign-in methods and tokens are removed before it is written, so
+> it cannot be used to sign in, but it reveals everything you recorded. Store it encrypted,
+> keep it off shared or cloud-synced drives, and delete it when you no longer need it. If an
+> export is exposed, tell us.
 
 ## 8. Data you provide about other people
 
-If you record someone else for cost-sharing — a roommate, a partner — their name and payment
-status is personal information about **them**, entered by you. They have no account and
+If you record someone else for cost-sharing or as owing you part of an expense — a roommate,
+a partner — their name and payment status is personal information about **them**, entered by
+you. They have no account and
 cannot make a request through the application.
 
 - Record as little as you need: a first name rather than a full legal name.
@@ -177,7 +186,10 @@ receives.
 
 | Provider | What it receives | Note |
 |----------|------------------|------|
-| **Email provider** | Your email address, and — if you enable budget alerts — the budget category and the amounts involved | Budget alert email is **off by default**; leaving it off means no financial detail leaves the service by email |
+| **Email provider** | Your email address, and — if you turn on budget alerts, the email digest, bill reminders or large-charge alerts — the categories, bills, purchases and amounts they report | Every email notification is **off by default**; leaving them off means no financial detail leaves the service by email |
+| **Phone notification service** (only if you turn on phone notifications) | An encrypted message for your device. The service of your browser's maker (Google, Apple, Mozilla or Microsoft) delivers it but cannot read it | Removing the device in the app stops them |
+| **Calendar app** (only if you subscribe to the calendar link) | Upcoming bills and subscription dates, with their amounts | The app you subscribe with keeps its own copy |
+| **Webhook recipients** (only if you add a webhook) | The events you chose, such as a new transaction's amount, date and title, sent to the address you entered | You choose the recipient; it keeps what it receives under its own practices |
 | **Single sign-on provider** | Your identity details, if you choose to sign in with an external provider | Only where you have linked an account |
 | **Bank-data provider** | Your bank sign-in (entered directly with the provider, never seen by us), and the accounts and transactions it fetches from your bank | Only if you link a bank. The provider keeps its own copy under its own retention policy; disconnecting here ends its access, and deleting its copy is a request to the provider |
 | **Hosting and storage** | Encrypted data at rest, including backups | |
@@ -191,8 +203,8 @@ data brokers.
 
 Safeguards protecting retained information include: encryption of data in transit and of
 backups at rest; passwords stored only as salted one-way hashes, never in recoverable form;
-optional passkey-based multi-factor authentication, which once enabled is required at every
-sign-in; rate limiting on authentication; scoped, expiring, revocable API tokens stored only
+optional multi-factor authentication with a passkey or an authenticator app, which once
+enabled is required at every sign-in; rate limiting on authentication; scoped, expiring, revocable API tokens stored only
 as hashes; strict separation so that each user's financial data is reachable only by that
 user; and logging of privileged and destructive actions. Credentials and secrets are
 excluded from log records before they are written.

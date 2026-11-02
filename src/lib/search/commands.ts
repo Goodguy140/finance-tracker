@@ -208,7 +208,7 @@ const ADMIN: Command[] = [
   { id: "admin-system", label: "System health", keywords: ["storage", "migrations", "environment", "server backup", "metrics"], href: "/settings/admin/system" },
 ].map(({ href, ...item }) => ({
   ...item,
-  hint: "Settings → Admin",
+  hint: "Settings → Server admin",
   section: "Admin" as const,
   run: { type: "link" as const, href },
   adminOnly: true,

@@ -41,8 +41,8 @@ describe("parseAnalyticsRange", () => {
   });
 });
 
-/** A Prisma stand-in that records every call and answers with empty results. */
-function recordingPrisma() {
+/** A Prisma stand-in that records every call and answers with empty results, or `answers`. */
+function recordingPrisma(answers: Record<string, unknown> = {}) {
   const calls: { model: string; method: string; args: unknown }[] = [];
   const handler: ProxyHandler<object> = {
     get(_target, model: string) {
@@ -52,7 +52,7 @@ function recordingPrisma() {
           get(_t, method: string) {
             return vi.fn(async (args: unknown) => {
               calls.push({ model, method, args });
-              return method === "count" ? 0 : [];
+              return answers[`${model}.${method}`] ?? (method === "count" ? 0 : []);
             });
           },
         },
@@ -77,6 +77,17 @@ function fieldNames(value: unknown, out = new Set<string>()): Set<string> {
   }
   return out;
 }
+
+describe("sign-in methods", () => {
+  it("counts authenticator apps as well as passkeys, and each account with either once", async () => {
+    const { prisma } = recordingPrisma({
+      "webAuthnCredential.groupBy": [{ userId: "a" }, { userId: "b" }],
+      "totpCredential.groupBy": [{ userId: "b" }, { userId: "c" }],
+    });
+    const stats = await getAdminAdoptionStats(prisma, 30, now);
+    expect(stats).toMatchObject({ withPasskey: 2, withAuthenticatorApp: 2, withSecondFactor: 3 });
+  });
+});
 
 describe("operational-only queries", () => {
   it("never select or group by anything that reveals what someone spent", async () => {

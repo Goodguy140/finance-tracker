@@ -35,6 +35,10 @@ describe("settings sections", () => {
     expect(matchSettingsSection(getSettingsSection("profile"), "timezone")).toBe(true);
     expect(matchSettingsSection(getSettingsSection("accounts"), "TFSA")).toBe(true);
     expect(matchSettingsSection(getSettingsSection("developer"), "token")).toBe(true);
+    // Features added after the Settings redesign are findable too.
+    expect(matchSettingsSection(getSettingsSection("developer"), "webhook")).toBe(true);
+    expect(matchSettingsSection(getSettingsSection("import"), "OFX")).toBe(true);
+    expect(matchSettingsSection(getSettingsSection("categories"), "yearly budget")).toBe(true);
     expect(matchSettingsSection(getSettingsSection("tags"), "timezone")).toBe(false);
     expect(matchSettingsSection(getSettingsSection("tags"), "  ")).toBe(true);
   });

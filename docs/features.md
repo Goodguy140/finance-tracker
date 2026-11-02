@@ -389,7 +389,7 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
 Nav `src/components/admin/admin-nav.tsx`; actions `actions/admin*.ts`.
 
 - Overview (attention items): `src/lib/admin-attention.ts`
-- Analytics: `admin-analytics-panel.tsx`, `src/lib/admin-analytics*.ts`
+- Analytics (activity per day; sign-in methods: password, passkey, authenticator app, either second factor, recovery codes, SSO): `admin-analytics-panel.tsx`, `src/lib/admin-analytics*.ts`
 - Users (role, disable, force sign-out, delete): `admin-user-table.tsx`, `src/lib/admin-users.ts`
 - Authentication (password login, public sign-up, Google/SSO): `forms/admin-forms.tsx`,
   `src/lib/auth-settings.ts`, `oauth-settings.ts`, `signup-policy.ts`

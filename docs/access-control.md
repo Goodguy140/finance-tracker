@@ -82,7 +82,7 @@ a way around the second factor.
 
 ### Single sign-on only
 
-Password sign-in can be turned off entirely at **Settings → Server admin → Sign-in methods**,
+Password sign-in can be turned off entirely at **Settings → Server admin → Authentication**,
 leaving SSO and passkeys. The credentials provider is then not registered at all, and signup
 and password reset refuse.
 
@@ -95,7 +95,7 @@ stored setting, so recovery never requires editing the database.
 
 External integrations authenticate with personal access tokens (`Authorization: Bearer ft_…`).
 
-- Created per-user under **Settings → Advanced → API tokens**, and only after a passkey step-up.
+- Created per-user under **Settings → Developer**, and only after a step-up (a passkey or authenticator code).
 - 256 bits of entropy; only a SHA-256 hash is stored. The raw value is shown exactly once.
 - **Scoped** — chosen when the token is made, and a token carries no rights beyond them:
   `budgets:read` (`GET /api/v1/budgets`), `transactions:read` (`GET /api/v1/transactions`),
@@ -174,7 +174,7 @@ Once a quarter, an admin should:
 
 - [ ] Open **Settings → Server admin → Users**. Confirm every listed account still needs
       access, and that the `SERVER_ADMIN` count is as small as the deployment allows.
-- [ ] Check the sign-in column. Any account with no passkey is single-factor — chase it.
+- [ ] Check the sign-in column. Any account with neither a passkey nor an authenticator app is single-factor — chase it.
 - [ ] Review active API tokens. Revoke any whose `lastUsedAt` is stale or absent.
 - [ ] Filter the audit log to `user_login_failed` for the quarter. Look for repeated failures
       against one address, or `unknown_email` bursts from one IP.

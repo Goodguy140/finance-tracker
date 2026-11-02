@@ -249,8 +249,8 @@ export function PlaidConnectionsPanel({
       {!configured ? (
         <div className="rounded-2xl border border-slate-700 bg-slate-900/70 p-4 text-sm text-slate-300">
           Bank sync is not set up on this server. An administrator can configure it under{" "}
-          <Link href="/settings/admin" className="font-medium underline underline-offset-4">
-            Server admin → Plaid
+          <Link href="/settings/admin/integrations" className="font-medium underline underline-offset-4">
+            Server admin → Integrations
           </Link>
           .
         </div>
