@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import { createWebhookAction, deleteWebhookAction, sendTestWebhookAction, setWebhookEnabledAction, type CreateWebhookState } from "@/app/actions/webhooks";
 import { ServerActionForm } from "@/components/server-action-form";
 import { inputClass, primaryBtnClass, secondaryBtnClass } from "@/components/forms/shared";
+import { useConfirmIdentity } from "@/components/mfa/confirm-identity";
 import { WEBHOOK_EVENT_LABELS, WEBHOOK_EVENTS } from "@/lib/webhook-events";
 
 export type WebhookRow = {
@@ -86,8 +87,10 @@ function WebhookItem({ hook }: { hook: WebhookRow }) {
   );
 }
 
-export function WebhooksPanel({ hooks }: { hooks: WebhookRow[] }) {
+export function WebhooksPanel({ hooks, canUseLocalNetwork }: { hooks: WebhookRow[]; canUseLocalNetwork: boolean }) {
   const [state, formAction, pending] = useActionState(createWebhookAction, initialState);
+  const confirmIdentity = useConfirmIdentity();
+  const [confirmError, setConfirmError] = useState<string | null>(null);
   return (
     <section aria-labelledby="webhooks-heading" className="space-y-4">
       <header className="space-y-2">
@@ -100,6 +103,21 @@ export function WebhooksPanel({ hooks }: { hooks: WebhookRow[] }) {
           <code className="rounded bg-slate-800 px-1 py-0.5 text-xs">t.body</code> with the secret. Failed deliveries are retried for
           about a day.
         </p>
+        <p className="max-w-prose text-sm leading-relaxed text-slate-400">
+          {canUseLocalNetwork
+            ? "Addresses on the internet must use https. As a server admin you can also use addresses on your local network, such as Home Assistant, over http or https."
+            : "Use a public https address. Only a server admin can send webhooks to addresses on the local network."}{" "}
+          Adding a webhook asks you to confirm it&apos;s you.
+        </p>
+        <p className="max-w-prose text-xs leading-relaxed text-slate-500">
+          Every body is <code className="rounded bg-slate-800 px-1 py-0.5">{"{ event, createdAt, data }"}</code>. For{" "}
+          <code className="rounded bg-slate-800 px-1 py-0.5">transaction.created</code>, <code className="rounded bg-slate-800 px-1 py-0.5">data</code> is{" "}
+          <code className="rounded bg-slate-800 px-1 py-0.5">{"{ id, type, amountCents, date, title, recurringId, source }"}</code>, where{" "}
+          <code className="rounded bg-slate-800 px-1 py-0.5">source</code> is <code className="rounded bg-slate-800 px-1 py-0.5">manual</code>,{" "}
+          <code className="rounded bg-slate-800 px-1 py-0.5">bank</code>, <code className="rounded bg-slate-800 px-1 py-0.5">api</code> or{" "}
+          <code className="rounded bg-slate-800 px-1 py-0.5">recurring-auto-post</code>. Statement imports send{" "}
+          <code className="rounded bg-slate-800 px-1 py-0.5">transactions.imported</code> instead.
+        </p>
       </header>
 
       {state.ok === true ? (
@@ -110,16 +128,30 @@ export function WebhooksPanel({ hooks }: { hooks: WebhookRow[] }) {
           </code>
         </div>
       ) : null}
-      {state.ok === false ? (
+      {confirmError ?? (state.ok === false ? state.error : null) ? (
         <div role="alert" className="rounded-2xl border border-red-500/40 bg-red-950/40 p-3 text-sm text-red-100">
-          {state.error}
+          {confirmError ?? (state.ok === false ? state.error : null)}
         </div>
       ) : null}
 
-      <form action={formAction} className="space-y-3">
+      <form
+        className="space-y-3"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          const data = new FormData(event.currentTarget);
+          setConfirmError(null);
+          try {
+            if (!(await confirmIdentity())) return;
+          } catch (err) {
+            setConfirmError(err instanceof Error ? err.message : "Could not confirm it's you.");
+            return;
+          }
+          startTransition(() => formAction(data));
+        }}
+      >
         <label className="block space-y-1.5">
           <span className="text-sm font-medium text-slate-300">URL</span>
-          <input name="url" type="url" required placeholder="https://homeassistant.local:8123/api/webhook/…" className={inputClass} autoComplete="off" />
+          <input name="url" type="url" required placeholder={canUseLocalNetwork ? "http://192.168.1.10:8123/api/webhook/…" : "https://example.com/hook"} className={inputClass} autoComplete="off" />
         </label>
         <fieldset className="space-y-1.5">
           <legend className="text-sm font-medium text-slate-300">Events</legend>

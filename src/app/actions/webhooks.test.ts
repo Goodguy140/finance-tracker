@@ -13,11 +13,27 @@ let db: PrismaClient;
 let webhookActions: typeof import("./webhooks");
 let txActions: typeof import("./transactions");
 
-const session = vi.hoisted(() => ({ userId: "" }));
+const session = vi.hoisted(() => ({ userId: "", role: "USER", confirmed: true }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/headers", () => ({ headers: vi.fn(async () => new Headers()) }));
 vi.mock("next/server", () => ({ after: () => { throw new Error("outside a request"); } }));
-vi.mock("@/lib/session", () => ({ requireUser: vi.fn(async () => ({ id: session.userId })) }));
+vi.mock("@/lib/session", () => ({ requireUser: vi.fn(async () => ({ id: session.userId, role: session.role })) }));
+vi.mock("@/lib/recent-identity", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/recent-identity")>();
+  return {
+    ...actual,
+    requireRecentIdentity: vi.fn(async () => {
+      if (!session.confirmed) throw new actual.IdentityConfirmationRequiredError();
+      return { user: { id: session.userId, role: session.role } };
+    }),
+  };
+});
+// Every name resolves to a public address unless a test says otherwise; no real lookups.
+const dns = vi.hoisted(() => ({ addresses: ["93.184.216.34"] }));
+vi.mock("node:dns/promises", () => {
+  const lookup = vi.fn(async () => dns.addresses.map((address) => ({ address, family: 4 })));
+  return { lookup, default: { lookup } };
+});
 vi.mock("@/lib/budget-alert-dispatch", () => ({ scheduleBudgetAlertEmails: vi.fn() }));
 
 const fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
@@ -41,6 +57,9 @@ let seq = 0;
 beforeEach(async () => {
   seq += 1;
   session.userId = (await db.user.create({ data: { email: `wa${seq}@example.test`, displayName: "Test" } })).id;
+  session.role = "USER";
+  session.confirmed = true;
+  dns.addresses = ["93.184.216.34"];
   fetchMock.mockClear();
 });
 
@@ -79,6 +98,22 @@ describe("webhook settings and events", () => {
     expect(await webhookActions.createWebhookAction({ ok: null }, form([["url", "javascript:alert(1)"], ["events", "bill.due"]]))).toMatchObject({ ok: false });
     expect(await webhookActions.createWebhookAction({ ok: null }, form([["url", "https://x.test/h"]]))).toMatchObject({ ok: false });
     expect(await db.webhookEndpoint.count({ where: { userId: session.userId } })).toBe(0);
+  });
+
+  it("needs a recent confirm-it's-you, and keeps the local network to server admins", async () => {
+    const add = (address: string) =>
+      webhookActions.createWebhookAction({ ok: null }, form([["url", address], ["events", "bill.due"]]));
+    session.confirmed = false;
+    expect(await add("https://hooks.example.test/x")).toMatchObject({ ok: false, error: "Confirm it's you, then try again." });
+    session.confirmed = true;
+    expect(await add("http://hooks.example.test/x")).toMatchObject({ ok: false, error: expect.stringContaining("https://") });
+    expect(await add("http://169.254.169.254/latest/")).toMatchObject({ ok: false });
+    dns.addresses = ["192.168.1.20"];
+    expect(await add("http://homeassistant.lan:8123/api/webhook/x")).toMatchObject({ ok: false, error: expect.stringContaining("server admin") });
+    expect(await db.webhookEndpoint.count({ where: { userId: session.userId } })).toBe(0);
+
+    session.role = "SERVER_ADMIN";
+    expect(await add("http://homeassistant.lan:8123/api/webhook/x")).toMatchObject({ ok: true });
   });
 
   it("never deletes another user's webhook", async () => {

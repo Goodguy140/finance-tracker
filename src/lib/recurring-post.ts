@@ -1,4 +1,4 @@
-import { emitWebhookEvent } from "@/lib/webhooks";
+import { emitTransactionsCreated } from "@/lib/webhooks";
 import type { Prisma } from "@prisma/client";
 import { RecurringPostMode } from "@prisma/client";
 import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
@@ -37,7 +37,14 @@ function categoryKindFor(type: "EXPENSE" | "INCOME" | "TRANSFER") {
  */
 export async function postRecurringOccurrence(
   tx: Prisma.TransactionClient,
-  params: { userId: string; recurringTransactionId: string; expectedDate: Date; needsReview?: boolean },
+  params: {
+    userId: string;
+    recurringTransactionId: string;
+    expectedDate: Date;
+    needsReview?: boolean;
+    /** Told the new entry's id, for the caller to announce once the transaction commits. */
+    onPosted?: (transactionId: string) => void;
+  },
 ): Promise<PostOutcome> {
   const { userId, recurringTransactionId, expectedDate } = params;
   const expectedYmd = ymdFromDateUtc(expectedDate);
@@ -78,7 +85,7 @@ export async function postRecurringOccurrence(
   });
   if (updated.count === 0) return "no_change";
 
-  await tx.transaction.create({
+  const created = await tx.transaction.create({
     data: {
       userId,
       accountId: rule.accountId,
@@ -95,7 +102,9 @@ export async function postRecurringOccurrence(
       // Posted by the schedule rather than the user's own Post button.
       needsReview: params.needsReview ?? false,
     },
+    select: { id: true },
   });
+  params.onPosted?.(created.id);
 
   // Apply credits for any shared-subscription members already marked paid for this occurrence.
   await recomputeSubscriptionTransactionCredits(tx, { userId, recurringTransactionId: rule.id, expectedDate });
@@ -138,9 +147,18 @@ export async function autoPostDueRecurringTransactions(
     let expectedDate = rule.nextExpectedDate;
     for (let i = 0; i < MAX_AUTO_POSTS_PER_RULE && expectedDate.getTime() <= today.getTime(); i += 1) {
       let outcome: PostOutcome;
+      let postedId: string | null = null;
       try {
         outcome = await client.$transaction((tx) =>
-          postRecurringOccurrence(tx, { userId, recurringTransactionId: rule.id, expectedDate, needsReview: true }),
+          postRecurringOccurrence(tx, {
+            userId,
+            recurringTransactionId: rule.id,
+            expectedDate,
+            needsReview: true,
+            onPosted: (id) => {
+              postedId = id;
+            },
+          }),
         );
       } catch (err) {
         console.warn(`[recurring] auto-post skipped rule ${rule.id}:`, err instanceof Error ? err.message : err);
@@ -148,12 +166,7 @@ export async function autoPostDueRecurringTransactions(
       }
       if (outcome !== "posted") break;
       posted += 1;
-      emitWebhookEvent(
-        userId,
-        "transaction.created",
-        { recurringId: rule.id, date: expectedDate.toISOString().slice(0, 10), source: "recurring-auto-post" },
-        { client },
-      );
+      if (postedId) emitTransactionsCreated(userId, [postedId], "recurring-auto-post", { client });
       if (!ruleIds.includes(rule.id)) ruleIds.push(rule.id);
       const fresh = await client.recurringTransaction.findUnique({
         where: { id: rule.id },

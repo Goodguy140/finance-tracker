@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { dateFromYmd } from "@/lib/date-only";
 import { parseImportedDate } from "@/lib/import-dates";
 import { DuplicateMatcher, statementOutflow, utcYmd, type CsvImportSummary } from "@/lib/csv-import";
-import { emitWebhookEvent } from "@/lib/webhooks";
+import { emitTransactionsCreated, emitWebhookEvent } from "@/lib/webhooks";
 import { requireUser } from "@/lib/session";
 import { parseExpenseAmountFromForm } from "@/lib/expense-amount";
 import { ownPartCents, parseOwedSharesFromForm, saveOwedShares } from "@/lib/owed-shares";
@@ -107,14 +107,7 @@ export const createExpenseAction = formAction(async (formData: FormData) => {
     await addTagsToTransaction(tx, created.id, await resolveTagIds(tx, user.id, tagNames));
     return created;
   });
-  emitWebhookEvent(user.id, "transaction.created", {
-    id: created.id,
-    type: "EXPENSE",
-    amountCents: amounts.amountCents,
-    date: payload.date,
-    title: payload.title ?? null,
-    source: "manual",
-  });
+  emitTransactionsCreated(user.id, [created.id], "manual");
   scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
 });
@@ -574,14 +567,7 @@ export const createIncomeAction = formAction(async (formData: FormData) => {
     await addTagsToTransaction(tx, created.id, await resolveTagIds(tx, user.id, tagNames));
     return created;
   });
-  emitWebhookEvent(user.id, "transaction.created", {
-    id: created.id,
-    type: "INCOME",
-    amountCents: toCents(payload.amount),
-    date: payload.date,
-    title: payload.title ?? null,
-    source: "manual",
-  });
+  emitTransactionsCreated(user.id, [created.id], "manual");
   revalidatePath("/");
 });
 
@@ -606,7 +592,7 @@ export const createTransferAction = formAction(async (formData: FormData) => {
     assertUserOwnsAccount(user.id, payload.toAccountId),
   ]);
 
-  await prisma.$transaction(async (tx) => {
+  const transfer = await prisma.$transaction(async (tx) => {
     const created = await tx.transaction.create({
       data: {
         userId: user.id,
@@ -623,7 +609,9 @@ export const createTransferAction = formAction(async (formData: FormData) => {
       select: { id: true },
     });
     await addTagsToTransaction(tx, created.id, await resolveTagIds(tx, user.id, tagNames));
+    return created;
   });
+  emitTransactionsCreated(user.id, [transfer.id], "manual");
   revalidatePath("/");
 });
 

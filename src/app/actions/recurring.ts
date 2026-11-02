@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { dateFromYmd } from "@/lib/date-only";
 import { requireUser } from "@/lib/session";
 import { postRecurringOccurrence } from "@/lib/recurring-post";
+import { emitTransactionsCreated } from "@/lib/webhooks";
 import { DEFAULT_SEMI_MONTHLY_DAYS, firstSemiMonthlyDateOnOrAfter, isValidSemiMonthlyDays } from "@/lib/recurring-transactions";
 import { parseCancelFields } from "@/lib/subscription-cancel";
 import {
@@ -245,9 +246,17 @@ export const postRecurringTransactionAction = formAction(async (formData: FormDa
   });
   const expectedDate = dateFromYmd(payload.expectedDate);
 
+  let postedId: string | null = null;
   try {
     await prisma.$transaction((tx) =>
-      postRecurringOccurrence(tx, { userId: user.id, recurringTransactionId: payload.recurringTransactionId, expectedDate }),
+      postRecurringOccurrence(tx, {
+        userId: user.id,
+        recurringTransactionId: payload.recurringTransactionId,
+        expectedDate,
+        onPosted: (id) => {
+          postedId = id;
+        },
+      }),
     );
   } catch (error) {
     // Two clicks racing on the same occurrence: the unique (rule, expected date) index
@@ -258,6 +267,7 @@ export const postRecurringTransactionAction = formAction(async (formData: FormDa
     throw error;
   }
 
+  if (postedId) emitTransactionsCreated(user.id, [postedId], "manual");
   scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
 });

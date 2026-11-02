@@ -64,7 +64,8 @@ what stops a stolen session cookie from being turned into permanent access.
 **Confirm it's you.** Actions that destroy data or change who can get in also need a recent
 confirmation (`requireRecentIdentity`, `src/lib/recent-identity.ts`): deleting the account,
 clearing or restoring its data, and the admin controls for roles, suspensions, deleting users,
-sign-in providers, password login, public sign-up and Plaid credentials; and making a calendar feed link. An account with a
+sign-in providers, password login, public sign-up and Plaid credentials; and making a calendar feed link or adding a
+webhook. An account with a
 passkey or authenticator app confirms with it; one without re-enters its password; an SSO-only account must have
 signed in within the last five minutes. One confirmation covers five minutes.
 
@@ -118,6 +119,16 @@ listing only recurring rules (names, amounts, dates, account names, notes) and d
 The secret is 256 random bits, stored only as a SHA-256 hash and shown once; making it needs
 "Confirm it's you"; it is rate limited to 30 fetches a minute; a new link replaces the old one,
 turning it off deletes it, and a suspended user's link returns 404.
+
+**Webhooks.** A user can add outbound webhooks (**Settings → Developer**): signed POSTs of the
+events they pick, sent by the server to an address they type. Adding one needs "Confirm it's
+you", since a webhook keeps sending entries after "sign out everywhere". Where it may point is
+checked when it is saved and again before every delivery (`src/lib/webhook-address.ts`), after
+resolving the name: public addresses over https only; addresses on the local network (10/8,
+172.16/12, 192.168/16, 100.64/10, fc00::/7) over http or https, for server admins only, so
+Home Assistant on the LAN works while other accounts cannot make the server probe it; never
+loopback, link-local (cloud metadata) or multicast. Redirects are not followed. "Send test" is
+limited to 10 per 10 minutes. A suspended user's webhooks queue, retry and send nothing.
 
 ## De-provisioning
 

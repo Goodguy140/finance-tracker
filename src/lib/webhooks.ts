@@ -1,5 +1,5 @@
 import { createHmac, randomBytes } from "node:crypto";
-import { Prisma, TransactionType, type PrismaClient } from "@prisma/client";
+import { Prisma, TransactionType, UserRole, type PrismaClient } from "@prisma/client";
 import { after } from "next/server";
 import { forecastRecurringOccurrences } from "@/lib/bills-forecast";
 import { buildMonthlyBudgetProgress } from "@/lib/budget-progress";
@@ -7,6 +7,7 @@ import { ymdFromDateUtc } from "@/lib/date-only";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
 import { decryptSecret, encryptSecret } from "@/lib/security";
+import { assertWebhookDestination, type ResolveHost } from "@/lib/webhook-address";
 
 /**
  * Outbound webhooks: signed JSON POSTs to URLs the user sets in Settings → Developer, for
@@ -21,8 +22,12 @@ import { decryptSecret, encryptSecret } from "@/lib/security";
  * the endpoint's secret, shown once when it is created. Receivers should check it and reject
  * an old `t` to stop replays.
  *
- * The URL may be on the local network: that is the point for a self-hosted app (Home Assistant
- * on the LAN). Only http and https are accepted.
+ * Where it may go is `assertWebhookDestination` (src/lib/webhook-address.ts): public https for
+ * everyone, the local network (Home Assistant on the LAN) for server admins only, never this
+ * server or link-local. Checked when an endpoint is saved and again before every delivery.
+ *
+ * A suspended user's webhooks stop, like their emails: nothing is queued, retried or sent for
+ * them until they are let back in.
  */
 
 export { WEBHOOK_EVENTS, WEBHOOK_EVENT_LABELS, type WebhookEvent } from "./webhook-events";
@@ -84,7 +89,7 @@ export async function enqueueWebhookEvent(
   options: { dedupeKey?: string; now?: Date } = {},
 ): Promise<string[]> {
   const endpoints = await client.webhookEndpoint.findMany({
-    where: { userId, enabled: true },
+    where: { userId, enabled: true, user: { disabledAt: null } },
     select: { id: true, events: true },
   });
   const now = options.now ?? new Date();
@@ -108,24 +113,31 @@ export async function enqueueWebhookEvent(
 }
 
 type FetchLike = (url: string, init: RequestInit) => Promise<{ ok: boolean; status: number }>;
+type DeliveryDeps = { fetch?: FetchLike; now?: Date; resolve?: ResolveHost };
 
 /** Tries one delivery now; records the outcome on it and its endpoint. */
 export async function attemptDelivery(
   client: PrismaClient,
   deliveryId: string,
-  deps: { fetch?: FetchLike; now?: Date } = {},
+  deps: DeliveryDeps = {},
 ): Promise<"delivered" | "failed" | "gone"> {
   const delivery = await client.webhookDelivery.findUnique({
     where: { id: deliveryId },
-    include: { endpoint: true },
+    include: { endpoint: { include: { user: { select: { role: true, disabledAt: true } } } } },
   });
-  if (!delivery || delivery.deliveredAt || !delivery.endpoint.enabled) return "gone";
+  if (!delivery || delivery.deliveredAt || !delivery.endpoint.enabled || delivery.endpoint.user.disabledAt) return "gone";
   const now = deps.now ?? new Date();
   const doFetch: FetchLike = deps.fetch ?? ((url, init) => fetch(url, init));
   const timestamp = Math.floor(now.getTime() / 1000);
   let status: number | null = null;
   let error: string | null = null;
   try {
+    // Again at send time: a name can be repointed after it was saved, and an admin who saved a
+    // local address may since have lost the role.
+    await assertWebhookDestination(delivery.endpoint.url, {
+      allowLocal: delivery.endpoint.user.role === UserRole.SERVER_ADMIN,
+      resolve: deps.resolve,
+    });
     const secret = decryptSecret(delivery.endpoint.secretEncrypted);
     const res = await doFetch(delivery.endpoint.url, {
       method: "POST",
@@ -169,6 +181,22 @@ export async function attemptDelivery(
   return "failed";
 }
 
+/** Runs webhook work once the response is on its way (`after`), or in the background outside a request. */
+function deferWebhookWork(label: string, work: () => Promise<void>): void {
+  const run = async () => {
+    try {
+      await work();
+    } catch (err) {
+      console.error(`[webhooks] ${label} failed`, err);
+    }
+  };
+  try {
+    after(run);
+  } catch {
+    void run();
+  }
+}
+
 /**
  * Raises an event from an action: queued now, sent once the response is on its way (`after`),
  * or in the background outside a request. Never throws: a webhook must not break the action.
@@ -180,19 +208,76 @@ export function emitWebhookEvent(
   options: { dedupeKey?: string; client?: PrismaClient } = {},
 ): void {
   const client = options.client ?? prisma;
-  const run = async () => {
-    try {
-      const ids = await enqueueWebhookEvent(client, userId, event, data, { dedupeKey: options.dedupeKey });
-      for (const id of ids) await attemptDelivery(client, id);
-    } catch (err) {
-      console.error(`[webhooks] ${event} failed`, err);
-    }
+  deferWebhookWork(event, async () => {
+    const ids = await enqueueWebhookEvent(client, userId, event, data, { dedupeKey: options.dedupeKey });
+    for (const id of ids) await attemptDelivery(client, id);
+  });
+}
+
+/**
+ * How an entry got into the log, as `transaction.created` reports it: typed in the app (the Add
+ * card, a plan, posting a recurring rule by hand, Ctrl+K quick add), added from the bank queue,
+ * posted through the API, or posted by a recurring rule on its own.
+ */
+export type TransactionCreatedSource = "manual" | "bank" | "api" | "recurring-auto-post";
+
+/** `transaction.created`'s `data`, the same for every way an entry is added. */
+export type TransactionCreatedData = {
+  id: string;
+  type: "EXPENSE" | "INCOME" | "TRANSFER";
+  amountCents: number;
+  /** YYYY-MM-DD. */
+  date: string;
+  title: string | null;
+  /** The recurring rule it was posted from, or null. */
+  recurringId: string | null;
+  source: TransactionCreatedSource;
+};
+
+export function transactionCreatedData(
+  row: { id: string; type: TransactionType; amountCents: number; date: Date; title: string | null; recurringTransactionId: string | null },
+  source: TransactionCreatedSource,
+): TransactionCreatedData {
+  return {
+    id: row.id,
+    type: row.type,
+    amountCents: row.amountCents,
+    date: ymdFromDateUtc(row.date),
+    title: row.title,
+    recurringId: row.recurringTransactionId,
+    source,
   };
-  try {
-    after(run);
-  } catch {
-    void run();
-  }
+}
+
+/**
+ * Raises `transaction.created` for entries just added, read back from the log so every path
+ * sends the same payload. The one way to raise it: call this after the write has committed.
+ * Statement imports raise `transactions.imported` instead, and Undo raises nothing (the entry
+ * was announced when it was first added).
+ */
+export function emitTransactionsCreated(
+  userId: string,
+  transactionIds: readonly string[],
+  source: TransactionCreatedSource,
+  options: { client?: PrismaClient } = {},
+): void {
+  if (transactionIds.length === 0) return;
+  const client = options.client ?? prisma;
+  deferWebhookWork("transaction.created", async () => {
+    const listening = await client.webhookEndpoint.count({
+      where: { userId, enabled: true, events: { contains: "transaction.created" }, user: { disabledAt: null } },
+    });
+    if (listening === 0) return;
+    const rows = await client.transaction.findMany({
+      where: { userId, id: { in: [...transactionIds] } },
+      select: { id: true, type: true, amountCents: true, date: true, title: true, recurringTransactionId: true },
+      orderBy: [{ date: "asc" }, { id: "asc" }],
+    });
+    for (const row of rows) {
+      const ids = await enqueueWebhookEvent(client, userId, "transaction.created", transactionCreatedData(row, source));
+      for (const id of ids) await attemptDelivery(client, id);
+    }
+  });
 }
 
 /**
@@ -230,7 +315,7 @@ export async function dispatchBudgetOverWebhooks(client: PrismaClient, userId: s
 /** Queues `bill.due` for each recurring bill due tomorrow, once per bill and date. */
 export async function enqueueBillDueEvents(client: PrismaClient, now: Date): Promise<number> {
   const endpoints = await client.webhookEndpoint.findMany({
-    where: { enabled: true, events: { contains: "bill.due" } },
+    where: { enabled: true, events: { contains: "bill.due" }, user: { disabledAt: null } },
     select: { userId: true, user: { select: { timezone: true } } },
   });
   let queued = 0;
@@ -273,12 +358,18 @@ export async function enqueueBillDueEvents(client: PrismaClient, now: Date): Pro
 /** One hourly tick: queue bills due tomorrow, retry what is due, prune old deliveries. */
 export async function runWebhookSweep(
   now = new Date(),
-  deps: { client?: PrismaClient; fetch?: FetchLike } = {},
+  deps: { client?: PrismaClient; fetch?: FetchLike; resolve?: ResolveHost } = {},
 ): Promise<{ ok: boolean; message: string; delivered: number }> {
   const client = deps.client ?? prisma;
   await enqueueBillDueEvents(client, now);
   const due = await client.webhookDelivery.findMany({
-    where: { deliveredAt: null, attempts: { lt: MAX_WEBHOOK_ATTEMPTS }, nextAttemptAt: { lte: now } },
+    where: {
+      deliveredAt: null,
+      attempts: { lt: MAX_WEBHOOK_ATTEMPTS },
+      nextAttemptAt: { lte: now },
+      // A suspended user's deliveries wait rather than burn their attempts.
+      endpoint: { enabled: true, user: { disabledAt: null } },
+    },
     select: { id: true },
     orderBy: { createdAt: "asc" },
     take: 500,
@@ -286,7 +377,7 @@ export async function runWebhookSweep(
   let delivered = 0;
   let failed = 0;
   for (const { id } of due) {
-    const outcome = await attemptDelivery(client, id, { fetch: deps.fetch, now });
+    const outcome = await attemptDelivery(client, id, { fetch: deps.fetch, now, resolve: deps.resolve });
     if (outcome === "delivered") delivered += 1;
     if (outcome === "failed") failed += 1;
   }
@@ -300,7 +391,7 @@ export async function runWebhookSweep(
 export async function sendTestWebhook(
   client: PrismaClient,
   endpointId: string,
-  deps: { fetch?: FetchLike; now?: Date } = {},
+  deps: DeliveryDeps = {},
 ): Promise<{ delivered: boolean; error: string | null }> {
   const now = deps.now ?? new Date();
   const row = await client.webhookDelivery.create({
