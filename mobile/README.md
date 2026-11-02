@@ -64,9 +64,12 @@ each. Before uploading it asks for the app's name on App Store Connect (any free
 Screen shows "Finances" either way) and which App Store Connect API key to use.
 
 **After that,** run the **iOS TestFlight** workflow from the Actions tab on GitHub (Run workflow
-on `main`). It needs the `EXPO_TOKEN` repository secret, and in `eas.json` the App Store Connect
-app id (`submit.production.ios.ascAppId`) and in `app.json` the EAS project id, both of which the
-first build produces. Build numbers go up by themselves (`autoIncrement`, kept on EAS).
+on `main`). It needs the `EXPO_TOKEN` repository secret, the App Store Connect app id in
+`eas.json` (`submit.production.ios.ascAppId`) and the EAS project id in `app.json`. Build numbers
+go up by themselves (`autoIncrement`, kept on EAS).
+
+The App Store Connect entry for the app was created by hand: Apple does not let an API key
+create one, so `eas submit` gets a 403 if `ascAppId` is missing.
 
 `.easignore` at the repository root limits what EAS uploads to this folder, so a local checkout's
 databases and `.env` never leave the computer.
@@ -76,3 +79,5 @@ databases and `.env` never leave the computer.
 | Bundle id | `app.json` `ios.bundleIdentifier` | `com.goodguy140.financetracker` |
 | URL scheme (sign-in redirect) | `app.json` `scheme` | `financetracker`, must match `APP_REDIRECT_URI` on the server |
 | Apple team | `eas.json` `submit.production.ios.appleTeamId` | `C5SNKYWDNZ` |
+| App Store Connect app (Apple ID) | `eas.json` `submit.production.ios.ascAppId` | `6829763438` |
+| EAS project | `app.json` `extra.eas.projectId` | `@goodguy140/finance-tracker` |
