@@ -35,6 +35,39 @@ export function resolveBackupUserProfileFields(params: {
   };
 }
 
+type BackupPreferenceFields = Pick<
+  ParsedUserBackup["user"],
+  | "birthYear"
+  | "zeroBasedBudgeting"
+  | "projectionIncludesTransfers"
+  | "budgetAlertEmailEnabled"
+  | "digestFrequency"
+  | "billReminderDays"
+>;
+
+/**
+ * Profile and preference fields the file carries. Each is applied only when present, so a backup
+ * written before it was included leaves the account's own setting alone rather than resetting it.
+ */
+export function resolveBackupPreferenceFields(parsedUser: BackupPreferenceFields): Partial<{
+  birthYear: number | null;
+  zeroBasedBudgeting: boolean;
+  projectionIncludesTransfers: boolean;
+  budgetAlertEmailEnabled: boolean;
+  digestFrequency: "OFF" | "WEEKLY" | "MONTHLY";
+  billReminderDays: number | null;
+}> {
+  const keys = [
+    "birthYear",
+    "zeroBasedBudgeting",
+    "projectionIncludesTransfers",
+    "budgetAlertEmailEnabled",
+    "digestFrequency",
+    "billReminderDays",
+  ] as const;
+  return Object.fromEntries(keys.filter((key) => parsedUser[key] !== undefined).map((key) => [key, parsedUser[key]]));
+}
+
 /**
  * Throws if any cross-reference in the backup points at a row the file does not contain.
  *
@@ -135,6 +168,11 @@ export function assertBackupReferencesResolve(parsed: ParsedUserBackup): void {
       (row.tagId && !tagIds.has(row.tagId))
     ) {
       throw new Error("Backup references unknown saved search account, category or tag.");
+    }
+  }
+  for (const row of parsed.accountReconciliations ?? []) {
+    if (!accountIds.has(row.accountId)) {
+      throw new Error("Backup references unknown reconciled account.");
     }
   }
   for (const row of parsed.transactionRules ?? []) {

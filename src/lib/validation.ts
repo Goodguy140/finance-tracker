@@ -3,6 +3,7 @@ import { MAX_AMOUNT, MAX_AMOUNT_CENTS } from "@/lib/money";
 import { YM_PATTERN } from "@/lib/period-month";
 import { MAX_GOAL_NAME_LENGTH } from "@/lib/savings-goals";
 import { MAX_TAG_NAME_LENGTH } from "@/lib/tags";
+import { TRANSACTION_NOTE_MAX, TRANSACTION_TITLE_MAX } from "@/lib/text-limits";
 import {
   FULL_SPLIT_BASIS_POINTS,
   joinRuleTitlePatterns,
@@ -68,8 +69,8 @@ export const expenseBaseSchema = z.object({
   categoryId: z.string().min(1),
   date: z.string().min(1),
   postedDate: z.string().optional(),
-  title: z.string().trim().min(1, "Title is required.").max(120),
-  note: z.string().max(250).optional(),
+  title: z.string().trim().min(1, "Title is required.").max(TRANSACTION_TITLE_MAX),
+  note: z.string().max(TRANSACTION_NOTE_MAX).optional(),
 });
 
 /** Full expense payload including a single amount field (e.g. CSV tooling). */
@@ -85,8 +86,8 @@ export const incomeBaseSchema = z.object({
   accountId: z.string().min(1),
   categoryId: z.string().min(1),
   date: z.string().min(1),
-  title: z.string().trim().max(120).optional(),
-  note: z.string().max(250).optional(),
+  title: z.string().trim().max(TRANSACTION_TITLE_MAX).optional(),
+  note: z.string().max(TRANSACTION_NOTE_MAX).optional(),
 });
 
 export const incomeSchema = incomeBaseSchema.extend({
@@ -101,8 +102,8 @@ export const transferSchema = z
     toAccountId: z.string().min(1, "Choose the account the money went to."),
     amount: positiveAmount,
     date: z.string().min(1),
-    title: z.string().trim().max(120).optional(),
-    note: z.string().max(250).optional(),
+    title: z.string().trim().max(TRANSACTION_TITLE_MAX).optional(),
+    note: z.string().max(TRANSACTION_NOTE_MAX).optional(),
   })
   .refine((t) => t.fromAccountId !== t.toAccountId, {
     message: "Choose two different accounts.",
@@ -245,10 +246,10 @@ export const transactionRuleSchema = z
     minAmount: nonNegativeAmount.optional(),
     maxAmount: nonNegativeAmount.optional(),
     setCategoryId: z.string().min(1).optional(),
-    setTitle: z.string().trim().max(120).optional(),
+    setTitle: z.string().trim().max(TRANSACTION_TITLE_MAX).optional(),
     setAmount: positiveAmount.optional(),
     setAccountId: z.string().min(1).optional(),
-    appendNote: z.string().trim().max(250).optional(),
+    appendNote: z.string().trim().max(TRANSACTION_NOTE_MAX).optional(),
     /** A tag name; the action creates the tag if the user does not have it yet. */
     addTag: z.string().trim().max(MAX_TAG_NAME_LENGTH + 10).optional(),
     markAsTransfer: z.boolean().optional(),
@@ -461,8 +462,8 @@ export const expenseCsvImportSchema = z.object({
   manualValues: z.object({
     date: z.string().optional(),
     postedDate: z.string().optional(),
-    title: z.string().max(120).optional(),
-    note: z.string().max(250).optional(),
+    title: z.string().max(TRANSACTION_TITLE_MAX).optional(),
+    note: z.string().max(TRANSACTION_NOTE_MAX).optional(),
     accountName: z.string().optional(),
     categoryName: z.string().optional(),
   }),

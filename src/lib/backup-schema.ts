@@ -3,10 +3,19 @@ import { MAX_SAVED_SEARCH_NAME_LENGTH, MAX_SAVED_SEARCHES } from "@/lib/search/s
 import { MAX_AMOUNT_CENTS } from "@/lib/money";
 import { YM_PATTERN } from "@/lib/period-month";
 import { MAX_GOAL_NAME_LENGTH } from "@/lib/savings-goals";
+import { MAX_CANCEL_URL_LENGTH } from "@/lib/subscription-cancel";
 import { MAX_TAG_NAME_LENGTH, MAX_TAGS_PER_TRANSACTION } from "@/lib/tags";
+import { CATEGORY_NAME_MAX, TRANSACTION_NOTE_MAX, TRANSACTION_TITLE_MAX } from "@/lib/text-limits";
 import { MAX_RULE_SPLIT_LINES, MAX_RULE_TITLE_PATTERN_LENGTH, MAX_RULE_TITLE_PATTERNS } from "@/lib/transaction-rules";
 
 const isoDate = z.iso.datetime();
+/**
+ * Free text the app may once have saved longer than it allows now: the API took 200-character
+ * titles and 2,000-character notes, statements and banks had no limit, and a rule's note was
+ * appended past the limit. Such a backup is cut to the limit rather than refused, because a
+ * refusal leaves the user with no way back to their data. New rows keep to the limits at entry.
+ */
+const clippedText = (max: number) => z.string().transform((value) => value.slice(0, max));
 /** Money columns are 32-bit ints; bound every cents field so a bad file fails validation, not the DB write. */
 const signedCents = z.number().int().min(-MAX_AMOUNT_CENTS).max(MAX_AMOUNT_CENTS);
 const positiveCents = z.number().int().positive().max(MAX_AMOUNT_CENTS);
@@ -26,6 +35,13 @@ export const userBackupSchema = z.object({
     createdAt: isoDate,
     updatedAt: isoDate,
     defaultExpenseAccountId: z.string().min(1).nullable().optional(),
+    /** Profile and preferences; each absent from older backups, which then leave it as it is. */
+    birthYear: z.number().int().min(1900).max(9999).nullable().optional(),
+    zeroBasedBudgeting: z.boolean().optional(),
+    projectionIncludesTransfers: z.boolean().optional(),
+    budgetAlertEmailEnabled: z.boolean().optional(),
+    digestFrequency: z.enum(["OFF", "WEEKLY", "MONTHLY"]).optional(),
+    billReminderDays: z.number().int().min(1).max(31).nullable().optional(),
   }),
   authAccounts: z.array(
     z.object({
@@ -79,7 +95,8 @@ export const userBackupSchema = z.object({
   categories: z.array(
     z.object({
       id: z.string().min(1),
-      name: z.string().min(1).max(80),
+      // A CSV category column once created categories of any length.
+      name: z.string().min(1).pipe(clippedText(CATEGORY_NAME_MAX)),
       kind: z.enum(["EXPENSE", "INCOME", "TRANSFER"]),
       isDefault: z.boolean(),
       /** Absent from backups made before budget rollover existed; it is then off. */
@@ -102,11 +119,13 @@ export const userBackupSchema = z.object({
       preCreditCents: signedCents.nullable(),
       creditCents: signedCents.nullable(),
       creditBreakdownJson: z.string().nullable(),
-      title: z.string().max(120).nullable(),
+      title: clippedText(TRANSACTION_TITLE_MAX).nullable(),
       date: isoDate,
       postedDate: isoDate.nullable(),
       accountDescription: z.string().nullable(),
-      note: z.string().max(250).nullable(),
+      note: clippedText(TRANSACTION_NOTE_MAX).nullable(),
+      /** Absent in files exported before review status was included; such rows come back reviewed. */
+      needsReview: z.boolean().optional(),
       /** Absent in files exported before recurring links were included. */
       recurringTransactionId: z.string().min(1).nullable().optional(),
       recurringExpectedDate: isoDate.nullable().optional(),
@@ -178,6 +197,10 @@ export const userBackupSchema = z.object({
         /** Absent in files exported before transfer rules named their other side. */
         transferAccountId: z.string().min(1).nullable().optional(),
         endDate: isoDate.nullable(),
+        /** The subscription cancel helper; absent in files exported before it was included. */
+        cancelUrl: z.string().max(MAX_CANCEL_URL_LENGTH).nullable().optional(),
+        decideBy: isoDate.nullable().optional(),
+        cancelledAt: isoDate.nullable().optional(),
         postMode: z.enum(["REVIEW", "AUTO"]),
         enabled: z.boolean(),
         note: z.string().max(250).nullable(),
@@ -385,6 +408,41 @@ export const userBackupSchema = z.object({
   plaidCategoryMappings: z
     .array(z.object({ plaidCategory: z.string().min(1).max(100), categoryId: z.string().min(1) }))
     .max(500)
+    .optional()
+    .default([]),
+  // Each of the rest is optional with a default: backups written before it was included have none.
+  accountReconciliations: z
+    .array(
+      z.object({
+        accountId: z.string().min(1),
+        startDate: isoDate,
+        endDate: isoDate,
+        openingCents: signedCents,
+        closingCents: signedCents,
+        createdAt: isoDate,
+      }),
+    )
+    .optional()
+    .default([]),
+  /** Absent leaves the account's charge alerts as they are; null turns them off. */
+  chargeAlertSetting: z
+    .object({ thresholdCents: positiveCents.nullable(), unusual: z.boolean() })
+    .nullable()
+    .optional(),
+  monthCloses: z
+    .array(z.object({ ym: z.string().regex(YM_PATTERN), closedAt: isoDate }))
+    .optional()
+    .default([]),
+  financialScoreSnapshots: z
+    .array(
+      z.object({
+        month: z.string().regex(YM_PATTERN),
+        score: z.number().int().min(0).max(100),
+        /** Each factor's score by id. */
+        factors: z.record(z.string().max(40), z.number()),
+        createdAt: isoDate,
+      }),
+    )
     .optional()
     .default([]),
 });

@@ -9,12 +9,17 @@ import { requireRecentIdentity } from "@/lib/recent-identity";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { userBackupSchema } from "@/lib/backup-schema";
 import { BACKUP_MAX_BYTES, backupTooLargeMessage } from "@/lib/backup-limits";
-import { assertBackupReferencesResolve, resolveBackupUserProfileFields } from "@/lib/backup-restore";
+import {
+  assertBackupReferencesResolve,
+  resolveBackupPreferenceFields,
+  resolveBackupUserProfileFields,
+} from "@/lib/backup-restore";
 import { normalizeTagName, tagNameKey } from "@/lib/tags";
 import { isMappablePlaidCategory } from "@/lib/plaid/category-taxonomy";
 import { revokePlaidItemsForUser } from "@/lib/plaid/unlink";
 import { tryMakePlaidItemRevoker } from "@/lib/plaid/service";
 import { defaultCountsAsSavings } from "@/lib/savings-transfers";
+import { wipeUserFinancialData } from "@/lib/user-data-wipe";
 import {
   getFormValue,
   LONG_TRANSACTION_OPTIONS,
@@ -32,43 +37,16 @@ export const clearUserFinancialDataAction = formAction(async (formData: FormData
   // revoked at Plaid first or they outlive the data they were feeding.
   await revokePlaidItemsForUser(prisma, user.id, await tryMakePlaidItemRevoker());
 
-  await prisma.$transaction(async (tx) => {
-    await tx.user.update({
-      where: { id: user.id },
-      data: { defaultExpenseAccountId: null },
-    });
-    await tx.transactionRule.deleteMany({ where: { userId: user.id } });
-    await tx.hiddenTitleSuggestion.deleteMany({ where: { userId: user.id } });
-    await tx.savedSearch.deleteMany({ where: { userId: user.id } });
-    await tx.tag.deleteMany({ where: { userId: user.id } });
-    await tx.insightDismissal.deleteMany({ where: { userId: user.id } });
-    await tx.insightPreference.deleteMany({ where: { userId: user.id } });
-    await tx.budget.deleteMany({ where: { userId: user.id } });
-    await tx.yearlyBudget.deleteMany({ where: { userId: user.id } });
-    await tx.budgetAlertNotification.deleteMany({ where: { userId: user.id } });
-    await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
-    await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
-    await tx.contributionRoom.deleteMany({ where: { userId: user.id } });
-    await tx.portfolioSnapshot.deleteMany({ where: { userId: user.id } });
-    await tx.savingsGoal.deleteMany({ where: { userId: user.id } });
-    await tx.plannedTransaction.deleteMany({ where: { userId: user.id } });
-    // Plaid rows reference Transaction and Account, so they go before both. Staged rows and
-    // items are dropped outright rather than kept: a bank connection is not financial
-    // history, and leaving stale cursors behind would make a later re-link re-propose
-    // transactions against records that no longer exist.
-    await tx.plaidStagedTransaction.deleteMany({ where: { userId: user.id } });
-    await tx.transactionVerification.deleteMany({ where: { userId: user.id } });
-    await tx.plaidAccount.deleteMany({ where: { userId: user.id } });
-    await tx.plaidItem.deleteMany({ where: { userId: user.id } });
-    await tx.transactionAttachment.deleteMany({ where: { userId: user.id } });
-    await tx.deletedTransaction.deleteMany({ where: { userId: user.id } });
-    await tx.transaction.deleteMany({ where: { userId: user.id } });
-    await tx.account.deleteMany({ where: { userId: user.id } });
-    await tx.category.deleteMany({ where: { userId: user.id } });
-  });
+  await prisma.$transaction((tx) => wipeUserFinancialData(tx, user.id));
 
   const freshUser = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
   await ensureDefaultDataForUser(freshUser);
+
+  await recordAuditLog(prisma, {
+    userId: user.id,
+    action: AUDIT_ACTIONS.user_financial_data_reset,
+    headers: await headers(),
+  });
 
   revalidatePath("/");
   revalidatePath("/settings", "layout");
@@ -115,39 +93,8 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
     if (linkedSinceRevoke > 0) {
       throw new Error("A bank was connected while the backup was importing. Nothing was imported; try again.");
     }
-    await tx.user.update({
-      where: { id: user.id },
-      data: { defaultExpenseAccountId: null },
-    });
     await tx.passwordResetToken.deleteMany({ where: { userId: user.id } });
-    await tx.transactionRule.deleteMany({ where: { userId: user.id } });
-    await tx.hiddenTitleSuggestion.deleteMany({ where: { userId: user.id } });
-    await tx.savedSearch.deleteMany({ where: { userId: user.id } });
-    await tx.tag.deleteMany({ where: { userId: user.id } });
-    await tx.insightDismissal.deleteMany({ where: { userId: user.id } });
-    await tx.insightPreference.deleteMany({ where: { userId: user.id } });
-    await tx.budget.deleteMany({ where: { userId: user.id } });
-    await tx.yearlyBudget.deleteMany({ where: { userId: user.id } });
-    await tx.budgetAlertNotification.deleteMany({ where: { userId: user.id } });
-    await tx.recurringTransaction.deleteMany({ where: { userId: user.id } });
-    await tx.investmentFlow.deleteMany({ where: { userId: user.id } });
-    await tx.contributionRoom.deleteMany({ where: { userId: user.id } });
-    await tx.portfolioSnapshot.deleteMany({ where: { userId: user.id } });
-    await tx.savingsGoal.deleteMany({ where: { userId: user.id } });
-    await tx.plannedTransaction.deleteMany({ where: { userId: user.id } });
-    // Plaid rows reference Transaction and Account, so they go before both. Staged rows and
-    // items are dropped outright rather than kept: a bank connection is not financial
-    // history, and leaving stale cursors behind would make a later re-link re-propose
-    // transactions against records that no longer exist.
-    await tx.plaidStagedTransaction.deleteMany({ where: { userId: user.id } });
-    await tx.transactionVerification.deleteMany({ where: { userId: user.id } });
-    await tx.plaidAccount.deleteMany({ where: { userId: user.id } });
-    await tx.plaidItem.deleteMany({ where: { userId: user.id } });
-    await tx.transactionAttachment.deleteMany({ where: { userId: user.id } });
-    await tx.deletedTransaction.deleteMany({ where: { userId: user.id } });
-    await tx.transaction.deleteMany({ where: { userId: user.id } });
-    await tx.account.deleteMany({ where: { userId: user.id } });
-    await tx.category.deleteMany({ where: { userId: user.id } });
+    await wipeUserFinancialData(tx, user.id);
 
     const accountIdMap = new Map<string, string>();
     const categoryIdMap = new Map<string, string>();
@@ -159,7 +106,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
     });
     await tx.user.update({
       where: { id: user.id },
-      data: profileFields,
+      data: { ...profileFields, ...resolveBackupPreferenceFields(parsed.user) },
     });
 
     for (const account of parsed.accounts) {
@@ -264,6 +211,9 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
           beforeWeekend: row.beforeWeekend ?? false,
           transferAccountId: row.transferAccountId ? (accountIdMap.get(row.transferAccountId) ?? null) : null,
           endDate: row.endDate ? new Date(row.endDate) : null,
+          cancelUrl: row.cancelUrl ?? null,
+          decideBy: row.decideBy ? new Date(row.decideBy) : null,
+          cancelledAt: row.cancelledAt ? new Date(row.cancelledAt) : null,
           postMode: row.postMode,
           enabled: row.enabled,
           note: row.note,
@@ -353,6 +303,7 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
           postedDate: row.postedDate ? new Date(row.postedDate) : null,
           accountDescription: row.accountDescription,
           note: row.note,
+          needsReview: row.needsReview ?? false,
           recurringTransactionId: mappedRecurringId ?? null,
           recurringExpectedDate: mappedRecurringId && row.recurringExpectedDate ? new Date(row.recurringExpectedDate) : null,
           transferAccountId: mappedTransferAccountId ?? null,
@@ -670,6 +621,50 @@ export const importUserBackupAction = formAction(async (formData: FormData) => {
         return { userId: user.id, plaidCategory: row.plaidCategory, categoryId };
       }),
     });
+
+    await tx.accountReconciliation.createMany({
+      data: parsed.accountReconciliations.map((row) => {
+        const accountId = accountIdMap.get(row.accountId);
+        if (!accountId) throw new Error("Backup references unknown reconciled account.");
+        return {
+          userId: user.id,
+          accountId,
+          startDate: new Date(row.startDate),
+          endDate: new Date(row.endDate),
+          openingCents: row.openingCents,
+          closingCents: row.closingCents,
+          createdAt: new Date(row.createdAt),
+        };
+      }),
+    });
+    await tx.monthClose.createMany({
+      data: [...new Map(parsed.monthCloses.map((row) => [row.ym, row])).values()].map((row) => ({
+        userId: user.id,
+        ym: row.ym,
+        closedAt: new Date(row.closedAt),
+      })),
+    });
+    await tx.financialScoreSnapshot.createMany({
+      data: [...new Map(parsed.financialScoreSnapshots.map((row) => [row.month, row])).values()].map((row) => ({
+        userId: user.id,
+        month: row.month,
+        score: row.score,
+        factors: JSON.stringify(row.factors),
+        createdAt: new Date(row.createdAt),
+      })),
+    });
+    // Absent from older files, which leave the alerts as they are. Restored alerts start from
+    // now: the bank rows they would look at were just wiped with the rest.
+    if (parsed.chargeAlertSetting === null) {
+      await tx.chargeAlertSetting.deleteMany({ where: { userId: user.id } });
+    } else if (parsed.chargeAlertSetting) {
+      const { thresholdCents, unusual } = parsed.chargeAlertSetting;
+      await tx.chargeAlertSetting.upsert({
+        where: { userId: user.id },
+        create: { userId: user.id, thresholdCents, unusual, checkedThrough: new Date() },
+        update: { thresholdCents, unusual, checkedThrough: new Date() },
+      });
+    }
 
     // `parsed.authAccounts` is deliberately not restored, and the user's existing links are
     // left untouched. Attaching an SSO identity to an account requires a fresh passkey

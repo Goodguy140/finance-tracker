@@ -19,6 +19,7 @@ import { loadRuleContext, RULE_SPLITS_INCLUDE } from "@/lib/transaction-rules-se
 import { addTagsToTransaction, replaceTransactionTags, resolveTagIds } from "@/lib/tags-server";
 import { ensureFallbackCategoryFor } from "@/lib/fallback-categories";
 import { parseTagNames } from "@/lib/tags";
+import { CATEGORY_NAME_MAX, clipText, TRANSACTION_NOTE_MAX, TRANSACTION_TITLE_MAX } from "@/lib/text-limits";
 import { deleteTransactionWithUndo, undoDeletedTransaction, type UndoRefusal } from "@/lib/transaction-undo";
 import {
   markAsTransfer,
@@ -332,7 +333,11 @@ export const importExpensesCsvAction = formActionWithResult(async (formData: For
       summary.unreadableAmounts += 1;
       return;
     }
-    const statementTitle = getOptionalMappedValue(row, payload.mapping.title) ?? payload.manualValues.title;
+    // A statement can carry any length; the log keeps to the limits a backup restore checks.
+    const statementTitle = clipText(
+      getOptionalMappedValue(row, payload.mapping.title) ?? payload.manualValues.title,
+      TRANSACTION_TITLE_MAX,
+    );
 
     const dateRaw = getOptionalMappedValue(row, payload.mapping.date) ?? payload.manualValues.date;
     const transactionDate = hasDateSource ? parseImportedDate(dateRaw) : new Date();
@@ -383,9 +388,15 @@ export const importExpensesCsvAction = formActionWithResult(async (formData: For
     const pendingSplits: Prisma.SplitTransactionPartCreateManyInput[] = [];
     let transferCategoryId: string | null = null;
     for (const { rowNumber, row, amount, transactionDate, postedDate, statementTitle } of datedRows) {
-      const statementNote = getOptionalMappedValue(row, payload.mapping.note) ?? payload.manualValues.note;
+      const statementNote = clipText(
+        getOptionalMappedValue(row, payload.mapping.note) ?? payload.manualValues.note,
+        TRANSACTION_NOTE_MAX,
+      );
       const accountName = getOptionalMappedValue(row, payload.mapping.accountName) ?? payload.manualValues.accountName;
-      const categoryName = getOptionalMappedValue(row, payload.mapping.categoryName) ?? payload.manualValues.categoryName;
+      const categoryName = clipText(
+        getOptionalMappedValue(row, payload.mapping.categoryName) ?? payload.manualValues.categoryName,
+        CATEGORY_NAME_MAX,
+      );
 
       // Money in is income only when the user said so; otherwise it is a refund, booked as a
       // negative expense in its category (see AGENTS.md on the sign convention).

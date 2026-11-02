@@ -3,6 +3,7 @@ import {
   type ExpenseTitleSuggestion,
 } from "@/lib/expense-title-suggestions";
 import { untransferredType } from "@/lib/transfer-type";
+import { clipText, TRANSACTION_NOTE_MAX } from "@/lib/text-limits";
 
 /**
  * The transaction rules engine. Pure and client-safe: the manual forms and the Settings →
@@ -340,12 +341,16 @@ export function visibleLearnedSuggestions(
   return learned.filter((s) => !hidden.has(normalizeExpenseTitleKey(s.title)));
 }
 
-/** Appends a rule's note to an existing note without repeating it on a re-apply. */
+/**
+ * Appends a rule's note to an existing note without repeating it on a re-apply. The result is
+ * held to the note limit, as the note was before: a rule's note on top of a long note must not
+ * make a row the backup restore would refuse.
+ */
 export function appendRuleNote(existing: string | null | undefined, addition: string | undefined) {
   const base = existing?.trim() ?? "";
-  if (!addition) return base || null;
-  if (base.toLowerCase().includes(addition.toLowerCase())) return base;
-  return base ? `${base}\n${addition}` : addition;
+  if (!addition) return clipText(base, TRANSACTION_NOTE_MAX) ?? null;
+  if (base.toLowerCase().includes(addition.toLowerCase())) return clipText(base, TRANSACTION_NOTE_MAX) ?? null;
+  return clipText(base ? `${base}\n${addition}` : addition, TRANSACTION_NOTE_MAX) ?? null;
 }
 
 const OPERATOR_LABEL: Record<RuleTextOperator, string> = {

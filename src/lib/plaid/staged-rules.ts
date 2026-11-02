@@ -1,4 +1,5 @@
 import { resolveDisplayName } from "@/lib/plaid/ingest";
+import { TRANSACTION_TITLE_MAX } from "@/lib/text-limits";
 import {
   resolveRuleOutcome,
   type LearnedRuleContext,
@@ -71,7 +72,8 @@ export function proposeForStagedRow(
     // Only when booked as a transfer: unticked, the rule's mark is not what gets written.
     (staged.type === "TRANSFER" && outcome.markAsTransfer !== undefined);
   return {
-    title: outcome.title ?? displayName,
+    // A bank's name for a merchant has no length limit; the log does (see text-limits.ts).
+    title: (outcome.title ?? displayName).slice(0, TRANSACTION_TITLE_MAX),
     categoryId: outcome.categoryId ?? staged.suggestedCategoryId,
     note: outcome.appendNote ?? null,
     tagIds: outcome.tagIds,

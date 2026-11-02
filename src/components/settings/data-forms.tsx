@@ -24,7 +24,10 @@ export function BackupForms() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-prose text-sm text-slate-400">Everything in your account, as one JSON file.</p>
+        <p className="max-w-prose text-sm text-slate-400">
+          Your financial data and settings, as one JSON file. Bank connections, receipts and sign-in methods are not
+          included.
+        </p>
         <a href="/api/backup/export/me" className={primaryBtnClass}>
           Export backup JSON
         </a>
@@ -102,8 +105,9 @@ export function DangerZoneForms() {
       <ServerActionForm action={clearUserFinancialDataAction} beforeSubmit={confirmIdentity} className="space-y-2">
         <p className="text-sm font-medium text-slate-100">Clear financial data</p>
         <p className="max-w-prose text-xs text-slate-400">
-          Permanently removes transactions (including splits), budgets, financial accounts, categories, recurring
-          transactions, investment flows, and portfolio snapshots. Your login, profile and sessions are kept, and starter
+          Permanently removes transactions (including splits and receipts), budgets, financial accounts, categories,
+          recurring transactions, goals, plans, rules, tags, investment flows, balance and score history, and closed
+          months, and disconnects linked banks. Your login, profile, settings and sessions are kept, and starter
           categories and accounts are recreated.
         </p>
         <label className="block space-y-1.5">

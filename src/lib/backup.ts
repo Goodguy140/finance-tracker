@@ -20,6 +20,13 @@ export type UserBackupPayload = {
     createdAt: IsoString;
     updatedAt: IsoString;
     defaultExpenseAccountId?: string | null;
+    /** Profile and preferences. Optional: older backups predate them, and restore then keeps the account's own. */
+    birthYear?: number | null;
+    zeroBasedBudgeting?: boolean;
+    projectionIncludesTransfers?: boolean;
+    budgetAlertEmailEnabled?: boolean;
+    digestFrequency?: "OFF" | "WEEKLY" | "MONTHLY";
+    billReminderDays?: number | null;
   };
   authAccounts: Array<{
     provider: string;
@@ -83,6 +90,8 @@ export type UserBackupPayload = {
     postedDate: IsoString | null;
     accountDescription: string | null;
     note: string | null;
+    /** Came in by import, auto-post or the API and not looked at yet. Optional: older backups predate it. */
+    needsReview?: boolean;
     /** The recurring rule (by its exported `id`) this row was posted from, if any. */
     recurringTransactionId: string | null;
     recurringExpectedDate: IsoString | null;
@@ -140,6 +149,10 @@ export type UserBackupPayload = {
     /** A transfer rule's other side; null on bills and income. */
     transferAccountId: string | null;
     endDate: IsoString | null;
+    /** The subscription cancel helper. Optional: older backups predate it. */
+    cancelUrl?: string | null;
+    decideBy?: IsoString | null;
+    cancelledAt?: IsoString | null;
     postMode: "REVIEW" | "AUTO";
     enabled: boolean;
     note: string | null;
@@ -287,11 +300,37 @@ export type UserBackupPayload = {
    * taxonomy, the same for every deployment. Optional: older backups predate them.
    */
   plaidCategoryMappings?: Array<{ plaidCategory: string; categoryId: string }>;
+  /** Statements checked against the log; `accountId` is an exported account id. Optional for older backups. */
+  accountReconciliations?: Array<{
+    accountId: string;
+    startDate: IsoString;
+    endDate: IsoString;
+    openingCents: number;
+    closingCents: number;
+    createdAt: IsoString;
+  }>;
+  /** Large and unusual charge alerts; null when never set. Optional for older backups. */
+  chargeAlertSetting?: { thresholdCents: number | null; unusual: boolean } | null;
+  /** Months closed on the monthly review. Optional for older backups. */
+  monthCloses?: Array<{ ym: string; closedAt: IsoString }>;
+  /** The financial score as it stood each month, so the card's "up N since" survives a restore. */
+  financialScoreSnapshots?: Array<{ month: string; score: number; factors: Record<string, number>; createdAt: IsoString }>;
   /**
-   * Not a field. Recording an omission so it does not read as an oversight: the desktop
-   * dashboard layout (`DashboardLayout`) is deliberately outside this payload. It is a UI
-   * preference rather than financial data, and import/clear are wipe-and-replace — carrying
-   * it here would silently reset someone's dashboard every time they restored a backup.
+   * Not fields. Recording the omissions so they do not read as oversights:
+   *
+   * - The desktop dashboard layout (`DashboardLayout`) and the dashboard readability settings
+   *   are UI preferences rather than financial data, and import/clear are wipe-and-replace —
+   *   carrying them here would silently reset someone's dashboard every time they restored.
+   * - Bank connections (Plaid items, accounts, the review queue): bound to this deployment's
+   *   Plaid client, see `transactionVerifications`.
+   * - Receipts (`TransactionAttachment`): files, which would make the JSON as large as every
+   *   receipt ever kept. The restore warning tells the user to save the ones they need.
+   * - Sign-in methods and anything that grants access: passkeys, authenticator apps, recovery
+   *   codes, API tokens, webhooks (their signing secrets), the calendar link and phone
+   *   notification subscriptions. A file must never hand out a way in, and each is set up
+   *   again in a minute.
+   * - Short-lived state: the Undo window, reminder and digest "already sent" markers, rate
+   *   limits, audit history.
    */
 };
 
@@ -311,6 +350,17 @@ export function sanitizeBackupPayload(payload: UserBackupPayload): UserBackupPay
     })),
     passwordResetTokens: [],
   };
+}
+
+/** A snapshot's factor scores; a row whose JSON cannot be read exports none rather than failing the backup. */
+function parseScoreFactors(json: string): Record<string, number> {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, number] => typeof entry[1] === "number"));
+  } catch {
+    return {};
+  }
 }
 
 function toIso(value: Date | null): string | null {
@@ -354,6 +404,10 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       insightPreference: true,
       contributionRooms: { orderBy: [{ accountType: "asc" }, { year: "asc" }] },
       plaidCategoryMappings: { orderBy: { plaidCategory: "asc" } },
+      chargeAlertSetting: true,
+      monthCloses: { orderBy: { ym: "asc" } },
+      financialScoreSnapshots: { orderBy: { month: "asc" } },
+      accountReconciliations: { orderBy: [{ accountId: "asc" }, { endDate: "asc" }] },
     },
   });
 
@@ -371,6 +425,12 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       createdAt: user.createdAt.toISOString(),
       updatedAt: user.updatedAt.toISOString(),
       defaultExpenseAccountId: user.defaultExpenseAccountId,
+      birthYear: user.birthYear,
+      zeroBasedBudgeting: user.zeroBasedBudgeting,
+      projectionIncludesTransfers: user.projectionIncludesTransfers,
+      budgetAlertEmailEnabled: user.budgetAlertEmailEnabled,
+      digestFrequency: user.digestFrequency,
+      billReminderDays: user.billReminderDays,
     },
     authAccounts: user.authAccounts.map((row) => ({
       provider: row.provider,
@@ -431,6 +491,7 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       postedDate: toIso(row.postedDate),
       accountDescription: row.accountDescription,
       note: row.note,
+      needsReview: row.needsReview,
       recurringTransactionId: row.recurringTransactionId,
       recurringExpectedDate: toIso(row.recurringExpectedDate),
       transferAccountId: row.transferAccountId,
@@ -479,6 +540,9 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
       beforeWeekend: row.beforeWeekend,
       transferAccountId: row.transferAccountId,
       endDate: toIso(row.endDate),
+      cancelUrl: row.cancelUrl,
+      decideBy: toIso(row.decideBy),
+      cancelledAt: toIso(row.cancelledAt),
       postMode: row.postMode,
       enabled: row.enabled,
       note: row.note,
@@ -595,6 +659,24 @@ export async function buildUserBackupPayload(userId: string): Promise<UserBackup
     plaidCategoryMappings: user.plaidCategoryMappings.map((row) => ({
       plaidCategory: row.plaidCategory,
       categoryId: row.categoryId,
+    })),
+    accountReconciliations: user.accountReconciliations.map((row) => ({
+      accountId: row.accountId,
+      startDate: row.startDate.toISOString(),
+      endDate: row.endDate.toISOString(),
+      openingCents: row.openingCents,
+      closingCents: row.closingCents,
+      createdAt: row.createdAt.toISOString(),
+    })),
+    chargeAlertSetting: user.chargeAlertSetting
+      ? { thresholdCents: user.chargeAlertSetting.thresholdCents, unusual: user.chargeAlertSetting.unusual }
+      : null,
+    monthCloses: user.monthCloses.map((row) => ({ ym: row.ym, closedAt: row.closedAt.toISOString() })),
+    financialScoreSnapshots: user.financialScoreSnapshots.map((row) => ({
+      month: row.month,
+      score: row.score,
+      factors: parseScoreFactors(row.factors),
+      createdAt: row.createdAt.toISOString(),
     })),
   });
 }
