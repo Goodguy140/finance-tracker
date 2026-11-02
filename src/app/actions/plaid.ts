@@ -46,6 +46,7 @@ import { sweepDuePlaidItems, type SweepSummary } from "@/lib/plaid-sync-schedule
 import { describeLogRefresh, LOG_REFRESH_INTERVAL_MINUTES, type LogRefreshResult } from "@/lib/plaid/log-refresh";
 import type { ActionFailure } from "@/lib/action-result";
 import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
+import { emitTransactionsCreated } from "@/lib/webhooks";
 import { ensureFallbackCategoryFor } from "@/lib/fallback-categories";
 import {
   assertUserOwnsAccount,
@@ -543,8 +544,12 @@ function parseCountAs(value: string): TransactionType | null {
 }
 
 /** Throws inside a database transaction, so a refused decision rolls back everything with it. */
-function orRefuse(outcome: ReviewOutcome | PairOutcome): void {
+function orRefuse(outcome: ReviewOutcome): string;
+function orRefuse(outcome: PairOutcome): [string, string];
+/** Throws the refusal's message; otherwise the id (or a pair's two ids) of the entry it touched. */
+function orRefuse(outcome: ReviewOutcome | PairOutcome): string | [string, string] {
   if (!outcome.ok) throw new Error(REVIEW_REFUSALS[outcome.reason]);
+  return "transactionIds" in outcome ? outcome.transactionIds : outcome.transactionId;
 }
 
 /**
@@ -595,11 +600,12 @@ export const resolveStagedTransactionAction = formAction(async (formData: FormDa
     if (staged.suggestedAccountId) await assertUserOwnsAccount(user.id, staged.suggestedAccountId);
     // A rule's split is written only while the row keeps the category the split gave it.
     const kept = resolvedCategoryId === proposal.categoryId ? proposal : { ...proposal, split: null };
-    await prisma.$transaction(async (tx) =>
+    const addedId = await prisma.$transaction(async (tx) =>
       orRefuse(
         await addStagedRow(tx, { userId: user.id, staged, categoryId: resolvedCategoryId, proposal: kept, type }),
       ),
     );
+    emitTransactionsCreated(user.id, [addedId], "bank");
   } else {
     throw new Error("Choose whether to link, add, or ignore this row.");
   }
@@ -639,9 +645,10 @@ export const pairStagedTransfersAction = formAction(async (formData: FormData) =
     proposal: proposeStagedRowAs(propose, row, TransactionType.TRANSFER),
   });
   const categoryId = await ensureFallbackCategoryFor(prisma, user.id, CategoryKind.TRANSFER);
-  await prisma.$transaction(async (tx) =>
+  const legIds = await prisma.$transaction(async (tx) =>
     orRefuse(await pairStagedRows(tx, { userId: user.id, legs: [leg(a), leg(b)], categoryId })),
   );
+  emitTransactionsCreated(user.id, legIds, "bank");
   revalidatePath("/");
 });
 
@@ -714,21 +721,26 @@ export const bulkAddStagedTransactionsAction = formAction(async (formData: FormD
 
   // For the same reason, a row someone else reviewed in the meantime refuses the whole batch
   // rather than quietly shrinking it.
-  await prisma.$transaction(async (tx) => {
+  const addedIds = await prisma.$transaction(async (tx) => {
+    const added: string[] = [];
     for (const row of rows) {
       const { type, proposal } = plans.get(row.id)!;
-      orRefuse(
-        await addStagedRow(tx, {
-          userId: user.id,
-          staged: toCommittable(row),
-          categoryId: categoryFor(row)!,
-          // "Add with category" books each row whole in that category, as it says.
-          proposal: chosenCategoryId ? { ...proposal, split: null } : proposal,
-          type,
-        }),
+      added.push(
+        orRefuse(
+          await addStagedRow(tx, {
+            userId: user.id,
+            staged: toCommittable(row),
+            categoryId: categoryFor(row)!,
+            // "Add with category" books each row whole in that category, as it says.
+            proposal: chosenCategoryId ? { ...proposal, split: null } : proposal,
+            type,
+          }),
+        ),
       );
     }
+    return added;
   }, LONG_TRANSACTION_OPTIONS);
+  emitTransactionsCreated(user.id, addedIds, "bank");
 
   await recordAuditLog(prisma, {
     userId: user.id,

@@ -4,12 +4,12 @@ import { revalidatePath } from "next/cache";
 import { TransactionType } from "@prisma/client";
 import { z } from "zod";
 import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
-import { dateFromYmd, ymdFromDateUtc } from "@/lib/date-only";
+import { dateFromYmd } from "@/lib/date-only";
 import { toCents } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { plannedTransactionSchema } from "@/lib/validation";
-import { emitWebhookEvent } from "@/lib/webhooks";
+import { emitTransactionsCreated } from "@/lib/webhooks";
 import { assertUserOwnsActiveAccount, assertUserOwnsCategory, formAction, getFormValue } from "./_helpers";
 
 /** The plan's fields from its form, with the account and category checked to be the user's own. */
@@ -110,14 +110,7 @@ export const recordPlannedTransactionAction = formAction(async (formData: FormDa
     if (count === 0) throw new Error("This plan has already happened.");
     return entry;
   });
-  emitWebhookEvent(user.id, "transaction.created", {
-    id: created.id,
-    type,
-    amountCents: plan.amountCents,
-    date: ymdFromDateUtc(date),
-    title: plan.name,
-    source: "manual",
-  });
+  emitTransactionsCreated(user.id, [created.id], "manual");
   if (type === TransactionType.EXPENSE) scheduleBudgetAlertEmails(user.id);
   revalidatePlans();
 });

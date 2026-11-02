@@ -1,3 +1,4 @@
+import { UserRole } from "@prisma/client";
 import { ApiTokensPanel } from "@/components/api-tokens-panel";
 import { WebhooksPanel } from "@/components/webhooks-panel";
 import { SettingsPage } from "@/components/settings/ui";
@@ -39,6 +40,7 @@ export default async function DeveloperSettingsPage() {
       />
       <div className="mt-8 border-t border-slate-800 pt-6">
         <WebhooksPanel
+          canUseLocalNetwork={user.role === UserRole.SERVER_ADMIN}
           hooks={hooks.map((hook) => ({
             ...hook,
             events: hook.events.split(","),

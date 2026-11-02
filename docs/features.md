@@ -374,8 +374,11 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
   - Developer (API tokens with chosen scopes; `GET /api/v1/budgets`, `GET`/`POST /api/v1/transactions`,
     `GET /api/v1/accounts`, `GET /api/v1/categories`): `api-tokens-panel.tsx`, `src/lib/api-token.ts`,
     `src/lib/api-v1/*`, `src/app/api/v1/*`
-  - Webhooks on the Developer page (HTTPS endpoints picking events: transaction added, CSV import, budget over,
-    bill due, bank sync failed; secret shown once, stored encrypted; each POST signed with
+  - Webhooks on the Developer page (endpoints picking events: transaction added, CSV import, budget over,
+    bill due, bank sync failed; adding one needs "Confirm it's you"; public https addresses, or the local network
+    for server admins only, checked again at each send (`src/lib/webhook-address.ts`); `transaction.created`
+    has one payload from every entry path (`emitTransactionsCreated`); nothing goes out for a suspended user;
+    secret shown once, stored encrypted; each POST signed with
     `x-webhook-signature: t=<unix>,v1=<HMAC-SHA256 of "t.body">`; retries with growing gaps up to 6 attempts on
     the hourly digest scheduler tick, which also queues bill-due events and prunes rows after 30 days):
     `webhooks-panel.tsx`, `src/app/actions/webhooks.ts`, `src/lib/webhooks.ts`, `src/lib/webhook-events.ts`
@@ -414,7 +417,7 @@ Nav `src/components/admin/admin-nav.tsx`; actions `actions/admin*.ts`.
   `src/components/mfa/*`, `src/lib/auth-options.ts`, `webauthn.ts`, `mfa-session.ts`
 - **Confirm it's you** before deleting the account, clearing or restoring its data, and the
   admin controls for roles, suspensions, deleting users, sign-in providers, password login,
-  public sign-up and Plaid credentials: a passkey or authenticator code if the account has one, else the password,
+  public sign-up and Plaid credentials, and before making a calendar link or adding a webhook: a passkey or authenticator code if the account has one, else the password,
   else (SSO only) a sign-in in the last five minutes; one confirmation covers five minutes.
   `src/components/mfa/confirm-identity.tsx`, `requireRecentIdentity` in
   `src/lib/recent-identity.ts`; see `docs/access-control.md`

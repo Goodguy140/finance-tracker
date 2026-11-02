@@ -34,6 +34,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 vi.mock("@/lib/budget-alert-dispatch", () => ({ scheduleBudgetAlertEmails: vi.fn() }));
+vi.mock("@/lib/webhooks", () => ({ emitTransactionsCreated: vi.fn() }));
 
 const { createRecurringTransactionAction, postRecurringTransactionAction } = await import("./recurring");
 
@@ -193,7 +194,7 @@ describe("recurring transaction actions", () => {
         }),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
-      transaction: { findFirst: vi.fn(), create: vi.fn() },
+      transaction: { findFirst: vi.fn(), create: vi.fn().mockResolvedValue({ id: "t1" }) },
       subscriptionShareStatus: { findMany: vi.fn().mockResolvedValue([]) },
     };
     mockPrisma.$transaction.mockImplementation(async (callback: (arg: typeof tx) => Promise<void>) => callback(tx));
@@ -207,6 +208,7 @@ describe("recurring transaction actions", () => {
         transferAccountId: "account-2",
         amountCents: 20_000,
       }),
+      select: { id: true },
     });
   });
 
@@ -233,7 +235,7 @@ describe("recurring transaction actions", () => {
       },
       transaction: {
         findFirst: vi.fn(),
-        create: vi.fn(),
+        create: vi.fn().mockResolvedValue({ id: "t1" }),
       },
     };
     mockPrisma.$transaction.mockImplementation(async (callback: (arg: typeof tx) => Promise<void>) => callback(tx));
@@ -261,6 +263,7 @@ describe("recurring transaction actions", () => {
         recurringTransactionId: "rule-1",
         recurringExpectedDate: dateFromYmd("2026-01-31"),
       }),
+      select: { id: true },
     });
   });
 
@@ -330,7 +333,7 @@ describe("recurring transaction actions", () => {
       },
       transaction: {
         findFirst: vi.fn(),
-        create: vi.fn(),
+        create: vi.fn().mockResolvedValue({ id: "t1" }),
       },
     };
     mockPrisma.$transaction.mockImplementation(async (callback: (arg: typeof tx) => Promise<void>) => callback(tx));
@@ -348,6 +351,7 @@ describe("recurring transaction actions", () => {
         date: dateFromYmd("2026-04-30"),
         recurringExpectedDate: dateFromYmd("2026-04-30"),
       }),
+      select: { id: true },
     });
   });
 

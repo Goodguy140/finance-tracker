@@ -7,6 +7,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { copyMigratedDatabase } from "@/test-support/migrated-db";
 
 vi.mock("next/server", () => ({ after: () => { throw new Error("outside a request"); } }));
+// No real lookups: every name resolves to a public address unless a test says otherwise.
+const dns = vi.hoisted(() => ({ addresses: ["93.184.216.34"] }));
+vi.mock("node:dns/promises", () => {
+  const lookup = vi.fn(async () => dns.addresses.map((address) => ({ address, family: 4 })));
+  return { lookup, default: { lookup } };
+});
 
 const dir = mkdtempSync(join(tmpdir(), "webhooks-"));
 const url = `file:${join(dir, "webhooks.db")}`;
@@ -32,6 +38,7 @@ const SECRET = "whsec_test_secret";
 beforeEach(async () => {
   seq += 1;
   userId = (await db.user.create({ data: { email: `w${seq}@example.test`, displayName: "Test", timezone: "UTC" } })).id;
+  dns.addresses = ["93.184.216.34"];
 });
 
 function endpoint(events: string, extra: Record<string, unknown> = {}) {
@@ -109,7 +116,72 @@ describe("delivery", () => {
   });
 });
 
+describe("who and where", () => {
+  it("queues, retries and sends nothing for a suspended user", async () => {
+    await endpoint("sync.failed");
+    const [id] = await hooks.enqueueWebhookEvent(db, userId, "sync.failed", {});
+    await db.user.update({ where: { id: userId }, data: { disabledAt: new Date() } });
+    const { fn, calls } = fakeFetch([200]);
+
+    expect(await hooks.enqueueWebhookEvent(db, userId, "sync.failed", {})).toEqual([]);
+    // The sweep is server-wide; other tests' deliveries may go out, this one must not.
+    await hooks.runWebhookSweep(new Date(Date.now() + 60_000), { client: db, fetch: fn });
+    expect(await hooks.attemptDelivery(db, id, { fetch: fn })).toBe("gone");
+    expect(calls.filter((c) => (c.init.headers as Record<string, string>)["x-webhook-delivery"] === id)).toEqual([]);
+    expect((await db.webhookDelivery.findUniqueOrThrow({ where: { id } })).attempts).toBe(0);
+  });
+
+  it("checks the address again when sending: a name repointed at the local network is refused unless the owner is an admin", async () => {
+    await endpoint("sync.failed");
+    const { fn } = fakeFetch([200]);
+    dns.addresses = ["192.168.1.20"];
+    const [refused] = await hooks.enqueueWebhookEvent(db, userId, "sync.failed", {});
+    expect(await hooks.attemptDelivery(db, refused, { fetch: fn })).toBe("failed");
+    expect(fn).not.toHaveBeenCalled();
+    expect((await db.webhookDelivery.findUniqueOrThrow({ where: { id: refused } })).lastError).toContain("server admin");
+
+    await db.user.update({ where: { id: userId }, data: { role: "SERVER_ADMIN" } });
+    expect(await hooks.attemptDelivery(db, refused, { fetch: fn })).toBe("delivered");
+  });
+});
+
 describe("events raised by the app", () => {
+  it("transaction.created has one payload, whichever way the entry got in", async () => {
+    await endpoint("transaction.created");
+    const category = await db.category.create({ data: { userId, name: "Bills", kind: "EXPENSE" } });
+    const account = await db.account.create({ data: { userId, name: "Chequing", type: "CHEQUING" } });
+    const rule = await db.recurringTransaction.create({
+      data: {
+        userId,
+        accountId: account.id,
+        categoryId: category.id,
+        type: "EXPENSE",
+        name: "Phone",
+        amountCents: 5_000,
+        cadence: "MONTHLY",
+        postMode: "AUTO",
+        nextExpectedDate: new Date("2026-10-20T00:00:00Z"),
+      },
+    });
+    const typed = await db.transaction.create({
+      data: { userId, accountId: account.id, categoryId: category.id, type: "EXPENSE", amountCents: 1_250, title: "Lunch", date: new Date("2026-10-21T00:00:00Z") },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200 })));
+    const { autoPostDueRecurringTransactions } = await import("./recurring-post");
+    expect((await autoPostDueRecurringTransactions(userId, new Date("2026-10-25T12:00:00Z"), db)).posted).toBe(1);
+    hooks.emitTransactionsCreated(userId, [typed.id], "manual", { client: db });
+    await expect.poll(() => db.webhookDelivery.count({ where: { endpoint: { userId }, deliveredAt: { not: null } } })).toBe(2);
+    vi.unstubAllGlobals();
+
+    const rows = await db.webhookDelivery.findMany({ where: { endpoint: { userId } } });
+    const data = rows.map((row) => JSON.parse(row.payload).data).sort((a, b) => a.date.localeCompare(b.date));
+    const posted = await db.transaction.findFirstOrThrow({ where: { userId, recurringTransactionId: rule.id } });
+    expect(data).toEqual([
+      { id: posted.id, type: "EXPENSE", amountCents: 5_000, date: "2026-10-20", title: "Phone", recurringId: rule.id, source: "recurring-auto-post" },
+      { id: typed.id, type: "EXPENSE", amountCents: 1_250, date: "2026-10-21", title: "Lunch", recurringId: null, source: "manual" },
+    ]);
+  });
+
   it("bill.due goes out once for a bill due tomorrow", async () => {
     await endpoint("bill.due");
     const category = await db.category.create({ data: { userId, name: "Bills", kind: "EXPENSE" } });

@@ -17,7 +17,7 @@ const session = vi.hoisted(() => ({ userId: "" }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/session", () => ({ requireUser: vi.fn(async () => ({ id: session.userId })) }));
 vi.mock("@/lib/budget-alert-dispatch", () => ({ scheduleBudgetAlertEmails: vi.fn() }));
-vi.mock("@/lib/webhooks", () => ({ emitWebhookEvent: vi.fn() }));
+vi.mock("@/lib/webhooks", () => ({ emitWebhookEvent: vi.fn(), emitTransactionsCreated: vi.fn() }));
 
 let accountId = "";
 let categoryId = "";
