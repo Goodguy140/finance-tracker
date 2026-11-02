@@ -2,6 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import * as SplashScreen from 'expo-splash-screen';
 
+import { QueryProvider } from '@/api/query';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { SessionProvider, useSession } from '@/session/session-provider';
 
@@ -13,9 +14,9 @@ function RootStack() {
   if (session === undefined) return null;
   const signedIn = session !== null;
   return (
-    <Stack screenOptions={{ headerLargeTitleEnabled: true, headerShadowVisible: false }}>
+    <Stack>
       <Stack.Protected guard={signedIn}>
-        <Stack.Screen name="index" />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       </Stack.Protected>
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="sign-in" options={{ headerShown: false }} />
@@ -29,7 +30,9 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <SessionProvider>
-        <RootStack />
+        <QueryProvider>
+          <RootStack />
+        </QueryProvider>
       </SessionProvider>
     </ThemeProvider>
   );

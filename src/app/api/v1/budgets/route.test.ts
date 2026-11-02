@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/headers", () => ({ headers: vi.fn(async () => new Headers()) }));
-vi.mock("@/lib/prisma", () => ({ prisma: {} }));
+vi.mock("@/lib/prisma", () => ({ prisma: { category: { findMany: vi.fn() } } }));
+vi.mock("@/lib/yearly-budgets", () => ({ loadYearlyBudgetRows: vi.fn() }));
 vi.mock("@/lib/api-token", () => ({
   API_SCOPES: { budgetsRead: "budgets:read" },
   authenticateApiToken: vi.fn(),
@@ -24,6 +25,8 @@ const { authenticateApiToken } = await import("@/lib/api-token");
 const { buildMonthlyBudgetProgress } = await import("@/lib/budget-progress");
 const { enforceSlidingWindowRateLimit } = await import("@/lib/rate-limit");
 const { recordAuditLog } = await import("@/lib/audit-log");
+const { prisma } = await import("@/lib/prisma");
+const { loadYearlyBudgetRows } = await import("@/lib/yearly-budgets");
 const { GET } = await import("./route");
 
 const okAuth = {
@@ -52,6 +55,10 @@ describe("GET /api/v1/budgets", () => {
     vi.mocked(enforceSlidingWindowRateLimit).mockReset().mockResolvedValue(undefined as never);
     vi.mocked(recordAuditLog).mockReset();
     vi.mocked(buildMonthlyBudgetProgress).mockResolvedValue(sampleProgress as never);
+    vi.mocked(loadYearlyBudgetRows).mockReset().mockResolvedValue([]);
+    vi.mocked(prisma.category.findMany).mockReset().mockResolvedValue([
+      { id: "c1", groupName: "Food", rolloverSinceMonth: "2026-07" },
+    ] as never);
   });
 
   it("returns 401 for an unauthorized token", async () => {
@@ -82,6 +89,27 @@ describe("GET /api/v1/budgets", () => {
     });
     expect(vi.mocked(buildMonthlyBudgetProgress)).toHaveBeenCalledWith("u1", "2026-06");
     expect(vi.mocked(recordAuditLog)).toHaveBeenCalledOnce();
+  });
+
+  it("adds each budget's group, whether rollover is on that month, and the yearly budgets", async () => {
+    vi.mocked(authenticateApiToken).mockResolvedValue(okAuth as never);
+    vi.mocked(loadYearlyBudgetRows).mockResolvedValue([
+      {
+        categoryId: "c1",
+        categoryName: "Groceries",
+        limitCents: 120000,
+        monthlyCents: 10000,
+        setAsideCents: 60000,
+        spentCents: 45000,
+        fundCents: 15000,
+        leftForYearCents: 75000,
+      },
+    ]);
+    const june = await (await get("2026-06")).json();
+    expect(june.budgets[0]).toMatchObject({ groupName: "Food", rollover: false });
+    expect(june.yearly).toEqual([expect.objectContaining({ categoryName: "Groceries", fundCents: 15000, groupName: "Food" })]);
+    const july = await (await get("2026-07")).json();
+    expect(july.budgets[0]).toMatchObject({ rollover: true });
   });
 
   it("does not audit a read by the phone app", async () => {

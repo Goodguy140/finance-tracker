@@ -1,0 +1,86 @@
+import Constants from 'expo-constants';
+import { Stack } from 'expo-router/stack';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+
+import { errorText, useApiQuery } from '@/api/query';
+import type { Me } from '@/api/types';
+import { Section } from '@/components/section';
+import { Radius, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
+import { useSession } from '@/session/session-provider';
+
+/** Who is signed in and where, the website one tap away, and Sign out. */
+export function Settings() {
+  const theme = useTheme();
+  const { session, signOut } = useSession();
+  const me = useApiQuery<Me>('/api/v1/me');
+  const host = session ? session.origin.replace(/^https:\/\//, '') : '';
+
+  function confirmSignOut() {
+    Alert.alert('Sign out?', 'This phone will need to sign in again to see your finances.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign out', style: 'destructive', onPress: () => void signOut() },
+    ]);
+  }
+
+  return (
+    <>
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        style={{ backgroundColor: theme.background }}
+        contentContainerStyle={styles.content}>
+        <Section title="Signed in as">
+          {me.data ? (
+            <View style={styles.stack}>
+              <Text style={[styles.title, { color: theme.text }]}>{me.data.user.displayName}</Text>
+              <Text style={[styles.muted, { color: theme.textSecondary }]}>{me.data.user.email}</Text>
+            </View>
+          ) : (
+            <Text style={[styles.muted, { color: me.error ? theme.danger : theme.textSecondary }]}>
+              {me.error ? errorText(me.error) : 'Loading…'}
+            </Text>
+          )}
+        </Section>
+
+        <Section
+          title="Server"
+          footer="Reports, imports, rules, bank connections and settings are on the website.">
+          <Text style={[styles.title, { color: theme.text }]} selectable>
+            {host}
+          </Text>
+          <Pressable
+            onPress={() => session && void Linking.openURL(`${session.origin}/`)}
+            accessibilityRole="link"
+            accessibilityHint="Opens the website in Safari"
+            hitSlop={8}>
+            <Text style={[styles.link, { color: theme.tint }]}>Open the website</Text>
+          </Pressable>
+        </Section>
+
+        <Pressable
+          onPress={confirmSignOut}
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.signOut,
+            { backgroundColor: theme.backgroundElement, borderColor: theme.border, opacity: pressed ? 0.7 : 1 },
+          ]}>
+          <Text style={[styles.signOutText, { color: theme.danger }]}>Sign out</Text>
+        </Pressable>
+
+        <Text style={[styles.version, { color: theme.textSecondary }]}>Finances {Constants.expoConfig?.version ?? ''}</Text>
+      </ScrollView>
+      <Stack.Title large>Settings</Stack.Title>
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  content: { padding: Spacing.three, gap: Spacing.four, paddingBottom: Spacing.five },
+  stack: { gap: 2 },
+  title: { fontSize: 17 },
+  muted: { fontSize: 15, lineHeight: 21 },
+  link: { fontSize: 15, fontWeight: '600' },
+  signOut: { borderRadius: Radius, borderWidth: StyleSheet.hairlineWidth, paddingVertical: 14, alignItems: 'center' },
+  signOutText: { fontSize: 17, fontWeight: '600' },
+  version: { fontSize: 13, textAlign: 'center' },
+});

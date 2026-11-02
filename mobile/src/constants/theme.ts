@@ -10,6 +10,7 @@ export const Colors = {
     onTint: '#ffffff',
     danger: '#dc2626',
     warning: '#b45309',
+    positive: '#047857',
     track: '#e2e8f0',
   },
   dark: {
@@ -22,6 +23,7 @@ export const Colors = {
     onTint: '#ffffff',
     danger: '#f87171',
     warning: '#fbbf24',
+    positive: '#34d399',
     track: '#1e293b',
   },
 } as const;

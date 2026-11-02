@@ -125,7 +125,8 @@ token (`Authorization: Bearer ftd_…`).
 - The code lives for one minute, is stored as a hash, and works once: it is deleted on the
   first try whether or not the verifier matches.
 - A device token is 256 random bits, stored as a SHA-256 hash in `AppDevice`, and reaches every
-  `/api/v1` route plus `app` (`GET /api/v1/me`), which personal access tokens cannot be given.
+  `/api/v1` route plus `app` (`GET /api/v1/me`, `GET /api/v1/summary`), which personal access
+  tokens cannot be given.
   Nothing on `/api/v1` deletes or restores data, changes sign-in, or reaches admin controls.
 - It ends when the phone signs out (`POST /api/v1/app/revoke`), when the person signs it out
   under **Settings → Security → Signed-in apps**, after 90 days unused, and on anything that

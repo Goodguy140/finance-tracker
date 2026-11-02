@@ -12,6 +12,10 @@ ignore it. Read `README.md` here for how sign-in and TestFlight builds work.
 - **The app talks only to `/api/v1`** with a device token (`ftd_…`, `src/lib/app-devices.ts` on
   the server). A new screen that needs data the API does not have needs a server route first, with
   its own tests, in the same or an earlier pull request.
+- **API changes only add.** Installed builds keep calling the routes they shipped with, and a
+  phone can meet a server older than itself, so a field added to a response is optional in
+  `src/api/types.ts` until every server has it. Screens read through `useApiQuery`
+  (`src/api/query.tsx`), which signs the phone out on a 401 and empties the cache on sign-out.
 - **The redirect `financetracker://signed-in` is shared** with the server's `APP_REDIRECT_URI`;
   change both or neither.
 - **Never commit Apple or Expo credentials.** They live on EAS and in GitHub secrets
