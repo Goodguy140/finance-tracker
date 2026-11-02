@@ -130,8 +130,10 @@ token (`Authorization: Bearer ftd_…`).
   first try whether or not the verifier matches.
 - A device token is 256 random bits, stored as a SHA-256 hash in `AppDevice`, and reaches every
   `/api/v1` route plus `app`, which personal access tokens cannot be given: `GET /api/v1/me`,
-  `GET /api/v1/summary`, `GET /api/v1/quick-add` (a preview, writes nothing), and editing or
-  deleting one entry at a time (`PATCH`/`DELETE
+  `GET /api/v1/summary`, `GET /api/v1/quick-add` (a preview, writes nothing), receipts (adding,
+  viewing and removing one at a time: `POST /api/v1/transactions/:id/attachments`,
+  `GET`/`DELETE /api/v1/attachments/:id`, with the website's size, type and quota checks; personal
+  access tokens never see receipts), and editing or deleting one entry at a time (`PATCH`/`DELETE
   /api/v1/transactions/:id`; a deleted entry is kept 15 minutes for `POST /api/v1/undo/:undoId`,
   as on the website). Adds, edits, deletes and undos are audit-logged (`api_transaction_created`
   with `via: "app"`, `api_transaction_updated`, `_deleted`, `_restored`); the phone's adds skip

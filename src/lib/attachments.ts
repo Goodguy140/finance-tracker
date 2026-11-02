@@ -61,6 +61,32 @@ export function attachmentContentDisposition(fileName: string): string {
 
 export type AttachmentRefusal = "empty" | "too-large" | "type" | "too-many" | "quota" | "not-found";
 
+/** What to tell the person, the same on the website and the phone. */
+export const ATTACHMENT_REFUSAL_MESSAGES: Record<AttachmentRefusal, string> = {
+  empty: "That file is empty.",
+  "too-large": `Receipts can be up to ${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB.`,
+  type: "Only photos (JPEG, PNG, WebP, GIF, HEIC) and PDFs can be kept as receipts.",
+  "too-many": "This entry already has as many receipts as it can hold.",
+  quota: `Your receipts have reached the ${MAX_ATTACHMENT_BYTES_PER_USER / (1024 * 1024)} MB limit. Remove some you no longer need first.`,
+  "not-found": "Transaction not found.",
+};
+
+/**
+ * Headers for serving a receipt from this origin. An image page may load nothing but itself; a PDF
+ * is shown by the browser's own viewer, which a sandbox would block.
+ */
+export function attachmentResponseHeaders(file: { fileName: string; contentType: string }): Record<string, string> {
+  return {
+    "Content-Type": file.contentType,
+    "Content-Disposition": attachmentContentDisposition(file.fileName),
+    "Cache-Control": "private, no-store",
+    "X-Content-Type-Options": "nosniff",
+    ...(file.contentType === "application/pdf"
+      ? {}
+      : { "Content-Security-Policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox" }),
+  };
+}
+
 export async function addAttachment(
   db: PrismaClient,
   input: { userId: string; transactionId: string; fileName: string; bytes: Uint8Array },

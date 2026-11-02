@@ -18,6 +18,14 @@
       "expo-router",
       "expo-secure-store",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Finances opens your photos only when you choose a receipt to keep with an entry.",
+          "cameraPermission": "Finances uses the camera only when you take a photo of a receipt to keep with an entry.",
+          "microphonePermission": "Finances takes still photos of receipts only and never records sound."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#0f172a",

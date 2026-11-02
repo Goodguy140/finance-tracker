@@ -2,22 +2,27 @@ import { DateTimePicker } from '@expo/ui/community/datetime-picker';
 import { SegmentedControl } from '@expo/ui/community/segmented-control';
 import { Host, Picker } from '@expo/ui';
 import { randomUUID } from 'expo-crypto';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useRef, useState } from 'react';
-import { ScrollView, Text, TextInput } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useApiMutation } from '@/api/mutations';
+import { useUploadReceipt } from '@/api/receipts';
 import { errorText, useApiQuery } from '@/api/query';
 import type { Account, Category, Transaction, TransactionType } from '@/api/types';
 import { FormField, formStyles } from '@/components/form';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
+import { Spacing } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { pickReceipt } from '@/utils/pick-receipt';
 import { useTheme } from '@/hooks/use-theme';
 import { offerUndo } from '@/state/undo-offer';
 import { addBody, emptyAddForm, switchAddType, TITLE_MAX, type AddForm } from '@/utils/add';
 import { dateFromYmd, localToday, ymdFromDate } from '@/utils/dates';
+import { receiptSize, type ReceiptPhoto } from '@/utils/receipts';
 import { transactionName } from '@/utils/transactions';
 
 const TYPES: { value: TransactionType; label: string }[] = [
@@ -60,6 +65,8 @@ function AddEditor({ initialType, categories, accounts }: { initialType: Transac
   const router = useRouter();
   const [form, setForm] = useState<AddForm>(() => emptyAddForm(localToday(), initialType));
   const [error, setError] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<ReceiptPhoto | null>(null);
+  const upload = useUploadReceipt();
   // One key per thing being added: sending the same add again after a dropped connection is
   // answered with the entry already made. Changing the form first makes it a new add.
   const sent = useRef<{ body: string; key: string } | null>(null);
@@ -76,23 +83,50 @@ function AddEditor({ initialType, categories, accounts }: { initialType: Transac
   const openAccounts = accounts.filter((a) => !a.archived);
   const ready = form.amount.trim() !== '' && (!transfer || (form.accountId !== null && form.transferAccountId !== null));
 
-  function submit() {
+  async function submit() {
     const result = addBody(form);
     if ('error' in result) return setError(result.error);
     setError(null);
     const body = JSON.stringify(result.body);
     const key = sent.current?.body === body ? sent.current.key : randomUUID();
     sent.current = { body, key };
-    save.mutate(
-      { body: result.body, key },
-      {
-        onSuccess: ({ transaction }) => {
-          offerUndo({ kind: 'added', transactionId: transaction.id, label: transactionName(transaction) });
-          router.back();
-        },
-        onError: (err) => setError(err instanceof Error ? err.message : 'Could not add it. Try again.'),
-      },
-    );
+    let transaction: Transaction;
+    try {
+      ({ transaction } = await save.mutateAsync({ body: result.body, key }));
+    } catch (err) {
+      return setError(err instanceof Error ? err.message : 'Could not add it. Try again.');
+    }
+    // The entry is in. A receipt that will not upload is offered again or left for later, never a
+    // reason to add the entry twice.
+    if (photo) await uploadUntilDone(transaction.id, photo);
+    offerUndo({ kind: 'added', transactionId: transaction.id, label: transactionName(transaction) });
+    router.back();
+  }
+
+  async function uploadUntilDone(transactionId: string, receipt: ReceiptPhoto) {
+    for (;;) {
+      try {
+        await upload.mutateAsync({ transactionId, photo: receipt });
+        return;
+      } catch (err) {
+        const again = await new Promise<boolean>((resolve) =>
+          Alert.alert(
+            'Added, but the receipt didn’t upload',
+            `${err instanceof Error ? err.message : 'The upload failed.'} You can add it later from the entry.`,
+            [
+              { text: 'Skip', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Try Again', onPress: () => resolve(true) },
+            ],
+          ),
+        );
+        if (!again) return;
+      }
+    }
+  }
+
+  async function choosePhoto() {
+    const picked = await pickReceipt();
+    if (picked) setPhoto(picked);
   }
 
   const accountPicker = (value: string | null, onChange: (id: string | null) => void, emptyLabel: string) => (
@@ -183,6 +217,24 @@ function AddEditor({ initialType, categories, accounts }: { initialType: Transac
           </Section>
         )}
 
+        <Section title="Receipt">
+          {photo ? (
+            <View style={styles.photoRow}>
+              <Image source={{ uri: photo.uri }} contentFit="cover" style={[styles.thumb, { backgroundColor: theme.track }]} />
+              <Text style={[styles.photoText, { color: theme.textSecondary }]}>
+                {photo.sizeBytes ? `Photo, ${receiptSize(photo.sizeBytes)}` : 'Photo'} · uploads when you tap Add
+              </Text>
+              <Pressable onPress={() => setPhoto(null)} accessibilityRole="button" hitSlop={8}>
+                <Text style={[styles.link, { color: theme.danger }]}>Remove</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable onPress={() => void choosePhoto()} accessibilityRole="button" hitSlop={8}>
+              <Text style={[styles.link, { color: theme.tint }]}>Add Receipt Photo</Text>
+            </Pressable>
+          )}
+        </Section>
+
         <Section footer="Separate tags with commas.">
           <FormField label="Tags">
             <TextInput
@@ -206,10 +258,17 @@ function AddEditor({ initialType, categories, accounts }: { initialType: Transac
         </Section>
       </ScrollView>
       <Stack.Toolbar placement="right">
-        <Stack.Toolbar.Button variant="done" disabled={!ready || save.isPending} onPress={submit}>
-          Add
+        <Stack.Toolbar.Button variant="done" disabled={!ready || save.isPending || upload.isPending} onPress={() => void submit()}>
+          {upload.isPending ? 'Uploading…' : 'Add'}
         </Stack.Toolbar.Button>
       </Stack.Toolbar>
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  photoRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  thumb: { width: 48, height: 48, borderRadius: 8 },
+  photoText: { flex: 1, fontSize: 13 },
+  link: { fontSize: 17, fontWeight: '600' },
+});

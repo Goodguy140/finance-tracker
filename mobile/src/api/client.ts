@@ -20,10 +20,10 @@ export class ApiError extends Error {
 
 const TIMEOUT_MS = 15_000;
 
-/** `fetch` that gives up after `TIMEOUT_MS`, so a server that never answers does not hang a screen. */
-export async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
+/** `fetch` that gives up after `timeoutMs`, so a server that never answers does not hang a screen. */
+export async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (err) {
