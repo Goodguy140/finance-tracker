@@ -39,6 +39,8 @@ const eslintConfig = defineConfig([
     // root-relative, so it does not apply there and every .cjs require() fails the build.
     // Each worktree lints itself from its own root.
     ".claude/**",
+    // The iPhone app has its own ESLint config (Expo's) and runs it from mobile/.
+    "mobile/**",
   ]),
 ]);
 

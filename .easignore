@@ -1,0 +1,22 @@
+# EAS uploads the whole repository when it builds the iPhone app in mobile/, and this file
+# replaces every .gitignore for that upload. Only mobile/ is needed to build the app, and a local
+# checkout of the server holds real finances (databases, backups, exports, .env), so everything
+# else stays behind.
+/*
+!/mobile/
+
+# What mobile/.gitignore keeps out of git (node_modules is always left out).
+/mobile/.expo/
+/mobile/dist/
+/mobile/web-build/
+/mobile/expo-env.d.ts
+/mobile/ios/
+/mobile/android/
+/mobile/.env*
+*.p8
+*.p12
+*.key
+*.jks
+*.mobileprovision
+*.pem
+.DS_Store

@@ -52,6 +52,45 @@ jobs:
       # output -- `.next` is in .dockerignore, so the Docker build never saw it, and
       # `e2e` builds independently. The `docker` job's builder stage covers it.
 
+  # The iPhone app in mobile/ (Expo) has its own lockfile and checks. Pull requests only: on a
+  # merge to main this workflow runs inside publish-ghcr.yml, and the server image does not
+  # depend on the app, so a phone-only problem must not hold up a server release.
+  mobile:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run unit tests
+        run: npm test
+
+      # Metro bundles the iOS app the way an EAS build does, so an import that only fails at
+      # bundle time fails here rather than twenty minutes into a TestFlight build.
+      - name: Bundle the iOS app
+        run: npx expo export --platform ios --output-dir "$RUNNER_TEMP/expo-export"
+        env:
+          EXPO_OFFLINE: "1"
+
   docker:
     needs: checks
     runs-on: ubuntu-latest

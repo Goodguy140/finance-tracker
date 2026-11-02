@@ -20,6 +20,14 @@ leaves surrounding content alone (`upsertAgentRulesBlock` in
 behind it. Check it before building something new (several requested features already exist),
 and update it in the same PR when you add, move or remove one.
 
+## iPhone app
+
+`mobile/` is the iPhone app (Expo), a separate project with its own lockfile and checks; the
+root lint, typecheck, tests and Docker image leave it out. Work on it from `mobile/` and follow
+`mobile/AGENTS.md`. It reaches the server only through `/api/v1` with device tokens
+(`src/lib/app-devices.ts`), so a change to those routes or to `APP_REDIRECT_URI` affects phones
+already signed in.
+
 ## Database and migrations
 
 **The migration history was broken and is now guarded.** `20260503220000` adds
