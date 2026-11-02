@@ -29,6 +29,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "owner": "goodguy140",
+    "extra": {
+      "eas": {
+        "projectId": "35c86e32-7384-47ec-b5e5-1a999ffaa852"
+      }
     }
   }
 }

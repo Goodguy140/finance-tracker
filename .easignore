@@ -3,15 +3,15 @@
 # checkout of the server holds real finances (databases, backups, exports, .env), so everything
 # else stays behind.
 /*
-!/mobile/
+!/mobile
 
 # What mobile/.gitignore keeps out of git (node_modules is always left out).
-/mobile/.expo/
-/mobile/dist/
-/mobile/web-build/
+/mobile/.expo
+/mobile/dist
+/mobile/web-build
 /mobile/expo-env.d.ts
-/mobile/ios/
-/mobile/android/
+/mobile/ios
+/mobile/android
 /mobile/.env*
 *.p8
 *.p12
