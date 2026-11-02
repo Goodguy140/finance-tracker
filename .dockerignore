@@ -17,3 +17,6 @@ dev.db
 .data
 prisma/.data
 site
+# The iPhone app (Expo) is built by EAS, not into the server image.
+mobile
+.easignore

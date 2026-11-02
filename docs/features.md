@@ -270,7 +270,7 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     you, where an in-page dialog asks for the code): `src/lib/totp.ts`, `totp-credentials.ts`,
     `src/components/mfa/second-factor.tsx`, `TotpCredential` table. **Signed-in apps** (phones
     signed in to the phone app, each with Sign out; `settings/signed-in-apps.tsx`)
-  - Phone app sign-in (server side; the app itself is not built yet): `/app/authorize` page where a
+  - Phone app sign-in (server side; the app is in `mobile/`, see "iPhone app" below): `/app/authorize` page where a
     signed-in person allows a phone (`app-authorize-consent.tsx`, `actions/app-devices.ts`, needs
     Confirm it's you), `POST /api/v1/app/token` (one-time code + PKCE verifier for a device token),
     `POST /api/v1/app/revoke`, `GET /api/v1/me`, public `GET /api/v1/server`; `src/lib/app-devices.ts`,
@@ -444,3 +444,16 @@ Nav `src/components/admin/admin-nav.tsx`; actions `actions/admin*.ts`.
 - Security headers, including the enforced Content-Security-Policy: `next.config.ts`
 - Health check `/api/health`; schema repair on start `scripts/repair-sqlite-schema.cjs`
 - Project website (GitHub Pages): `site/`, `.github/workflows/pages.yml`
+
+## iPhone app (`mobile/`)
+
+An Expo app with its own `package.json`, checks and README (`mobile/README.md`). Installed through
+TestFlight only, built on EAS by the **iOS TestFlight** workflow
+(`.github/workflows/ios-testflight.yml`, run by hand).
+
+- Sign in: server address, then the server's own sign-in page in the system sheet (PKCE); the
+  device token is kept in the Keychain. `src/screens/sign-in.tsx`, `src/session/*`,
+  `src/utils/sign-in.ts`
+- Home: this month's budgets with progress bars, who is signed in and to which server, pull to
+  refresh, Sign out (also revokes the token on the server). `src/screens/home.tsx`
+- A token the server no longer accepts signs the phone out with a note on the sign-in screen
