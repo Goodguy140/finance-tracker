@@ -1,21 +1,34 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import * as SplashScreen from 'expo-splash-screen';
+import { useEffect } from 'react';
 
 import { QueryProvider } from '@/api/query';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { AppLockProvider, useAppLock } from '@/session/app-lock';
 import { SessionProvider, useSession } from '@/session/session-provider';
 
-// Kept up until the Keychain has been read, so a signed-in person never sees the sign-in screen flash.
+// Kept up until the Keychain has been read, so a signed-in person never sees the sign-in screen
+// flash, nor a locked app show before its lock screen.
 SplashScreen.preventAutoHideAsync();
 
 function RootStack() {
   const { session } = useSession();
-  if (session === undefined) return null;
+  const lock = useAppLock();
+  const ready = session !== undefined && (session === null || lock.enabled !== undefined);
+  useEffect(() => {
+    if (ready) void SplashScreen.hideAsync();
+  }, [ready]);
+  if (!ready) return null;
   const signedIn = session !== null;
+  // Locking takes every signed-in screen away, sheets included, rather than covering them.
+  const locked = signedIn && lock.locked;
   return (
     <Stack>
-      <Stack.Protected guard={signedIn}>
+      <Stack.Protected guard={locked}>
+        <Stack.Screen name="locked" options={{ headerShown: false, animation: 'none' }} />
+      </Stack.Protected>
+      <Stack.Protected guard={signedIn && !locked}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="add" options={{ presentation: 'modal', headerShadowVisible: false }} />
         <Stack.Screen name="receipt/[id]" options={{ presentation: 'modal', headerShadowVisible: false }} />
@@ -33,7 +46,9 @@ export default function RootLayout() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <SessionProvider>
         <QueryProvider>
-          <RootStack />
+          <AppLockProvider>
+            <RootStack />
+          </AppLockProvider>
         </QueryProvider>
       </SessionProvider>
     </ThemeProvider>

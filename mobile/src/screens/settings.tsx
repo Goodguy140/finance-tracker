@@ -1,13 +1,17 @@
 import Constants from 'expo-constants';
 import { Stack } from 'expo-router/stack';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { errorText, useApiQuery } from '@/api/query';
 import type { Me } from '@/api/types';
+import { FormField } from '@/components/form';
 import { Section } from '@/components/section';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useAppLock } from '@/session/app-lock';
 import { useSession } from '@/session/session-provider';
+import { RELOCK_AFTER_MS } from '@/utils/app-lock';
 
 /** Who is signed in and where, the website one tap away, and Sign out. */
 export function Settings() {
@@ -57,6 +61,8 @@ export function Settings() {
           </Pressable>
         </Section>
 
+        <LockSection />
+
         <Pressable
           onPress={confirmSignOut}
           accessibilityRole="button"
@@ -71,6 +77,35 @@ export function Settings() {
       </ScrollView>
       <Stack.Title large>Settings</Stack.Title>
     </>
+  );
+}
+
+/** The Face ID lock: on or off, each way confirmed by iOS first. */
+function LockSection() {
+  const lock = useAppLock();
+  const [busy, setBusy] = useState(false);
+  const minutes = RELOCK_AFTER_MS / 60_000;
+
+  async function toggle(on: boolean) {
+    setBusy(true);
+    const problem = await lock.setEnabled(on);
+    setBusy(false);
+    if (problem) Alert.alert(on ? 'The lock is still off' : 'The lock is still on', problem);
+  }
+
+  return (
+    <Section
+      title="Security"
+      footer={`Asks for ${lock.method} when the app opens and after ${minutes} minutes in the background.`}>
+      <FormField label={`Require ${lock.method}`}>
+        <Switch
+          value={lock.enabled === true}
+          disabled={busy || lock.enabled === undefined}
+          onValueChange={(on) => void toggle(on)}
+          accessibilityLabel={`Require ${lock.method}`}
+        />
+      </FormField>
+    </Section>
   );
 }
 

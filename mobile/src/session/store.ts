@@ -5,6 +5,8 @@ export type StoredSession = { origin: string; token: string; deviceId: string };
 
 const SESSION_KEY = 'session';
 const LAST_SERVER_KEY = 'lastServer';
+/** The device id the lock was turned on for, so a new sign-in always starts with it off. */
+const APP_LOCK_KEY = 'appLock';
 
 /**
  * The Keychain, readable only while the phone is unlocked and never copied to another device
@@ -37,8 +39,19 @@ export async function saveSession(session: StoredSession): Promise<void> {
 
 export async function clearSession(): Promise<void> {
   await SecureStore.deleteItemAsync(SESSION_KEY, KEYCHAIN);
+  await SecureStore.deleteItemAsync(APP_LOCK_KEY, KEYCHAIN);
 }
 
 export async function loadLastServer(): Promise<string | null> {
   return SecureStore.getItemAsync(LAST_SERVER_KEY, KEYCHAIN);
+}
+
+/** Whether this sign-in asks for Face ID (or the passcode) to open the app. */
+export async function loadAppLock(deviceId: string): Promise<boolean> {
+  return (await SecureStore.getItemAsync(APP_LOCK_KEY, KEYCHAIN)) === deviceId;
+}
+
+export async function saveAppLock(deviceId: string | null): Promise<void> {
+  if (deviceId) await SecureStore.setItemAsync(APP_LOCK_KEY, deviceId, KEYCHAIN);
+  else await SecureStore.deleteItemAsync(APP_LOCK_KEY, KEYCHAIN);
 }
