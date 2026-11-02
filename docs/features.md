@@ -488,5 +488,8 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
   sinking funds; ‹ › switch month. `GET /api/v1/budgets` (now also `groupName`, `rollover` and
   `yearly`). `src/screens/budgets/`
 - Settings: who is signed in, the server, Open the website, Sign out (also revokes the token on
-  the server). `src/screens/settings.tsx`
+  the server), and **Require Face ID** (Touch ID or the passcode on phones without it): the app
+  opens to a lock screen and locks again after 5 minutes in the background; turning it on or off
+  asks iOS first; the setting belongs to the sign-in, so a new sign-in starts with it off.
+  `src/screens/settings.tsx`, `src/session/app-lock.tsx`, `src/screens/locked.tsx`
 - A token the server no longer accepts signs the phone out with a note on the sign-in screen

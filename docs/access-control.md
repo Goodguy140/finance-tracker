@@ -143,6 +143,10 @@ token (`Authorization: Bearer ftd_…`).
   under **Settings → Security → Signed-in apps**, after 90 days unused, and on anything that
   bumps `User.tokenVersion` (password change or reset, suspension, `reset-mfa.cjs`). A
   suspended user's devices are refused outright.
+- On the phone the token sits in the Keychain (this device only, readable while the phone is
+  unlocked). The person can also require Face ID to open the app (Settings → Security), which
+  locks it again after 5 minutes in the background; this is on the phone only and the server
+  does not know about it.
 - At most 10 phones per account. Sign-ins and sign-outs are audit-logged
   (`app_device_signed_in`, `app_device_signed_out`); the app's reads are not, as the website's
   are not. Rate limits are the same as for tokens; the code exchange allows 20 tries a minute
