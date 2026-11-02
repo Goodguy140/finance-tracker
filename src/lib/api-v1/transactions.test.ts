@@ -94,6 +94,62 @@ describe("createTransactionFromApi", () => {
     expect(result.transaction.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
+  it("logs a transfer between two named accounts without applying rules, and keeps the phone's adds out of Needs review", async () => {
+    const tfsaId = (await db.account.create({ data: { userId: user.id, name: "TFSA", type: "TFSA" } })).id;
+    // A rule that would file this title as food is not for an entry the person said is a transfer.
+    await db.transactionRule.create({
+      data: { userId: user.id, priority: 1, titleOperator: "CONTAINS", titlePattern: "top-up", setCategoryId: foodId, appendNote: "via rule" },
+    });
+    const out = await api.createTransactionFromApi(
+      db,
+      user,
+      { type: "transfer", amount: "250", title: "TFSA top-up", account: "visa", transferAccountId: tfsaId, tags: ["Savings"] },
+      "app",
+    );
+    expect(out).toMatchObject({
+      ok: true,
+      transaction: {
+        type: "transfer",
+        amountCents: 25_000,
+        accountId: visaId,
+        transferAccountId: tfsaId,
+        transferAccountName: "TFSA",
+        title: "TFSA top-up",
+        note: null,
+        tags: ["Savings"],
+        needsReview: false,
+      },
+    });
+    if (!out.ok) return;
+    expect((await db.category.findUniqueOrThrow({ where: { id: out.transaction.categoryId } })).kind).toBe("TRANSFER");
+
+    const fromScript = await api.createTransactionFromApi(db, user, { type: "expense", amount: 4 }, "api");
+    const fromPhone = await api.createTransactionFromApi(db, user, { type: "expense", amount: 4 }, "app");
+    expect(fromScript).toMatchObject({ ok: true, transaction: { needsReview: true } });
+    expect(fromPhone).toMatchObject({ ok: true, transaction: { needsReview: false } });
+  });
+
+  it("refuses a transfer that is not between two of the user's open accounts", async () => {
+    await db.account.create({ data: { userId: user.id, name: "TFSA", type: "TFSA" } });
+    const closed = await db.account.create({ data: { userId: user.id, name: "Old chequing", type: "CHEQUING", archived: true } });
+    const cases: Array<[unknown, number, RegExp]> = [
+      [{ type: "transfer", amount: 5, account: "Visa" }, 400, /both accounts/],
+      [{ type: "transfer", amount: 5, account: "Visa", transferAccount: "visa" }, 400, /two different/],
+      [{ type: "transfer", amount: -5, account: "Visa", transferAccount: "TFSA" }, 400, /positive/],
+      [{ type: "transfer", amount: 5, account: "Visa", transferAccount: "TFSA", category: "Food" }, 400, /no category/],
+      [{ type: "transfer", amount: 5, account: "Visa", transferAccountId: closed.id }, 404, /transfer account/],
+      [{ type: "expense", amount: 5, transferAccount: "TFSA" }, 400, /Only a transfer/],
+    ];
+    for (const [body, status, error] of cases) {
+      const result = await api.createTransactionFromApi(db, user, body, "app");
+      expect(result.ok, JSON.stringify(body)).toBe(false);
+      if (result.ok) continue;
+      expect(result.status, JSON.stringify(body)).toBe(status);
+      expect(result.error, JSON.stringify(body)).toMatch(error);
+    }
+    expect(await db.transaction.count({ where: { userId: user.id } })).toBe(0);
+  });
+
   it("refuses bad input and names in other users' data", async () => {
     const other = await db.user.create({ data: { email: `other${seq}@example.test`, displayName: "Other" } });
     const theirs = await db.category.create({ data: { userId: other.id, name: "Theirs", kind: "EXPENSE" } });
@@ -107,7 +163,7 @@ describe("createTransactionFromApi", () => {
       [{ type: "expense", amount: 1, categoryId: theirs.id }, 404, /category/],
       [{ type: "expense", amount: 1, category: "Nope" }, 404, /Nope/],
       [{ type: "expense", amount: 1, account: "Nope" }, 404, /account/],
-      [{ type: "transfer", amount: 1 }, 400, /./],
+      [{ type: "transfer", amount: 1 }, 400, /both accounts/],
     ];
     for (const [body, status, error] of cases) {
       const result = await api.createTransactionFromApi(db, user, body);

@@ -100,8 +100,11 @@ External integrations authenticate with personal access tokens (`Authorization: 
 - **Scoped** — chosen when the token is made, and a token carries no rights beyond them:
   `budgets:read` (`GET /api/v1/budgets`), `transactions:read` (`GET /api/v1/transactions`,
   `GET /api/v1/transactions/:id`),
-  `transactions:write` (`POST /api/v1/transactions`, expenses and income only; one that a
-  "Mark as transfer" rule matches is booked as a transfer, as a statement import books it) and
+  `transactions:write` (`POST /api/v1/transactions`: an expense, income or transfer between two
+  of the user's open accounts; an expense or income that a "Mark as transfer" rule matches is
+  booked as a transfer, as a statement import books it; a token's adds wait in Needs review;
+  an `Idempotency-Key` header makes a retry answer with the entry already made, keys kept a day
+  in `ApiIdempotencyKey`) and
   `accounts:read` (`GET /api/v1/accounts`, `GET /api/v1/categories`, `GET /api/v1/tags`). Writes are audit-logged
   per entry (`api_transaction_created`).
 - **Expiring** — 30, 90, or 365 days, or never. Default 90.
@@ -127,10 +130,12 @@ token (`Authorization: Bearer ftd_…`).
   first try whether or not the verifier matches.
 - A device token is 256 random bits, stored as a SHA-256 hash in `AppDevice`, and reaches every
   `/api/v1` route plus `app`, which personal access tokens cannot be given: `GET /api/v1/me`,
-  `GET /api/v1/summary`, and editing or deleting one entry at a time (`PATCH`/`DELETE
+  `GET /api/v1/summary`, `GET /api/v1/quick-add` (a preview, writes nothing), and editing or
+  deleting one entry at a time (`PATCH`/`DELETE
   /api/v1/transactions/:id`; a deleted entry is kept 15 minutes for `POST /api/v1/undo/:undoId`,
-  as on the website). Edits, deletes and undos are audit-logged (`api_transaction_updated`,
-  `_deleted`, `_restored`). Nothing on `/api/v1` clears or restores data in bulk, changes
+  as on the website). Adds, edits, deletes and undos are audit-logged (`api_transaction_created`
+  with `via: "app"`, `api_transaction_updated`, `_deleted`, `_restored`); the phone's adds skip
+  Needs review, since the person typed them. Nothing on `/api/v1` clears or restores data in bulk, changes
   sign-in, or reaches admin controls.
 - It ends when the phone signs out (`POST /api/v1/app/revoke`), when the person signs it out
   under **Settings → Security → Signed-in apps**, after 90 days unused, and on anything that

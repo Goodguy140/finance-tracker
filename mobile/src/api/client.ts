@@ -55,10 +55,12 @@ export async function apiRequest<T>(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
+  extraHeaders: Record<string, string> = {},
 ): Promise<T> {
   const res = await fetchWithTimeout(`${session.origin}${path}`, {
     method,
     headers: {
+      ...extraHeaders,
       authorization: `Bearer ${session.token}`,
       accept: 'application/json',
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),

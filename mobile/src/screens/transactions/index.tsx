@@ -1,14 +1,16 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
-import { useDeferredValue, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
 
 import { apiGet } from '@/api/client';
 import { errorText, useApiQuery } from '@/api/query';
 import type { Me, TransactionPage } from '@/api/types';
 import { LoadState } from '@/components/load-state';
+import { UndoBar } from '@/components/undo-bar';
 import { Spacing } from '@/constants/theme';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { useSession } from '@/session/session-provider';
@@ -16,8 +18,8 @@ import { localMonth, localToday, relativeDay, shiftMonth } from '@/utils/dates';
 import { formatPeriodMonth } from '@/utils/money';
 import { groupByDay, listPath, type ListFilters, type TransactionType } from '@/utils/transactions';
 
+import { QuickAddCard } from './quick-add-card';
 import { TransactionRow } from './transaction-row';
-import { UndoBar } from './undo-bar';
 
 const TYPE_LABELS: { value: TransactionType | null; label: string }[] = [
   { value: null, label: 'Everything' },
@@ -34,7 +36,7 @@ export function Transactions({ initialNeedsReview = false }: { initialNeedsRevie
   const me = useApiQuery<Me>('/api/v1/me');
   const [month, setMonth] = useState(() => localMonth());
   const [searchText, setSearchText] = useState('');
-  const search = useDeferredValue(searchText.trim());
+  const search = useDebouncedValue(searchText.trim(), 300);
   const [filters, setFilters] = useState<ListFilters>({ type: null, needsReview: initialNeedsReview });
 
   const query = useInfiniteQuery({
@@ -74,6 +76,7 @@ export function Transactions({ initialNeedsReview = false }: { initialNeedsRevie
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={
           <View style={styles.header}>
+            {search ? <QuickAddCard text={search} currency={currency} /> : null}
             <Text style={[styles.heading, { color: theme.textSecondary }]}>{heading}</Text>
             {filtered ? (
               <Pressable onPress={() => setFilters({ type: null, needsReview: false })} accessibilityRole="button" hitSlop={8}>
@@ -113,7 +116,7 @@ export function Transactions({ initialNeedsReview = false }: { initialNeedsRevie
       <UndoBar />
       <Stack.Title large>Transactions</Stack.Title>
       <Stack.SearchBar
-        placeholder="Search every month"
+        placeholder="Search, or 12.50 coffee to add"
         onChangeText={(event) => setSearchText(event.nativeEvent.text)}
         onCancelButtonPress={() => setSearchText('')}
       />
@@ -152,6 +155,7 @@ export function Transactions({ initialNeedsReview = false }: { initialNeedsRevie
             This month
           </Stack.Toolbar.MenuAction>
         </Stack.Toolbar.Menu>
+        <Stack.Toolbar.Button icon="plus" accessibilityLabel="Add a transaction" onPress={() => router.push('/add')} />
       </Stack.Toolbar>
     </>
   );

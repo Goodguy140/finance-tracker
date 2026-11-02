@@ -111,3 +111,22 @@ export type TransactionPage = { transactions: Transaction[]; nextCursor: string 
 export type Category = { id: string; name: string; kind: 'expense' | 'income' | 'transfer' };
 export type Account = { id: string; name: string; type: string; currency: string; archived: boolean };
 export type Tag = { id: string; name: string; count: number };
+
+/** What `GET /api/v1/quick-add` reads typed text as: the entry, and how saving it would book it. */
+export type QuickAddPreview = {
+  amountCents: number;
+  title: string;
+  dateYmd: string;
+  categoryName: string;
+  accountName: string | null;
+  /** A rule's split, described, when the expense would be split. */
+  split: string | null;
+  /** Set when a "Mark as transfer" rule matches, so saving books a transfer. */
+  transfer: { toAccountName: string | null } | null;
+};
+
+export type QuickAddAnswer = {
+  preview: QuickAddPreview | null;
+  /** The text as read, before rules rename it: what to post. */
+  entry: { amountCents: number; title: string; dateYmd: string } | null;
+};

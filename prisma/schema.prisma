@@ -193,6 +193,7 @@ model User {
   personalAccessTokens      PersonalAccessToken[]
   appDevices                AppDevice[]
   appSignInCodes            AppSignInCode[]
+  apiIdempotencyKeys        ApiIdempotencyKey[]
   webAuthnCredentials       WebAuthnCredential[]
   mfaChallenges             MfaChallenge[]
   recoveryCodes             RecoveryCode[]
@@ -398,6 +399,22 @@ model AppDevice {
  * A one-time code `/app/authorize` hands the app (OAuth 2.0 for native apps with PKCE,
  * RFC 8252 / 7636). Valid for a minute, exchanged once; only its SHA-256 is stored.
  */
+/// An add posted with an `Idempotency-Key` header, remembered for a day, so a retry after a
+/// dropped connection answers with the entry already made instead of adding it twice.
+/// `transactionId` is null while the first request is still being handled.
+model ApiIdempotencyKey {
+  id            String   @id @default(cuid())
+  userId        String
+  key           String
+  transactionId String?
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([createdAt])
+}
+
 model AppSignInCode {
   id            String   @id @default(cuid())
   userId        String

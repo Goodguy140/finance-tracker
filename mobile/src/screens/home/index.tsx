@@ -8,6 +8,7 @@ import type { Summary } from '@/api/types';
 import { BudgetLine } from '@/components/budget-line';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
+import { UndoBar } from '@/components/undo-bar';
 import { Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
@@ -19,6 +20,7 @@ import { safeToSpendBreakdown, safeToSpendLine } from '@/utils/safe-to-spend';
 /** The month at a glance: safe to spend, budgets to watch, the week's bills and pay, and what is waiting. */
 export function Home() {
   const theme = useTheme();
+  const router = useRouter();
   const summary = useApiQuery<Summary>('/api/v1/summary');
   const { refreshing, onRefresh } = usePullToRefresh(summary.refetch);
   const data = summary.data;
@@ -40,7 +42,11 @@ export function Home() {
           </>
         ) : null}
       </ScrollView>
+      <UndoBar />
       <Stack.Title large>Home</Stack.Title>
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button icon="plus" accessibilityLabel="Add a transaction" onPress={() => router.push('/add')} />
+      </Stack.Toolbar>
     </>
   );
 }
