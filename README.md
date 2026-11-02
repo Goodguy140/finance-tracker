@@ -20,7 +20,7 @@ Project site: https://goodguy140.github.io/finance-tracker/ (source in [`site/`]
 - **Savings goals** with a target and optional date, following a savings account's balance or an amount you record, with what each needs a month
 - **Bank sync** through Plaid; synced transactions wait in a review queue and are never posted on their own; you choose which of your categories each Plaid category is suggested as
 - **Multi-user** with roles, Google or Authentik SSO, passkeys, and an admin audit log
-- **Backup and restore** of each user's data, plus a read-only API with personal access tokens
+- **Backup and restore** of each user's data, plus an API with personal access tokens (read your data, add expenses and income) and signed webhooks
 
 ## Quick start
 
@@ -61,12 +61,12 @@ Most of these can also be set under **Settings → Server admin**; a value set i
 | `LOGIN_MAX_PER_IP` | Raise if many users share one IP (default 30 attempts per 15 minutes). |
 | `TRUSTED_PROXY_HOPS` | Number of reverse proxies in front of the app that append to `X-Forwarded-For` (default 1). Set to 2 for, say, Cloudflare in front of nginx. Per-IP rate limits and the audit log use the address the outermost one saw. |
 | `AUTHENTIK_ISSUER`, `AUTHENTIK_CLIENT_ID`, `AUTHENTIK_CLIENT_SECRET`, `AUTHENTIK_ENABLED` | Authentik SSO. Redirect URI is `<NEXTAUTH_URL>/api/auth/callback/authentik`. |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Password reset and budget alert email. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Email: password reset, budget alerts, the weekly or monthly digest, bill reminders and large-charge alerts. |
 | `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV` | Plaid credentials (both must be set); `PLAID_ENV` is `sandbox` (default) or `production`. |
 | `PLAID_SYNC_SCHEDULER`, `PLAID_SYNC_INTERVAL_MINUTES` | Turn off the background bank sync, or change its interval (default 60, minimum 15). |
 | `PLAID_WEBHOOK_URL` | Public `https` webhook URL. Defaults to `<NEXTAUTH_URL>/api/plaid/webhook`. |
 | `RECURRING_AUTO_POST_SCHEDULER` | `false` turns off the hourly posting of automatic recurring rules. |
-| `EMAIL_DIGEST_SCHEDULER` | `false` turns off the hourly sweep that sends the weekly or monthly email digests users opt into (needs SMTP). |
+| `EMAIL_DIGEST_SCHEDULER` | `false` turns off the hourly sweep. That one tick sends the email digests, bill reminders and large-charge alerts users opt into (needs SMTP), and also retries webhook deliveries and sends `bill.due` webhooks, so those stop too. |
 | `DATABASE_BACKUPS`, `BACKUP_KEEP_DAYS`, `BACKUP_HOUR`, `BACKUP_DIR` | Daily database copies, on by default (also set under Admin → Operations): `false` turns them off; days of daily copies kept (default 14, plus the newest of each of the last 6 months); hour in server time (default 3); folder (default `backups` beside the database, `/data/backups` in the image). |
 | `AUDIT_LOG_RETENTION_DAYS` | How long audit rows are kept (default 365). |
 | `DATABASE_URL` | Where the SQLite database lives (default `file:/data/app.db` in the image). Migrations, the start-up schema repair and the app all use the same default. |

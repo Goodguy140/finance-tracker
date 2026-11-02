@@ -59,17 +59,25 @@ directly harm the person.
 
 | Data | Model(s) | Sensitive | Why it is held |
 |------|----------|:---------:|----------------|
-| Transactions, splits, accounts, categories, budgets, recurring rules, investment flows, portfolio snapshots | `Transaction`, `SplitTransactionPart`, `Account`, `Category`, `Budget`, `RecurringTransaction`, `InvestmentFlow`, `PortfolioSnapshot` | ● | The product. Financial history the user entered. |
-| Third-party names and shares | `SubscriptionMember`, `SubscriptionShareStatus` | ● | Cost-splitting. **These are people who never signed up** — see [Third parties in the data](#third-parties-in-the-data). |
-| Identity and profile | `User` (email, display name, timezone, country, role) | | Authentication and localization. |
+| Transactions, splits, accounts, categories, budgets, recurring rules, investment flows, portfolio snapshots | `Transaction`, `SplitTransactionPart`, `Account`, `Category`, `Budget`, `YearlyBudget`, `RecurringTransaction`, `InvestmentFlow`, `ContributionRoom`, `PortfolioSnapshot` | ● | The product. Financial history the user entered. |
+| Balances, goals and plans | `AccountBalanceSnapshot` (balance history), `SavingsGoal`, `PlannedTransaction`, `AccountReconciliation` (statement balances) | ● | Net worth, projections, goals and reconciling against statements. |
+| Derived history | `FinancialScoreSnapshot` (the score and its factors each month), `MonthClose` (months closed on the monthly review) | ● | Trends over time. Worked out from the records above. |
+| Organising the log | `TransactionRule`, `TransactionRuleSplit`, `Tag`, `TransactionTag`, `HiddenTitleSuggestion`, `SavedSearch`, `InsightDismissal`, `InsightPreference`, `PlaidCategoryMapping` | | Rules, tags, saved searches and insight preferences the user set. Rule and search texts can name merchants. |
+| Receipts | `TransactionAttachment` (the file itself, in the database) | ● | Photos or PDFs the user keeps with an entry. Up to 8 MB each, 500 MB per user. |
+| Just-deleted entries | `DeletedTransaction` (a full copy of the entry, as JSON) | ● | The Undo button after a delete. See the schedule below. |
+| Third-party names and shares | `SubscriptionMember`, `SubscriptionShareStatus`, `OwedShare` (who owes part of an expense) | ● | Cost-splitting and reimbursements. **These are people who never signed up** — see [Third parties in the data](#third-parties-in-the-data). |
+| Identity and profile | `User` (email, display name, timezone, country, role, birth year if given) | | Authentication, localization, and the retirement and score figures that need an age. |
 | Password hash | `User.passwordHash` (bcrypt, cost 12) | ● | Credential. |
-| Passkeys and recovery codes | `WebAuthnCredential`, `RecoveryCode` (bcrypt) | ● | Second factor. |
-| SSO linkage and provider tokens | `AuthAccount` (`accessToken`, `refreshToken`, `idToken`) | ● | OIDC sign-in. Stored in plaintext. |
+| Passkeys, authenticator apps and recovery codes | `WebAuthnCredential`, `TotpCredential` (secret encrypted with `SERVER_SETTINGS_ENCRYPTION_KEY`), `RecoveryCode` (bcrypt) | ● | Second factor. |
+| SSO linkage | `AuthAccount` (provider and the provider's account id) | | OIDC sign-in. The `accessToken`, `refreshToken` and `idToken` columns are always empty: provider tokens are not stored, and migration `20260904121000` cleared the ones older versions kept. |
 | API tokens | `PersonalAccessToken` (SHA-256 hash, prefix, scopes, `lastUsedAt`) | ● | Machine access. |
 | Audit trail | `AuditLog` (actor, target, **IP address**, **user agent**, scrubbed metadata) | ● | Security and accountability. IP and UA are personal data in their own right. |
 | Alert bookkeeping | `BudgetAlertNotification` (month, category, severity) | | Stops one alert per severity per month repeating. |
+| Notification settings | `ChargeAlertSetting`, `PushDevice` (the browser's push endpoint and keys), `CalendarFeed` (a hash of the private calendar link) | | Large-charge alerts, phone notifications and the calendar feed. |
+| Webhooks | `WebhookEndpoint` (address, events, signing secret encrypted at rest), `WebhookDelivery` (each event's JSON body) | ● | Signed events to the user's own automations. A body can hold an entry's amount and title. |
+| Dashboard layout | `DashboardLayout` | | Which cards the user shows and where. |
 | Transient auth state | `MfaChallenge`, `PasswordResetToken`, `RateLimitEntry` | | Single ceremonies and abuse limits. |
-| Bank connections | `PlaidItem` (`accessTokenEnc`, institution, sync cursor), `PlaidAccount` | ● | Plaid bank sync. The access token is a **live credential for the user's bank feed**, encrypted at rest with `SERVER_SETTINGS_ENCRYPTION_KEY` — unlike `AuthAccount`'s OAuth tokens, which are plaintext. |
+| Bank connections | `PlaidItem` (`accessTokenEnc`, institution, sync cursor), `PlaidAccount` | ● | Plaid bank sync. The access token is a **live credential for the user's bank feed**, encrypted at rest with `SERVER_SETTINGS_ENCRYPTION_KEY`. |
 | Un-reviewed bank transactions | `PlaidStagedTransaction` | ● | Transactions pulled from the bank that the user has not yet linked, added, or ignored. Full financial detail, not yet in the log. |
 | Verification marks | `TransactionVerification` | | Records that a transaction was confirmed against a bank record; drives the Verified badge. |
 | Server configuration | `ServerSetting` (encrypted at rest) | | OAuth **and Plaid** secrets, sign-in policy. |
@@ -79,8 +87,12 @@ directly harm the person.
 
 | Data | Retained for | Disposal mechanism |
 |------|--------------|--------------------|
-| All financial records | **Until the user deletes them.** No automatic expiry. | Cascade on account deletion; bulk wipe via **Settings → Advanced → Reset financial data** |
-| `User`, credentials, passkeys, recovery codes, SSO links, API tokens | Life of the account | `onDelete: Cascade` from `User` |
+| All financial records, including receipts, balance history, score history and closed months | **Until the user deletes them.** No automatic expiry. | Cascade on account deletion; bulk wipe via **Settings → Backup & export → Clear financial data** |
+| `User`, credentials, passkeys, authenticator apps, recovery codes, SSO links, API tokens, webhooks, push devices, the calendar link | Life of the account, or until the user removes them | `onDelete: Cascade` from `User` |
+| `DeletedTransaction` | Usable for **15 minutes**; the row stays until the user's next delete, a reset, a restore or account deletion | Pruned when the same user next deletes something |
+| Receipts on a deleted entry | Unlinked and kept with its `DeletedTransaction` row, so Undo can put them back | Deleted with that row |
+| `WebhookDelivery` | **30 days** | Pruned by the hourly sweep (off when `EMAIL_DIGEST_SCHEDULER=false`) |
+| `PushDevice` | Until the user removes it, the push service reports it gone, or 10 sends in a row fail | Deleted on any of those |
 | `AuditLog` | `AUDIT_LOG_RETENTION_DAYS`, **default 365** | Probabilistic sweep, ~1 write in 200 |
 | `MfaChallenge` | Minutes. Deleted the moment it is consumed | Delete on use; sweep ~1 ceremony in 20 |
 | `RateLimitEntry` | Until `resetAt` | Cleared on success; sweep ~1 check in 50 |
@@ -129,12 +141,15 @@ substance of the rest of this document.**
 
 ### What account deletion actually destroys
 
-Both paths — self-service (**Settings → Advanced → Delete account**, type `DELETE`) and admin
+Both paths — self-service (**Settings → Backup & export → Delete account**, type `DELETE`) and admin
 (**Settings → Server admin → Users**, type the account's email) — run
-`prisma.user.delete`, and every user-owned relation cascades: transactions, splits,
-accounts, categories, budgets, recurring rules, subscription members and their share
-statuses, investment flows, portfolio snapshots, passkeys, recovery codes, SSO links, API
-tokens, reset tokens, and alert bookkeeping. It cannot be undone.
+`prisma.user.delete`, and every user-owned relation cascades: transactions, splits, owed
+shares, receipts, accounts, balance history, categories, budgets, recurring rules, goals,
+plans, reconciliations, score history, closed months, rules, tags, saved searches,
+subscription members and their share statuses, investment flows, portfolio snapshots, Undo
+rows, passkeys, authenticator apps, recovery codes, SSO links, API tokens, webhooks and their
+deliveries, push devices, the calendar link, reset tokens, and alert bookkeeping. It cannot be
+undone. A sole active admin cannot delete their own account; they must promote someone first.
 
 **Two things deliberately survive**, and both need to be disclosed in your privacy notice:
 
@@ -155,10 +170,11 @@ reason `AUDIT_LOG_RETENTION_DAYS=0` is rejected rather than treated as "keep not
 reason you should not raise the value without a stated reason.
 ### Erasing financial data without closing the account
 
-**Settings → Advanced → Reset financial data**, confirmed by typing `RESET FINANCIAL DATA`,
-drops every financial row in one transaction and re-seeds default categories. The account,
-its credentials, and its audit history remain. Use this when someone wants their history
-gone but their login kept.
+**Settings → Backup & export → Clear financial data**, confirmed by typing `RESET FINANCIAL DATA`,
+drops every financial row in one transaction (score history and closed months included) and
+re-seeds default categories. It writes a `user_financial_data_reset` audit row. The account,
+its credentials, its notification and webhook settings, and its audit history remain. Use
+this when someone wants their history gone but their login kept.
 
 ### Deletion is not destruction on disk
 
@@ -200,14 +216,15 @@ produces.
 
 ### Disposing of exports and backups
 
-`GET /api/backup/export/me` returns the user's full history as JSON, and it includes
-`passwordHash` and the plaintext OAuth `accessToken`, `refreshToken`, and `idToken` from
-the stored SSO linkage.
+`GET /api/backup/export/me` returns the user's full financial history as JSON. Before it is
+written, the password hash, every OAuth token and every reset token are blanked, and it never
+carries passkeys, authenticator secrets, API tokens, webhook secrets, the calendar link or
+bank connections, so a file cannot be used to get in.
 
-**A backup file is a credential, not just a copy of the data.** Anyone holding one can
-attempt offline cracking of the password hash and may be able to replay live OAuth tokens.
-The same is true of the audit CSV from **Settings → Server admin → Audit log**, which
-carries IP addresses and user agents.
+**A backup file is still the most sensitive thing this system produces**: every transaction,
+balance and note the user ever recorded, and the names of the people they split costs with.
+The audit CSV from **Settings → Server admin → Audit log** is personal data too: it carries IP
+addresses and user agents.
 
 Accordingly:
 
@@ -215,8 +232,8 @@ Accordingly:
 - Encrypt any export kept longer than the moment it is used (`age`, `gpg`, or an encrypted
   volume).
 - Delete exports as soon as their purpose is served, and `shred -u` them on spinning disks.
-- Treat a leaked export as a credential compromise: rotate the user's password, revoke their
-  API tokens, and unlink and re-link SSO.
+- Treat a leaked export as a breach of that person's financial history (see
+  [If there is a breach](#if-there-is-a-breach)).
 - If you retain exports as operational backups, **their retention period is the real
   retention period for the whole dataset.** Record it:
 
@@ -244,19 +261,23 @@ out-of-band confirmation you already trust.
 
 | Right | How to satisfy it | Where |
 |-------|-------------------|-------|
-| **Access** (PIPEDA 4.9, GDPR 15) | The JSON export is the complete user-scoped record | **Settings → Advanced → Backup and restore**, or `GET /api/backup/export/me` |
+| **Access** (PIPEDA 4.9, GDPR 15) | The JSON export holds the user's financial records; see the limits below | **Settings → Backup & export**, or `GET /api/backup/export/me` |
 | **Portability** (GDPR 20, Law 25) | Same export — structured, machine-readable JSON | as above |
 | **Correction** (PIPEDA 4.9.5, GDPR 16) | The user edits their own records directly; profile via **Settings → Profile** | in-app |
-| **Erasure** (GDPR 17, Law 25) | Delete the account, or reset financial data only | **Settings → Advanced** / admin **Users** |
+| **Erasure** (GDPR 17, Law 25) | Delete the account, or clear financial data only | **Settings → Backup & export** / admin **Users** |
 | **Withdraw consent** (PIPEDA 4.3.8) | Suspend, then delete if asked. Suspension halts processing without destroying data | admin **Users** |
 | **Object / restrict** (GDPR 18, 21) | Suspension is the mechanism — all access and token use stops | admin **Users** |
 
 Note two limits when you answer:
 
-- The export **excludes `WebAuthnCredential`** by design — a passkey is bound to this RP
-  origin, and restoring someone else's credential list would be a takeover vector. Passkey
-  *metadata* (device name, creation date) is visible to the user in **Settings → Security**,
-  which satisfies access; say so rather than claiming the export is exhaustive.
+- The export **excludes sign-in methods and anything that grants access** by design:
+  passkeys, authenticator apps, recovery codes, API tokens, webhooks, the calendar link and
+  phone notification devices. Restoring them would hand a file holder a way in. What they are
+  (device names, creation dates, webhook addresses) is visible to the user in
+  **Settings → Security**, **Settings → Developer** and **Settings → Notifications**, which
+  satisfies access; say so rather than claiming the export is exhaustive.
+- It also leaves out **receipts** (the files), **bank connections** and the dashboard layout.
+  Receipts can be downloaded one by one from each entry.
 - The export **does not include the user's `AuditLog` rows.** They are personal data about
   the requester and are in scope for an access request. Pull them by hand from
   **Settings → Server admin → Audit log**, filtered to that actor, and include them.
@@ -279,21 +300,38 @@ destroy your evidence. Export the relevant audit CSV and file it with the breach
 Two categories of personal data here belong to people who are not users and cannot exercise
 rights through the app:
 
-**Subscription members.** `SubscriptionMember.name` and their payment status are data about
-a real person — a roommate, a partner — entered by someone else. They have no account and no
+**Subscription members and people who owe a share.** `SubscriptionMember.name` and their
+payment status, and `OwedShare.name` on a split expense, are data about a real person — a
+roommate, a partner — entered by someone else. They have no account and no
 way to request access or deletion. If your deployment is in scope for PIPEDA or GDPR, you
 are processing their data. In practice: keep names minimal (a first name, not a full legal
 name), and honour a deletion request by editing or removing the member on the owning user's
 behalf.
 
-**Recipients of outbound mail.** Budget alerts sent through SMTP carry the category name and
-spend amounts — financial data, in plaintext, to whatever mail provider `SMTP_HOST` points at,
-retained under *their* policy and not this one. If that is a third-party service, it is a
-processor: you need a data processing agreement, and a cross-border transfer assessment if it
-is outside your jurisdiction. Self-hosting the relay, or leaving `budgetAlertEmailEnabled` off,
-avoids this entirely.
-Your OIDC providers (Google, Authentik) are likewise processors for the identity data they
-return.
+**Recipients of outbound mail.** Email sent through SMTP carries financial data in plaintext:
+budget alerts (category and spend), the weekly or monthly digest (totals, top categories, the
+biggest purchases with their titles, budgets and upcoming bills), bill reminders (bill names and amounts) and large-charge alerts (the
+charge and its amount). It goes to whatever mail provider `SMTP_HOST` points at, retained under
+*their* policy and not this one. If that is a third-party service, it is a processor: you need
+a data processing agreement, and a cross-border transfer assessment if it is outside your
+jurisdiction. Self-hosting the relay, or leaving every email notification off, avoids this.
+
+**Phone notification services.** A phone notification is delivered through the push service
+of the user's browser (Google for Chrome and Android, Apple for Safari, Mozilla for Firefox,
+Microsoft for Edge). The message is end-to-end encrypted to the device (RFC 8291), so the
+service sees only that a message was sent, when, and to which device.
+
+**User webhooks.** A webhook sends signed JSON to an address the user chose: their own Home
+Assistant, n8n, or any public https endpoint. Events such as `transaction.created` carry an
+entry's amount, date and title. Whoever runs that endpoint holds a copy under their own
+policy; on a deployment that serves other people, they are the user's choice of recipient,
+not yours, but say so in your notice.
+
+**Calendar apps.** The private calendar link is fetched by whatever calendar the user
+subscribes with (Google, Apple, Outlook). Its events name bills and subscriptions with their
+amounts, and that service keeps its own copy.
+
+Your OIDC providers (Google, Authentik) are processors for the identity data they return.
 
 ### Bank connections (Plaid)
 
@@ -309,7 +347,7 @@ bank account — and once the local row is gone, nothing records which item to r
 `/item/remove` must therefore be called *first*, and the local row deleted only once it
 succeeds.
 
-Account deletion, admin deletion of a user, and **Settings → Advanced → Reset financial data**
+Account deletion, admin deletion of a user, and **Settings → Backup & export → Clear financial data**
 each route through `revokePlaidItemsForUser` (`src/lib/plaid/unlink.ts`) before anything
 cascades, and **refuse the whole operation if any connection cannot be revoked** — the user
 is told to retry or unlink manually rather than having a connection silently stranded. The
@@ -325,7 +363,7 @@ is deleted until the connection has ended.
 
 **Plaid bills per connected bank per month, working or not.** Connections that cannot sync —
 awaiting re-authentication, lapsed consent, or feeding no account — are therefore flagged in
-**Settings → Accounts** as costing money for nothing, and connecting the same bank twice is
+**Settings → Connected banks** as costing money for nothing, and connecting the same bank twice is
 refused outright (the second, redundant connection is revoked at Plaid rather than merely
 discarded, since exchanging a token creates a billable item whether or not it is stored).
 
@@ -348,16 +386,15 @@ Named honestly, because a policy that overstates what the code does is worse tha
 - **`BudgetAlertNotification` rows are never pruned.** Harmless in volume, but they record
   which categories a user overspent and when, kept indefinitely with no stated purpose past
   the month they cover.
-- **`AuthAccount` OAuth tokens are stored in plaintext**, unlike `ServerSetting`, which is
-  encrypted. Database read access is provider-account access.
 - **The `Session` model is dead schema.** It stores nothing, but it appears in the schema and
   invites reviewers to conclude sessions are server-side and revocable per-session. They are
   not; see the access control policy.
-- **Self-service account deletion has no last-admin guard.** The admin path refuses to
-  remove the final active admin, but the self-service path does not perform that check, so a
-  sole admin can delete their own account and leave the deployment with no one able to
-  administer it. An availability problem rather than a privacy one, but it is on the
-  disposal path.
+- **Undo rows are pruned lazily.** A `DeletedTransaction` stops being usable after 15
+  minutes, but the row (a full copy of the deleted entry, and any receipts it unlinked) is
+  removed only at that user's next delete, a reset, a restore or account deletion. Someone who
+  deletes one entry and never deletes another keeps that copy.
+- **Webhook deliveries are pruned by the hourly sweep**, which `EMAIL_DIGEST_SCHEDULER=false`
+  turns off. With it off, delivery bodies are kept until the account is deleted.
 - **Retention sweeps are probabilistic and piggyback on traffic.** A deployment that goes
   quiet stops pruning: rows past their retention period survive until the next qualifying
   request. Audit rows on an idle server can outlive `AUDIT_LOG_RETENTION_DAYS` by a wide
@@ -388,6 +425,8 @@ Once a year, alongside the quarterly access review in the access control policy:
 - [ ] Confirm suspended accounts still need their data kept. Suspension is not disposal —
       an account suspended two years ago is retention without a purpose.
 - [ ] Re-check the processor list: `SMTP_HOST`, OIDC providers, Plaid, and where backups are stored.
+      Users' webhook addresses (Settings → Developer, per user) and phone notification services
+      are recipients too.
 - [ ] Reconcile linked Plaid items against the Plaid dashboard: any item live there but absent here is
       an orphan still holding bank access, and should be removed.
 - [ ] `VACUUM` the database if there has been bulk deletion since the last review.
@@ -399,7 +438,8 @@ Once a year, alongside the quarterly access review in the access control policy:
 | `AUDIT_LOG_RETENTION_DAYS` | How long audit rows — including IPs and deleted users' emails — are kept. Default 365. `0` is rejected. |
 | `DATABASE_BACKUPS` / `BACKUP_KEEP_DAYS` / `BACKUP_DIR` | The app's daily database copies: off when `false`; daily copies kept (default 14) on top of one copy per month for six months; where they are written (default `backups` beside the database). |
 | `DATABASE_URL` | Where the data lives. Defaults to `file:/data/app.db`; that volume's snapshot policy is part of your real retention period. |
-| `SMTP_HOST` / `SMTP_USER` / `SMTP_FROM` | Sends financial detail to a third party under their retention policy. Unset means no alert mail leaves the deployment. |
+| `SMTP_HOST` / `SMTP_USER` / `SMTP_FROM` | Sends financial detail to a third party under their retention policy. Unset means no email leaves the deployment. |
+| `EMAIL_DIGEST_SCHEDULER` | `false` stops the hourly sweep, and with it the 30-day pruning of webhook deliveries. |
 | `SERVER_SETTINGS_ENCRYPTION_KEY` | Encrypts `ServerSetting` **and every Plaid access token** at rest. Rotate on decommission — note that rotating it on a live deployment makes linked banks unreadable and they must be relinked. |
 | `PLAID_CLIENT_ID` / `PLAID_SECRET` | Plaid API credentials. Override the encrypted `plaid.*` server settings when **both** are set. Do not determine retention, but govern whether bank data is pulled at all. |
 | `PLAID_ENV` | `sandbox` (default) or `production`. Only consulted when the two above are set. Sandbox items hold no real bank data. |

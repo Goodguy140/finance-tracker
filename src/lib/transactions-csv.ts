@@ -3,7 +3,7 @@ import { toCsv } from "@/lib/csv";
 import { ymdFromDateUtc } from "@/lib/date-only";
 
 /**
- * Every logged transaction as a spreadsheet: Settings → Backup and restore → "Export
+ * Every logged transaction as a spreadsheet: Settings → Backup & export → "Export
  * transactions (CSV)". One row per entry; a split lists its parts in one cell.
  *
  * Amounts go in an "Out" or an "In" column, always positive, rather than one signed column:

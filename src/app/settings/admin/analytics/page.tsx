@@ -148,7 +148,17 @@ export default async function AdminAnalyticsPage({ searchParams }: { searchParam
             max={adoption.users}
             rows={[
               { label: "Password", value: adoption.withPassword, detail: pct(adoption.withPassword, adoption.users) },
+              {
+                label: "Passkey or authenticator app",
+                value: adoption.withSecondFactor,
+                detail: pct(adoption.withSecondFactor, adoption.users),
+              },
               { label: "Passkey", value: adoption.withPasskey, detail: pct(adoption.withPasskey, adoption.users) },
+              {
+                label: "Authenticator app",
+                value: adoption.withAuthenticatorApp,
+                detail: pct(adoption.withAuthenticatorApp, adoption.users),
+              },
               {
                 label: "Unused recovery codes",
                 value: adoption.withRecoveryCodes,

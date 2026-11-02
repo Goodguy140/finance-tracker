@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildAdminEnvConfig, formatEnvDisplay } from "./admin-env-config";
 
@@ -18,6 +20,19 @@ afterEach(() => {
 });
 
 describe("buildAdminEnvConfig", () => {
+  it("lists every variable the README documents", () => {
+    const readme = readFileSync(join(process.cwd(), "README.md"), "utf8");
+    const documented = new Set(
+      readme
+        .split("\n")
+        .filter((line) => line.startsWith("| `"))
+        .flatMap((line) => [...line.split("|")[1].matchAll(/`([A-Z][A-Z0-9_]+)`/g)].map((m) => m[1])),
+    );
+    expect(documented.size).toBeGreaterThan(20);
+    const shown = new Set(buildAdminEnvConfig().map((entry) => entry.name));
+    expect([...documented].filter((name) => !shown.has(name))).toEqual([]);
+  });
+
   it("never exposes secret values", () => {
     setEnv("NEXTAUTH_SECRET", "super-secret-value-32chars-long");
     setEnv("SERVER_SETTINGS_ENCRYPTION_KEY", "encryption-key-32-characters-min");

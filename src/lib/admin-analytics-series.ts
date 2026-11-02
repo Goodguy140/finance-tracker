@@ -145,6 +145,9 @@ export type AdoptionStats = {
   admins: number;
   withPassword: number;
   withPasskey: number;
+  withAuthenticatorApp: number;
+  /** A passkey, an authenticator app or both: the accounts a stolen password alone cannot open. */
+  withSecondFactor: number;
   withRecoveryCodes: number;
   withSso: number;
   ssoByProvider: { provider: string; users: number }[];
@@ -170,6 +173,7 @@ export async function getAdminAdoptionStats(
     admins,
     withPassword,
     passkeyUsers,
+    totpUsers,
     recoveryUsers,
     ssoRows,
     activeApiTokens,
@@ -184,6 +188,7 @@ export async function getAdminAdoptionStats(
     prisma.user.count({ where: { role: "SERVER_ADMIN", disabledAt: null } }),
     prisma.user.count({ where: { passwordHash: { not: null } } }),
     prisma.webAuthnCredential.groupBy({ by: ["userId"] }),
+    prisma.totpCredential.groupBy({ by: ["userId"] }),
     prisma.recoveryCode.groupBy({ by: ["userId"], where: { usedAt: null } }),
     prisma.authAccount.groupBy({ by: ["provider", "userId"] }),
     prisma.personalAccessToken.count({
@@ -225,6 +230,8 @@ export async function getAdminAdoptionStats(
     admins,
     withPassword,
     withPasskey: passkeyUsers.length,
+    withAuthenticatorApp: totpUsers.length,
+    withSecondFactor: new Set([...passkeyUsers, ...totpUsers].map((row) => row.userId)).size,
     withRecoveryCodes: recoveryUsers.length,
     withSso: ssoUsers.size,
     ssoByProvider: [...byProvider.entries()]

@@ -4,7 +4,7 @@ export function AdminBackupPanel() {
       <h3 className="font-semibold text-slate-100">Backup &amp; restore</h3>
       <p className="text-xs text-slate-500">
         Download a JSON snapshot of <strong>your own</strong> user record and related finance data. Only{" "}
-        any signed-in account can download from this link (same sanitized export as Settings → Advanced).
+        any signed-in account can download from this link (same sanitized export as Settings → Backup &amp; export).
       </p>
       <p>
         <a
@@ -38,7 +38,7 @@ export function AdminBackupPanel() {
         <p>
           There is no in-app destructive restore. To restore the whole app: stop traffic, replace the SQLite database
           file on disk, restart the container, then verify login, dashboard, and transactions. To merge a per-user JSON
-          file, use <strong>Settings → Advanced → Backup and restore</strong> (same email only).
+          file, use <strong>Settings → Backup &amp; export</strong> (same email only).
         </p>
       </div>
     </section>
