@@ -69,6 +69,7 @@ Most of these can also be set under **Settings → Server admin**; a value set i
 | `EMAIL_DIGEST_SCHEDULER` | `false` turns off the hourly sweep that sends the weekly or monthly email digests users opt into (needs SMTP). |
 | `DATABASE_BACKUPS`, `BACKUP_KEEP_DAYS`, `BACKUP_HOUR`, `BACKUP_DIR` | Daily database copies, on by default (also set under Admin → Operations): `false` turns them off; days of daily copies kept (default 14, plus the newest of each of the last 6 months); hour in server time (default 3); folder (default `backups` beside the database, `/data/backups` in the image). |
 | `AUDIT_LOG_RETENTION_DAYS` | How long audit rows are kept (default 365). |
+| `DATABASE_URL` | Where the SQLite database lives (default `file:/data/app.db` in the image). Migrations, the start-up schema repair and the app all use the same default. |
 
 ## Development
 

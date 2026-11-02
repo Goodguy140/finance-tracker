@@ -82,10 +82,11 @@ jobs:
 
       # The real start-up chain (migrate deploy, repair script, server) as the unprivileged
       # user with a fresh /data volume: catches anything that needs to write where it cannot.
+      # DATABASE_URL is left unset, as the README's setup leaves it, so every step has to find
+      # the default /data/app.db; the repair marker shows the repair script did too.
       - name: Docker start-up smoke test
         run: |
           docker run -d --name ft-smoke -p 3000:3000 \
-            -e DATABASE_URL=file:/data/app.db \
             -e NEXTAUTH_URL=http://localhost:3000 \
             -e NEXTAUTH_SECRET=ci-smoke-secret-ci-smoke-secret-0123456789 \
             -e SERVER_SETTINGS_ENCRYPTION_KEY=ci-smoke-key-ci-smoke-key-0123456789abcdef \
@@ -93,6 +94,13 @@ jobs:
           for i in $(seq 1 60); do
             if curl -fsS http://localhost:3000/api/health >/dev/null 2>&1; then
               curl -fsS -o /dev/null http://localhost:3000/login
+              docker exec ft-smoke node -e '
+                const { PrismaClient } = require("@prisma/client");
+                const db = new PrismaClient({ datasources: { db: { url: "file:/data/app.db" } } });
+                db.serverSetting.findUnique({ where: { key: "ops.schemaRepairVersion" } })
+                  .then((row) => { if (!row) { console.error("The schema repair did not run on the default database."); process.exitCode = 1; } })
+                  .finally(() => db.$disconnect());
+              ' || { docker logs ft-smoke; exit 1; }
               docker rm -f ft-smoke >/dev/null
               exit 0
             fi

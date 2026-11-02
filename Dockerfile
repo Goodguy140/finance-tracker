@@ -10,6 +10,8 @@ COPY package*.json ./
 COPY .npmrc ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./prisma.config.ts
+# prisma.config.ts reads its database default from here; `npm ci` runs `prisma generate`.
+COPY scripts/database-url.cjs ./scripts/database-url.cjs
 RUN npm ci
 
 FROM base AS builder
@@ -26,6 +28,7 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+COPY --from=builder /app/scripts/database-url.cjs ./scripts/database-url.cjs
 COPY --from=builder /app/scripts/repair-sqlite-schema.cjs ./scripts/repair-sqlite-schema.cjs
 COPY --from=builder /app/scripts/repair-sqlite-schema-lib.cjs ./scripts/repair-sqlite-schema-lib.cjs
 # Merge pruned production node_modules so Prisma CLI gets hoisted peers (e.g. effect, c12) and full @prisma/*.

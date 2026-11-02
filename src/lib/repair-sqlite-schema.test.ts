@@ -4,11 +4,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
+import { REQUIRED_SCHEMA_COLUMNS, SCHEMA_REPAIR_VERSION as HEALTH_SCHEMA_REPAIR_VERSION } from "./migration-health";
 
 const require = createRequire(import.meta.url);
-const { runRepair, tableColumns } = require("../../scripts/repair-sqlite-schema-lib.cjs") as {
+const { runRepair, tableColumns, COLUMN_REPAIRS, SCHEMA_REPAIR_VERSION } = require("../../scripts/repair-sqlite-schema-lib.cjs") as {
   runRepair: (prisma: PrismaClient) => Promise<void>;
   tableColumns: (prisma: PrismaClient, table: string) => Promise<Set<string>>;
+  COLUMN_REPAIRS: Array<{ table: string; column: string; ddl: string }>;
+  SCHEMA_REPAIR_VERSION: string;
 };
 
 function prismaForFile(dbPath: string) {
@@ -48,6 +51,26 @@ async function createDriftedSchema(prisma: PrismaClient) {
     )
   `);
 }
+
+describe("the repair lists", () => {
+  // AGENTS.md: a new column goes in both lists and bumps the version in both files. They
+  // drifted once, and the admin health panel reported a stale version for months.
+  it("name the same columns and the same version in the script and the health check", () => {
+    const repaired = COLUMN_REPAIRS.map(({ table, column }) => `${table}.${column}`);
+    // Account.archived is repaired by rebuilding the table, not by an ALTER in the list.
+    expect([...repaired, "Account.archived"].sort()).toEqual(
+      REQUIRED_SCHEMA_COLUMNS.map(({ table, column }) => `${table}.${column}`).sort(),
+    );
+    expect(new Set(repaired).size).toBe(repaired.length);
+    expect(SCHEMA_REPAIR_VERSION).toBe(HEALTH_SCHEMA_REPAIR_VERSION);
+  });
+
+  it("add the column each entry names", () => {
+    for (const { table, column, ddl } of COLUMN_REPAIRS) {
+      expect(ddl, `${table}.${column}`).toMatch(new RegExp(`^ALTER TABLE "${table}" ADD COLUMN "${column}" `));
+    }
+  });
+});
 
 describe("repair-sqlite-schema runRepair", () => {
   let tempDir: string;
