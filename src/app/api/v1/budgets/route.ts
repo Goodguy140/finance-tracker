@@ -5,6 +5,7 @@ import { buildMonthlyBudgetProgress, budgetRowPercentUsed } from "@/lib/budget-p
 import { currentYmInTimeZone } from "@/lib/period-month";
 import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
 import { monthParamSchema } from "@/lib/validation";
+import { loadYearlyBudgetRows } from "@/lib/yearly-budgets";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { prisma } from "@/lib/prisma";
 
@@ -60,6 +61,16 @@ export async function GET(request: Request) {
   }
 
   const progress = await buildMonthlyBudgetProgress(auth.user.id, ym);
+  // Added for the phone app's Budgets screen; scripts written against the first fields are unaffected.
+  const [yearly, categories] = await Promise.all([
+    loadYearlyBudgetRows(auth.user.id, ym, progress.currency),
+    prisma.category.findMany({
+      where: { userId: auth.user.id, kind: "EXPENSE" },
+      select: { id: true, groupName: true, rolloverSinceMonth: true },
+    }),
+  ]);
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
+  const groupOf = (categoryId: string) => categoryById.get(categoryId)?.groupName ?? null;
 
   // The phone app's reads are not audited, as the website's are not (see transactions).
   if (auth.token.kind === "token") {
@@ -86,9 +97,14 @@ export async function GET(request: Request) {
         rolloverCents: row.carryCents,
         spentCents: row.spentCents,
         percentUsed: budgetRowPercentUsed(row),
+        groupName: groupOf(row.categoryId),
+        // Rollover is on for the category from this month or earlier.
+        rollover: (categoryById.get(row.categoryId)?.rolloverSinceMonth ?? "9999-12") <= ym,
       })),
       totalLimitCents: progress.totalLimitCents,
       totalSpentCents: progress.totalSpentCents,
+      // Yearly budgets as sinking funds, kept out of the monthly totals as on the website.
+      yearly: yearly.map((row) => ({ ...row, groupName: groupOf(row.categoryId) })),
     },
     { headers: { "Cache-Control": "no-store" } },
   );

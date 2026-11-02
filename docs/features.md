@@ -454,6 +454,15 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
 - Sign in: server address, then the server's own sign-in page in the system sheet (PKCE); the
   device token is kept in the Keychain. `src/screens/sign-in.tsx`, `src/session/*`,
   `src/utils/sign-in.ts`
-- Home: this month's budgets with progress bars, who is signed in and to which server, pull to
-  refresh, Sign out (also revokes the token on the server). `src/screens/home.tsx`
+- Tabs (`src/app/(tabs)/_layout.tsx`, native tab bar): Home, Budgets, Settings. Data is cached and
+  refetched when the app comes back to the front (`src/api/query.tsx`, TanStack Query)
+- Home: safe to spend for the month (the website's number and breakdown), bank rows and entries
+  waiting for review (open the website for now), budgets at 80% or more with the month's total,
+  and bills and pay due in the next 7 days, overdue ones flagged. One call, `GET /api/v1/summary`
+  (`src/lib/api-v1/summary.ts`). `src/screens/home/`
+- Budgets: any month's budgets by category group, with rollover carries, and the yearly budgets as
+  sinking funds; ‹ › switch month. `GET /api/v1/budgets` (now also `groupName`, `rollover` and
+  `yearly`). `src/screens/budgets/`
+- Settings: who is signed in, the server, Open the website, Sign out (also revokes the token on
+  the server). `src/screens/settings.tsx`
 - A token the server no longer accepts signs the phone out with a note on the sign-in screen
