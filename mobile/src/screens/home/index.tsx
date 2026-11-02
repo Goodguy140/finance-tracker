@@ -84,21 +84,31 @@ function SafeToSpendCard({ data }: { data: Summary }) {
 
 function Waiting({ data }: { data: Summary }) {
   const theme = useTheme();
+  const router = useRouter();
   const { session } = useSession();
   const { bankQueue, needsReview } = data.waiting;
   if (bankQueue === 0 && needsReview === 0) return null;
-  const openWebsite = () => {
-    if (session) void Linking.openURL(`${session.origin}/`);
-  };
   const rows = [
-    bankQueue > 0 ? `${bankQueue} bank transaction${bankQueue === 1 ? '' : 's'} to review` : null,
-    needsReview > 0 ? `${needsReview} ${needsReview === 1 ? 'entry needs' : 'entries need'} a look` : null,
-  ].filter((row): row is string => row !== null);
+    bankQueue > 0
+      ? {
+          text: `${bankQueue} bank transaction${bankQueue === 1 ? '' : 's'} to review`,
+          hint: 'Opens the website in Safari',
+          onPress: () => session && void Linking.openURL(`${session.origin}/`),
+        }
+      : null,
+    needsReview > 0
+      ? {
+          text: `${needsReview} ${needsReview === 1 ? 'entry needs' : 'entries need'} a look`,
+          hint: 'Shows them in Transactions',
+          onPress: () => router.navigate({ pathname: '/transactions', params: { review: '1' } }),
+        }
+      : null,
+  ].filter((row) => row !== null);
   return (
-    <Section title="Waiting for you" footer="These open on the website for now.">
+    <Section title="Waiting for you" footer={bankQueue > 0 ? 'The bank queue opens on the website for now.' : null}>
       {rows.map((row) => (
-        <Pressable key={row} onPress={openWebsite} accessibilityRole="link" accessibilityHint="Opens the website in Safari" style={styles.line}>
-          <Text style={[styles.rowText, { color: theme.text }]}>{row}</Text>
+        <Pressable key={row.text} onPress={row.onPress} accessibilityRole="button" accessibilityHint={row.hint} style={styles.line}>
+          <Text style={[styles.rowText, { color: theme.text }]}>{row.text}</Text>
           <Text style={[styles.chevron, { color: theme.textSecondary }]}>›</Text>
         </Pressable>
       ))}

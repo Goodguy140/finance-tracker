@@ -380,7 +380,8 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     (`src/lib/text-limits.ts`) in an older file is cut to fit rather than refused
   - Developer (API tokens with chosen scopes; `GET /api/v1/budgets`, `GET`/`POST /api/v1/transactions`
     (a post a "Mark as transfer" rule matches is booked as a transfer unless it names a category),
-    `GET /api/v1/accounts`, `GET /api/v1/categories`): `api-tokens-panel.tsx`, `src/lib/api-token.ts`,
+    `GET /api/v1/accounts`, `GET /api/v1/categories`, `GET /api/v1/tags`; search with `?q=`, `?tagId=`,
+  `?needsReview=`): `api-tokens-panel.tsx`, `src/lib/api-token.ts`,
     `src/lib/api-v1/*`, `src/app/api/v1/*`
   - Webhooks on the Developer page (endpoints picking events: transaction added, CSV import, budget over,
     bill due, bank sync failed; adding one needs "Confirm it's you"; public https addresses, or the local network
@@ -454,12 +455,20 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
 - Sign in: server address, then the server's own sign-in page in the system sheet (PKCE); the
   device token is kept in the Keychain. `src/screens/sign-in.tsx`, `src/session/*`,
   `src/utils/sign-in.ts`
-- Tabs (`src/app/(tabs)/_layout.tsx`, native tab bar): Home, Budgets, Settings. Data is cached and
+- Tabs (`src/app/(tabs)/_layout.tsx`, native tab bar): Home, Transactions, Budgets, Settings. Data is cached and
   refetched when the app comes back to the front (`src/api/query.tsx`, TanStack Query)
 - Home: safe to spend for the month (the website's number and breakdown), bank rows and entries
   waiting for review (open the website for now), budgets at 80% or more with the month's total,
   and bills and pay due in the next 7 days, overdue ones flagged. One call, `GET /api/v1/summary`
   (`src/lib/api-v1/summary.ts`). `src/screens/home/`
+- Transactions: the log a month at a time (‹ ›), grouped by day; search across every month
+  (title, note, bank text or amount, as the website's search matches); filter by Needs review
+  (every month) and spending, income or transfers. A row opens an editor for title, amount,
+  dates, category, account, tags and note, plus Mark reviewed and Delete with an Undo bar.
+  Splits, amounts owed back, credits and a transfer's amount and accounts show but are changed on
+  the website. `GET /api/v1/transactions` (now `q`, `tagId`, `needsReview`), `GET`/`PATCH`/`DELETE
+  /api/v1/transactions/:id`, `POST /api/v1/undo/:undoId`, `GET /api/v1/tags`
+  (`src/lib/api-v1/transactions.ts`). `src/screens/transactions/`
 - Budgets: any month's budgets by category group, with rollover carries, and the yearly budgets as
   sinking funds; ‹ › switch month. `GET /api/v1/budgets` (now also `groupName`, `rollover` and
   `yearly`). `src/screens/budgets/`

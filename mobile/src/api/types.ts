@@ -77,3 +77,37 @@ export type Summary = {
   upcoming: { days: number; items: UpcomingItem[]; billsCents: number; incomeCents: number };
   waiting: { bankQueue: number; needsReview: number };
 };
+
+export type TransactionType = 'expense' | 'income' | 'transfer';
+
+/** One entry as `GET /api/v1/transactions` lists it. Amounts are in the entry's own sign convention. */
+export type Transaction = {
+  id: string;
+  type: TransactionType;
+  date: string;
+  postedDate: string | null;
+  title: string | null;
+  amountCents: number;
+  currency: string | null;
+  categoryId: string;
+  categoryName: string;
+  accountId: string | null;
+  accountName: string | null;
+  transferAccountId: string | null;
+  note: string | null;
+  tags: string[];
+  splits: { categoryId: string; amountCents: number }[];
+  owedToYouCents: number;
+  verified: boolean;
+  /** Added in Phase 3; absent from older servers. */
+  transferAccountName?: string | null;
+  needsReview?: boolean;
+  creditCents?: number | null;
+  attachmentCount?: number;
+};
+
+export type TransactionPage = { transactions: Transaction[]; nextCursor: string | null };
+
+export type Category = { id: string; name: string; kind: 'expense' | 'income' | 'transfer' };
+export type Account = { id: string; name: string; type: string; currency: string; archived: boolean };
+export type Tag = { id: string; name: string; count: number };

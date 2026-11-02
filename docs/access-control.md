@@ -98,10 +98,11 @@ External integrations authenticate with personal access tokens (`Authorization: 
 - Created per-user under **Settings → Developer**, and only after a step-up (a passkey or authenticator code).
 - 256 bits of entropy; only a SHA-256 hash is stored. The raw value is shown exactly once.
 - **Scoped** — chosen when the token is made, and a token carries no rights beyond them:
-  `budgets:read` (`GET /api/v1/budgets`), `transactions:read` (`GET /api/v1/transactions`),
+  `budgets:read` (`GET /api/v1/budgets`), `transactions:read` (`GET /api/v1/transactions`,
+  `GET /api/v1/transactions/:id`),
   `transactions:write` (`POST /api/v1/transactions`, expenses and income only; one that a
   "Mark as transfer" rule matches is booked as a transfer, as a statement import books it) and
-  `accounts:read` (`GET /api/v1/accounts`, `GET /api/v1/categories`). Writes are audit-logged
+  `accounts:read` (`GET /api/v1/accounts`, `GET /api/v1/categories`, `GET /api/v1/tags`). Writes are audit-logged
   per entry (`api_transaction_created`).
 - **Expiring** — 30, 90, or 365 days, or never. Default 90.
 - Revocable at any time; revocation takes effect on the next request.
@@ -125,9 +126,12 @@ token (`Authorization: Bearer ftd_…`).
 - The code lives for one minute, is stored as a hash, and works once: it is deleted on the
   first try whether or not the verifier matches.
 - A device token is 256 random bits, stored as a SHA-256 hash in `AppDevice`, and reaches every
-  `/api/v1` route plus `app` (`GET /api/v1/me`, `GET /api/v1/summary`), which personal access
-  tokens cannot be given.
-  Nothing on `/api/v1` deletes or restores data, changes sign-in, or reaches admin controls.
+  `/api/v1` route plus `app`, which personal access tokens cannot be given: `GET /api/v1/me`,
+  `GET /api/v1/summary`, and editing or deleting one entry at a time (`PATCH`/`DELETE
+  /api/v1/transactions/:id`; a deleted entry is kept 15 minutes for `POST /api/v1/undo/:undoId`,
+  as on the website). Edits, deletes and undos are audit-logged (`api_transaction_updated`,
+  `_deleted`, `_restored`). Nothing on `/api/v1` clears or restores data in bulk, changes
+  sign-in, or reaches admin controls.
 - It ends when the phone signs out (`POST /api/v1/app/revoke`), when the person signs it out
   under **Settings → Security → Signed-in apps**, after 90 days unused, and on anything that
   bumps `User.tokenVersion` (password change or reset, suspension, `reset-mfa.cjs`). A

@@ -160,6 +160,13 @@ export async function deleteTransactionWithUndo(
 
 export type UndoRefusal = "expired" | "category-gone" | "conflict";
 
+/** Why an undo could not put the entry back, as the website and the phone app both say it. */
+export const UNDO_REFUSAL_MESSAGES: Record<UndoRefusal, string> = {
+  expired: "Too late to undo: deleted entries can be put back for 15 minutes.",
+  "category-gone": "Its category has been deleted since, so it can't be put back.",
+  conflict: "It's already back in your log.",
+};
+
 /** Puts a deleted transaction back. Returns the restored id, or why it could not. */
 export async function undoDeletedTransaction(
   db: PrismaClient,

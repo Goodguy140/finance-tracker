@@ -20,7 +20,7 @@ import { addTagsToTransaction, replaceTransactionTags, resolveTagIds } from "@/l
 import { ensureFallbackCategoryFor } from "@/lib/fallback-categories";
 import { parseTagNames } from "@/lib/tags";
 import { CATEGORY_NAME_MAX, clipText, TRANSACTION_NOTE_MAX, TRANSACTION_TITLE_MAX } from "@/lib/text-limits";
-import { deleteTransactionWithUndo, undoDeletedTransaction, type UndoRefusal } from "@/lib/transaction-undo";
+import { deleteTransactionWithUndo, undoDeletedTransaction, UNDO_REFUSAL_MESSAGES, type UndoRefusal } from "@/lib/transaction-undo";
 import {
   markAsTransfer,
   setTransferAccount,
@@ -681,12 +681,6 @@ export const deleteIncomeTransactionAction = formActionWithResult(async (formDat
   return { ok: true, undoId };
 });
 
-const UNDO_REFUSALS: Record<UndoRefusal, string> = {
-  expired: "Too late to undo: deleted entries can be put back for 15 minutes.",
-  "category-gone": "Its category has been deleted since, so it can't be put back.",
-  conflict: "It's already back in your log.",
-};
-
 /** Puts back expense or income entries deleted in the last few minutes (one `undoId` each). */
 export const undoDeleteTransactionAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
@@ -702,7 +696,7 @@ export const undoDeleteTransactionAction = formAction(async (formData: FormData)
   if (restoredExpense) scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
   // Whatever could come back has; say why the rest could not.
-  if (refusal) throw new Error(UNDO_REFUSALS[refusal]);
+  if (refusal) throw new Error(UNDO_REFUSAL_MESSAGES[refusal]);
 });
 
 export type BulkEditResult = { ok: true; changed: number; skipped: number; undoIds: string[] };
