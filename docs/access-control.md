@@ -99,7 +99,8 @@ External integrations authenticate with personal access tokens (`Authorization: 
 - 256 bits of entropy; only a SHA-256 hash is stored. The raw value is shown exactly once.
 - **Scoped** — chosen when the token is made, and a token carries no rights beyond them:
   `budgets:read` (`GET /api/v1/budgets`), `transactions:read` (`GET /api/v1/transactions`),
-  `transactions:write` (`POST /api/v1/transactions`, expenses and income only) and
+  `transactions:write` (`POST /api/v1/transactions`, expenses and income only; one that a
+  "Mark as transfer" rule matches is booked as a transfer, as a statement import books it) and
   `accounts:read` (`GET /api/v1/accounts`, `GET /api/v1/categories`). Writes are audit-logged
   per entry (`api_transaction_created`).
 - **Expiring** — 30, 90, or 365 days, or never. Default 90.

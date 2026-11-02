@@ -64,6 +64,25 @@ describe("createTransactionFromApi", () => {
     expect(result).toMatchObject({ ok: true, transaction: { categoryId: foodId, note: "via rule" } });
   });
 
+  it("books what a 'Mark as transfer' rule matches as a transfer, unless the request names a category", async () => {
+    const tfsaId = (await db.account.create({ data: { userId: user.id, name: "TFSA", type: "TFSA" } })).id;
+    await db.transactionRule.create({
+      data: { userId: user.id, priority: 1, titleOperator: "CONTAINS", titlePattern: "tfsa", markAsTransfer: true, setTransferAccountId: tfsaId },
+    });
+
+    const out = await api.createTransactionFromApi(db, user, { type: "expense", amountCents: 50_000, title: "TFSA top-up", account: "Visa" });
+    expect(out).toMatchObject({ ok: true, transaction: { type: "transfer", amountCents: 50_000, accountId: visaId, transferAccountId: tfsaId } });
+    if (!out.ok) return;
+    expect((await db.category.findUniqueOrThrow({ where: { id: out.transaction.categoryId } })).kind).toBe("TRANSFER");
+
+    // Money in: a transfer's positive amount left `accountId`, so this one is negative.
+    const back = await api.createTransactionFromApi(db, user, { type: "income", amountCents: 20_000, title: "From TFSA", account: "Visa" });
+    expect(back).toMatchObject({ ok: true, transaction: { type: "transfer", amountCents: -20_000 } });
+
+    const named = await api.createTransactionFromApi(db, user, { type: "expense", amountCents: 900, title: "TFSA fee", category: "Food" });
+    expect(named).toMatchObject({ ok: true, transaction: { type: "expense", categoryId: foodId } });
+  });
+
   it("falls back to the catch-all category and today's date", async () => {
     const result = await api.createTransactionFromApi(db, user, { type: "income", amount: 100 });
     expect(result.ok).toBe(true);

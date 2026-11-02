@@ -14,6 +14,8 @@ import { loadRuleContext } from "@/lib/transaction-rules-server";
 /**
  * The personal API's transactions: `GET /api/v1/transactions` lists them and
  * `POST /api/v1/transactions` logs an expense or income entry (a phone shortcut, a script).
+ * One that a "Mark as transfer" rule matches is booked as a transfer instead, as a statement
+ * import books it, unless the request names a category.
  * Amounts are integer cents in the entry's own sign convention: an expense's positive amount
  * is money out, a negative one a refund; income is positive; a transfer's positive amount
  * left `accountId`.
@@ -204,16 +206,27 @@ export async function createTransactionFromApi(
       ? owner.defaultExpenseAccountId
       : undefined);
 
+  // The user said entries like this are not spending (or income). A category the request names
+  // is the caller saying what this one is, so it wins, the same way it wins over a rule's split.
+  const asTransfer = rule.markAsTransfer === true && !categoryId;
+  const transferAccountId =
+    asTransfer && rule.transferAccountId && rule.transferAccountId !== accountId && openAccountIds.has(rule.transferAccountId)
+      ? rule.transferAccountId
+      : null;
+
   const created = await db.$transaction(async (tx) => {
     // A rule's split is its way of setting the category, so a category the request names wins.
-    const splitLines = categoryId ? null : ruleSplitLines(rule.split, cents);
-    const resolvedCategoryId =
-      splitLines?.[0].categoryId ?? categoryId ?? rule.categoryId ?? (await ensureFallbackCategoryFor(tx, user.id, kind));
+    const splitLines = categoryId || asTransfer ? null : ruleSplitLines(rule.split, cents);
+    const resolvedCategoryId = asTransfer
+      ? await ensureFallbackCategoryFor(tx, user.id, CategoryKind.TRANSFER)
+      : (splitLines?.[0].categoryId ?? categoryId ?? rule.categoryId ?? (await ensureFallbackCategoryFor(tx, user.id, kind)));
     const row = await tx.transaction.create({
       data: {
         userId: user.id,
-        type,
-        amountCents: cents,
+        type: asTransfer ? TransactionType.TRANSFER : type,
+        // A transfer's positive amount left `accountId`: money out for an expense, in for income.
+        amountCents: asTransfer && type === TransactionType.INCOME ? -cents : cents,
+        transferAccountId,
         categoryId: resolvedCategoryId,
         accountId: accountId ?? null,
         date: dateFromYmd(input.date ?? currentYmdInTimeZone(user.timezone)),

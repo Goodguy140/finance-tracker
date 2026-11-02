@@ -579,10 +579,14 @@ function ResultRow({
   if (item.source === "quick-add") {
     const { preview } = item;
     icon = "add";
-    title = `Add expense ${formatCurrency(preview.amountCents)} ${preview.title}, ${quickAddDate(preview.dateYmd)}`;
-    detail = preview.split
-      ? `Split ${preview.split}${preview.accountName ? ` · ${preview.accountName}` : ""}`
-      : [preview.categoryName, preview.accountName].filter(Boolean).join(" · ");
+    title = `Add ${preview.transfer ? "transfer" : "expense"} ${formatCurrency(preview.amountCents)} ${preview.title}, ${quickAddDate(preview.dateYmd)}`;
+    detail = preview.transfer
+      ? [preview.transfer.toAccountName ? `Transfer to ${preview.transfer.toAccountName}` : "Transfer", preview.accountName]
+          .filter(Boolean)
+          .join(" · ")
+      : preview.split
+        ? `Split ${preview.split}${preview.accountName ? ` · ${preview.accountName}` : ""}`
+        : [preview.categoryName, preview.accountName].filter(Boolean).join(" · ");
   } else if (item.source === "command") {
     icon = commandIconName(item.command);
     title = item.command.label;
