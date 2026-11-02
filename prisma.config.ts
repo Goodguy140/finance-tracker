@@ -2,10 +2,13 @@
 // npm install --save-dev prisma dotenv
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
+import { resolveDatabaseUrl } from "./scripts/database-url.cjs";
 
-const resolvedDatabaseUrl =
-  process.env["DATABASE_URL"] ??
-  (process.env.NODE_ENV === "production" ? "file:/data/app.db" : "file:./dev.db");
+// The schema reads `env("DATABASE_URL")` and Prisma 6 does not take the URL below in its place,
+// so the variable itself is set: without it, `migrate deploy` stopped with P1012 rather than
+// use the default, and a container started without DATABASE_URL never came up.
+const resolvedDatabaseUrl = resolveDatabaseUrl();
+process.env.DATABASE_URL = resolvedDatabaseUrl;
 
 export default defineConfig({
   schema: "prisma/schema.prisma",

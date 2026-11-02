@@ -1,8 +1,8 @@
 import { PrismaClient } from "@prisma/client";
+import { resolveDatabaseUrl } from "../../scripts/database-url.cjs";
 
-if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = process.env.NODE_ENV === "production" ? "file:/data/app.db" : "file:./dev.db";
-}
+// The same default `migrate deploy` and the start-up repair script use.
+process.env.DATABASE_URL = resolveDatabaseUrl();
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
