@@ -23,6 +23,16 @@ export function classifyPublicPath(pathname: string): PublicPathClass {
   return "protected";
 }
 
+/**
+ * Where a signed-out request goes. The phone app's sign-in sheet opens `/app/authorize?…` and
+ * has to land back there once the person has signed in, so `/app/` paths carry `?next=` (the
+ * login page and `/mfa` both pass it on). Every other path still lands on the plain login page.
+ */
+export function signInRedirectPath(pathname: string, search: string): string {
+  if (!matchesPathPrefix(pathname, "/app")) return "/login";
+  return `/login?next=${encodeURIComponent(pathname + search)}`;
+}
+
 function getNextAuthSecret() {
   const secret = process.env.NEXTAUTH_SECRET?.trim();
   if (!secret && process.env.NODE_ENV === "production") {
@@ -125,6 +135,7 @@ export const __authProxyInternals = {
   parsedNextAuthPublicOrigin,
   readToken,
   classifyPublicPath,
+  signInRedirectPath,
 };
 
 export async function proxy(req: NextRequest) {
@@ -152,7 +163,7 @@ export async function proxy(req: NextRequest) {
   const pathClass = classifyPublicPath(pathname);
 
   if (!token && pathClass === "protected") {
-    return NextResponse.redirect(new URL("/login", req.url));
+    return NextResponse.redirect(new URL(signInRedirectPath(pathname, req.nextUrl.search), req.url));
   }
 
   if (token && pathClass === "signed-out-only") {

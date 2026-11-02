@@ -191,6 +191,8 @@ model User {
   sessions                  Session[]
   resetTokens               PasswordResetToken[]
   personalAccessTokens      PersonalAccessToken[]
+  appDevices                AppDevice[]
+  appSignInCodes            AppSignInCode[]
   webAuthnCredentials       WebAuthnCredential[]
   mfaChallenges             MfaChallenge[]
   recoveryCodes             RecoveryCode[]
@@ -358,6 +360,53 @@ model PersonalAccessToken {
   expiresAt   DateTime?
   revokedAt   DateTime?
   createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/**
+ * A phone signed in to this server through the app sign-in (`/app/authorize`, then
+ * `POST /api/v1/app/token`). One row per install. The raw token lives only in the phone's
+ * Keychain; this row keeps its SHA-256, as `PersonalAccessToken` does. It stops working when
+ * signed out (the row is deleted), after `APP_DEVICE_IDLE_DAYS` unused, or when
+ * `User.tokenVersion` moves past `tokenVersion` (password change or reset, sign out
+ * everywhere, suspension, `reset-mfa.cjs`).
+ */
+model AppDevice {
+  id           String    @id @default(cuid())
+  userId       String
+  /// "Sam's iPhone": what the phone called itself at sign-in.
+  name         String
+  /// "ios" for now.
+  platform     String
+  appVersion   String?
+  tokenHash    String    @unique
+  /// First characters of the raw token, for recognising it in logs.
+  tokenPrefix  String
+  tokenVersion Int
+  lastUsedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/**
+ * A one-time code `/app/authorize` hands the app (OAuth 2.0 for native apps with PKCE,
+ * RFC 8252 / 7636). Valid for a minute, exchanged once; only its SHA-256 is stored.
+ */
+model AppSignInCode {
+  id            String   @id @default(cuid())
+  userId        String
+  codeHash      String   @unique
+  /// base64url(SHA-256(code_verifier)) as the app sent it.
+  codeChallenge String
+  deviceName    String
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

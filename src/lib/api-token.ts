@@ -1,5 +1,6 @@
 import crypto from "crypto";
-import type { PersonalAccessToken, PrismaClient, User } from "@prisma/client";
+import type { PrismaClient, User } from "@prisma/client";
+import { authenticateAppDevice, isDeviceToken } from "@/lib/app-devices";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -21,6 +22,12 @@ export const API_SCOPES = {
   transactionsWrite: "transactions:write",
   /** Accounts and categories: what a script needs to name them in a new transaction. */
   accountsRead: "accounts:read",
+  /**
+   * Held only by phone app device tokens (`src/lib/app-devices.ts`), never offered for a
+   * personal access token (`API_TOKEN_SCOPES` in validation.ts): routes made for the app, such
+   * as `GET /api/v1/me`.
+   */
+  app: "app",
 } as const;
 
 export type GeneratedToken = { raw: string; hash: string; prefix: string };
@@ -52,8 +59,11 @@ export function tokenHasScope(scopes: string, requiredScope: string): boolean {
   return parseScopes(scopes).includes(requiredScope);
 }
 
+/** Which credential a request came with: a personal access token (`ft_`) or a phone (`ftd_`). */
+export type ApiCredential = { kind: "token" | "device"; id: string };
+
 export type ApiTokenAuthResult =
-  | { status: "ok"; user: User; token: PersonalAccessToken }
+  | { status: "ok"; user: User; token: ApiCredential }
   | { status: "unauthorized" }
   | { status: "forbidden" };
 
@@ -69,6 +79,14 @@ export async function authenticateApiToken(
 ): Promise<ApiTokenAuthResult> {
   const raw = parseBearerToken(request.headers.get("authorization"));
   if (!raw) return { status: "unauthorized" };
+
+  if (isDeviceToken(raw)) {
+    const device = await authenticateAppDevice(raw, client);
+    if (device.status !== "ok") return { status: "unauthorized" };
+    // A phone holds every scope, `app` included. What it must not do (admin, deleting or
+    // restoring data, changing sign-in) has no `/api/v1` route at all.
+    return { status: "ok", user: device.user, token: { kind: "device", id: device.device.id } };
+  }
 
   const record = await client.personalAccessToken.findUnique({
     where: { tokenHash: hashApiToken(raw) },
@@ -88,6 +106,5 @@ export async function authenticateApiToken(
     .update({ where: { id: record.id }, data: { lastUsedAt: new Date() } })
     .catch(() => {});
 
-  const { user, ...token } = record;
-  return { status: "ok", user, token };
+  return { status: "ok", user: record.user, token: { kind: "token", id: record.id } };
 }

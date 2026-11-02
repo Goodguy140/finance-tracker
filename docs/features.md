@@ -268,7 +268,14 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     everywhere): `security-panel.tsx`, `actions/mfa.ts`. Authenticator app (TOTP: QR code or key
     to type, confirmed by the first code; accepted on `/mfa` and for step-up and Confirm it's
     you, where an in-page dialog asks for the code): `src/lib/totp.ts`, `totp-credentials.ts`,
-    `src/components/mfa/second-factor.tsx`, `TotpCredential` table
+    `src/components/mfa/second-factor.tsx`, `TotpCredential` table. **Signed-in apps** (phones
+    signed in to the phone app, each with Sign out; `settings/signed-in-apps.tsx`)
+  - Phone app sign-in (server side; the app itself is not built yet): `/app/authorize` page where a
+    signed-in person allows a phone (`app-authorize-consent.tsx`, `actions/app-devices.ts`, needs
+    Confirm it's you), `POST /api/v1/app/token` (one-time code + PKCE verifier for a device token),
+    `POST /api/v1/app/revoke`, `GET /api/v1/me`, public `GET /api/v1/server`; `src/lib/app-devices.ts`,
+    `AppDevice` and `AppSignInCode` tables. Device tokens work on every `/api/v1` route. Signed-out
+    visits to `/app/…` go to `/login?next=` and come back (`src/proxy.ts`)
   - Notifications (budget alert emails): `budget-alert-preferences.tsx`,
     `src/lib/budget-alert-dispatch.ts`
   - Email digest (off / weekly on Mondays / monthly on the 1st, after 7am local; spent and

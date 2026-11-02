@@ -25,14 +25,18 @@ export async function GET(request: Request) {
   const result = await listTransactionsForApi(prisma, auth.user.id, parsed.query);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
 
-  await recordAuditLog(prisma, {
-    userId: auth.user.id,
-    action: AUDIT_ACTIONS.api_transactions_read,
-    targetType: "personal_access_token",
-    targetId: auth.token.id,
-    metadata: { rows: result.transactions.length },
-    headers: await headers(),
-  });
+  // Reads by a personal access token are audited; the phone app's are not, for the same
+  // reason the website's own reads are not: it is the person, signed in.
+  if (auth.token.kind === "token") {
+    await recordAuditLog(prisma, {
+      userId: auth.user.id,
+      action: AUDIT_ACTIONS.api_transactions_read,
+      targetType: "personal_access_token",
+      targetId: auth.token.id,
+      metadata: { rows: result.transactions.length },
+      headers: await headers(),
+    });
+  }
   return NextResponse.json({ transactions: result.transactions, nextCursor: result.nextCursor }, { headers: NO_STORE });
 }
 
@@ -62,7 +66,7 @@ export async function POST(request: Request) {
     action: AUDIT_ACTIONS.api_transaction_created,
     targetType: "transaction",
     targetId: result.transaction.id,
-    metadata: { tokenId: auth.token.id, type: result.transaction.type },
+    metadata: { tokenId: auth.token.id, via: auth.token.kind === "device" ? "app" : "api", type: result.transaction.type },
     headers: await headers(),
   });
   return NextResponse.json({ transaction: result.transaction }, { status: 201, headers: NO_STORE });

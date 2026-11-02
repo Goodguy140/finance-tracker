@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
+const { createApiTokenSchema } = await import("./validation");
 const {
+  API_SCOPES,
   generateApiToken,
   hashApiToken,
   parseBearerToken,
@@ -122,5 +124,12 @@ describe("authenticateApiToken", () => {
       fakeClient({ ...validRecord, scopes: "other:write" }),
     );
     expect(res.status).toBe("forbidden");
+  });
+});
+
+describe("the app scope", () => {
+  it("cannot be granted to a personal access token, so /api/v1/me stays phone-only", () => {
+    const parsed = createApiTokenSchema.safeParse({ name: "script", scopes: [API_SCOPES.app] });
+    expect(parsed.success).toBe(false);
   });
 });
