@@ -16,9 +16,9 @@ import { deleteTransactionWithUndo, undoDeletedTransaction, UNDO_REFUSAL_MESSAGE
 
 /**
  * The personal API's transactions: `GET /api/v1/transactions` lists them and
- * `POST /api/v1/transactions` logs an expense or income entry (a phone shortcut, a script).
- * One that a "Mark as transfer" rule matches is booked as a transfer instead, as a statement
- * import books it, unless the request names a category.
+ * `POST /api/v1/transactions` logs an expense, income or transfer (the phone app, a shortcut, a
+ * script). An expense or income that a "Mark as transfer" rule matches is booked as a transfer
+ * instead, as a statement import books it, unless the request names a category.
  * Amounts are integer cents in the entry's own sign convention: an expense's positive amount
  * is money out, a negative one a refund; income is positive; a transfer's positive amount
  * left `accountId`.
@@ -130,7 +130,7 @@ const amountCents = z.number().int().refine((n) => n !== 0 && Math.abs(n) <= MAX
 
 const createSchema = z
   .object({
-    type: z.enum(["expense", "income"]),
+    type: z.enum(["expense", "income", "transfer"]),
     amountCents: amountCents.optional(),
     /** Dollars, as a convenience for shortcuts: 12.5 or "12.50". */
     amount: z.union([z.number(), z.string().trim().regex(/^-?\d+(\.\d{1,2})?$/, "'amount' must be a number like 12.50.")]).optional(),
@@ -142,26 +142,40 @@ const createSchema = z
     category: z.string().trim().min(1).max(100).optional(),
     accountId: z.string().min(1).optional(),
     account: z.string().trim().min(1).max(100).optional(),
+    /** A transfer's other side, where the money went; `accountId` is where it left. */
+    transferAccountId: z.string().min(1).optional(),
+    transferAccount: z.string().trim().min(1).max(100).optional(),
     tags: z.array(z.string().trim().min(1).max(50)).max(20).optional(),
   })
   .strict();
+
+/**
+ * Who is adding: "api" a script or shortcut with a personal access token, so the entry waits in
+ * Needs review; "app" the person on the phone app and "search" the person in the master search,
+ * who typed it themselves, so nothing is left to review.
+ */
+export type CreateSource = "api" | "app" | "search";
 
 export type CreateResult =
   | { ok: true; transaction: ReturnType<typeof serializeTransaction> }
   | { ok: false; status: 400 | 404; error: string };
 
 /**
- * Logs one expense or income entry. Category and account can be given by id or by name;
- * whatever is left out is filled the way the Add card fills it, from the user's rules and
- * the categories their past titles went to, and otherwise the default account and the
- * catch-all category.
+ * Logs one expense, income or transfer. Category and accounts can be given by id or by name;
+ * for an expense or income, whatever is left out is filled the way the Add card fills it, from
+ * the user's rules and the categories their past titles went to, and otherwise the default
+ * account and the catch-all category. A transfer is booked as the Add card's Transfer tab books
+ * it: both accounts named, no rules, the transfer category.
+ *
+ * `idempotencyKeyId` is a claimed `ApiIdempotencyKey`: it is pointed at the new entry inside the
+ * same database transaction, so a retry can never find the entry saved and its key still open.
  */
 export async function createTransactionFromApi(
   db: PrismaClient,
   user: { id: string; timezone: string | null },
   body: unknown,
-  /** "search": typed into the master search by the user, so nothing is left to review. */
-  source: "api" | "search" = "api",
+  source: CreateSource = "api",
+  { idempotencyKeyId }: { idempotencyKeyId?: string } = {},
 ): Promise<CreateResult> {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {
@@ -177,12 +191,16 @@ export async function createTransactionFromApi(
   if (!Number.isFinite(cents) || cents === 0 || Math.abs(cents) > MAX_AMOUNT_CENTS) {
     return { ok: false, status: 400, error: "The amount is out of range." };
   }
+  if (input.accountId && input.account) return { ok: false, status: 400, error: "Give 'accountId' or 'account', not both." };
+  if (input.type === "transfer") return createTransferFromApi(db, user, input, cents, source, idempotencyKeyId);
+  if (input.transferAccountId || input.transferAccount) {
+    return { ok: false, status: 400, error: "Only a transfer has 'transferAccountId' or 'transferAccount'." };
+  }
   const type = input.type === "income" ? TransactionType.INCOME : TransactionType.EXPENSE;
   if (type === TransactionType.INCOME && cents < 0) {
     return { ok: false, status: 400, error: "Income must be positive." };
   }
   if (input.categoryId && input.category) return { ok: false, status: 400, error: "Give 'categoryId' or 'category', not both." };
-  if (input.accountId && input.account) return { ok: false, status: 400, error: "Give 'accountId' or 'account', not both." };
 
   const kind = type === TransactionType.INCOME ? CategoryKind.INCOME : CategoryKind.EXPENSE;
   const [categories, accounts, owner] = await Promise.all([
@@ -201,14 +219,9 @@ export async function createTransactionFromApi(
     categoryId = categories.find((c) => c.name.trim().toLowerCase() === input.category!.toLowerCase())?.id;
     if (!categoryId) return { ok: false, status: 404, error: `No ${input.type} category named '${input.category}'.` };
   }
-  let accountId: string | undefined;
-  if (input.accountId) {
-    if (!accounts.some((a) => a.id === input.accountId)) return { ok: false, status: 404, error: "No open account with that id." };
-    accountId = input.accountId;
-  } else if (input.account) {
-    accountId = accounts.find((a) => a.name.trim().toLowerCase() === input.account!.toLowerCase())?.id;
-    if (!accountId) return { ok: false, status: 404, error: `No open account named '${input.account}'.` };
-  }
+  const namedAccount = findOpenAccount(accounts, input.accountId, input.account);
+  if (namedAccount && !namedAccount.ok) return namedAccount;
+  let accountId = namedAccount?.id;
 
   const ruleContext = await loadRuleContext(user.id);
   const rule = resolveRuleOutcome(
@@ -251,7 +264,7 @@ export async function createTransactionFromApi(
         postedDate: input.postedDate ? dateFromYmd(input.postedDate) : null,
         title: rule.title ?? input.title ?? null,
         note: appendRuleNote(input.note ?? null, rule.appendNote) ?? null,
-        // Posted by a script, not typed in the app.
+        // Posted by a script, not typed by the person.
         needsReview: source === "api",
       },
       select: { id: true },
@@ -259,6 +272,77 @@ export async function createTransactionFromApi(
     if (splitLines) await saveSplitLines(tx, { userId: user.id, transactionId: row.id, lines: splitLines });
     const tagIds = [...new Set([...(await resolveTagIds(tx, user.id, input.tags ?? [])), ...rule.tagIds])];
     await addTagsToTransaction(tx, row.id, tagIds);
+    if (idempotencyKeyId) await tx.apiIdempotencyKey.update({ where: { id: idempotencyKeyId }, data: { transactionId: row.id } });
+    return tx.transaction.findUniqueOrThrow({ where: { id: row.id }, include: transactionInclude });
+  });
+  emitTransactionsCreated(user.id, [created.id], source === "api" ? "api" : "manual", { client: db });
+  return { ok: true, transaction: serializeTransaction(created) };
+}
+
+type OpenAccount = { id: string; name: string };
+
+/** The open account a request names by id or by name, the refusal when there is none, or undefined when it names none. */
+function findOpenAccount(
+  accounts: readonly OpenAccount[],
+  id: string | undefined,
+  name: string | undefined,
+  field = "account",
+): { ok: true; id: string } | { ok: false; status: 404; error: string } | undefined {
+  if (id) {
+    return accounts.some((a) => a.id === id) ? { ok: true, id } : { ok: false, status: 404, error: `No open ${field} with that id.` };
+  }
+  if (name) {
+    const found = accounts.find((a) => a.name.trim().toLowerCase() === name.toLowerCase());
+    return found ? { ok: true, id: found.id } : { ok: false, status: 404, error: `No open ${field} named '${name}'.` };
+  }
+  return undefined;
+}
+
+/**
+ * A transfer as the Add card's Transfer tab books it: one entry, its positive amount leaving
+ * `accountId` for `transferAccountId`, filed under the transfer category. Rules are not applied,
+ * since the person has already said what it is.
+ */
+async function createTransferFromApi(
+  db: PrismaClient,
+  user: { id: string; timezone: string | null },
+  input: z.infer<typeof createSchema>,
+  cents: number,
+  source: CreateSource,
+  idempotencyKeyId: string | undefined,
+): Promise<CreateResult> {
+  if (cents < 0) return { ok: false, status: 400, error: "A transfer's amount must be positive: it is what left the first account." };
+  if (input.categoryId || input.category) return { ok: false, status: 400, error: "A transfer has no category to give." };
+  if (input.transferAccountId && input.transferAccount) {
+    return { ok: false, status: 400, error: "Give 'transferAccountId' or 'transferAccount', not both." };
+  }
+  const accounts = await db.account.findMany({ where: { userId: user.id, archived: false }, select: { id: true, name: true } });
+  const from = findOpenAccount(accounts, input.accountId, input.account);
+  const to = findOpenAccount(accounts, input.transferAccountId, input.transferAccount, "transfer account");
+  if (!from || !to) return { ok: false, status: 400, error: "A transfer needs both accounts: where the money left and where it went." };
+  if (!from.ok) return from;
+  if (!to.ok) return to;
+  if (from.id === to.id) return { ok: false, status: 400, error: "A transfer needs two different accounts." };
+
+  const created = await db.$transaction(async (tx) => {
+    const row = await tx.transaction.create({
+      data: {
+        userId: user.id,
+        type: TransactionType.TRANSFER,
+        amountCents: cents,
+        accountId: from.id,
+        transferAccountId: to.id,
+        categoryId: await ensureFallbackCategoryFor(tx, user.id, CategoryKind.TRANSFER),
+        date: dateFromYmd(input.date ?? currentYmdInTimeZone(user.timezone)),
+        postedDate: input.postedDate ? dateFromYmd(input.postedDate) : null,
+        title: input.title || null,
+        note: input.note || null,
+        needsReview: source === "api",
+      },
+      select: { id: true },
+    });
+    await addTagsToTransaction(tx, row.id, await resolveTagIds(tx, user.id, input.tags ?? []));
+    if (idempotencyKeyId) await tx.apiIdempotencyKey.update({ where: { id: idempotencyKeyId }, data: { transactionId: row.id } });
     return tx.transaction.findUniqueOrThrow({ where: { id: row.id }, include: transactionInclude });
   });
   emitTransactionsCreated(user.id, [created.id], source === "api" ? "api" : "manual", { client: db });

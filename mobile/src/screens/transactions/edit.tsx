@@ -2,15 +2,15 @@ import { DateTimePicker } from '@expo/ui/community/datetime-picker';
 import { Host, Picker } from '@expo/ui';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
-import { useState, type ReactNode } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, ScrollView, Switch, Text, TextInput } from 'react-native';
 
 import { useApiMutation } from '@/api/mutations';
 import { errorText, useApiQuery } from '@/api/query';
 import type { Account, Category, Transaction } from '@/api/types';
+import { FormButton, FormField, formStyles } from '@/components/form';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
-import { Radius, Spacing } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 import { offerUndo } from '@/state/undo-offer';
@@ -39,7 +39,7 @@ export function EditTransaction({ id }: { id: string }) {
   if (!row || !categories.data || !accounts.data) {
     return (
       <>
-        <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: theme.background }} contentContainerStyle={styles.content}>
+        <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: theme.background }} contentContainerStyle={formStyles.content}>
           <LoadState loading={!failed} error={failed ? errorText(failed) : null} />
         </ScrollView>
         <Stack.Title>Transaction</Stack.Title>
@@ -98,7 +98,7 @@ function Editor({ row, categories, accounts }: { row: Transaction; categories: C
         onPress: () =>
           remove.mutate(undefined, {
             onSuccess: (result) => {
-              offerUndo(result.undoId, transactionName(row));
+              offerUndo({ kind: 'deleted', undoId: result.undoId, label: transactionName(row) });
               router.back();
             },
             onError: fail,
@@ -113,39 +113,39 @@ function Editor({ row, categories, accounts }: { row: Transaction; categories: C
         contentInsetAdjustmentBehavior="automatic"
         keyboardDismissMode="interactive"
         style={{ backgroundColor: theme.background }}
-        contentContainerStyle={styles.content}>
+        contentContainerStyle={formStyles.content}>
         {error ? (
-          <Text accessibilityRole="alert" style={[styles.error, { color: theme.danger }]}>
+          <Text accessibilityRole="alert" style={[formStyles.error, { color: theme.danger }]}>
             {error}
           </Text>
         ) : null}
 
         <Section footer={transactionSubtitle(row)}>
-          <Field label="Title">
+          <FormField label="Title">
             <TextInput
               value={form.title}
               onChangeText={(v) => set('title', v)}
               placeholder={row.categoryName}
               placeholderTextColor={theme.textSecondary}
-              style={[styles.input, { color: theme.text }]}
+              style={[formStyles.input, { color: theme.text }]}
               returnKeyType="done"
               maxLength={200}
             />
-          </Field>
-          <Field label="Amount" note={amountLock}>
+          </FormField>
+          <FormField label="Amount" note={amountLock}>
             <TextInput
               value={form.amount}
               onChangeText={(v) => set('amount', v)}
               editable={!amountLock}
               keyboardType="numbers-and-punctuation"
-              style={[styles.input, styles.amount, { color: amountLock ? theme.textSecondary : theme.text }]}
+              style={[formStyles.input, formStyles.amount, { color: amountLock ? theme.textSecondary : theme.text }]}
               accessibilityHint={row.type === 'expense' ? 'A minus sign makes it a refund' : undefined}
             />
-          </Field>
+          </FormField>
         </Section>
 
         <Section>
-          <Field label="Date">
+          <FormField label="Date">
             <DateTimePicker
               value={dateFromYmd(form.date)}
               onValueChange={(_, date) => set('date', ymdFromDate(date))}
@@ -153,16 +153,16 @@ function Editor({ row, categories, accounts }: { row: Transaction; categories: C
               timeZoneName="UTC"
               themeVariant={scheme === 'dark' ? 'dark' : 'light'}
             />
-          </Field>
-          <Field label="Posted by the bank">
+          </FormField>
+          <FormField label="Posted by the bank">
             <Switch
               value={form.postedDate !== null}
               onValueChange={(on) => set('postedDate', on ? (row.postedDate ?? form.date) : null)}
               accessibilityLabel="Posted by the bank"
             />
-          </Field>
+          </FormField>
           {form.postedDate !== null ? (
-            <Field label="Posted on">
+            <FormField label="Posted on">
               <DateTimePicker
                 value={dateFromYmd(form.postedDate)}
                 onValueChange={(_, date) => set('postedDate', ymdFromDate(date))}
@@ -170,14 +170,14 @@ function Editor({ row, categories, accounts }: { row: Transaction; categories: C
                 timeZoneName="UTC"
                 themeVariant={scheme === 'dark' ? 'dark' : 'light'}
               />
-            </Field>
+            </FormField>
           ) : null}
         </Section>
 
         <Section>
-          <Field label="Category" note={categoryLock}>
+          <FormField label="Category" note={categoryLock}>
             {categoryLock ? (
-              <Text style={[styles.value, { color: theme.textSecondary }]}>{row.categoryName}</Text>
+              <Text style={[formStyles.value, { color: theme.textSecondary }]}>{row.categoryName}</Text>
             ) : (
               <Host matchContents>
                 <Picker selectedValue={form.categoryId} onValueChange={(v) => set('categoryId', String(v))}>
@@ -187,10 +187,10 @@ function Editor({ row, categories, accounts }: { row: Transaction; categories: C
                 </Picker>
               </Host>
             )}
-          </Field>
-          <Field label="Account" note={accountLock}>
+          </FormField>
+          <FormField label="Account" note={accountLock}>
             {accountLock ? (
-              <Text style={[styles.value, { color: theme.textSecondary }]}>{row.accountName ?? 'None'}</Text>
+              <Text style={[formStyles.value, { color: theme.textSecondary }]}>{row.accountName ?? 'None'}</Text>
             ) : (
               <Host matchContents>
                 <Picker
@@ -203,27 +203,27 @@ function Editor({ row, categories, accounts }: { row: Transaction; categories: C
                 </Picker>
               </Host>
             )}
-          </Field>
+          </FormField>
         </Section>
 
         <Section footer="Separate tags with commas.">
-          <Field label="Tags">
+          <FormField label="Tags">
             <TextInput
               value={form.tags}
               onChangeText={(v) => set('tags', v)}
               placeholder="None"
               placeholderTextColor={theme.textSecondary}
               autoCapitalize="none"
-              style={[styles.input, { color: theme.text }]}
+              style={[formStyles.input, { color: theme.text }]}
             />
-          </Field>
+          </FormField>
           <TextInput
             value={form.note}
             onChangeText={(v) => set('note', v)}
             placeholder="Note"
             placeholderTextColor={theme.textSecondary}
             multiline
-            style={[styles.note, { color: theme.text }]}
+            style={[formStyles.note, { color: theme.text }]}
             maxLength={2000}
           />
         </Section>
@@ -231,9 +231,9 @@ function Editor({ row, categories, accounts }: { row: Transaction; categories: C
         <Details row={row} currency={currency} />
 
         {row.needsReview && !dirty ? (
-          <Button label="Mark reviewed" onPress={markReviewed} disabled={busy} />
+          <FormButton label="Mark reviewed" onPress={markReviewed} disabled={busy} />
         ) : null}
-        <Button label="Delete" destructive onPress={confirmDelete} disabled={busy} />
+        <FormButton label="Delete" destructive onPress={confirmDelete} disabled={busy} />
       </ScrollView>
       <Stack.Title>{transactionName(row)}</Stack.Title>
       <Stack.Toolbar placement="right">
@@ -259,7 +259,7 @@ function Details({ row, currency }: { row: Transaction; currency: string }) {
   return (
     <Section title="Also on this entry">
       {lines.map((line) => (
-        <Text key={line} style={[styles.value, { color: theme.text }]}>
+        <Text key={line} style={[formStyles.value, { color: theme.text }]}>
           {line}
         </Text>
       ))}
@@ -267,47 +267,3 @@ function Details({ row, currency }: { row: Transaction; currency: string }) {
   );
 }
 
-function Field({ label, note, children }: { label: string; note?: string | null; children: ReactNode }) {
-  const theme = useTheme();
-  return (
-    <View style={styles.fieldWrap}>
-      <View style={styles.field}>
-        <Text style={[styles.label, { color: theme.text }]}>{label}</Text>
-        <View style={styles.control}>{children}</View>
-      </View>
-      {note ? <Text style={[styles.note2, { color: theme.textSecondary }]}>{note}</Text> : null}
-    </View>
-  );
-}
-
-function Button({ label, onPress, disabled, destructive }: { label: string; onPress: () => void; disabled?: boolean; destructive?: boolean }) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      style={({ pressed }) => [
-        styles.button,
-        { backgroundColor: theme.backgroundElement, borderColor: theme.border, opacity: disabled ? 0.5 : pressed ? 0.7 : 1 },
-      ]}>
-      <Text style={[styles.buttonText, { color: destructive ? theme.danger : theme.tint }]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-const styles = StyleSheet.create({
-  content: { padding: Spacing.three, gap: Spacing.four, paddingBottom: Spacing.five },
-  error: { fontSize: 15, lineHeight: 21 },
-  fieldWrap: { gap: Spacing.one },
-  field: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.three, minHeight: 32 },
-  label: { fontSize: 17 },
-  control: { flexShrink: 1, alignItems: 'flex-end' },
-  input: { fontSize: 17, textAlign: 'right', minWidth: 160, paddingVertical: 4 },
-  amount: { fontVariant: ['tabular-nums'] },
-  value: { fontSize: 17 },
-  note: { fontSize: 17, minHeight: 60, textAlignVertical: 'top' },
-  note2: { fontSize: 13, lineHeight: 18 },
-  button: { borderRadius: Radius, borderWidth: StyleSheet.hairlineWidth, paddingVertical: 14, alignItems: 'center' },
-  buttonText: { fontSize: 17, fontWeight: '600' },
-});

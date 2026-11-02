@@ -1,0 +1,215 @@
+import { DateTimePicker } from '@expo/ui/community/datetime-picker';
+import { SegmentedControl } from '@expo/ui/community/segmented-control';
+import { Host, Picker } from '@expo/ui';
+import { randomUUID } from 'expo-crypto';
+import { useRouter } from 'expo-router';
+import { Stack } from 'expo-router/stack';
+import { useRef, useState } from 'react';
+import { ScrollView, Text, TextInput } from 'react-native';
+
+import { useApiMutation } from '@/api/mutations';
+import { errorText, useApiQuery } from '@/api/query';
+import type { Account, Category, Transaction, TransactionType } from '@/api/types';
+import { FormField, formStyles } from '@/components/form';
+import { LoadState } from '@/components/load-state';
+import { Section } from '@/components/section';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useTheme } from '@/hooks/use-theme';
+import { offerUndo } from '@/state/undo-offer';
+import { addBody, emptyAddForm, switchAddType, TITLE_MAX, type AddForm } from '@/utils/add';
+import { dateFromYmd, localToday, ymdFromDate } from '@/utils/dates';
+import { transactionName } from '@/utils/transactions';
+
+const TYPES: { value: TransactionType; label: string }[] = [
+  { value: 'expense', label: 'Expense' },
+  { value: 'income', label: 'Income' },
+  { value: 'transfer', label: 'Transfer' },
+];
+
+/** The Picker value for "Automatic" (or "Choose" on a transfer): no id sent. */
+const NONE = '';
+
+/** Logs an expense, income or transfer, as the website's Add card does. */
+export function AddTransaction({ initialType = 'expense' }: { initialType?: TransactionType }) {
+  const theme = useTheme();
+  const router = useRouter();
+  const categories = useApiQuery<{ categories: Category[] }>('/api/v1/categories');
+  const accounts = useApiQuery<{ accounts: Account[] }>('/api/v1/accounts');
+  const failed = categories.error ?? accounts.error;
+
+  return (
+    <>
+      {categories.data && accounts.data ? (
+        <AddEditor initialType={initialType} categories={categories.data.categories} accounts={accounts.data.accounts} />
+      ) : (
+        <ScrollView style={{ backgroundColor: theme.background }} contentContainerStyle={formStyles.content}>
+          <LoadState loading={!failed} error={failed ? errorText(failed) : null} />
+        </ScrollView>
+      )}
+      <Stack.Title>Add</Stack.Title>
+      <Stack.Toolbar placement="left">
+        <Stack.Toolbar.Button onPress={() => router.back()}>Cancel</Stack.Toolbar.Button>
+      </Stack.Toolbar>
+    </>
+  );
+}
+
+function AddEditor({ initialType, categories, accounts }: { initialType: TransactionType; categories: Category[]; accounts: Account[] }) {
+  const theme = useTheme();
+  const scheme = useColorScheme();
+  const router = useRouter();
+  const [form, setForm] = useState<AddForm>(() => emptyAddForm(localToday(), initialType));
+  const [error, setError] = useState<string | null>(null);
+  // One key per thing being added: sending the same add again after a dropped connection is
+  // answered with the entry already made. Changing the form first makes it a new add.
+  const sent = useRef<{ body: string; key: string } | null>(null);
+  const save = useApiMutation<{ body: Record<string, unknown>; key: string }, { transaction: Transaction }>(
+    'POST',
+    () => '/api/v1/transactions',
+    (vars) => vars.body,
+    (vars) => ({ 'Idempotency-Key': vars.key }),
+  );
+
+  const set = <K extends keyof AddForm>(key: K, value: AddForm[K]) => setForm((f) => ({ ...f, [key]: value }));
+  const transfer = form.type === 'transfer';
+  const categoryOptions = categories.filter((c) => c.kind === form.type);
+  const openAccounts = accounts.filter((a) => !a.archived);
+  const ready = form.amount.trim() !== '' && (!transfer || (form.accountId !== null && form.transferAccountId !== null));
+
+  function submit() {
+    const result = addBody(form);
+    if ('error' in result) return setError(result.error);
+    setError(null);
+    const body = JSON.stringify(result.body);
+    const key = sent.current?.body === body ? sent.current.key : randomUUID();
+    sent.current = { body, key };
+    save.mutate(
+      { body: result.body, key },
+      {
+        onSuccess: ({ transaction }) => {
+          offerUndo({ kind: 'added', transactionId: transaction.id, label: transactionName(transaction) });
+          router.back();
+        },
+        onError: (err) => setError(err instanceof Error ? err.message : 'Could not add it. Try again.'),
+      },
+    );
+  }
+
+  const accountPicker = (value: string | null, onChange: (id: string | null) => void, emptyLabel: string) => (
+    <Host matchContents>
+      <Picker selectedValue={value ?? NONE} onValueChange={(v) => onChange(v === NONE ? null : String(v))}>
+        <Picker.Item label={emptyLabel} value={NONE} />
+        {openAccounts.map((a) => (
+          <Picker.Item key={a.id} label={a.name} value={a.id} />
+        ))}
+      </Picker>
+    </Host>
+  );
+
+  return (
+    <>
+      <ScrollView
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+        style={{ backgroundColor: theme.background }}
+        contentContainerStyle={formStyles.content}>
+        <SegmentedControl
+          values={TYPES.map((t) => t.label)}
+          selectedIndex={TYPES.findIndex((t) => t.value === form.type)}
+          onChange={(event) => setForm((f) => switchAddType(f, TYPES[event.nativeEvent.selectedSegmentIndex]?.value ?? f.type))}
+          accessibilityLabel="Kind of entry"
+        />
+
+        {error ? (
+          <Text accessibilityRole="alert" style={[formStyles.error, { color: theme.danger }]}>
+            {error}
+          </Text>
+        ) : null}
+
+        <Section>
+          <FormField label="Amount">
+            <TextInput
+              value={form.amount}
+              onChangeText={(v) => set('amount', v)}
+              placeholder="0.00"
+              placeholderTextColor={theme.textSecondary}
+              keyboardType="decimal-pad"
+              autoFocus
+              style={[formStyles.input, formStyles.amount, { color: theme.text }]}
+              accessibilityLabel="Amount"
+            />
+          </FormField>
+          <FormField label="Title">
+            <TextInput
+              value={form.title}
+              onChangeText={(v) => set('title', v)}
+              placeholder={transfer ? 'Optional' : 'What was it?'}
+              placeholderTextColor={theme.textSecondary}
+              style={[formStyles.input, { color: theme.text }]}
+              returnKeyType="done"
+              maxLength={TITLE_MAX}
+              accessibilityLabel="Title"
+            />
+          </FormField>
+          <FormField label="Date">
+            <DateTimePicker
+              value={dateFromYmd(form.date)}
+              onValueChange={(_, date) => set('date', ymdFromDate(date))}
+              display="compact"
+              timeZoneName="UTC"
+              themeVariant={scheme === 'dark' ? 'dark' : 'light'}
+            />
+          </FormField>
+        </Section>
+
+        {transfer ? (
+          <Section footer="The money leaves the first account and arrives in the second. Neither side counts as spending or income.">
+            <FormField label="From">{accountPicker(form.accountId, (id) => set('accountId', id), 'Choose')}</FormField>
+            <FormField label="To">{accountPicker(form.transferAccountId, (id) => set('transferAccountId', id), 'Choose')}</FormField>
+          </Section>
+        ) : (
+          <Section footer="Automatic files it as the website would: your rules first, then where entries with the same title went before.">
+            <FormField label="Category">
+              <Host matchContents>
+                <Picker selectedValue={form.categoryId ?? NONE} onValueChange={(v) => set('categoryId', v === NONE ? null : String(v))}>
+                  <Picker.Item label="Automatic" value={NONE} />
+                  {categoryOptions.map((c) => (
+                    <Picker.Item key={c.id} label={c.name} value={c.id} />
+                  ))}
+                </Picker>
+              </Host>
+            </FormField>
+            <FormField label="Account">{accountPicker(form.accountId, (id) => set('accountId', id), 'Automatic')}</FormField>
+          </Section>
+        )}
+
+        <Section footer="Separate tags with commas.">
+          <FormField label="Tags">
+            <TextInput
+              value={form.tags}
+              onChangeText={(v) => set('tags', v)}
+              placeholder="None"
+              placeholderTextColor={theme.textSecondary}
+              autoCapitalize="none"
+              style={[formStyles.input, { color: theme.text }]}
+            />
+          </FormField>
+          <TextInput
+            value={form.note}
+            onChangeText={(v) => set('note', v)}
+            placeholder="Note"
+            placeholderTextColor={theme.textSecondary}
+            multiline
+            style={[formStyles.note, { color: theme.text }]}
+            maxLength={2000}
+          />
+        </Section>
+      </ScrollView>
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button variant="done" disabled={!ready || save.isPending} onPress={submit}>
+          Add
+        </Stack.Toolbar.Button>
+      </Stack.Toolbar>
+    </>
+  );
+}

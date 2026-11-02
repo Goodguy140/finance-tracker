@@ -379,7 +379,8 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     sign-in methods, webhooks, dashboard layout) is listed on `UserBackupPayload`. Text over the length limits
     (`src/lib/text-limits.ts`) in an older file is cut to fit rather than refused
   - Developer (API tokens with chosen scopes; `GET /api/v1/budgets`, `GET`/`POST /api/v1/transactions`
-    (a post a "Mark as transfer" rule matches is booked as a transfer unless it names a category),
+    (expenses, income and transfers; a post a "Mark as transfer" rule matches is booked as a transfer
+    unless it names a category; `Idempotency-Key` makes retries safe, `src/lib/api-v1/idempotency.ts`),
     `GET /api/v1/accounts`, `GET /api/v1/categories`, `GET /api/v1/tags`; search with `?q=`, `?tagId=`,
   `?needsReview=`): `api-tokens-panel.tsx`, `src/lib/api-token.ts`,
     `src/lib/api-v1/*`, `src/app/api/v1/*`
@@ -469,6 +470,13 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
   the website. `GET /api/v1/transactions` (now `q`, `tagId`, `needsReview`), `GET`/`PATCH`/`DELETE
   /api/v1/transactions/:id`, `POST /api/v1/undo/:undoId`, `GET /api/v1/tags`
   (`src/lib/api-v1/transactions.ts`). `src/screens/transactions/`
+- Add (the + on Home and Transactions, a sheet): expense, income or transfer with amount, title, date,
+  category and account (Automatic uses the user's rules and past titles, as the website's Add card
+  does), a transfer's From and To, tags and note; an Undo bar afterwards. The Transactions search also
+  reads "12.50 coffee yesterday" as an add, showing how it would be filed, and adds it in one tap
+  (`GET /api/v1/quick-add`). Every add sends an `Idempotency-Key`, so a retry after a dropped
+  connection never adds twice. The phone's adds skip Needs review. `src/screens/add/`,
+  `src/screens/transactions/quick-add-card.tsx`, `src/utils/add.ts`
 - Budgets: any month's budgets by category group, with rollover carries, and the yearly budgets as
   sinking funds; ‹ › switch month. `GET /api/v1/budgets` (now also `groupName`, `rollover` and
   `yearly`). `src/screens/budgets/`
