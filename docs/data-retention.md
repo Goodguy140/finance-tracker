@@ -71,6 +71,7 @@ directly harm the person.
 | Passkeys, authenticator apps and recovery codes | `WebAuthnCredential`, `TotpCredential` (secret encrypted with `SERVER_SETTINGS_ENCRYPTION_KEY`), `RecoveryCode` (bcrypt) | ● | Second factor. |
 | SSO linkage | `AuthAccount` (provider and the provider's account id) | | OIDC sign-in. The `accessToken`, `refreshToken` and `idToken` columns are always empty: provider tokens are not stored, and migration `20260904121000` cleared the ones older versions kept. |
 | API tokens | `PersonalAccessToken` (SHA-256 hash, prefix, scopes, `lastUsedAt`) | ● | Machine access. |
+| Phone app sign-ins | `AppDevice` (device name, platform, app version, SHA-256 hash of the token, `lastUsedAt`), `AppSignInCode` (hash of a one-time code, for one minute) | ● | The phone app. |
 | Audit trail | `AuditLog` (actor, target, **IP address**, **user agent**, scrubbed metadata) | ● | Security and accountability. IP and UA are personal data in their own right. |
 | Alert bookkeeping | `BudgetAlertNotification` (month, category, severity) | | Stops one alert per severity per month repeating. |
 | Notification settings | `ChargeAlertSetting`, `PushDevice` (the browser's push endpoint and keys), `CalendarFeed` (a hash of the private calendar link) | | Large-charge alerts, phone notifications and the calendar feed. |
@@ -88,10 +89,12 @@ directly harm the person.
 | Data | Retained for | Disposal mechanism |
 |------|--------------|--------------------|
 | All financial records, including receipts, balance history, score history and closed months | **Until the user deletes them.** No automatic expiry. | Cascade on account deletion; bulk wipe via **Settings → Backup & export → Clear financial data** |
-| `User`, credentials, passkeys, authenticator apps, recovery codes, SSO links, API tokens, webhooks, push devices, the calendar link | Life of the account, or until the user removes them | `onDelete: Cascade` from `User` |
+| `User`, credentials, passkeys, authenticator apps, recovery codes, SSO links, API tokens, signed-in phones, webhooks, push devices, the calendar link | Life of the account, or until the user removes them | `onDelete: Cascade` from `User` |
 | `DeletedTransaction` | Usable for **15 minutes**; the row stays until the user's next delete, a reset, a restore or account deletion | Pruned when the same user next deletes something |
 | Receipts on a deleted entry | Unlinked and kept with its `DeletedTransaction` row, so Undo can put them back | Deleted with that row |
 | `WebhookDelivery` | **30 days** | Pruned by the hourly sweep (off when `EMAIL_DIGEST_SCHEDULER=false`) |
+| `AppDevice` | Until the phone or the user signs it out, **90 days** without use, or a password change | Deleted on sign-out; an idled-out or revoked one is deleted the next time it is used or listed |
+| `AppSignInCode` | **1 minute** | Deleted on first use; expired ones are cleared at the user's next sign-in from the app |
 | `PushDevice` | Until the user removes it, the push service reports it gone, or 10 sends in a row fail | Deleted on any of those |
 | `AuditLog` | `AUDIT_LOG_RETENTION_DAYS`, **default 365** | Probabilistic sweep, ~1 write in 200 |
 | `MfaChallenge` | Minutes. Deleted the moment it is consumed | Delete on use; sweep ~1 ceremony in 20 |

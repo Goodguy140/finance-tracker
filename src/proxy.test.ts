@@ -83,3 +83,19 @@ describe("public path classification", () => {
     expect(classify("/api/backup/export/me")).toBe("protected");
   });
 });
+
+describe("signed-out redirect", () => {
+  const signInPath = __authProxyInternals.signInRedirectPath;
+
+  it("sends the phone app's sign-in page to /login and back again", () => {
+    expect(signInPath("/app/authorize", "?code_challenge=abc&state=s1")).toBe(
+      `/login?next=${encodeURIComponent("/app/authorize?code_challenge=abc&state=s1")}`,
+    );
+  });
+
+  it("keeps every other path on the plain login page", () => {
+    expect(signInPath("/", "")).toBe("/login");
+    expect(signInPath("/settings", "?x=1")).toBe("/login");
+    expect(signInPath("/apples", "")).toBe("/login");
+  });
+});

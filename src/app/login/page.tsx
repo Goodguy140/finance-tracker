@@ -3,10 +3,11 @@ import { LoginForm } from "@/components/forms";
 import { PurgePrivateCache } from "@/components/pwa/purge-private-cache";
 import { getLoginDebugVersionLine } from "@/lib/app-version";
 import { isPasswordLoginDisabled } from "@/lib/oauth-provider-config";
+import { safeNextPath } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ error?: string | string[] }>;
+type SearchParams = Promise<{ error?: string | string[]; next?: string | string[] }>;
 
 const oauthErrorMessages: Record<string, string> = {
   google:
@@ -37,6 +38,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   const errorCode = Array.isArray(raw) ? raw[0] : raw;
   const errorMessage = loginErrorMessage(errorCode);
   const passwordLoginDisabled = await isPasswordLoginDisabled();
+  // Where to go once signed in: the phone app's sign-in page sends people here with `next`.
+  const next = safeNextPath(Array.isArray(sp.next) ? sp.next[0] : sp.next);
 
   return (
     <main className="mx-auto mt-20 max-w-md rounded-2xl border border-slate-800 bg-slate-900/80 p-6 text-slate-100 shadow-xl backdrop-blur">
@@ -50,7 +53,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
           ) : null}
         </p>
       ) : null}
-      <LoginForm passwordLoginDisabled={passwordLoginDisabled} />
+      <LoginForm passwordLoginDisabled={passwordLoginDisabled} callbackPath={next} />
       <div className="mt-4 space-y-1 text-sm text-slate-400">
         {passwordLoginDisabled ? null : (
           <>

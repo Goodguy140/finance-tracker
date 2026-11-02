@@ -17,7 +17,8 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 /**
  * GET /api/v1/budgets?month=YYYY-MM
  * Returns the authenticated user's current-month budget-vs-actual.
- * Auth: `Authorization: Bearer <personal access token>` with scope `budgets:read`.
+ * Auth: `Authorization: Bearer <personal access token>` with scope `budgets:read`, or a phone
+ * app device token.
  */
 export async function GET(request: Request) {
   const auth = await authenticateApiToken(request, API_SCOPES.budgetsRead);
@@ -60,15 +61,17 @@ export async function GET(request: Request) {
 
   const progress = await buildMonthlyBudgetProgress(auth.user.id, ym);
 
-  const h = await headers();
-  await recordAuditLog(prisma, {
-    userId: auth.user.id,
-    action: AUDIT_ACTIONS.api_budgets_read,
-    targetType: "personal_access_token",
-    targetId: auth.token.id,
-    metadata: { periodMonth: ym },
-    headers: h,
-  });
+  // The phone app's reads are not audited, as the website's are not (see transactions).
+  if (auth.token.kind === "token") {
+    await recordAuditLog(prisma, {
+      userId: auth.user.id,
+      action: AUDIT_ACTIONS.api_budgets_read,
+      targetType: "personal_access_token",
+      targetId: auth.token.id,
+      metadata: { periodMonth: ym },
+      headers: await headers(),
+    });
+  }
 
   return NextResponse.json(
     {

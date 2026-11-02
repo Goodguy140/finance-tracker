@@ -32,6 +32,8 @@ export const AUDIT_ACTIONS = {
   user_printable_downloaded: "user_printable_downloaded",
   api_token_created: "api_token_created",
   api_token_revoked: "api_token_revoked",
+  app_device_signed_in: "app_device_signed_in",
+  app_device_signed_out: "app_device_signed_out",
   webhook_created: "webhook_created",
   webhook_deleted: "webhook_deleted",
   calendar_feed_created: "calendar_feed_created",

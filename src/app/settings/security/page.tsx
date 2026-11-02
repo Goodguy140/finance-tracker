@@ -1,6 +1,8 @@
 import { SecurityPanel } from "@/components/security-panel";
+import { SignedInApps } from "@/components/settings/signed-in-apps";
 import { PasswordSection } from "@/components/settings/you-forms";
 import { SettingsCard, SettingsPage } from "@/components/settings/ui";
+import { APP_DEVICE_IDLE_DAYS, listAppDevices } from "@/lib/app-devices";
 import { MFA_STEP_UP_MAX_AGE_MS } from "@/lib/auth-constants";
 import { getAuthentikProvider, getGoogleProvider } from "@/lib/oauth-provider-config";
 import { prisma } from "@/lib/prisma";
@@ -14,7 +16,7 @@ export default async function SecuritySettingsPage({ searchParams }: { searchPar
   const { user, mfa } = await requireLoadedUser();
   const sp = await searchParams;
   const linkedRaw = Array.isArray(sp.linked) ? sp.linked[0] : sp.linked;
-  const [passkeys, recoveryCodesRemaining, authAccounts, googleProvider, authentikProvider, totp] = await Promise.all([
+  const [passkeys, recoveryCodesRemaining, authAccounts, googleProvider, authentikProvider, totp, appDevices] = await Promise.all([
     prisma.webAuthnCredential.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "asc" },
@@ -25,6 +27,7 @@ export default async function SecuritySettingsPage({ searchParams }: { searchPar
     getGoogleProvider(),
     getAuthentikProvider(),
     prisma.totpCredential.findUnique({ where: { userId: user.id }, select: { createdAt: true } }),
+    listAppDevices(user.id),
   ]);
   const linkedProviders = [...new Set(authAccounts.map((a) => a.provider))];
   const hasPassword = user.passwordHash != null;
@@ -49,6 +52,23 @@ export default async function SecuritySettingsPage({ searchParams }: { searchPar
       />
       <SettingsCard title="Password">
         <PasswordSection hasPassword={hasPassword} />
+      </SettingsCard>
+      <SettingsCard
+        id="signed-in-apps"
+        title="Signed-in apps"
+        description="Phones signed in to the Finance Tracker app with this account."
+      >
+        <SignedInApps
+          idleDays={APP_DEVICE_IDLE_DAYS}
+          devices={appDevices.map((d) => ({
+            id: d.id,
+            name: d.name,
+            platform: d.platform,
+            appVersion: d.appVersion,
+            createdAt: d.createdAt.toISOString(),
+            lastUsedAt: d.lastUsedAt ? d.lastUsedAt.toISOString() : null,
+          }))}
+        />
       </SettingsCard>
     </SettingsPage>
   );

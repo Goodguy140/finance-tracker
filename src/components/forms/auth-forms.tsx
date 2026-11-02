@@ -86,7 +86,14 @@ export function SignupForm() {
   );
 }
 
-export function LoginForm({ passwordLoginDisabled = false }: { passwordLoginDisabled?: boolean }) {
+/** `callbackPath` is where to land once signed in: a same-origin path (`safeNextPath`). */
+export function LoginForm({
+  passwordLoginDisabled = false,
+  callbackPath = "/",
+}: {
+  passwordLoginDisabled?: boolean;
+  callbackPath?: string;
+}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +119,7 @@ export function LoginForm({ passwordLoginDisabled = false }: { passwordLoginDisa
             const result = await signIn("credentials", {
               email,
               password,
-              callbackUrl: `${origin}/`,
+              callbackUrl: `${origin}${callbackPath}`,
               redirect: false,
             });
             if (result?.error) {
@@ -126,7 +133,7 @@ export function LoginForm({ passwordLoginDisabled = false }: { passwordLoginDisa
             // Full page load on purpose: the session cookie was just set, and a client-side
             // router.push() would render the destination against the pre-sign-in session.
             // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-            window.location.href = `${origin}/`;
+            window.location.href = `${origin}${callbackPath}`;
           } catch {
             setError("Sign-in failed. Please try again.");
           } finally {
@@ -180,7 +187,7 @@ export function LoginForm({ passwordLoginDisabled = false }: { passwordLoginDisa
             const result = await signIn("passkey", {
               challengeId: begin.challengeId,
               response: JSON.stringify(response),
-              callbackUrl: `${origin}/`,
+              callbackUrl: `${origin}${callbackPath}`,
               redirect: false,
             });
             if (result?.error) {
@@ -188,7 +195,7 @@ export function LoginForm({ passwordLoginDisabled = false }: { passwordLoginDisa
               return;
             }
             // Full page load on purpose: the session cookie was just set (see LoginForm).
-            window.location.href = result?.url ?? `${origin}/`;
+            window.location.href = result?.url ?? `${origin}${callbackPath}`;
           } catch {
             setError("Passkey sign-in failed. Please try again.");
           } finally {
@@ -198,7 +205,7 @@ export function LoginForm({ passwordLoginDisabled = false }: { passwordLoginDisa
       >
         Sign in with a passkey
       </button>
-      <SsoSignInForms callbackUrl="/" />
+      <SsoSignInForms callbackUrl={callbackPath} />
     </div>
   );
 }

@@ -29,7 +29,7 @@ const { GET } = await import("./route");
 const okAuth = {
   status: "ok" as const,
   user: { id: "u1", timezone: "America/Toronto" },
-  token: { id: "t1" },
+  token: { kind: "token" as const, id: "t1" },
 };
 
 const sampleProgress = {
@@ -82,6 +82,13 @@ describe("GET /api/v1/budgets", () => {
     });
     expect(vi.mocked(buildMonthlyBudgetProgress)).toHaveBeenCalledWith("u1", "2026-06");
     expect(vi.mocked(recordAuditLog)).toHaveBeenCalledOnce();
+  });
+
+  it("does not audit a read by the phone app", async () => {
+    vi.mocked(authenticateApiToken).mockResolvedValue({ ...okAuth, token: { kind: "device", id: "d1" } } as never);
+    const res = await get();
+    expect(res.status).toBe(200);
+    expect(vi.mocked(recordAuditLog)).not.toHaveBeenCalled();
   });
 
   it("defaults to the current month when no month is provided", async () => {

@@ -114,6 +114,30 @@ list confirms nothing is still using it.
 
 Tokens of a suspended user are rejected, so suspension covers machine access too.
 
+**Phone app.** The phone app signs in through the website, never with a password of its own
+(`src/lib/app-devices.ts`, OAuth 2.0 for native apps with PKCE). It opens `/app/authorize` in the
+system sign-in sheet; that page is an ordinary signed-in page, so password, passkey,
+authenticator code, SSO and the `/mfa` wall all apply. **Allow** needs "Confirm it's you"
+(`approveAppSignInAction`) and hands the app a one-time code through `financetracker://signed-in`
+only. `POST /api/v1/app/token` trades the code and its PKCE verifier (S256 only) for a device
+token (`Authorization: Bearer ftd_…`).
+
+- The code lives for one minute, is stored as a hash, and works once: it is deleted on the
+  first try whether or not the verifier matches.
+- A device token is 256 random bits, stored as a SHA-256 hash in `AppDevice`, and reaches every
+  `/api/v1` route plus `app` (`GET /api/v1/me`), which personal access tokens cannot be given.
+  Nothing on `/api/v1` deletes or restores data, changes sign-in, or reaches admin controls.
+- It ends when the phone signs out (`POST /api/v1/app/revoke`), when the person signs it out
+  under **Settings → Security → Signed-in apps**, after 90 days unused, and on anything that
+  bumps `User.tokenVersion` (password change or reset, suspension, `reset-mfa.cjs`). A
+  suspended user's devices are refused outright.
+- At most 10 phones per account. Sign-ins and sign-outs are audit-logged
+  (`app_device_signed_in`, `app_device_signed_out`); the app's reads are not, as the website's
+  are not. Rate limits are the same as for tokens; the code exchange allows 20 tries a minute
+  per address.
+- `GET /api/v1/server` is public and names only the sign-in endpoints, so the app can check
+  an address before opening the sign-in sheet.
+
 **Calendar feed.** A user can make one private calendar link (**Settings → Notifications**)
 that calendar apps fetch without a session: `GET /api/calendar/<secret>.ics`, read-only, and
 listing only recurring rules (names, amounts, dates, account names, notes) and decide-by dates.
