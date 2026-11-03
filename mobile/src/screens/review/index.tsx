@@ -1,8 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 import { refreshBanks, type BankRefresh } from '@/api/banks';
 import { useApiMutation } from '@/api/mutations';
@@ -11,21 +12,25 @@ import type { Me, QueueRevision, QueueRow, ReviewQueue as ReviewQueueData } from
 import { FormButton } from '@/components/form';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
-import { Radius, Spacing } from '@/constants/theme';
+import { Colors, Radius, Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { useSession } from '@/session/session-provider';
 import { formatCents } from '@/utils/money';
 import {
+  acceptRequest,
   banksNeedingAttention,
   defaultDecision,
+  ignoreRequest,
   proposalFor,
   queueAmount,
+  queueCategory,
   queueSubtitle,
   REVIEW_QUEUE_PATH as QUEUE_PATH,
   strongLinks,
   transferDirection,
   unmatchedIds,
+  type QueueRequest,
 } from '@/utils/review-queue';
 
 type BulkBody =
@@ -65,8 +70,28 @@ export function ReviewQueue() {
     (v) => `${QUEUE_PATH}/revisions/${encodeURIComponent(v.id)}`,
     (v) => ({ action: v.action }),
   );
+  // A swiped row: several can be on their way at once, so each is tracked by its id.
+  const quick = useApiMutation<QueueRequest, unknown>('POST', (r) => r.path, (r) => r.body);
+  const [working, setWorking] = useState<ReadonlySet<string>>(new Set());
   const busy = bulk.isPending || revision.isPending;
   const fail = (err: unknown) => setError(errorText(err));
+
+  async function decideFromList(row: QueueRow, request: QueueRequest) {
+    setError(null);
+    setWorking((ids) => new Set(ids).add(row.id));
+    try {
+      // Resolves once the queue has been read again, so the row leaves the list as it stops dimming.
+      await quick.mutateAsync(request);
+    } catch (err) {
+      fail(err);
+    } finally {
+      setWorking((ids) => {
+        const next = new Set(ids);
+        next.delete(row.id);
+        return next;
+      });
+    }
+  }
 
   const data = query.data;
   const rows = data?.rows ?? [];
@@ -148,9 +173,17 @@ export function ReviewQueue() {
             {rows.length > 0 ? (
               <RowList
                 rows={rows}
+                categories={data.categories}
                 currency={currency}
+                working={working}
+                onDecide={(row, request) => void decideFromList(row, request)}
                 title={`${data.total} to review`}
-                footer={data.total > rows.length ? `Showing the newest ${rows.length}. The rest appear as you review these.` : null}
+                footer={[
+                  'Swipe a row right to add it as shown, or left to ignore it. Tap it to change anything first.',
+                  data.total > rows.length ? `Showing the newest ${rows.length}. The rest appear as you review these.` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
               />
             ) : null}
           </>
@@ -233,10 +266,24 @@ function SmallButton(props: { label: string; onPress: () => void; disabled?: boo
   );
 }
 
-function RowList(props: { rows: QueueRow[]; currency: string; title: string; footer: string | null }) {
+function RowList(props: {
+  rows: QueueRow[];
+  categories: ReviewQueueData['categories'];
+  currency: string;
+  working: ReadonlySet<string>;
+  onDecide: (row: QueueRow, request: QueueRequest) => void;
+  title: string;
+  footer: string;
+}) {
   const theme = useTheme();
   const router = useRouter();
-  const { rows, currency, title, footer } = props;
+  const { rows, categories, currency, working, onDecide, title, footer } = props;
+  // One row open at a time, as in Mail: opening another closes the last.
+  const open = useRef<SwipeableMethods | null>(null);
+  const opened = (methods: SwipeableMethods) => {
+    if (open.current && open.current !== methods) open.current.close();
+    open.current = methods;
+  };
   return (
     <View style={styles.listWrap}>
       <Text style={[styles.listTitle, { color: theme.textSecondary }]} accessibilityRole="header">
@@ -244,17 +291,21 @@ function RowList(props: { rows: QueueRow[]; currency: string; title: string; foo
       </Text>
       <View>
         {rows.map((row, index) => (
-          <QueueRowItem
+          <SwipeableQueueRow
             key={row.id}
             row={row}
+            category={queueCategory(row, categories)}
             currency={currency}
             first={index === 0}
             last={index === rows.length - 1}
+            working={working.has(row.id)}
+            onOpen={opened}
+            onDecide={(request) => onDecide(row, request)}
             onPress={() => router.push({ pathname: '/review/[id]', params: { id: row.id } })}
           />
         ))}
       </View>
-      {footer ? <Text style={[styles.listFooter, { color: theme.textSecondary }]}>{footer}</Text> : null}
+      <Text style={[styles.listFooter, { color: theme.textSecondary }]}>{footer}</Text>
     </View>
   );
 }
@@ -271,8 +322,84 @@ function proposalLine(row: QueueRow): string | null {
   }
 }
 
-function QueueRowItem(props: { row: QueueRow; currency: string; first: boolean; last: boolean; onPress: () => void }) {
-  const { row, currency, first, last, onPress } = props;
+type RowProps = {
+  row: QueueRow;
+  category: string | null;
+  currency: string;
+  first: boolean;
+  last: boolean;
+  working: boolean;
+  onOpen: (methods: SwipeableMethods) => void;
+  onDecide: (request: QueueRequest) => void;
+  onPress: () => void;
+};
+
+/**
+ * A row that swipes: right shows the proposal's button (Add, or Link or Pair where adding would
+ * duplicate an entry or split a transfer), left shows Ignore. A swipe only shows the button and a
+ * tap does it, so a stray swipe never ignores a row for good.
+ */
+function SwipeableQueueRow(props: RowProps) {
+  const { row, first, last, working, onOpen, onDecide } = props;
+  const swipeable = useRef<SwipeableMethods>(null);
+  const accept = acceptRequest(row);
+  const ignore = ignoreRequest(row);
+  const decide = (request: QueueRequest) => {
+    swipeable.current?.close();
+    onDecide(request);
+  };
+  const corners = {
+    borderTopLeftRadius: first ? Radius : 0,
+    borderTopRightRadius: first ? Radius : 0,
+    borderBottomLeftRadius: last ? Radius : 0,
+    borderBottomRightRadius: last ? Radius : 0,
+  };
+  return (
+    <ReanimatedSwipeable
+      ref={swipeable}
+      enabled={!working}
+      friction={1.5}
+      leftThreshold={SWIPE_ACTION_WIDTH / 2}
+      rightThreshold={SWIPE_ACTION_WIDTH / 2}
+      overshootLeft={false}
+      overshootRight={false}
+      containerStyle={[styles.swipeContainer, corners]}
+      onSwipeableWillOpen={() => swipeable.current && onOpen(swipeable.current)}
+      renderLeftActions={() => <SwipeAction label={accept.label} color={Colors.light.tint} onPress={() => decide(accept)} />}
+      renderRightActions={() => <SwipeAction label={ignore.label} color={Colors.light.danger} onPress={() => decide(ignore)} />}>
+      <QueueRowItem
+        {...props}
+        accessibilityActions={[
+          { name: 'accept', label: accept.label },
+          { name: 'ignore', label: ignore.label },
+        ]}
+        onAccessibilityAction={(name) => decide(name === 'accept' ? accept : ignore)}
+      />
+    </ReanimatedSwipeable>
+  );
+}
+
+const SWIPE_ACTION_WIDTH = 96;
+
+/** The button a swipe uncovers. Fixed colours, so white text reads in dark mode too. */
+function SwipeAction({ label, color, onPress }: { label: string; color: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.swipeAction, { backgroundColor: color, opacity: pressed ? 0.8 : 1 }]}>
+      <Text style={styles.swipeActionText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function QueueRowItem(
+  props: RowProps & {
+    accessibilityActions: { name: string; label: string }[];
+    onAccessibilityAction: (name: string) => void;
+  },
+) {
+  const { row, category, currency, first, last, working, onPress } = props;
   const theme = useTheme();
   const amount = queueAmount(row, currency);
   const name = (proposalFor(row, defaultDecision(row), row.isTransfer) ?? row.asNonTransfer).title;
@@ -281,8 +408,12 @@ function QueueRowItem(props: { row: QueueRow; currency: string; first: boolean; 
   return (
     <Pressable
       onPress={onPress}
+      disabled={working}
       accessibilityRole="button"
-      accessibilityLabel={[name, amount.text, subtitle, proposal].filter(Boolean).join(', ')}
+      accessibilityLabel={[name, amount.text, category, subtitle, proposal].filter(Boolean).join(', ')}
+      accessibilityState={{ busy: working }}
+      accessibilityActions={props.accessibilityActions}
+      onAccessibilityAction={(event) => props.onAccessibilityAction(event.nativeEvent.actionName)}
       style={({ pressed }) => [
         styles.row,
         {
@@ -293,6 +424,7 @@ function QueueRowItem(props: { row: QueueRow; currency: string; first: boolean; 
           borderTopRightRadius: first ? Radius : 0,
           borderBottomLeftRadius: last ? Radius : 0,
           borderBottomRightRadius: last ? Radius : 0,
+          opacity: working ? 0.5 : 1,
         },
       ]}>
       <View style={styles.rowText}>
@@ -308,7 +440,14 @@ function QueueRowItem(props: { row: QueueRow; currency: string; first: boolean; 
           </Text>
         ) : null}
       </View>
-      <Text style={[styles.amount, { color: amount.moneyIn ? theme.positive : theme.text }]}>{amount.text}</Text>
+      <View style={styles.rowEnd}>
+        <Text style={[styles.amount, { color: amount.moneyIn ? theme.positive : theme.text }]}>{amount.text}</Text>
+        {category ? (
+          <Text style={[styles.category, { color: theme.textSecondary }]} numberOfLines={1}>
+            {category}
+          </Text>
+        ) : null}
+      </View>
     </Pressable>
   );
 }
@@ -339,7 +478,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   rowText: { flex: 1, gap: 2 },
+  rowEnd: { alignItems: 'flex-end', gap: 2, maxWidth: '40%' },
   name: { fontSize: 17 },
   subtitle: { fontSize: 13 },
   amount: { fontSize: 17, fontVariant: ['tabular-nums'] },
+  category: { fontSize: 13 },
+  swipeContainer: { overflow: 'hidden' },
+  swipeAction: { width: SWIPE_ACTION_WIDTH, alignItems: 'center', justifyContent: 'center' },
+  swipeActionText: { color: '#ffffff', fontSize: 15, fontWeight: '600' },
 });
