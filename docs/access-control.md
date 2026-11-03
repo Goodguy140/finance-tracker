@@ -137,7 +137,9 @@ token (`Authorization: Bearer ftd_…`).
   /api/v1/transactions/:id`; a deleted entry is kept 15 minutes for `POST /api/v1/undo/:undoId`,
   as on the website), recurring bills (`GET /api/v1/recurring`, posting or skipping the occurrence
   a rule waits on with `POST /api/v1/recurring/:id/post` and `/skip`, as the website's Post and Skip
-  do), and the bank review queue (`GET /api/v1/review-queue`, deciding rows with
+  do), insights and the financial score (`GET /api/v1/insights`, `GET /api/v1/score`, and hiding or
+  putting back one insight with `POST /api/v1/insights/dismiss` and `/restore`, as the website's
+  Snooze, Dismiss and Restore do), and the bank review queue (`GET /api/v1/review-queue`, deciding rows with
   `POST /api/v1/review-queue/:id`, `/pair`, `/bulk`, `/revisions/:id`, the same decisions as the
   website's queue buttons, which need no step-up there either; `POST /api/v1/banks/refresh` checks
   the person's banks as the log's refresh icon does). Linking, unlinking or signing in to a bank

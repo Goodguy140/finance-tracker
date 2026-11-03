@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { errorText, useApiQuery } from '@/api/query';
-import type { Summary } from '@/api/types';
+import type { FinancialScore, Summary } from '@/api/types';
 import { BudgetLine } from '@/components/budget-line';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
@@ -13,6 +13,7 @@ import { Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDay, relativeDay } from '@/utils/dates';
+import { bandTone, SCORE_PATH, scoreChangeText } from '@/utils/insights';
 import { formatCents, formatPeriodMonth } from '@/utils/money';
 import { safeToSpendBreakdown, safeToSpendLine } from '@/utils/safe-to-spend';
 
@@ -38,6 +39,7 @@ export function Home() {
             <Waiting data={data} />
             <BudgetsCard data={data} />
             <ComingUp data={data} />
+            <ScoreRow />
           </>
         ) : null}
       </ScrollView>
@@ -201,6 +203,31 @@ function ComingUp({ data }: { data: Summary }) {
   );
 }
 
+/** The financial score in one line, with the way to Insights. Loads on its own, so Home never waits for it. */
+function ScoreRow() {
+  const theme = useTheme();
+  const router = useRouter();
+  const score = useApiQuery<FinancialScore>(SCORE_PATH).data;
+  if (!score) return null;
+  return (
+    <Section title="Financial score">
+      {score.status === 'scored' ? (
+        <View style={styles.hero} accessible accessibilityLabel={`${score.score} out of 100, ${score.band}. ${scoreChangeText(score) ?? ''}`}>
+          <Text style={[styles.scoreLine, { color: theme[bandTone(score.band)] }]}>
+            <Text style={styles.scoreNumber}>{score.score}</Text> {score.band}
+          </Text>
+          {score.change ? <Text style={[styles.small, { color: theme.textSecondary }]}>{scoreChangeText(score)}</Text> : null}
+        </View>
+      ) : (
+        <Text style={[styles.muted, { color: theme.textSecondary }]}>{score.reason}</Text>
+      )}
+      <Pressable onPress={() => router.push('/insights')} accessibilityRole="button" hitSlop={8}>
+        <Text style={[styles.link, { color: theme.tint }]}>See insights and where to improve</Text>
+      </Pressable>
+    </Section>
+  );
+}
+
 const styles = StyleSheet.create({
   content: { padding: Spacing.three, gap: Spacing.four, paddingBottom: Spacing.five },
   hero: { gap: Spacing.one },
@@ -213,6 +240,8 @@ const styles = StyleSheet.create({
   lineAmount: { fontSize: 15, fontVariant: ['tabular-nums'] },
   rowText: { fontSize: 17, flexShrink: 1 },
   chevron: { fontSize: 22 },
+  scoreLine: { fontSize: 20, fontWeight: '600' },
+  scoreNumber: { fontSize: 32, fontWeight: '700', fontVariant: ['tabular-nums'] },
   upcoming: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Spacing.two },
   upcomingText: { flexShrink: 1, gap: 2 },
 });

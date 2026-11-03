@@ -189,7 +189,7 @@ owed money, room, goals or gaps).
   budget kept): `standing.ts`
 - **Dismiss / snooze / restore, tag filter** (a dismissed insight shows again once it is half as
   big again as when dismissed, `InsightDismissal.dismissedCents`): `actions/insights.ts`,
-  `src/components/insights/insight-item.tsx`
+  `src/lib/insights/dismiss.ts` (shared with the phone app), `src/components/insights/insight-item.tsx`
 
 ## Reports (`/reports`)
 
@@ -515,6 +515,14 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
   `GET /api/v1/recurring`, `POST /api/v1/recurring/:id/post` and `/skip` (`src/lib/api-v1/recurring.ts`,
   the website's `postRecurringOccurrence` and `skipRecurringOccurrence`). `src/screens/bills/`,
   `src/utils/recurring.ts`
+- Insights (Home's "See insights and where to improve", under the score): the financial score with
+  its four pillars, where to improve and how it is worked out, then every insight under the
+  website's sections, each with its transactions, its website page when it has one (tracking a
+  recurring charge, a budget or rule opens the website in Safari), and the website's Snooze, Dismiss,
+  Not recurring or Don't flag this; dismissed and snoozed ones can be put back. Home shows the score
+  and how it moved. `GET /api/v1/score`, `GET /api/v1/insights`, `POST /api/v1/insights/dismiss` and
+  `/restore` (`src/lib/api-v1/insights.ts`, the website's `loadInsights` and `loadFinancialScore`;
+  `src/lib/insights/dismiss.ts` behind both apps' buttons). `src/screens/insights/`, `src/utils/insights.ts`
 - Settings: who is signed in, the server, Open the website, Sign out (also revokes the token on
   the server), and **Require Face ID** (Touch ID or the passcode on phones without it): the app
   opens to a lock screen and locks again after 5 minutes in the background; turning it on or off

@@ -5,15 +5,13 @@ import { CategoryKind, TransactionRuleTextOperator, TransactionType } from "@pri
 import { normalizeExpenseTitleKey } from "@/lib/expense-title-suggestions";
 import { ruleTitlePatterns } from "@/lib/transaction-rules";
 import { HABIT_CATEGORY_NAMES } from "@/lib/insights/habit-patterns";
-import { insightSizeCents } from "@/lib/insights/index";
+import { dismissInsight, restoreInsight } from "@/lib/insights/dismiss";
 import { loadInsights } from "@/lib/insights/load";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { dismissInsightSchema, habitDetectionSchema, insightKeySchema, trackHabitSchema } from "@/lib/validation";
 import { formAction, getFormValue } from "./_helpers";
 
-/** How long "Snooze" hides an insight. */
-const INSIGHT_SNOOZE_DAYS = 30;
 /** Matches the cap in transaction-rules.ts; tracking a habit must not route around it. */
 const MAX_TRANSACTION_RULES = 200;
 /** Below this, a CONTAINS rule would fire inside unrelated words ("saq" in "Saquaro"). */
@@ -30,24 +28,14 @@ export const dismissInsightAction = formAction(async (formData: FormData) => {
     insightKey: getFormValue(formData, "insightKey"),
     mode: getFormValue(formData, "mode") || undefined,
   });
-  const snoozedUntil = mode === "snooze" ? new Date(Date.now() + INSIGHT_SNOOZE_DAYS * 24 * 60 * 60 * 1000) : null;
-  // Its size now, worked out again on the server rather than taken from the form, so it can
-  // come back if it grows well past what the user dismissed.
-  const insights = await loadInsights(user.id, user.countryCode, user.timezone);
-  const insight = [...insights.visible, ...insights.dismissed].find((i) => i.key === insightKey);
-  const dismissedCents = insight ? insightSizeCents(insight) : null;
-  await prisma.insightDismissal.upsert({
-    where: { userId_insightKey: { userId: user.id, insightKey } },
-    create: { userId: user.id, insightKey, snoozedUntil, dismissedCents },
-    update: { snoozedUntil, dismissedCents },
-  });
+  await dismissInsight(user, insightKey, mode);
   revalidateInsights();
 });
 
 export const restoreInsightAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const { insightKey } = insightKeySchema.parse({ insightKey: getFormValue(formData, "insightKey") });
-  await prisma.insightDismissal.deleteMany({ where: { userId: user.id, insightKey } });
+  await restoreInsight(user.id, insightKey);
   revalidateInsights();
 });
 

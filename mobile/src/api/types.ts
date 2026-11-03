@@ -231,3 +231,53 @@ export type RecurringRule = {
 };
 
 export type RecurringList = { today: string; rules: RecurringRule[] };
+
+export type InsightSection = 'ahead' | 'gap' | 'recurring' | 'habit' | 'saving' | 'improvement' | 'good';
+
+/** One insight as `GET /api/v1/insights` lists it: what the website's Insights page shows. */
+export type Insight = {
+  key: string;
+  section: InsightSection;
+  severity: 'high' | 'medium' | 'low';
+  title: string;
+  body: string;
+  monthlyCents: number | null;
+  annualCents: number | null;
+  savingCents: number | null;
+  evidence: { id: string; date: string; title: string | null; amountCents: number; type: TransactionType }[];
+  /** The page of the website its button leads to (a path on the server), when it has one. */
+  website: { path: string; label: string } | null;
+  /** Only on a hidden one: snoozed until this day, or null when dismissed for good. */
+  hiddenUntil?: string | null;
+};
+
+export type InsightList = { currency: string; snoozeDays: number; insights: Insight[]; hidden: Insight[] };
+
+export type ScoreBand = 'Strong' | 'Good' | 'Fair' | 'Needs work' | 'At risk';
+
+/** The financial score as `GET /api/v1/score` gives it. */
+export type FinancialScore =
+  | { status: 'insufficient'; currency: string; reason: string }
+  | {
+      status: 'scored';
+      currency: string;
+      score: number;
+      band: ScoreBand;
+      months: string[];
+      change: { fromMonth: string; fromScore: number; mover: { label: string; delta: number } | null } | null;
+      pillars: { id: string; label: string; score: number | null; band: ScoreBand | null; weight: number; note: string | null }[];
+      factors: {
+        id: string;
+        pillar: string;
+        label: string;
+        score: number;
+        band: ScoreBand;
+        weight: number;
+        detail: string;
+        suggestion: string | null;
+      }[];
+      suggestions: string[];
+      omitted: { label: string; reason: string }[];
+      otherCurrencyAccounts: { name: string; currency: string }[];
+      emergencyTargetMonths: number;
+    };
