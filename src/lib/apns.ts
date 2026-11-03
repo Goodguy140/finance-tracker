@@ -83,7 +83,10 @@ export type ApnsMessage = {
   body: string;
   /** Groups alerts of a kind in Notification Center. */
   threadId?: string;
-  /** Read by the app, not shown: what to open when the alert is tapped. */
+  /**
+   * Read by the app, not shown: what to open when the alert is tapped. Sent under `body`,
+   * where expo-notifications looks for a remote notification's data (`content.data`).
+   */
   data?: Record<string, string>;
 };
 
@@ -95,7 +98,7 @@ export function apnsPayload(message: ApnsMessage): string {
       sound: "default",
       ...(message.threadId ? { "thread-id": message.threadId } : {}),
     },
-    ...message.data,
+    ...(message.data ? { body: message.data } : {}),
   });
 }
 

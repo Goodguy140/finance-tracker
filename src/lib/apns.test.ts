@@ -95,7 +95,7 @@ it("sends each phone its alert as Apple requires, and reads back what Apple says
   expect(verifies(String(first.headers.authorization).replace(/^bearer /, ""))).toBe(true);
   expect(JSON.parse(first.body)).toEqual({
     aps: { alert: { title: "Hydro is due", body: "$80.00 tomorrow" }, sound: "default" },
-    kind: "billReminders",
+    body: { kind: "billReminders" },
   });
 });
 
