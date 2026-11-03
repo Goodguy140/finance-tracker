@@ -47,7 +47,7 @@ export function AddTransaction({ initialType = 'expense' }: { initialType?: Tran
       {categories.data && accounts.data ? (
         <AddEditor initialType={initialType} categories={categories.data.categories} accounts={accounts.data.accounts} />
       ) : (
-        <ScrollView style={{ backgroundColor: theme.background }} contentContainerStyle={formStyles.content}>
+        <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: theme.background }} contentContainerStyle={formStyles.content}>
           <LoadState loading={!failed} error={failed ? errorText(failed) : null} />
         </ScrollView>
       )}
@@ -143,6 +143,9 @@ function AddEditor({ initialType, categories, accounts }: { initialType: Transac
   return (
     <>
       <ScrollView
+        // Starts the form below the sheet's title bar, as every other screen does; without it the
+        // Expense / Income / Transfer switch sat behind the bar and could not be scrolled to.
+        contentInsetAdjustmentBehavior="automatic"
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         style={{ backgroundColor: theme.background }}
