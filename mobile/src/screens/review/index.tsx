@@ -1,9 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
-import { useCallback, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
+import { useCallback, useState } from 'react';
+import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native-gesture-handler';
 
 import { refreshBanks, type BankRefresh } from '@/api/banks';
 import { useApiMutation } from '@/api/mutations';
@@ -12,6 +12,7 @@ import type { Me, QueueRevision, QueueRow, ReviewQueue as ReviewQueueData } from
 import { FormButton } from '@/components/form';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
+import { SwipeListProvider, SwipeRow, useSwipeList } from '@/components/swipe-row';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
@@ -63,6 +64,7 @@ export function ReviewQueue() {
     await client.invalidateQueries({ queryKey: ['api'] });
   }, [session, client]);
   const { refreshing, onRefresh } = usePullToRefresh(checkBanks);
+  const swipe = useSwipeList();
 
   const bulk = useApiMutation<BulkBody, { ok: true; added?: number }>('POST', () => `${QUEUE_PATH}/bulk`, (body) => body);
   const revision = useApiMutation<{ id: string; action: 'apply' | 'dismiss' }, { ok: true }>(
@@ -127,67 +129,70 @@ export function ReviewQueue() {
   return (
     <>
       <ScrollView
+        {...swipe.scrollProps}
         contentInsetAdjustmentBehavior="automatic"
         style={{ backgroundColor: theme.background }}
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-        {note ? (
-          <Text
-            accessibilityLiveRegion="polite"
-            style={[styles.note, { color: note.tone === 'warning' ? theme.warning : note.tone === 'success' ? theme.positive : theme.textSecondary }]}>
-            {note.message}
-          </Text>
-        ) : null}
-        {error ? (
-          <Text accessibilityRole="alert" style={[styles.note, { color: theme.danger }]}>
-            {error}
-          </Text>
-        ) : null}
-        <LoadState loading={query.isPending} error={query.error ? errorText(query.error) : null} />
-        {data && !query.error ? (
-          <>
-            <BanksNeedingYou data={data} origin={session?.origin ?? null} />
-            {rows.length === 0 && data.revisions.length === 0 ? (
-              <Section>
-                <Text style={[styles.muted, { color: theme.textSecondary }]}>
-                  Nothing to review. Transactions from your linked banks wait here until you add, link or ignore them. Pull
-                  down to check your banks now.
-                </Text>
-              </Section>
-            ) : null}
-            {unmatched.length > 1 || strong.length > 1 ? (
-              <View style={styles.bulk}>
-                {strong.length > 1 ? <FormButton label={`Link all ${strong.length} strong matches`} onPress={linkAll} disabled={busy} /> : null}
-                {unmatched.length > 1 ? <FormButton label={`Add all ${unmatched.length} unmatched`} onPress={addAll} disabled={busy} /> : null}
-              </View>
-            ) : null}
-            <Revisions
-              revisions={data.revisions}
-              currency={currency}
-              disabled={busy}
-              onChoose={(id, action) => {
-                setError(null);
-                revision.mutate({ id, action }, { onError: fail });
-              }}
-            />
-            {rows.length > 0 ? (
-              <RowList
-                rows={rows}
-                categories={data.categories}
+        <SwipeListProvider value={swipe.value}>
+          {note ? (
+            <Text
+              accessibilityLiveRegion="polite"
+              style={[styles.note, { color: note.tone === 'warning' ? theme.warning : note.tone === 'success' ? theme.positive : theme.textSecondary }]}>
+              {note.message}
+            </Text>
+          ) : null}
+          {error ? (
+            <Text accessibilityRole="alert" style={[styles.note, { color: theme.danger }]}>
+              {error}
+            </Text>
+          ) : null}
+          <LoadState loading={query.isPending} error={query.error ? errorText(query.error) : null} />
+          {data && !query.error ? (
+            <>
+              <BanksNeedingYou data={data} origin={session?.origin ?? null} />
+              {rows.length === 0 && data.revisions.length === 0 ? (
+                <Section>
+                  <Text style={[styles.muted, { color: theme.textSecondary }]}>
+                    Nothing to review. Transactions from your linked banks wait here until you add, link or ignore them. Pull
+                    down to check your banks now.
+                  </Text>
+                </Section>
+              ) : null}
+              {unmatched.length > 1 || strong.length > 1 ? (
+                <View style={styles.bulk}>
+                  {strong.length > 1 ? <FormButton label={`Link all ${strong.length} strong matches`} onPress={linkAll} disabled={busy} /> : null}
+                  {unmatched.length > 1 ? <FormButton label={`Add all ${unmatched.length} unmatched`} onPress={addAll} disabled={busy} /> : null}
+                </View>
+              ) : null}
+              <Revisions
+                revisions={data.revisions}
                 currency={currency}
-                working={working}
-                onDecide={(row, request) => void decideFromList(row, request)}
-                title={`${data.total} to review`}
-                footer={[
-                  'Swipe a row right to add it as shown, or left to ignore it. Tap it to change anything first.',
-                  data.total > rows.length ? `Showing the newest ${rows.length}. The rest appear as you review these.` : null,
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
+                disabled={busy}
+                onChoose={(id, action) => {
+                  setError(null);
+                  revision.mutate({ id, action }, { onError: fail });
+                }}
               />
-            ) : null}
-          </>
-        ) : null}
+              {rows.length > 0 ? (
+                <RowList
+                  rows={rows}
+                  categories={data.categories}
+                  currency={currency}
+                  working={working}
+                  onDecide={(row, request) => void decideFromList(row, request)}
+                  title={`${data.total} to review`}
+                  footer={[
+                    'Swipe a row right to add it as shown, or left to ignore it. Tap it to change anything first.',
+                    data.total > rows.length ? `Showing the newest ${rows.length}. The rest appear as you review these.` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                />
+              ) : null}
+            </>
+          ) : null}
+        </SwipeListProvider>
       </ScrollView>
       <Stack.Title large>Review</Stack.Title>
     </>
@@ -278,12 +283,6 @@ function RowList(props: {
   const theme = useTheme();
   const router = useRouter();
   const { rows, categories, currency, working, onDecide, title, footer } = props;
-  // One row open at a time, as in Mail: opening another closes the last.
-  const open = useRef<SwipeableMethods | null>(null);
-  const opened = (methods: SwipeableMethods) => {
-    if (open.current && open.current !== methods) open.current.close();
-    open.current = methods;
-  };
   return (
     <View style={styles.listWrap}>
       <Text style={[styles.listTitle, { color: theme.textSecondary }]} accessibilityRole="header">
@@ -299,7 +298,6 @@ function RowList(props: {
             first={index === 0}
             last={index === rows.length - 1}
             working={working.has(row.id)}
-            onOpen={opened}
             onDecide={(request) => onDecide(row, request)}
             onPress={() => router.push({ pathname: '/review/[id]', params: { id: row.id } })}
           />
@@ -329,7 +327,6 @@ type RowProps = {
   first: boolean;
   last: boolean;
   working: boolean;
-  onOpen: (methods: SwipeableMethods) => void;
   onDecide: (request: QueueRequest) => void;
   onPress: () => void;
 };
@@ -340,56 +337,29 @@ type RowProps = {
  * tap does it, so a stray swipe never ignores a row for good.
  */
 function SwipeableQueueRow(props: RowProps) {
-  const { row, first, last, working, onOpen, onDecide } = props;
-  const swipeable = useRef<SwipeableMethods>(null);
+  const { row, first, last, working, onDecide } = props;
   const accept = acceptRequest(row);
   const ignore = ignoreRequest(row);
-  const decide = (request: QueueRequest) => {
-    swipeable.current?.close();
-    onDecide(request);
-  };
-  const corners = {
-    borderTopLeftRadius: first ? Radius : 0,
-    borderTopRightRadius: first ? Radius : 0,
-    borderBottomLeftRadius: last ? Radius : 0,
-    borderBottomRightRadius: last ? Radius : 0,
-  };
   return (
-    <ReanimatedSwipeable
-      ref={swipeable}
+    <SwipeRow
       enabled={!working}
-      friction={1.5}
-      leftThreshold={SWIPE_ACTION_WIDTH / 2}
-      rightThreshold={SWIPE_ACTION_WIDTH / 2}
-      overshootLeft={false}
-      overshootRight={false}
-      containerStyle={[styles.swipeContainer, corners]}
-      onSwipeableWillOpen={() => swipeable.current && onOpen(swipeable.current)}
-      renderLeftActions={() => <SwipeAction label={accept.label} color={Colors.light.tint} onPress={() => decide(accept)} />}
-      renderRightActions={() => <SwipeAction label={ignore.label} color={Colors.light.danger} onPress={() => decide(ignore)} />}>
+      style={{
+        borderTopLeftRadius: first ? Radius : 0,
+        borderTopRightRadius: first ? Radius : 0,
+        borderBottomLeftRadius: last ? Radius : 0,
+        borderBottomRightRadius: last ? Radius : 0,
+      }}
+      leading={{ label: accept.label, color: Colors.light.tint, onPress: () => onDecide(accept) }}
+      trailing={{ label: ignore.label, color: Colors.light.danger, onPress: () => onDecide(ignore) }}>
       <QueueRowItem
         {...props}
         accessibilityActions={[
           { name: 'accept', label: accept.label },
           { name: 'ignore', label: ignore.label },
         ]}
-        onAccessibilityAction={(name) => decide(name === 'accept' ? accept : ignore)}
+        onAccessibilityAction={(name) => onDecide(name === 'accept' ? accept : ignore)}
       />
-    </ReanimatedSwipeable>
-  );
-}
-
-const SWIPE_ACTION_WIDTH = 96;
-
-/** The button a swipe uncovers. Fixed colours, so white text reads in dark mode too. */
-function SwipeAction({ label, color, onPress }: { label: string; color: string; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      style={({ pressed }) => [styles.swipeAction, { backgroundColor: color, opacity: pressed ? 0.8 : 1 }]}>
-      <Text style={styles.swipeActionText}>{label}</Text>
-    </Pressable>
+    </SwipeRow>
   );
 }
 
@@ -483,7 +453,4 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 13 },
   amount: { fontSize: 17, fontVariant: ['tabular-nums'] },
   category: { fontSize: 13 },
-  swipeContainer: { overflow: 'hidden' },
-  swipeAction: { width: SWIPE_ACTION_WIDTH, alignItems: 'center', justifyContent: 'center' },
-  swipeActionText: { color: '#ffffff', fontSize: 15, fontWeight: '600' },
 });
