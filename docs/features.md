@@ -300,7 +300,10 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     toggle): `push-notification-preferences.tsx`, `actions/push.ts`, `src/lib/push-notifications.ts`
     (`deliverAlert`, the one place the three alerts go out; VAPID keys made once in
     `ServerSetting`), `src/lib/web-push.ts` (RFC 8291 encryption and RFC 8292 VAPID, no package;
-    posts only to the browsers' push services), `PushDevice` table
+    posts only to the browsers' push services), `PushDevice` table. The same alerts go to the
+    iPhone app by Apple push once an admin saves Apple's key: `src/lib/apns.ts` (HTTP/2 and an
+    ES256 token, no package), `AppPushToken` per signed-in phone with its own switches and "hide
+    amounts", registered by `PUT /api/v1/app/device/push` (`src/lib/api-v1/app-push.ts`)
   - Calendar feed (a private `.ics` link for Google/Apple/Outlook: each recurring bill, payday
     and transfer for the next 12 months and each subscription decide-by date, all-day with the
     amount in the title; made after "Confirm it's you", shown once, only its hash kept in
@@ -404,7 +407,10 @@ Nav `src/components/admin/admin-nav.tsx`; actions `actions/admin*.ts`.
 - Users (role, disable, force sign-out, delete): `admin-user-table.tsx`, `src/lib/admin-users.ts`
 - Authentication (password login, public sign-up, Google/SSO): `forms/admin-forms.tsx`,
   `src/lib/auth-settings.ts`, `oauth-settings.ts`, `signup-policy.ts`
-- Integrations (Plaid credentials, all bank connections): `src/lib/admin-plaid-overview.ts`
+- Integrations (Plaid credentials, all bank connections): `src/lib/admin-plaid-overview.ts`; Apple
+  push for the iPhone app (the `.p8` key, key ID, team ID and bundle ID behind Confirm it's you,
+  Send a test to my iPhones, Remove key): `AdminApnsForm`, `src/lib/apns-settings.ts`,
+  `actions/admin.ts`
 - Operations (sync interval, auto-post recurring, audit retention):
   `src/components/admin/admin-ops-forms.tsx`, `src/lib/ops-settings.ts`
 - **Automatic database backups** (Operations; on by default): once a day, from the backup hour in
@@ -429,7 +435,7 @@ Nav `src/components/admin/admin-nav.tsx`; actions `actions/admin*.ts`.
   `src/components/mfa/*`, `src/lib/auth-options.ts`, `webauthn.ts`, `mfa-session.ts`
 - **Confirm it's you** before deleting the account, clearing or restoring its data, and the
   admin controls for roles, suspensions, deleting users, sign-in providers, password login,
-  public sign-up and Plaid credentials, and before making a calendar link or adding a webhook: a passkey or authenticator code if the account has one, else the password,
+  public sign-up, Plaid credentials and Apple's push key, and before making a calendar link or adding a webhook: a passkey or authenticator code if the account has one, else the password,
   else (SSO only) a sign-in in the last five minutes; one confirmation covers five minutes.
   `src/components/mfa/confirm-identity.tsx`, `requireRecentIdentity` in
   `src/lib/recent-identity.ts`; see `docs/access-control.md`

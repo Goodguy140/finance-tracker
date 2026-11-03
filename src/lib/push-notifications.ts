@@ -1,4 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { sendApns, type ApnsEnvironment, type ApnsMessage, type ApnsSender } from "@/lib/apns";
+import { getApnsCredentials } from "@/lib/apns-settings";
+import { isAppDeviceLive } from "@/lib/app-devices";
 import { encryptSecret, tryDecryptSecret } from "@/lib/security";
 import { sendEmail } from "@/lib/email";
 import { prisma as defaultPrisma } from "@/lib/prisma";
@@ -6,7 +9,8 @@ import type { PushAlertKind } from "@/lib/push-notifications-shared";
 import { generateVapidKeys, sendWebPush, type VapidKeys } from "@/lib/web-push";
 
 /**
- * Phone notifications (Web Push) next to the alert emails. A device opts in to each alert kind
+ * Phone notifications next to the alert emails: Web Push to browsers and the installed web app,
+ * and Apple push (APNs) to the iPhone app (`AppPushToken`). A device opts in to each alert kind
  * on its own; the alert's own setting (how many days before a bill, the charge threshold) still
  * decides whether anything is due. `deliverAlert` is the one place an alert goes out, so email
  * and push succeed or fail together as far as the caller's "sent" bookkeeping is concerned.
@@ -80,18 +84,37 @@ export function vapidSubject(env: Record<string, string | undefined> = process.e
 
 export type PushSender = typeof sendWebPush;
 
+type Sent = { devices: number; delivered: number };
+
 /**
- * Sends to each of the user's devices that has `kind` on. Returns how many received it. A
- * device the push service says is gone is deleted; one that keeps failing is deleted after
- * `MAX_FAILURES` sends in a row.
+ * Sends to each of the user's devices that has `kind` on: browsers by Web Push and iPhones with
+ * the app by APNs. Returns how many received it. A device the push service says is gone is
+ * deleted; one that keeps failing is deleted after `MAX_FAILURES` sends in a row.
+ *
+ * `deviceId` sends to that one browser only (its test button); `to: "app"` to the iPhone app
+ * only (the admin's test).
  */
 export async function sendPushToUser(
   userId: string,
   kind: PushAlertKind | null,
   message: PushMessage,
-  deps: { client?: PrismaClient; send?: PushSender; deviceId?: string } = {},
-): Promise<{ devices: number; delivered: number }> {
+  deps: { client?: PrismaClient; send?: PushSender; deviceId?: string; apns?: ApnsSender; to?: "all" | "app" } = {},
+): Promise<Sent> {
   const client = deps.client ?? defaultPrisma;
+  const toWeb = deps.to !== "app";
+  const toApp = !deps.deviceId;
+  const web = toWeb ? await sendToBrowsers(client, userId, kind, message, deps) : { devices: 0, delivered: 0 };
+  const app = toApp ? await sendToApp(client, userId, kind, message, deps.apns ?? sendApns) : { devices: 0, delivered: 0 };
+  return { devices: web.devices + app.devices, delivered: web.delivered + app.delivered };
+}
+
+async function sendToBrowsers(
+  client: PrismaClient,
+  userId: string,
+  kind: PushAlertKind | null,
+  message: PushMessage,
+  deps: { send?: PushSender; deviceId?: string },
+): Promise<Sent> {
   const devices = await client.pushDevice.findMany({
     where: { userId, ...(kind ? { [kind]: true } : {}), ...(deps.deviceId ? { id: deps.deviceId } : {}) },
     select: { id: true, endpoint: true, p256dh: true, auth: true, failureCount: true },
@@ -116,9 +139,83 @@ export async function sendPushToUser(
   return { devices: devices.length, delivered };
 }
 
+/**
+ * What a phone that hides amounts shows instead: the kind of alert and nothing from the books,
+ * since iOS shows alerts on the lock screen.
+ */
+export const PRIVATE_PUSH_TEXT: Record<PushAlertKind, { title: string; body: string }> = {
+  billReminders: { title: "Bill reminder", body: "A bill is coming up. Open the app to see it." },
+  chargeAlerts: { title: "New charge", body: "A large or unusual charge came in. Open the app to see it." },
+  budgetAlerts: { title: "Budget alert", body: "A budget needs a look. Open the app to see it." },
+};
+
+/** The alert as the iPhone app gets it: the app reads `kind` to open the matching screen. */
+export function appPushMessage(kind: PushAlertKind | null, message: PushMessage, hideAmounts: boolean): ApnsMessage {
+  const text = hideAmounts && kind ? PRIVATE_PUSH_TEXT[kind] : { title: message.title, body: message.body };
+  return { ...text, threadId: kind ?? undefined, data: { kind: kind ?? "test", url: message.url ?? "/" } };
+}
+
+async function sendToApp(
+  client: PrismaClient,
+  userId: string,
+  kind: PushAlertKind | null,
+  message: PushMessage,
+  send: ApnsSender,
+): Promise<Sent> {
+  const rows = await client.appPushToken.findMany({
+    where: { userId, ...(kind ? { [kind]: true } : {}), user: { disabledAt: null } },
+    select: {
+      id: true,
+      token: true,
+      environment: true,
+      hideAmounts: true,
+      failureCount: true,
+      appDevice: { select: { createdAt: true, lastUsedAt: true, tokenVersion: true } },
+      user: { select: { tokenVersion: true } },
+    },
+  });
+  // A phone whose sign-in no longer works gets nothing, though its row waits for it to sign out.
+  const live = rows.filter((row) => isAppDeviceLive(row.appDevice, row.user));
+  if (live.length === 0) return { devices: 0, delivered: 0 };
+  // With no Apple key saved there is no way to reach these phones, which is not a failed send.
+  const credentials = await getApnsCredentials(client);
+  if (!credentials) return { devices: 0, delivered: 0 };
+
+  const byToken = new Map(live.map((row) => [row.token, row]));
+  const environment = (raw: string): ApnsEnvironment => (raw === "development" ? "development" : "production");
+  const results = await send(
+    live.map((row) => ({ token: row.token, environment: environment(row.environment) })),
+    (target) => appPushMessage(kind, message, byToken.get(target.token)?.hideAmounts ?? true),
+    credentials,
+  );
+
+  let delivered = 0;
+  for (const row of live) {
+    const result = results.get(row.token);
+    if (!result) continue;
+    if (result.ok) {
+      delivered += 1;
+      await client.appPushToken.update({ where: { id: row.id }, data: { lastSentAt: new Date(), failureCount: 0 } });
+    } else if (result.credentialsRejected) {
+      // The server's key is wrong, not the phone: say so, and count nothing against the phone.
+      console.error(`[push] Apple refused the server's push key (${result.reason}). Check it in Server admin.`);
+    } else if (result.gone || row.failureCount + 1 >= MAX_FAILURES) {
+      await client.appPushToken.deleteMany({ where: { id: row.id } });
+    } else {
+      console.error(`[push] sending to an iPhone failed: ${result.reason}`);
+      await client.appPushToken.update({ where: { id: row.id }, data: { failureCount: { increment: 1 } } });
+    }
+  }
+  return { devices: live.length, delivered };
+}
+
 /** Whether any user has a phone set up for `kind`, so a sweep has a reason to run without SMTP. */
 export async function anyPushDevices(kind: PushAlertKind, client: PrismaClient = defaultPrisma): Promise<boolean> {
-  return (await client.pushDevice.count({ where: { [kind]: true } })) > 0;
+  const [browsers, phones] = await Promise.all([
+    client.pushDevice.count({ where: { [kind]: true } }),
+    client.appPushToken.count({ where: { [kind]: true } }),
+  ]);
+  return browsers + phones > 0;
 }
 
 /** Whether one of this user's devices has `kind` on. */
@@ -127,7 +224,11 @@ export async function hasPushDeviceFor(
   kind: PushAlertKind,
   client: PrismaClient = defaultPrisma,
 ): Promise<boolean> {
-  return (await client.pushDevice.count({ where: { userId, [kind]: true } })) > 0;
+  const [browsers, phones] = await Promise.all([
+    client.pushDevice.count({ where: { userId, [kind]: true } }),
+    client.appPushToken.count({ where: { userId, [kind]: true } }),
+  ]);
+  return browsers + phones > 0;
 }
 
 export type DeliveryOutcome = "sent" | "failed" | "no-channel";
@@ -139,7 +240,7 @@ export type DeliveryOutcome = "sent" | "failed" | "no-channel";
  */
 export async function deliverAlert(
   alert: { userId: string; to: string | null; kind: PushAlertKind; subject: string; text: string; push: PushMessage },
-  deps: { client?: PrismaClient; send?: typeof sendEmail; push?: PushSender } = {},
+  deps: { client?: PrismaClient; send?: typeof sendEmail; push?: PushSender; apns?: ApnsSender } = {},
 ): Promise<DeliveryOutcome> {
   let emailSent = false;
   let emailAttempted = false;
@@ -155,7 +256,7 @@ export async function deliverAlert(
   }
   let pushed = { devices: 0, delivered: 0 };
   try {
-    pushed = await sendPushToUser(alert.userId, alert.kind, alert.push, { client: deps.client, send: deps.push });
+    pushed = await sendPushToUser(alert.userId, alert.kind, alert.push, { client: deps.client, send: deps.push, apns: deps.apns });
   } catch (err) {
     pushed = { devices: 1, delivered: 0 };
     console.error(`[alerts] push for "${alert.subject}" failed`, err);

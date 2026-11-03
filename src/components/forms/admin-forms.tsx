@@ -1,13 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import { useConfirmIdentity } from "@/components/mfa/confirm-identity";
 import { ServerActionForm } from "@/components/server-action-form";
 import {
   inputClass,
   primaryBtnClass,
+  secondaryBtnClass,
   selectClass,
+  textAreaClass,
 } from "./shared";
 import {
+  removeAdminApnsSettingsAction,
+  sendApnsTestAction,
+  updateAdminApnsSettingsAction,
   updateAdminOauthSettingsAction,
   updateAdminPlaidSettingsAction,
   updatePasswordLoginSettingAction,
@@ -202,5 +208,85 @@ export function AdminPlaidForm({
         <button className={primaryBtnClass}>Save Plaid settings</button>
       </section>
     </ServerActionForm>
+  );
+}
+
+/**
+ * Apple's push key for the iPhone app. The key is never shown back; a blank key field keeps it.
+ * Saving and removing need "Confirm it's you", as Plaid's credentials do.
+ */
+export function AdminApnsForm({
+  configured,
+  keySaved,
+  keyId,
+  teamId,
+  bundleId,
+}: {
+  configured: boolean;
+  keySaved: boolean;
+  keyId: string;
+  teamId: string;
+  bundleId: string;
+}) {
+  const confirmIdentity = useConfirmIdentity();
+  const [tested, setTested] = useState<string | null>(null);
+  return (
+    <section className="space-y-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4" data-testid="admin-apns">
+      <h3 className="font-semibold text-slate-100">Apple push (iPhone app alerts)</h3>
+      <p className="text-xs text-slate-400">
+        {configured
+          ? "A key is saved. Bill reminders, charge alerts and budget alerts reach iPhones signed in to the app that allowed notifications."
+          : "No key saved, so the iPhone app gets no alerts. Create an Apple Push Notifications service key under Certificates, Identifiers & Profiles → Keys in your Apple developer account, then paste the .p8 file here."}
+      </p>
+      <ServerActionForm action={updateAdminApnsSettingsAction} beforeSubmit={confirmIdentity} className="space-y-2">
+        <div className="grid gap-2 sm:grid-cols-3">
+          <label className="block text-xs text-slate-400">
+            Key ID
+            <input name="apnsKeyId" defaultValue={keyId} placeholder="ABC123DEFG" className={inputClass} autoComplete="off" />
+          </label>
+          <label className="block text-xs text-slate-400">
+            Team ID
+            <input name="apnsTeamId" defaultValue={teamId} placeholder="Membership details" className={inputClass} autoComplete="off" />
+          </label>
+          <label className="block text-xs text-slate-400">
+            Bundle ID
+            <input name="apnsBundleId" defaultValue={bundleId} className={inputClass} autoComplete="off" />
+          </label>
+        </div>
+        <label className="block text-xs text-slate-400">
+          Key (.p8)
+          <textarea
+            name="apnsKey"
+            rows={4}
+            spellCheck={false}
+            autoComplete="off"
+            placeholder={keySaved ? "Saved. Leave blank to keep it." : "-----BEGIN PRIVATE KEY-----"}
+            className={`${textAreaClass} font-mono text-xs`}
+          />
+        </label>
+        <p className="text-xs text-slate-500">
+          Encrypted with SERVER_SETTINGS_ENCRYPTION_KEY and never shown again. Whoever holds this key can send
+          notifications to the app, so keep the file somewhere safe or delete it once saved.
+        </p>
+        <button className={primaryBtnClass}>Save Apple push settings</button>
+      </ServerActionForm>
+      {configured ? (
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <ServerActionForm action={sendApnsTestAction} onSuccess={(result) => setTested(result.message)}>
+            <button className={secondaryBtnClass} onClick={() => setTested(null)}>
+              Send a test to my iPhones
+            </button>
+          </ServerActionForm>
+          <ServerActionForm action={removeAdminApnsSettingsAction} beforeSubmit={confirmIdentity}>
+            <button className={secondaryBtnClass}>Remove key</button>
+          </ServerActionForm>
+          {tested ? (
+            <span role="status" className="text-xs text-emerald-300">
+              {tested}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
   );
 }

@@ -192,6 +192,7 @@ model User {
   resetTokens               PasswordResetToken[]
   personalAccessTokens      PersonalAccessToken[]
   appDevices                AppDevice[]
+  appPushTokens             AppPushToken[]
   appSignInCodes            AppSignInCode[]
   apiIdempotencyKeys        ApiIdempotencyKey[]
   webAuthnCredentials       WebAuthnCredential[]
@@ -390,7 +391,39 @@ model AppDevice {
   lastUsedAt   DateTime?
   createdAt    DateTime  @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pushToken AppPushToken?
+
+  @@index([userId])
+}
+
+/**
+ * A signed-in phone's Apple push registration (`PUT /api/v1/app/device/push`): where APNs
+ * delivers its alerts, and which ones it wants. Goes with the phone's sign-in, so signing the
+ * phone out stops its alerts. Sent to only while the sign-in itself still works
+ * (`isAppDeviceLive`).
+ */
+model AppPushToken {
+  id            String    @id @default(cuid())
+  appDeviceId   String    @unique
+  userId        String
+  /// The APNs device token, lowercase hex. One phone, one row: a re-registered token moves here.
+  token         String    @unique
+  /// "production" for TestFlight and App Store builds, "development" for builds from Xcode.
+  environment   String
+  billReminders Boolean   @default(true)
+  chargeAlerts  Boolean   @default(true)
+  budgetAlerts  Boolean   @default(true)
+  /// Alerts say what happened but not how much or where, for a phone whose lock screen shows them.
+  hideAmounts   Boolean   @default(false)
+  lastSentAt    DateTime?
+  /// Failed sends in a row; reset by a delivery.
+  failureCount  Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  appDevice AppDevice @relation(fields: [appDeviceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }

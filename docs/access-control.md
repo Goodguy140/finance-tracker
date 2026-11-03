@@ -64,8 +64,8 @@ what stops a stolen session cookie from being turned into permanent access.
 **Confirm it's you.** Actions that destroy data or change who can get in also need a recent
 confirmation (`requireRecentIdentity`, `src/lib/recent-identity.ts`): deleting the account,
 clearing or restoring its data, and the admin controls for roles, suspensions, deleting users,
-sign-in providers, password login, public sign-up and Plaid credentials; and making a calendar feed link or adding a
-webhook. An account with a
+sign-in providers, password login, public sign-up, Plaid credentials and Apple's push key; and making a calendar
+feed link or adding a webhook. An account with a
 passkey or authenticator app confirms with it; one without re-enters its password; an SSO-only account must have
 signed in within the last five minutes. One confirmation covers five minutes.
 
@@ -139,7 +139,9 @@ token (`Authorization: Bearer ftd_…`).
   `POST /api/v1/review-queue/:id`, `/pair`, `/bulk`, `/revisions/:id`, the same decisions as the
   website's queue buttons, which need no step-up there either; `POST /api/v1/banks/refresh` checks
   the person's banks as the log's refresh icon does). Linking, unlinking or signing in to a bank
-  stays on the website. Adds, edits, deletes and undos are audit-logged (`api_transaction_created`
+  stays on the website), and the phone's own alert registration (`GET`/`PUT`/`DELETE
+  /api/v1/app/device/push`: its Apple push token and which alerts it wants; device tokens only, so a
+  personal access token gets 403). Adds, edits, deletes and undos are audit-logged (`api_transaction_created`
   with `via: "app"`, `api_transaction_updated`, `_deleted`, `_restored`), as are rows added or
   linked from the queue (`plaid_transactions_committed` with `via: "app"`); the phone's adds skip
   Needs review, since the person typed them. Nothing on `/api/v1` clears or restores data in bulk, changes
@@ -148,6 +150,12 @@ token (`Authorization: Bearer ftd_…`).
   under **Settings → Security → Signed-in apps**, after 90 days unused, and on anything that
   bumps `User.tokenVersion` (password change or reset, suspension, `reset-mfa.cjs`). A
   suspended user's devices are refused outright.
+- Alerts reach a phone by Apple push only while its sign-in works (`isAppDeviceLive`); signing
+  it out deletes its push token, and a token another sign-in still held moves to the new one, so
+  one person's alerts never reach a phone someone else has since signed in on. Apple's `.p8` key
+  is set under Settings → Server admin → Integrations behind "Confirm it's you", kept encrypted
+  and never shown again (`apns_settings_updated`, `apns_settings_removed` in the audit log). A phone
+  can ask for alerts without amounts, which iOS shows on the lock screen.
 - On the phone the token sits in the Keychain (this device only, readable while the phone is
   unlocked). The person can also require Face ID to open the app (Settings → Security), which
   locks it again after 5 minutes in the background; this is on the phone only and the server

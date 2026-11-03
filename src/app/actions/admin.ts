@@ -18,9 +18,13 @@ import { adminSetPasswordLoginDisabledSchema } from "@/lib/validation";
 import { resolveAuthentikOauthSettings, resolveGoogleOauthSettings } from "@/lib/oauth-settings";
 import { invalidatePlaidConfigCache } from "@/lib/plaid/config";
 import { PLAID_SETTING_KEYS, resolvePlaidSettings } from "@/lib/plaid/settings";
+import { forgetApnsProviderToken } from "@/lib/apns";
+import { APNS_SETTING_KEYS, getStoredApnsKey, resolveApnsSettings } from "@/lib/apns-settings";
+import { sendPushToUser } from "@/lib/push-notifications";
 import {
   getFormValue,
   formAction,
+  formActionWithResult,
 } from "./_helpers";
 export const updateAdminOauthSettingsAction = formAction(async (formData: FormData) => {
   const user = await requireAdmin();
@@ -189,4 +193,84 @@ export const updatePasswordLoginSettingAction = formAction(async (formData: Form
   });
   revalidatePath("/settings/admin", "layout");
   revalidatePath("/login");
+});
+
+/**
+ * Stores Apple's push key for the iPhone app, encrypted, with its key ID, team ID and the app's
+ * bundle ID. Behind "Confirm it's you", like Plaid's credentials: whoever holds the key can
+ * send notifications to every phone signed in to the app. A blank key field keeps the stored
+ * key, which the form never shows again.
+ */
+export const updateAdminApnsSettingsAction = formAction(async (formData: FormData) => {
+  const user = await requireAdmin();
+  await requireRecentIdentity();
+  const resolved = resolveApnsSettings({
+    keyRaw: getFormValue(formData, "apnsKey"),
+    keyIdRaw: getFormValue(formData, "apnsKeyId"),
+    teamIdRaw: getFormValue(formData, "apnsTeamId"),
+    bundleIdRaw: getFormValue(formData, "apnsBundleId"),
+    existingKey: await getStoredApnsKey(),
+  });
+  if (!resolved.ok) throw new Error(resolved.error);
+
+  const entries = [
+    { key: APNS_SETTING_KEYS.key, value: resolved.values.key },
+    { key: APNS_SETTING_KEYS.keyId, value: resolved.values.keyId },
+    { key: APNS_SETTING_KEYS.teamId, value: resolved.values.teamId },
+    { key: APNS_SETTING_KEYS.bundleId, value: resolved.values.bundleId },
+  ];
+  for (const entry of entries) {
+    await prisma.serverSetting.upsert({
+      where: { key: entry.key },
+      create: { key: entry.key, encryptedValue: encryptSecret(entry.value), updatedByUserId: user.id },
+      update: { encryptedValue: encryptSecret(entry.value), updatedByUserId: user.id },
+    });
+  }
+  forgetApnsProviderToken();
+
+  await recordAuditLog(prisma, {
+    userId: user.id,
+    action: AUDIT_ACTIONS.apns_settings_updated,
+    // Never the key itself.
+    metadata: {
+      keyId: resolved.values.keyId,
+      teamId: resolved.values.teamId,
+      bundleId: resolved.values.bundleId,
+      keyReplaced: resolved.keyReplaced,
+    },
+    headers: await headers(),
+  });
+  revalidatePath("/settings/admin", "layout");
+});
+
+/** Forgets Apple's push key: the iPhone app gets no more alerts until one is saved again. */
+export const removeAdminApnsSettingsAction = formAction(async () => {
+  const user = await requireAdmin();
+  await requireRecentIdentity();
+  await prisma.serverSetting.deleteMany({ where: { key: { in: Object.values(APNS_SETTING_KEYS) } } });
+  forgetApnsProviderToken();
+  await recordAuditLog(prisma, {
+    userId: user.id,
+    action: AUDIT_ACTIONS.apns_settings_removed,
+    headers: await headers(),
+  });
+  revalidatePath("/settings/admin", "layout");
+});
+
+/** Sends a test alert to the admin's own iPhones, to check the key before anyone relies on it. */
+export const sendApnsTestAction = formActionWithResult(async () => {
+  const user = await requireAdmin();
+  const result = await sendPushToUser(
+    user.id,
+    null,
+    { title: "Finance Tracker", body: "Alerts from your server reach this iPhone.", url: "/" },
+    { to: "app" },
+  );
+  if (result.devices === 0) {
+    throw new Error("None of your iPhones can get alerts yet. Save the key, then allow notifications in the app.");
+  }
+  if (result.delivered === 0) {
+    throw new Error("Apple did not accept the alert. Check the key ID, team ID and bundle ID; the server log says why.");
+  }
+  return { ok: true as const, message: `Sent to ${result.delivered} of your iPhones.` };
 });

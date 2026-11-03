@@ -27,6 +27,8 @@ function client(overrides: { user?: unknown; phones?: number } = {}) {
       ),
       update: vi.fn(async () => ({})),
     },
+    // No iPhone app here: its sending has its own tests (`push-notifications.test.ts`).
+    appPushToken: { count: vi.fn(async () => 0), findMany: vi.fn(async () => []) },
     serverSetting: {
       findMany: vi.fn(async () => [
         { key: "push.vapidPublicKey", encryptedValue: encryptSecret("pub") },
