@@ -43,3 +43,17 @@ export async function authorizeApiRequest(
 }
 
 export const NO_STORE = { "Cache-Control": "no-store" } as const;
+
+/** `{ error }` with a status, never cached. */
+export function apiError(error: string, status: number): NextResponse {
+  return NextResponse.json({ error }, { status, headers: NO_STORE });
+}
+
+/** The request's JSON body, or the 400 to answer when it is not JSON. */
+export async function readJsonBody(request: Request): Promise<{ ok: true; body: unknown } | { ok: false; response: NextResponse }> {
+  try {
+    return { ok: true, body: await request.json() };
+  } catch {
+    return { ok: false, response: apiError("The body must be JSON.", 400) };
+  }
+}

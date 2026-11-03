@@ -2,26 +2,23 @@
 
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { CategoryKind, PlaidStagedStatus, TransactionType, type User } from "@prisma/client";
+import type { User } from "@prisma/client";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { describeActionError } from "@/lib/action-errors";
 import { prisma } from "@/lib/prisma";
 import { PlaidApiError } from "@/lib/plaid/client";
 import { checkMappingAllowed } from "@/lib/plaid/mapping";
 import {
-  addStagedRow,
-  applyBankRevision,
-  COMMITTABLE_STAGED_SELECT,
-  dismissBankRevision,
-  ignoreStagedRow,
-  linkStagedRow,
-  loadStagedProposer,
-  pairStagedRows,
-  toCommittable,
-  type PairOutcome,
-  type ReviewOutcome,
-  type ReviewRefusal,
-} from "@/lib/plaid/review";
+  addStagedRows,
+  applyStagedRevision,
+  decideStagedRow,
+  dismissStagedRevision,
+  ignoreStagedRows,
+  linkStagedRows,
+  pairStagedTransfers,
+  parseCountAs,
+  type StagedDecision,
+} from "@/lib/plaid/review-decisions";
 import {
   completeUpdate,
   ConnectionStillLiveError,
@@ -31,7 +28,6 @@ import {
   setPlaidAccountMapping,
 } from "@/lib/plaid/connections";
 import { openAccessToken, requirePlaidClient } from "@/lib/plaid/service";
-import { defaultStagedType, proposeStagedRowAs } from "@/lib/plaid/staged-rules";
 import {
   describeHistoryWindow,
   historyWindowLabel,
@@ -45,18 +41,7 @@ import { resolvePlaidWebhookUrl } from "@/lib/plaid/webhook-url";
 import { sweepDuePlaidItems, type SweepSummary } from "@/lib/plaid-sync-scheduler";
 import { describeLogRefresh, LOG_REFRESH_INTERVAL_MINUTES, type LogRefreshResult } from "@/lib/plaid/log-refresh";
 import type { ActionFailure } from "@/lib/action-result";
-import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
-import { emitTransactionsCreated } from "@/lib/webhooks";
-import { ensureFallbackCategoryFor } from "@/lib/fallback-categories";
-import {
-  assertUserOwnsAccount,
-  assertUserOwnsCategory,
-  categoryKindForTransactionType,
-  formAction,
-  getFormValue,
-  LONG_TRANSACTION_OPTIONS,
-  parseJsonField,
-} from "./_helpers";
+import { formAction, getFormValue, parseJsonField } from "./_helpers";
 
 const SETTINGS_PATH = "/settings";
 
@@ -527,131 +512,6 @@ export async function refreshLinkedAccountsAction(): Promise<LogRefreshResult | 
   return describeLogRefresh(summary);
 }
 
-/** The message a person sees when a review decision is refused. */
-const REVIEW_REFUSALS: Record<ReviewRefusal, string> = {
-  "already-reviewed": "That synced transaction has already been reviewed.",
-  "target-not-found": "The transaction to link to was not found.",
-  "target-verified": "That transaction is already confirmed against another bank record.",
-  "type-mismatch": "An expense cannot be linked to an income entry.",
-  "not-a-pair":
-    "Those two cannot be one transfer: they need the same amount leaving one account and arriving in another, a few days apart at most.",
-};
-
-function parseCountAs(value: string): TransactionType | null {
-  return value === TransactionType.EXPENSE || value === TransactionType.INCOME || value === TransactionType.TRANSFER
-    ? value
-    : null;
-}
-
-/** Throws inside a database transaction, so a refused decision rolls back everything with it. */
-function orRefuse(outcome: ReviewOutcome): string;
-function orRefuse(outcome: PairOutcome): [string, string];
-/** Throws the refusal's message; otherwise the id (or a pair's two ids) of the entry it touched. */
-function orRefuse(outcome: ReviewOutcome | PairOutcome): string | [string, string] {
-  if (!outcome.ok) throw new Error(REVIEW_REFUSALS[outcome.reason]);
-  return "transactionIds" in outcome ? outcome.transactionIds : outcome.transactionId;
-}
-
-/**
- * Commits one reviewed row: link it to a transaction the user already entered, add it as
- * a new one, or ignore it.
- *
- * Not gated on a passkey. Linking a bank is a standing grant and is; approving a single
- * transaction is ordinary bookkeeping, and a prompt per row would make the queue unusable.
- */
-export const resolveStagedTransactionAction = formAction(async (formData: FormData) => {
-  const user = await requireUser();
-  const stagedId = getFormValue(formData, "stagedId");
-  const decision = getFormValue(formData, "decision");
-  const categoryId = getFormValue(formData, "categoryId");
-  const linkTransactionId = getFormValue(formData, "linkTransactionId");
-
-  const row = await prisma.plaidStagedTransaction.findFirst({
-    where: { id: stagedId, userId: user.id },
-    select: { ...COMMITTABLE_STAGED_SELECT, status: true, name: true, merchantName: true, suggestedCategoryId: true },
-  });
-  if (!row) throw new Error("That synced transaction was not found.");
-  // Answered early for a clearer message; the claim inside each decision is what enforces it.
-  if (row.status !== PlaidStagedStatus.NEEDS_REVIEW) throw new Error(REVIEW_REFUSALS["already-reviewed"]);
-  const staged = toCommittable(row);
-
-  if (decision === "ignore") {
-    if (!(await ignoreStagedRow(prisma, { userId: user.id, stagedId: staged.id }))) {
-      throw new Error(REVIEW_REFUSALS["already-reviewed"]);
-    }
-    revalidatePath("/");
-    return;
-  }
-
-  if (decision === "link") {
-    await prisma.$transaction(async (tx) =>
-      orRefuse(await linkStagedRow(tx, { userId: user.id, staged, transactionId: linkTransactionId })),
-    );
-  } else if (decision === "add") {
-    // The queue can book a row as a transfer or not, whatever the sync guessed.
-    const type = parseCountAs(getFormValue(formData, "countAs")) ?? staged.type;
-    const proposal = proposeStagedRowAs(await loadStagedProposer(user.id), row, type);
-    const resolvedCategoryId =
-      type === TransactionType.TRANSFER
-        ? await ensureFallbackCategoryFor(prisma, user.id, CategoryKind.TRANSFER)
-        : categoryId || proposal.categoryId;
-    if (!resolvedCategoryId) throw new Error("Choose a category for this transaction.");
-    await assertUserOwnsCategory(user.id, resolvedCategoryId, categoryKindForTransactionType(type));
-    if (staged.suggestedAccountId) await assertUserOwnsAccount(user.id, staged.suggestedAccountId);
-    // A rule's split is written only while the row keeps the category the split gave it.
-    const kept = resolvedCategoryId === proposal.categoryId ? proposal : { ...proposal, split: null };
-    const addedId = await prisma.$transaction(async (tx) =>
-      orRefuse(
-        await addStagedRow(tx, { userId: user.id, staged, categoryId: resolvedCategoryId, proposal: kept, type }),
-      ),
-    );
-    emitTransactionsCreated(user.id, [addedId], "bank");
-  } else {
-    throw new Error("Choose whether to link, add, or ignore this row.");
-  }
-
-  scheduleBudgetAlertEmails(user.id);
-  revalidatePath("/");
-});
-
-/**
- * Adds two bank rows as the two legs of one transfer: the money leaving one account and
- * arriving in the other, each kept out of every total and each naming the other's account.
- */
-export const pairStagedTransfersAction = formAction(async (formData: FormData) => {
-  const user = await requireUser();
-  const stagedIds = [getFormValue(formData, "stagedId"), getFormValue(formData, "peerStagedId")];
-  if (!stagedIds[0] || !stagedIds[1] || stagedIds[0] === stagedIds[1]) {
-    throw new Error("Choose the two sides of the transfer.");
-  }
-
-  const rows = await prisma.plaidStagedTransaction.findMany({
-    where: { id: { in: stagedIds }, userId: user.id },
-    select: { ...COMMITTABLE_STAGED_SELECT, status: true, name: true, merchantName: true, suggestedCategoryId: true },
-  });
-  const ordered = stagedIds.map((id) => rows.find((row) => row.id === id));
-  const [a, b] = ordered;
-  if (!a || !b) throw new Error("That synced transaction was not found.");
-  if (a.status !== PlaidStagedStatus.NEEDS_REVIEW || b.status !== PlaidStagedStatus.NEEDS_REVIEW) {
-    throw new Error(REVIEW_REFUSALS["already-reviewed"]);
-  }
-  for (const row of ordered) {
-    if (row?.suggestedAccountId) await assertUserOwnsAccount(user.id, row.suggestedAccountId);
-  }
-
-  const propose = await loadStagedProposer(user.id);
-  const leg = (row: typeof a) => ({
-    staged: toCommittable(row),
-    proposal: proposeStagedRowAs(propose, row, TransactionType.TRANSFER),
-  });
-  const categoryId = await ensureFallbackCategoryFor(prisma, user.id, CategoryKind.TRANSFER);
-  const legIds = await prisma.$transaction(async (tx) =>
-    orRefuse(await pairStagedRows(tx, { userId: user.id, legs: [leg(a), leg(b)], categoryId })),
-  );
-  emitTransactionsCreated(user.id, legIds, "bank");
-  revalidatePath("/");
-});
-
 function parseStagedIds(formData: FormData): string[] {
   const ids = parseJsonField<unknown>(
     getFormValue(formData, "stagedIdsJson"),
@@ -664,110 +524,63 @@ function parseStagedIds(formData: FormData): string[] {
   return [...new Set(ids as string[])];
 }
 
-/**
- * Adds several rows in one step: every unmatched row ("Add all"), or the rows ticked in the
- * queue. With `categoryId` ("Add with category") each row is booked as an expense or income in
- * that category, whatever the sync or a rule proposed; the rows must all be of that kind.
- */
+// The queue's decisions live in `src/lib/plaid/review-decisions.ts`, shared with the phone
+// app's `/api/v1/review-queue` routes; these actions read the form and refresh the page.
+
+function parseDecision(formData: FormData): StagedDecision {
+  switch (getFormValue(formData, "decision")) {
+    case "ignore":
+      return { decision: "ignore" };
+    case "link":
+      return { decision: "link", transactionId: getFormValue(formData, "linkTransactionId") };
+    case "add":
+      return {
+        decision: "add",
+        countAs: parseCountAs(getFormValue(formData, "countAs")),
+        categoryId: getFormValue(formData, "categoryId"),
+      };
+    default:
+      throw new Error("Choose whether to link, add, or ignore this row.");
+  }
+}
+
+/** Commits one reviewed row: link it to a transaction the user already entered, add it as a new one, or ignore it. */
+export const resolveStagedTransactionAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  await decideStagedRow(user.id, getFormValue(formData, "stagedId"), parseDecision(formData));
+  revalidatePath("/");
+});
+
+/** Adds two bank rows as the two legs of one transfer. */
+export const pairStagedTransfersAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  await pairStagedTransfers(user.id, getFormValue(formData, "stagedId"), getFormValue(formData, "peerStagedId"));
+  revalidatePath("/");
+});
+
+/** "Add all" unmatched rows, the ticked rows, or the ticked rows in one chosen category. */
 export const bulkAddStagedTransactionsAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const stagedIds = parseStagedIds(formData);
   if (stagedIds.length === 0) return;
-  const chosenCategoryId = getFormValue(formData, "categoryId") || null;
-
-  const rows = await prisma.plaidStagedTransaction.findMany({
-    where: { id: { in: stagedIds }, userId: user.id, status: PlaidStagedStatus.NEEDS_REVIEW },
-    select: { ...COMMITTABLE_STAGED_SELECT, name: true, merchantName: true, suggestedCategoryId: true },
-  });
-
-  const propose = await loadStagedProposer(user.id);
-  let chosenKind: CategoryKind | null = null;
-  if (chosenCategoryId) {
-    const category = await prisma.category.findFirst({ where: { id: chosenCategoryId, userId: user.id }, select: { kind: true } });
-    if (!category || category.kind === CategoryKind.TRANSFER) throw new Error("Choose a category for these transactions.");
-    chosenKind = category.kind;
-    const mismatched = rows.filter((row) => categoryKindForTransactionType(row.type) !== chosenKind);
-    if (mismatched.length > 0) {
-      throw new Error(
-        `${mismatched.length} of these ${chosenKind === CategoryKind.INCOME ? "are not income" : "are not spending"}, so they can't go in that category. Untick them, or add them on their own.`,
-      );
-    }
-  }
-  // Each row as the queue offers it: a rule that marks transfers books its rows as transfers,
-  // as the row's ticked "transfer" box would. A chosen category books them as what they are.
-  const plans = new Map(
-    rows.map((row) => {
-      const type = chosenKind ? row.type : defaultStagedType(propose, row);
-      return [row.id, { type, proposal: proposeStagedRowAs(propose, row, type) }];
-    }),
-  );
-  // A row a rule turned into a transfer has no category of the right kind from the sync.
-  const retyped = (row: (typeof rows)[number]) => plans.get(row.id)!.type !== row.type;
-  const transferCategoryId = rows.some(retyped)
-    ? await ensureFallbackCategoryFor(prisma, user.id, CategoryKind.TRANSFER)
-    : null;
-  const categoryFor = (row: (typeof rows)[number]) =>
-    chosenCategoryId ?? (retyped(row) ? transferCategoryId : plans.get(row.id)!.proposal.categoryId);
-
-  // A row with no suggested category cannot be written -- Transaction.categoryId is
-  // non-nullable. Refusing the batch beats silently adding fewer rows than the button
-  // promised, which is invisible to the person who pressed it.
-  const uncategorised = rows.filter((row) => !categoryFor(row));
-  if (uncategorised.length > 0) {
-    throw new Error(
-      `${uncategorised.length} of these have no category yet. Open each one and pick a category, or add them individually.`,
-    );
-  }
-
-  // For the same reason, a row someone else reviewed in the meantime refuses the whole batch
-  // rather than quietly shrinking it.
-  const addedIds = await prisma.$transaction(async (tx) => {
-    const added: string[] = [];
-    for (const row of rows) {
-      const { type, proposal } = plans.get(row.id)!;
-      added.push(
-        orRefuse(
-          await addStagedRow(tx, {
-            userId: user.id,
-            staged: toCommittable(row),
-            categoryId: categoryFor(row)!,
-            // "Add with category" books each row whole in that category, as it says.
-            proposal: chosenCategoryId ? { ...proposal, split: null } : proposal,
-            type,
-          }),
-        ),
-      );
-    }
-    return added;
-  }, LONG_TRANSACTION_OPTIONS);
-  emitTransactionsCreated(user.id, addedIds, "bank");
-
+  const added = await addStagedRows(user.id, stagedIds, getFormValue(formData, "categoryId") || null);
   await recordAuditLog(prisma, {
     userId: user.id,
     action: AUDIT_ACTIONS.plaid_transactions_committed,
-    metadata: { added: rows.length },
+    metadata: { added },
     headers: await headers(),
   });
-
-  scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
 });
 
 /** Ignores the rows ticked in the queue. Rows someone already decided are left as they are. */
 export const bulkIgnoreStagedTransactionsAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const stagedIds = parseStagedIds(formData);
-  await prisma.$transaction(async (tx) => {
-    for (const stagedId of stagedIds) await ignoreStagedRow(tx, { userId: user.id, stagedId });
-  });
+  await ignoreStagedRows(user.id, parseStagedIds(formData));
   revalidatePath("/");
 });
 
-/**
- * Links each row to the entry the matcher paired it with ("Link all strong matches"). The
- * pairs come from the page; `linkStagedRow` checks each one again (ownership, type, an entry
- * already verified), and one refusal rolls the whole batch back.
- */
+/** Links each row to the entry the matcher paired it with ("Link all strong matches"). */
 export const bulkLinkStagedTransactionsAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const links = parseJsonField<unknown>(
@@ -781,43 +594,20 @@ export const bulkLinkStagedTransactionsAction = formAction(async (formData: Form
   ) {
     throw new Error("The matches could not be read. Reload and try again.");
   }
-  const pairs = links as { stagedId: string; transactionId: string }[];
-  if (pairs.length === 0) return;
-  if (new Set(pairs.map((p) => p.transactionId)).size !== pairs.length) {
-    throw new Error("Two bank rows matched the same entry. Link those one at a time.");
-  }
-  const rows = await prisma.plaidStagedTransaction.findMany({
-    where: { id: { in: pairs.map((p) => p.stagedId) }, userId: user.id },
-    select: COMMITTABLE_STAGED_SELECT,
-  });
-  const byId = new Map(rows.map((row) => [row.id, toCommittable(row)]));
-  await prisma.$transaction(async (tx) => {
-    for (const pair of pairs) {
-      const staged = byId.get(pair.stagedId);
-      if (!staged) throw new Error("That synced transaction was not found.");
-      orRefuse(await linkStagedRow(tx, { userId: user.id, staged, transactionId: pair.transactionId }));
-    }
-  }, LONG_TRANSACTION_OPTIONS);
+  await linkStagedRows(user.id, links as { stagedId: string; transactionId: string }[]);
   revalidatePath("/");
 });
 
 /** Applies the bank's revised values to a transaction the user already committed. */
 export const applyBankRevisionAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const stagedId = getFormValue(formData, "stagedId");
-  const applied = await prisma.$transaction((tx) => applyBankRevision(tx, { userId: user.id, stagedId }));
-  if (!applied) throw new Error("That revision was not found.");
-
-  scheduleBudgetAlertEmails(user.id);
+  await applyStagedRevision(user.id, getFormValue(formData, "stagedId"));
   revalidatePath("/");
 });
 
 /** Dismisses a revision, keeping what the user originally approved. */
 export const dismissBankRevisionAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const stagedId = getFormValue(formData, "stagedId");
-  if (!(await dismissBankRevision(prisma, { userId: user.id, stagedId }))) {
-    throw new Error("That revision was not found.");
-  }
+  await dismissStagedRevision(user.id, getFormValue(formData, "stagedId"));
   revalidatePath("/");
 });

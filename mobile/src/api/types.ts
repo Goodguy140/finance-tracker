@@ -136,3 +136,64 @@ export type QuickAddAnswer = {
   /** The text as read, before rules rename it: what to post. */
   entry: { amountCents: number; title: string; dateYmd: string } | null;
 };
+
+/** What adding a bank row writes, as the person's rules shape it. */
+export type QueueProposal = {
+  title: string;
+  note: string | null;
+  tags: string[];
+  /** A rule's split, described ("70% Groceries, 30% Household"). */
+  split: string | null;
+  reason: 'rule' | 'learned' | null;
+};
+
+/** A bank row waiting in the review queue: `GET /api/v1/review-queue`. */
+export type QueueRow = {
+  id: string;
+  bank: string;
+  heading: string;
+  bankName: string;
+  amountCents: number;
+  direction: 'in' | 'out';
+  date: string;
+  account: string;
+  pending: boolean;
+  /** Offered as a transfer between the person's own accounts. */
+  isTransfer: boolean;
+  /** What it is booked as when it is not a transfer; its categories are `categories[type]`. */
+  type: 'expense' | 'income';
+  suggestedCategoryId: string | null;
+  asTransfer: QueueProposal;
+  asNonTransfer: QueueProposal;
+  match: {
+    transaction: { id: string; title: string; amountCents: number; date: string };
+    tier: 'high' | 'low';
+    reasons: string[];
+  } | null;
+  transferPair: { id: string; heading: string; account: string; date: string; outflow: boolean } | null;
+};
+
+/** The bank's later change to a row already added. */
+export type QueueRevision = {
+  id: string;
+  heading: string;
+  bank: string;
+  approvedAmountCents: number;
+  bankAmountCents: number;
+  date: string;
+};
+
+export type LinkedBank = {
+  id: string;
+  name: string;
+  lastSyncedAt: string | null;
+  attention: { kind: string; message: string; actionLabel: string } | null;
+};
+
+export type ReviewQueue = {
+  total: number;
+  rows: QueueRow[];
+  revisions: QueueRevision[];
+  categories: { expense: { id: string; name: string }[]; income: { id: string; name: string }[] };
+  banks: LinkedBank[];
+};
