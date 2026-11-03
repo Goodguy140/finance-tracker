@@ -162,6 +162,7 @@ function BudgetsCard({ data }: { data: Summary }) {
 
 function ComingUp({ data }: { data: Summary }) {
   const theme = useTheme();
+  const router = useRouter();
   const { upcoming } = data;
   const money = (cents: number) => formatCents(cents, data.currency);
   const totals = [
@@ -193,6 +194,9 @@ function ComingUp({ data }: { data: Summary }) {
           );
         })
       )}
+      <Pressable onPress={() => router.push('/bills')} accessibilityRole="button" hitSlop={8}>
+        <Text style={[styles.link, { color: theme.tint }]}>Post or skip bills and pay</Text>
+      </Pressable>
     </Section>
   );
 }

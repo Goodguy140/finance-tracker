@@ -5,8 +5,9 @@ finances on the phone. It lives beside the server in this repository but is its 
 its own `package.json`, lockfile, lint and tests. The server's tools ignore this folder.
 
 What it does so far: sign in (with Face ID if you want it); see safe to spend, budgets and what is
-due; browse, search, add and edit transactions with receipts; review what your banks sent
-(the Review tab); and get bill, charge and budget alerts (Settings → Alerts). `docs/features.md`
+due; post or skip recurring bills and pay; browse, search, add and edit transactions with
+receipts; review what your banks sent (the Review tab); and get bill, charge and budget alerts
+(Settings → Alerts). `docs/features.md`
 in the repository root lists it screen by screen.
 
 ## How sign-in works

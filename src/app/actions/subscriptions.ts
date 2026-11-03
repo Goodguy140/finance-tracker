@@ -1,17 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { Prisma, TransactionType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { dateFromYmd, ymdFromDateUtc } from "@/lib/date-only";
+import { dateFromYmd } from "@/lib/date-only";
 import { toCents } from "@/lib/money";
 import { requireUser } from "@/lib/session";
-import {
-  advanceRecurringDate,
-  isRecurringOccurrenceOnOrAfterNext,
-  recurringAnchor,
-  recurringAnchorDay,
-} from "@/lib/recurring-transactions";
+import { isOccurrenceRace } from "@/lib/recurring-post";
+import { skipRecurringOccurrence } from "@/lib/recurring-skip";
 import { recomputeSubscriptionTransactionCredits } from "@/lib/subscription-credit";
 import {
   deleteSubscriptionMemberSchema,
@@ -24,9 +19,6 @@ import {
   getFormValue,
   formAction,
 } from "./_helpers";
-
-/** Days on either side of the expected date to search for a matching already-logged expense. */
-const ALREADY_LOGGED_MATCH_WINDOW_DAYS = 15;
 
 function revalidateSubscriptionViews() {
   revalidatePath("/");
@@ -187,121 +179,21 @@ export const skipRecurringOccurrenceAction = formAction(async (formData: FormDat
     reason: getFormValue(formData, "reason"),
     transactionId: getFormValue(formData, "transactionId") || undefined,
   });
-  const expectedDate = dateFromYmd(payload.expectedDate);
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const rule = await tx.recurringTransaction.findFirst({
-        where: { id: payload.recurringTransactionId, userId: user.id },
-        select: {
-          id: true,
-          name: true,
-          type: true,
-          cadence: true,
-          enabled: true,
-          endDate: true,
-          nextExpectedDate: true,
-          anchorDay: true,
-          secondAnchorDay: true,
-          beforeWeekend: true,
-        },
-      });
-      if (!rule) throw new Error("Subscription not found.");
-
-      // Optimistic concurrency: only advance if this is still the current occurrence, or a
-      // later one on the rule's cadence (which passes over the missed ones before it).
-      const anchorDay = recurringAnchorDay(rule);
-      const anchor = recurringAnchor(rule);
-      if (!isRecurringOccurrenceOnOrAfterNext(rule.nextExpectedDate, rule.cadence, expectedDate, anchor)) {
-        throw new Error("This subscription has already moved to a different expected date.");
-      }
-      if (!rule.enabled) throw new Error("Subscription is disabled.");
-
-      if (payload.reason === "already_logged") {
-        await linkAlreadyLoggedTransaction(tx, {
-          userId: user.id,
-          rule,
-          expectedDate,
-          transactionId: payload.transactionId,
-        });
-      }
-
-      const nextExpectedDate = advanceRecurringDate(expectedDate, rule.cadence, anchor);
-      const stillEnabled = !rule.endDate || ymdFromDateUtc(nextExpectedDate) <= ymdFromDateUtc(rule.endDate);
-      await tx.recurringTransaction.updateMany({
-        where: { id: rule.id, userId: user.id, enabled: true, nextExpectedDate: rule.nextExpectedDate },
-        data: { nextExpectedDate, anchorDay, enabled: stillEnabled },
-      });
-    });
+    await prisma.$transaction((tx) =>
+      skipRecurringOccurrence(tx, {
+        userId: user.id,
+        recurringTransactionId: payload.recurringTransactionId,
+        expectedDate: dateFromYmd(payload.expectedDate),
+        reason: payload.reason,
+        transactionId: payload.transactionId,
+      }),
+    );
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      // Another posted occurrence already owns this expected date; treat the skip as satisfied.
-      revalidateSubscriptionViews();
-      return;
-    }
-    throw error;
+    // Another posted occurrence already owns this expected date; the skip is satisfied.
+    if (!isOccurrenceRace(error)) throw error;
   }
 
   revalidateSubscriptionViews();
 });
-
-type SkipTxClient = Prisma.TransactionClient;
-
-async function linkAlreadyLoggedTransaction(
-  tx: SkipTxClient,
-  params: {
-    userId: string;
-    rule: { id: string; name: string; type: TransactionType };
-    expectedDate: Date;
-    transactionId?: string;
-  },
-) {
-  // Match the rule's own kind: an income rule links an income entry, not an expense.
-  const type = params.rule.type;
-  const kindLabel =
-    type === TransactionType.INCOME ? "income entry" : type === TransactionType.TRANSFER ? "transfer" : "expense";
-  if (params.transactionId) {
-    const txn = await tx.transaction.findFirst({
-      where: {
-        id: params.transactionId,
-        userId: params.userId,
-        type,
-        recurringTransactionId: null,
-      },
-      select: { id: true },
-    });
-    if (!txn) throw new Error(`Selected ${kindLabel} was not found or is already linked to a recurring transaction.`);
-    await tx.transaction.update({
-      where: { id: txn.id },
-      data: { recurringTransactionId: params.rule.id, recurringExpectedDate: params.expectedDate },
-    });
-    return;
-  }
-
-  // Auto-match an unlinked entry with the same title near the expected date (closest wins).
-  const windowMs = ALREADY_LOGGED_MATCH_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-  const candidates = await tx.transaction.findMany({
-    where: {
-      userId: params.userId,
-      type,
-      recurringTransactionId: null,
-      title: params.rule.name,
-      date: {
-        gte: new Date(params.expectedDate.getTime() - windowMs),
-        lte: new Date(params.expectedDate.getTime() + windowMs),
-      },
-    },
-    select: { id: true, date: true },
-  });
-  if (candidates.length === 0) return; // Nothing to link; still advance the schedule.
-
-  const best = candidates.reduce((closest, candidate) => {
-    const closestDiff = Math.abs(closest.date.getTime() - params.expectedDate.getTime());
-    const candidateDiff = Math.abs(candidate.date.getTime() - params.expectedDate.getTime());
-    return candidateDiff < closestDiff ? candidate : closest;
-  });
-  await tx.transaction.update({
-    where: { id: best.id },
-    data: { recurringTransactionId: params.rule.id, recurringExpectedDate: params.expectedDate },
-  });
-}

@@ -135,14 +135,17 @@ token (`Authorization: Bearer ftd_…`).
   `GET`/`DELETE /api/v1/attachments/:id`, with the website's size, type and quota checks; personal
   access tokens never see receipts), and editing or deleting one entry at a time (`PATCH`/`DELETE
   /api/v1/transactions/:id`; a deleted entry is kept 15 minutes for `POST /api/v1/undo/:undoId`,
-  as on the website), and the bank review queue (`GET /api/v1/review-queue`, deciding rows with
+  as on the website), recurring bills (`GET /api/v1/recurring`, posting or skipping the occurrence
+  a rule waits on with `POST /api/v1/recurring/:id/post` and `/skip`, as the website's Post and Skip
+  do), and the bank review queue (`GET /api/v1/review-queue`, deciding rows with
   `POST /api/v1/review-queue/:id`, `/pair`, `/bulk`, `/revisions/:id`, the same decisions as the
   website's queue buttons, which need no step-up there either; `POST /api/v1/banks/refresh` checks
   the person's banks as the log's refresh icon does). Linking, unlinking or signing in to a bank
   stays on the website), and the phone's own alert registration (`GET`/`PUT`/`DELETE
   /api/v1/app/device/push`: its Apple push token and which alerts it wants; device tokens only, so a
   personal access token gets 403). Adds, edits, deletes and undos are audit-logged (`api_transaction_created`
-  with `via: "app"`, `api_transaction_updated`, `_deleted`, `_restored`), as are rows added or
+  with `via: "app"`, `api_transaction_updated`, `_deleted`, `_restored`, and `api_recurring_posted`
+  and `_skipped`), as are rows added or
   linked from the queue (`plaid_transactions_committed` with `via: "app"`); the phone's adds skip
   Needs review, since the person typed them. Nothing on `/api/v1` clears or restores data in bulk, changes
   sign-in, or reaches admin controls.

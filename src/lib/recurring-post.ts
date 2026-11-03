@@ -1,6 +1,5 @@
 import { emitTransactionsCreated } from "@/lib/webhooks";
-import type { Prisma } from "@prisma/client";
-import { RecurringPostMode } from "@prisma/client";
+import { Prisma, RecurringPostMode } from "@prisma/client";
 import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
 import { dateFromYmd, ymdFromDateUtc } from "@/lib/date-only";
 import { currentYmdInTimeZone } from "@/lib/period-month";
@@ -19,6 +18,26 @@ import { recomputeSubscriptionTransactionCredits } from "@/lib/subscription-cred
  */
 
 export type PostOutcome = "posted" | "already_posted" | "no_change";
+
+/**
+ * Two requests racing on one occurrence: the unique (rule, expected date) index refused the
+ * second insert. Whatever the second wanted, posting or skipping, is already settled.
+ */
+export function isOccurrenceRace(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+/** Why an occurrence cannot be posted or skipped, worded for the person. */
+export class RecurringOccurrenceError extends Error {
+  constructor(
+    message: string,
+    /** The rule does not exist for this user, as opposed to existing but refusing. */
+    readonly notFound = false,
+  ) {
+    super(message);
+    this.name = "RecurringOccurrenceError";
+  }
+}
 
 /** The two enums share their values: each transaction type has categories of its own kind. */
 function categoryKindFor(type: "EXPENSE" | "INCOME" | "TRANSFER") {
@@ -53,7 +72,7 @@ export async function postRecurringOccurrence(
     where: { id: recurringTransactionId, userId },
     include: { account: true, category: true },
   });
-  if (!rule) throw new Error("Recurring transaction not found.");
+  if (!rule) throw new RecurringOccurrenceError("Recurring transaction not found.", true);
 
   // A later occurrence on the rule's cadence may be posted directly; it passes over the
   // ones before it (the dashboard offers this month's occurrence of an overdue rule).
@@ -65,15 +84,15 @@ export async function postRecurringOccurrence(
       select: { id: true },
     });
     if (posted) return "already_posted";
-    throw new Error("This recurring transaction has already moved to a different expected date.");
+    throw new RecurringOccurrenceError("This recurring transaction has already moved to a different expected date.");
   }
-  if (!rule.enabled) throw new Error("Recurring transaction is disabled.");
-  if (rule.account.archived) throw new Error("Cannot post a recurring transaction to an archived account.");
+  if (!rule.enabled) throw new RecurringOccurrenceError("Recurring transaction is disabled.");
+  if (rule.account.archived) throw new RecurringOccurrenceError("Cannot post a recurring transaction to an archived account.");
   if (rule.category.kind !== categoryKindFor(rule.type)) {
-    throw new Error("Recurring transaction category does not match its income/expense type.");
+    throw new RecurringOccurrenceError("Recurring transaction category does not match its income/expense type.");
   }
   if (rule.endDate && expectedYmd > ymdFromDateUtc(rule.endDate)) {
-    throw new Error("Recurring transaction has passed its end date.");
+    throw new RecurringOccurrenceError("Recurring transaction has passed its end date.");
   }
 
   const nextExpectedDate = advanceRecurringDate(expectedDate, rule.cadence, anchor);
