@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { API_SCOPES, authenticateApiToken } from "@/lib/api-token";
 import { buildMonthlyBudgetProgress, budgetRowPercentUsed } from "@/lib/budget-progress";
 import { currentYmInTimeZone } from "@/lib/period-month";
-import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
+import { enforceSlidingWindowRateLimit, RateLimitExceededError } from "@/lib/rate-limit";
 import { monthParamSchema } from "@/lib/validation";
 import { loadYearlyBudgetRows } from "@/lib/yearly-budgets";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
@@ -40,7 +40,8 @@ export async function GET(request: Request) {
       RATE_LIMIT_WINDOW_MS,
       "Rate limit exceeded. Try again shortly.",
     );
-  } catch {
+  } catch (err) {
+    if (!(err instanceof RateLimitExceededError)) throw err;
     return NextResponse.json(
       { error: "Rate limit exceeded. Try again shortly." },
       { status: 429, headers: { "Retry-After": "60" } },

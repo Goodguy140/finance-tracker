@@ -11,7 +11,10 @@ vi.mock("@/lib/budget-progress", () => ({
   buildMonthlyBudgetProgress: vi.fn(),
   budgetRowPercentUsed: vi.fn(() => 78),
 }));
-vi.mock("@/lib/rate-limit", () => ({ enforceSlidingWindowRateLimit: vi.fn(async () => {}) }));
+vi.mock("@/lib/rate-limit", async () => ({
+  RateLimitExceededError: (await vi.importActual<typeof import("@/lib/rate-limit")>("@/lib/rate-limit")).RateLimitExceededError,
+  enforceSlidingWindowRateLimit: vi.fn(async () => {}),
+}));
 vi.mock("@/lib/period-month", async () => {
   const actual = await vi.importActual<typeof import("@/lib/period-month")>("@/lib/period-month");
   return { ...actual, currentYmInTimeZone: vi.fn(() => "2026-06") };
@@ -23,7 +26,7 @@ vi.mock("@/lib/audit-log", () => ({
 
 const { authenticateApiToken } = await import("@/lib/api-token");
 const { buildMonthlyBudgetProgress } = await import("@/lib/budget-progress");
-const { enforceSlidingWindowRateLimit } = await import("@/lib/rate-limit");
+const { enforceSlidingWindowRateLimit, RateLimitExceededError } = await import("@/lib/rate-limit");
 const { recordAuditLog } = await import("@/lib/audit-log");
 const { prisma } = await import("@/lib/prisma");
 const { loadYearlyBudgetRows } = await import("@/lib/yearly-budgets");
@@ -140,9 +143,15 @@ describe("GET /api/v1/budgets", () => {
 
   it("returns 429 when the rate limit is exceeded", async () => {
     vi.mocked(authenticateApiToken).mockResolvedValue(okAuth as never);
-    vi.mocked(enforceSlidingWindowRateLimit).mockRejectedValue(new Error("Rate limit exceeded."));
+    vi.mocked(enforceSlidingWindowRateLimit).mockRejectedValue(new RateLimitExceededError("Rate limit exceeded."));
     const res = await get();
     expect(res.status).toBe(429);
     expect(res.headers.get("Retry-After")).toBe("60");
+  });
+
+  it("does not report a limiter that failed as the limit being reached", async () => {
+    vi.mocked(authenticateApiToken).mockResolvedValue(okAuth as never);
+    vi.mocked(enforceSlidingWindowRateLimit).mockRejectedValue(new Error("Socket timeout"));
+    await expect(get()).rejects.toThrow("Socket timeout");
   });
 });
