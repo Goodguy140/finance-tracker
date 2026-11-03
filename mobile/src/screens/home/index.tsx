@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useState } from 'react';
-import { Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { errorText, useApiQuery } from '@/api/query';
 import type { Summary } from '@/api/types';
@@ -12,7 +12,6 @@ import { UndoBar } from '@/components/undo-bar';
 import { Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
-import { useSession } from '@/session/session-provider';
 import { formatDay, relativeDay } from '@/utils/dates';
 import { formatCents, formatPeriodMonth } from '@/utils/money';
 import { safeToSpendBreakdown, safeToSpendLine } from '@/utils/safe-to-spend';
@@ -91,15 +90,14 @@ function SafeToSpendCard({ data }: { data: Summary }) {
 function Waiting({ data }: { data: Summary }) {
   const theme = useTheme();
   const router = useRouter();
-  const { session } = useSession();
   const { bankQueue, needsReview } = data.waiting;
   if (bankQueue === 0 && needsReview === 0) return null;
   const rows = [
     bankQueue > 0
       ? {
           text: `${bankQueue} bank transaction${bankQueue === 1 ? '' : 's'} to review`,
-          hint: 'Opens the website in Safari',
-          onPress: () => session && void Linking.openURL(`${session.origin}/`),
+          hint: 'Opens the Review tab',
+          onPress: () => router.navigate('/review'),
         }
       : null,
     needsReview > 0
@@ -111,7 +109,7 @@ function Waiting({ data }: { data: Summary }) {
       : null,
   ].filter((row) => row !== null);
   return (
-    <Section title="Waiting for you" footer={bankQueue > 0 ? 'The bank queue opens on the website for now.' : null}>
+    <Section title="Waiting for you">
       {rows.map((row) => (
         <Pressable key={row.text} onPress={row.onPress} accessibilityRole="button" accessibilityHint={row.hint} style={styles.line}>
           <Text style={[styles.rowText, { color: theme.text }]}>{row.text}</Text>

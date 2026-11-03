@@ -4,7 +4,9 @@ An Expo (React Native) app that signs in to your own Finance Tracker server and 
 finances on the phone. It lives beside the server in this repository but is its own project, with
 its own `package.json`, lockfile, lint and tests. The server's tools ignore this folder.
 
-What it does so far (Phase 2 of the plan): sign in, see this month's budgets, sign out.
+What it does so far: sign in (with Face ID if you want it); see safe to spend, budgets and what is
+due; browse, search, add and edit transactions with receipts; and review what your banks sent
+(the Review tab). `docs/features.md` in the repository root lists it screen by screen.
 
 ## How sign-in works
 
@@ -22,7 +24,7 @@ The server side is `src/lib/app-devices.ts` and the `/api/v1/app/*` routes; the 
 
 | Folder | What is in it |
 | --- | --- |
-| `src/app/` | Expo Router routes only: `_layout.tsx`, `sign-in.tsx`, and `(tabs)/` with one stack per tab (`(home)`, `transactions`, `budgets`, `settings`) |
+| `src/app/` | Expo Router routes only: `_layout.tsx`, `sign-in.tsx`, and `(tabs)/` with one stack per tab (`(home)`, `transactions`, `review`, `budgets`, `settings`) |
 | `src/screens/` | What each route shows |
 | `src/components/` | Pieces shared between screens: sections, form rows, progress bars, budget lines, the Undo bar |
 | `src/session/` | The stored sign-in (Keychain), the sign-in flow, the session provider |

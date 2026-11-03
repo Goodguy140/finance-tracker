@@ -135,8 +135,13 @@ token (`Authorization: Bearer ftd_…`).
   `GET`/`DELETE /api/v1/attachments/:id`, with the website's size, type and quota checks; personal
   access tokens never see receipts), and editing or deleting one entry at a time (`PATCH`/`DELETE
   /api/v1/transactions/:id`; a deleted entry is kept 15 minutes for `POST /api/v1/undo/:undoId`,
-  as on the website). Adds, edits, deletes and undos are audit-logged (`api_transaction_created`
-  with `via: "app"`, `api_transaction_updated`, `_deleted`, `_restored`); the phone's adds skip
+  as on the website), and the bank review queue (`GET /api/v1/review-queue`, deciding rows with
+  `POST /api/v1/review-queue/:id`, `/pair`, `/bulk`, `/revisions/:id`, the same decisions as the
+  website's queue buttons, which need no step-up there either; `POST /api/v1/banks/refresh` checks
+  the person's banks as the log's refresh icon does). Linking, unlinking or signing in to a bank
+  stays on the website. Adds, edits, deletes and undos are audit-logged (`api_transaction_created`
+  with `via: "app"`, `api_transaction_updated`, `_deleted`, `_restored`), as are rows added or
+  linked from the queue (`plaid_transactions_committed` with `via: "app"`); the phone's adds skip
   Needs review, since the person typed them. Nothing on `/api/v1` clears or restores data in bulk, changes
   sign-in, or reaches admin controls.
 - It ends when the phone signs out (`POST /api/v1/app/revoke`), when the person signs it out

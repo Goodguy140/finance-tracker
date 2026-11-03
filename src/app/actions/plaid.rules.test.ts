@@ -14,7 +14,7 @@ const ruleContext = vi.hoisted(() => ({ current: null as null | RuleContext }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/headers", () => ({ headers: vi.fn(async () => new Headers()) }));
 vi.mock("@/lib/session", () => ({ requireUser: vi.fn(async () => ({ id: "user-1" })) }));
-vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
+vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma, LONG_TRANSACTION_OPTIONS: {} }));
 vi.mock("@/lib/budget-alert-dispatch", () => ({ scheduleBudgetAlertEmails: vi.fn() }));
 vi.mock("@/lib/audit-log", () => ({ AUDIT_ACTIONS: {}, recordAuditLog: vi.fn() }));
 vi.mock("@/lib/plaid/service", () => ({}));

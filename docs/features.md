@@ -115,7 +115,9 @@ Code: `src/lib/plaid/*`, `actions/plaid.ts`. Read the Plaid section of `AGENTS.m
   `ingest.ts`), background sweep (`src/lib/plaid-sync-scheduler.ts`), webhooks
   (`src/app/api/plaid/webhook/route.ts`, `webhooks.ts`, `webhook-verify.ts`), consent withdrawn
   purge (`purge.ts`)
-- **Review queue** in the Expense Log: `plaid-review-queue.tsx`, `src/lib/plaid/review.ts`,
+- **Review queue** in the Expense Log and on the phone's Review tab: `plaid-review-queue.tsx`,
+  `src/lib/plaid/review.ts` (the writes), `review-decisions.ts` (each decision whole, shared by the
+  website's actions and the phone's routes), `review-queue-view.ts` (rows as shown, shared too),
   `review-queue-page.ts`. Add, link to existing (verify), add as new, hide, add all, tick rows to add,
   ignore or add in one category (`ReviewBulkBar`), link all strong matches, pair as
   transfer (`transfer-pairing.ts`), revised rows apply/dismiss, auto-link exact matches
@@ -456,10 +458,11 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
 - Sign in: server address, then the server's own sign-in page in the system sheet (PKCE); the
   device token is kept in the Keychain. `src/screens/sign-in.tsx`, `src/session/*`,
   `src/utils/sign-in.ts`
-- Tabs (`src/app/(tabs)/_layout.tsx`, native tab bar): Home, Transactions, Budgets, Settings. Data is cached and
+- Tabs (`src/app/(tabs)/_layout.tsx`, native tab bar): Home, Transactions, Review (badged with the
+  bank rows waiting), Budgets, Settings. Data is cached and
   refetched when the app comes back to the front (`src/api/query.tsx`, TanStack Query)
 - Home: safe to spend for the month (the website's number and breakdown), bank rows and entries
-  waiting for review (open the website for now), budgets at 80% or more with the month's total,
+  waiting for review (open the Review tab and Transactions' Needs review), budgets at 80% or more with the month's total,
   and bills and pay due in the next 7 days, overdue ones flagged. One call, `GET /api/v1/summary`
   (`src/lib/api-v1/summary.ts`). `src/screens/home/`
 - Transactions: the log a month at a time (‹ ›), grouped by day; search across every month
@@ -484,6 +487,14 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
   receipts listed on `GET /api/v1/transactions/:id`; the website's limits and type checks
   (`src/lib/attachments.ts`). `src/screens/transactions/receipts.tsx`, `src/screens/receipt.tsx`,
   `src/utils/pick-receipt.ts`, `src/api/receipts.ts`
+- Review: the bank review queue, every month at once, newest first, as the website's queue offers
+  each row: link to the entry it matches, pair two rows as one transfer, add (as a transfer or in a
+  category, showing the title, note, tags and split the rules give it) or ignore; Link all strong
+  matches and Add all unmatched; the bank's revisions to rows already added (use the bank's amount
+  or keep yours); banks that need signing in again or renewing link to Settings → Banks on the
+  website. Pull down checks the banks now, as the log's refresh icon does. `GET /api/v1/review-queue`,
+  `POST /api/v1/review-queue/:id`, `/pair`, `/bulk`, `/revisions/:id`, `POST /api/v1/banks/refresh`
+  (`src/lib/api-v1/review-queue.ts`). `src/screens/review/`, `src/utils/review-queue.ts`
 - Budgets: any month's budgets by category group, with rollover carries, and the yearly budgets as
   sinking funds; ‹ › switch month. `GET /api/v1/budgets` (now also `groupName`, `rollover` and
   `yearly`). `src/screens/budgets/`

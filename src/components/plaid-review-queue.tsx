@@ -24,68 +24,7 @@ import {
   resolveStagedTransactionAction,
 } from "@/app/actions/plaid";
 import { formatCurrency } from "@/lib/money";
-
-export type ReviewCandidate = {
-  id: string;
-  title: string;
-  amountCents: number;
-  dateDisplay: string;
-};
-
-/** What adding a row would write, as the user's rules shape it. */
-export type ReviewProposal = {
-  title: string;
-  note: string | null;
-  tagNames: string[];
-  /** A rule's split, described ("70% Groceries, 30% Household"), kept only in its category. */
-  split: string | null;
-  /** Why the title/category differ from the bank's own: one of the user's rules, or a
-   * category learned from a past entry with the same title. */
-  reason: "rule" | "learned" | null;
-};
-
-export type ReviewRow = {
-  id: string;
-  institutionName: string;
-  /** The title as the sync typed the row, for labelling it. */
-  heading: string;
-  /** The bank's own name for it, before any rule renamed it. */
-  bankName: string;
-  /** What adding it writes when booked as a transfer, and when not. */
-  asTransfer: ReviewProposal;
-  asNonTransfer: ReviewProposal;
-  amountCents: number;
-  /** The sync took it for money moving between the user's own accounts. */
-  isTransfer: boolean;
-  dateYmd: string;
-  dateDisplay: string;
-  accountLabel: string;
-  /** What the row is booked as when it is not a transfer, and that type's categories. */
-  nonTransferType: "EXPENSE" | "INCOME";
-  categoryOptions: { id: string; name: string }[];
-  suggestedCategoryId: string;
-  isPending: boolean;
-  /** Proposed link, when the matcher found a plausible one. */
-  match: { candidate: ReviewCandidate; tier: "high" | "low"; reasons: string[] } | null;
-  /** Another bank row that looks like the other side of the same transfer. */
-  transferPair: {
-    stagedId: string;
-    heading: string;
-    accountLabel: string;
-    dateDisplay: string;
-    /** The money left this row's account (and arrived in the other's). */
-    outflow: boolean;
-  } | null;
-};
-
-export type RevisionRow = {
-  id: string;
-  heading: string;
-  institutionName: string;
-  approvedAmountCents: number;
-  bankAmountCents: number;
-  bankDateDisplay: string;
-};
+import type { ReviewRow, RevisionRow } from "@/lib/plaid/review-queue-view";
 
 export type PlaidReviewQueueProps = {
   /** The rows on screen: the newest page or pages of the queue. */

@@ -86,13 +86,19 @@ import { assignCategoryColors, categoryColor, SAVINGS_SLICE_COLOR } from "@/lib/
 import type { CategorySpendSlice } from "@/components/category-spend-pie";
 import { loadSavingsTransfers } from "@/lib/reports/load";
 import { savedByTransferBetween } from "@/lib/savings-transfers";
-import { describeRuleSplit, visibleLearnedSuggestions, type RuleTransactionType } from "@/lib/transaction-rules";
-import { catchAllCategoryId } from "@/lib/plaid/category-map";
-import { outflowCents, untransferredType } from "@/lib/transfer-type";
-import { assignTransferPairs, widenDateFilterForPairing } from "@/lib/plaid/transfer-pairing";
+import { visibleLearnedSuggestions, type RuleTransactionType } from "@/lib/transaction-rules";
+import { widenDateFilterForPairing } from "@/lib/plaid/transfer-pairing";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
-import { makeStagedProposer, proposeStagedRowAs, type StagedRuleProposal } from "@/lib/plaid/staged-rules";
-import { resolveDisplayName } from "@/lib/plaid/ingest";
+import {
+  buildReviewRows,
+  buildRevisionRows,
+  loadMatchCandidates,
+  loadRevisionTargets,
+  PAIRING_POOL_SELECT,
+  REVIEW_QUEUE_ORDER,
+  REVIEW_QUEUE_ROW_INCLUDE,
+  REVISION_LIMIT,
+} from "@/lib/plaid/review-queue-view";
 import { PLAID_ITEM_NEEDS_ATTENTION_WHERE } from "@/lib/plaid/attention";
 import {
   bucketIncomeCentsByYm,
@@ -131,7 +137,6 @@ import { cardPaymentsDue, type CardDue } from "@/lib/credit-cards";
 import { loadCardTerms } from "@/lib/credit-cards-data";
 import type { BillsForecastItem } from "@/components/dashboard-cards/bills-forecast-card";
 import { requireUser } from "@/lib/session";
-import { paidCentsOf } from "@/lib/owed-shares";
 import { formatCurrency } from "@/lib/money";
 import { OwedToYouList, type OwedToYouItem } from "@/components/owed-to-you";
 
@@ -276,16 +281,16 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     // A page at a time (`?queue=` asks for more), with the full count so none goes unseen.
     prisma.plaidStagedTransaction.findMany({
       where: reviewQueueWhere,
-      include: { plaidItem: { select: { institutionName: true } } },
-      orderBy: [{ date: "desc" }, { name: "asc" }, { id: "asc" }],
+      include: REVIEW_QUEUE_ROW_INCLUDE,
+      orderBy: REVIEW_QUEUE_ORDER,
       take: reviewQueueLimit,
     }),
     prisma.plaidStagedTransaction.count({ where: reviewQueueWhere }),
     prisma.plaidStagedTransaction.findMany({
       where: { userId: user.id, revisedAfterResolveAt: { not: null }, ...transactionDateFilter },
-      include: { plaidItem: { select: { institutionName: true } } },
+      include: REVIEW_QUEUE_ROW_INCLUDE,
       orderBy: { revisedAfterResolveAt: "desc" },
-      take: 50,
+      take: REVISION_LIMIT,
     }),
     prisma.transaction.findMany({
       where: {
@@ -424,17 +429,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         status: PlaidStagedStatus.NEEDS_REVIEW,
         ...widenDateFilterForPairing(transactionDateFilter),
       },
-      select: {
-        id: true,
-        suggestedAccountId: true,
-        type: true,
-        amountCents: true,
-        date: true,
-        postedDate: true,
-        name: true,
-        merchantName: true,
-        suggestedCategoryId: true,
-      },
+      select: PAIRING_POOL_SELECT,
     }),
     listTags(prisma, user.id),
     // "Owed to you": everything still outstanding whatever the period, since a debt from
@@ -699,131 +694,21 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     .filter((s) => s.cents !== 0)
     .sort((a, b) => Math.abs(b.cents) - Math.abs(a.cents));
 
-  // The matcher stores the candidate id; the queue needs enough of that transaction to
-  // show what it is proposing, so the referenced rows are fetched in one go.
-  const matchCandidateIds = stagedRows.map((row) => row.matchTransactionId).filter((id): id is string => Boolean(id));
-  const matchCandidates = matchCandidateIds.length
-    ? await prisma.transaction.findMany({
-        where: { userId: user.id, id: { in: matchCandidateIds } },
-        select: { id: true, title: true, amountCents: true, date: true },
-      })
-    : [];
-  const matchCandidateById = new Map(matchCandidates.map((row) => [row.id, row]));
-
-  const expenseCategoryOptionsForQueue = categories
-    .filter((c) => c.kind === CategoryKind.EXPENSE)
-    .map((c) => ({ id: c.id, name: c.name }));
-  const incomeCategoryOptionsForQueue = categories
-    .filter((c) => c.kind === CategoryKind.INCOME)
-    .map((c) => ({ id: c.id, name: c.name }));
-
-  const propose = makeStagedProposer(ruleContext, categoryKindById);
-  const queueProposalView = (proposal: StagedRuleProposal) => ({
-    title: proposal.title,
-    note: proposal.note,
-    tagNames: proposal.tagIds.flatMap((id) => tagNameById.get(id) ?? []),
-    split: proposal.split
-      ? describeRuleSplit(proposal.split, (id) => categories.find((c) => c.id === id)?.name ?? "Deleted category")
-      : null,
-    reason: proposal.reason,
+  // The queue's rows, as the phone app's queue builds them (`src/lib/plaid/review-queue-view.ts`).
+  const [matchCandidates, revisionTargets] = await Promise.all([
+    loadMatchCandidates(prisma, user.id, stagedRows),
+    loadRevisionTargets(prisma, user.id, revisedRows),
+  ]);
+  const reviewRows = buildReviewRows({
+    stagedRows,
+    pairingPool: transferPairingPool,
+    matchCandidates,
+    categories,
+    accounts,
+    ruleContext,
+    tagNameById,
   });
-  const transferPairs = assignTransferPairs(
-    transferPairingPool.map((row) => ({ ...row, accountId: row.suggestedAccountId })),
-  );
-  const pairingPoolById = new Map(transferPairingPool.map((row) => [row.id, row]));
-  const stagedAccountLabel = (accountId: string | null) =>
-    accounts.find((a) => a.id === accountId)?.name ?? "Unmapped account";
-  const reviewRows = stagedRows.map((row) => {
-    const isTransfer = row.type === TransactionType.TRANSFER;
-    // What the row becomes if the user unticks "transfer" (or never ticks it): its own type,
-    // or for a transfer, spending if the money left and income if it arrived.
-    const nonTransferType = isTransfer ? untransferredType(row.amountCents) : row.type;
-    // Both ways the row can be booked, each exactly as the commit will write it, so ticking
-    // or unticking "transfer" shows what the rules do for that choice.
-    const transferProposal = proposeStagedRowAs(propose, row, TransactionType.TRANSFER);
-    const nonTransferProposal = proposeStagedRowAs(propose, row, nonTransferType);
-    // A rule that marks transfers ticks "transfer" for a row the sync filed as spending or income.
-    const offeredAsTransfer = isTransfer || nonTransferProposal.markAsTransfer;
-    const proposal = offeredAsTransfer ? transferProposal : nonTransferProposal;
-    const nonTransferOptions =
-      nonTransferType === TransactionType.INCOME ? incomeCategoryOptionsForQueue : expenseCategoryOptionsForQueue;
-    const candidate = row.matchTransactionId ? matchCandidateById.get(row.matchTransactionId) : undefined;
-    const reasons = row.matchReasonsJson ? (JSON.parse(row.matchReasonsJson) as string[]) : [];
-    return {
-      id: row.id,
-      institutionName: row.plaidItem.institutionName ?? "Your bank",
-      heading: proposal.title,
-      bankName: resolveDisplayName(row.name, row.merchantName),
-      asTransfer: queueProposalView(transferProposal),
-      asNonTransfer: queueProposalView(nonTransferProposal),
-      amountCents: row.amountCents,
-      isTransfer: offeredAsTransfer,
-      dateYmd: ymdFromDateUtc(row.date),
-      dateDisplay: formatDateOnlyUtc(row.date),
-      accountLabel: stagedAccountLabel(row.suggestedAccountId),
-      transferPair: (() => {
-        const peer = pairingPoolById.get(transferPairs.get(row.id) ?? "");
-        if (!peer) return null;
-        return {
-          stagedId: peer.id,
-          // Pairing books both legs as transfers, so the peer is named as one.
-          heading: proposeStagedRowAs(propose, peer, TransactionType.TRANSFER).title,
-          accountLabel: stagedAccountLabel(peer.suggestedAccountId),
-          dateDisplay: formatDateOnlyUtc(peer.date),
-          // Which way the money went, from this row's side.
-          outflow: outflowCents(row.type, row.amountCents) > 0,
-        };
-      })(),
-      nonTransferType: nonTransferType === TransactionType.INCOME ? ("INCOME" as const) : ("EXPENSE" as const),
-      categoryOptions: nonTransferOptions,
-      suggestedCategoryId:
-        nonTransferProposal.categoryId ?? catchAllCategoryId(nonTransferOptions) ?? nonTransferOptions[0]?.id ?? "",
-      isPending: row.isPending,
-      match:
-        candidate && row.matchTier
-          ? {
-              candidate: {
-                id: candidate.id,
-                title: candidate.title ?? "Untitled",
-                amountCents: candidate.amountCents,
-                dateDisplay: formatDateOnlyUtc(candidate.date),
-              },
-              tier: row.matchTier === "high" ? ("high" as const) : ("low" as const),
-              reasons,
-            }
-          : null,
-    };
-  });
-
-  const revisionCandidateIds = revisedRows
-    .map((row) => row.resolvedTransactionId)
-    .filter((id): id is string => Boolean(id));
-  const revisionTargets = revisionCandidateIds.length
-    ? await prisma.transaction.findMany({
-        where: { userId: user.id, id: { in: revisionCandidateIds } },
-        select: { id: true, amountCents: true, owedShares: { select: { amountCents: true } } },
-      })
-    : [];
-  const revisionTargetById = new Map(revisionTargets.map((row) => [row.id, row]));
-
-  const revisionRows = revisedRows.flatMap((row) => {
-    const target = row.resolvedTransactionId ? revisionTargetById.get(row.resolvedTransactionId) : undefined;
-    // Same amount on both sides: nothing to choose between. Sync no longer raises these, but
-    // a row can still get here if the user edited their entry to the bank's amount after the
-    // flag was raised, and rows flagged before sync stopped raising them still carry it.
-    // What the user paid, like the bank's figure: what others owe was taken out of the amount.
-    if (!target || paidCentsOf(target) === row.amountCents) return [];
-    return [
-      {
-        id: row.id,
-        heading: resolveDisplayName(row.name, row.merchantName),
-        institutionName: row.plaidItem.institutionName ?? "Your bank",
-        approvedAmountCents: paidCentsOf(target),
-        bankAmountCents: row.amountCents,
-        bankDateDisplay: formatDateOnlyUtc(row.date),
-      },
-    ];
-  });
+  const revisionRows = buildRevisionRows(revisedRows, revisionTargets);
 
   const expenseLogEntries = logExpenses.map((txn) => ({
     id: txn.id,
