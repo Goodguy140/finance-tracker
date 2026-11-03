@@ -2,7 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PrismaClient } from "@prisma/client";
+import { generateKeyPairSync } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ApnsSender } from "@/lib/apns";
+import { encryptSecret } from "@/lib/security";
 import { copyMigratedDatabase } from "@/test-support/migrated-db";
 
 const dir = mkdtempSync(join(tmpdir(), "push-"));
@@ -71,6 +74,97 @@ describe("sendPushToUser", () => {
     expect((await db.pushDevice.findUniqueOrThrow({ where: { id: phone.id } })).failureCount).toBe(9);
     await push.sendPushToUser(userId, "budgetAlerts", message, { client: db, send });
     expect(await db.pushDevice.findUnique({ where: { id: phone.id } })).toBeNull();
+    errorSpy.mockRestore();
+  });
+});
+
+describe("sendPushToUser to the iPhone app", () => {
+  const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const p8 = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+
+  async function saveAppleKey() {
+    const values = { "apns.key": p8, "apns.keyId": "ABC123DEFG", "apns.teamId": "TEAM123456", "apns.bundleId": "com.example.app" };
+    for (const [key, value] of Object.entries(values)) {
+      await db.serverSetting.upsert({
+        where: { key },
+        create: { key, encryptedValue: encryptSecret(value) },
+        update: { encryptedValue: encryptSecret(value) },
+      });
+    }
+  }
+
+  async function iphone(name: string, extra: Record<string, unknown> = {}, signIn: { tokenVersion?: number } = {}) {
+    const device = await db.appDevice.create({
+      data: {
+        userId,
+        name,
+        platform: "ios",
+        tokenHash: `hash-${seq}-${name}`,
+        tokenPrefix: "ftd_x",
+        tokenVersion: signIn.tokenVersion ?? 0,
+        lastUsedAt: new Date(),
+      },
+    });
+    return db.appPushToken.create({
+      data: { appDeviceId: device.id, userId, token: `${seq}${name}`.padEnd(64, "a"), environment: "production", ...extra },
+    });
+  }
+
+  const apnsOk = () =>
+    vi.fn<ApnsSender>(async (targets) => new Map(targets.map((t) => [t.token, { ok: true as const }])));
+
+  it("sends nothing to phones while the server has no Apple key", async () => {
+    await db.serverSetting.deleteMany({ where: { key: { startsWith: "apns." } } });
+    await iphone("phone");
+    const apns = apnsOk();
+    expect(await push.sendPushToUser(userId, "billReminders", message, { client: db, apns })).toEqual({ devices: 0, delivered: 0 });
+    expect(apns).not.toHaveBeenCalled();
+  });
+
+  it("sends to each signed-in phone with the alert on, without amounts where it asked, and to no stale sign-in", async () => {
+    await saveAppleKey();
+    const plain = await iphone("plain");
+    const hidden = await iphone("hidden", { hideAmounts: true });
+    await iphone("off", { billReminders: false });
+    await iphone("signed-out-elsewhere", {}, { tokenVersion: 5 });
+    const apns = apnsOk();
+    expect(await push.sendPushToUser(userId, "billReminders", { ...message, url: "/?tab=bills" }, { client: db, apns })).toEqual({
+      devices: 2,
+      delivered: 2,
+    });
+    const [targets, messageFor, credentials] = apns.mock.calls[0]!;
+    expect(targets.map((t) => t.token).sort()).toEqual([hidden.token, plain.token].sort());
+    expect(credentials).toMatchObject({ keyId: "ABC123DEFG", teamId: "TEAM123456", bundleId: "com.example.app" });
+    expect(messageFor({ token: plain.token, environment: "production" })).toMatchObject({
+      title: message.title,
+      body: message.body,
+      data: { kind: "billReminders", url: "/?tab=bills" },
+    });
+    const privateText = messageFor({ token: hidden.token, environment: "production" });
+    expect(privateText).toMatchObject(push.PRIVATE_PUSH_TEXT.billReminders);
+    expect(JSON.stringify(privateText)).not.toContain("$80");
+    expect((await db.appPushToken.findUniqueOrThrow({ where: { id: plain.id } })).lastSentAt).not.toBeNull();
+  });
+
+  it("forgets a token Apple says is gone, and holds nothing against a phone when Apple refuses the key", async () => {
+    await saveAppleKey();
+    const gone = await iphone("gone");
+    const kept = await iphone("kept", { failureCount: 9 });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const apns = vi.fn<ApnsSender>(
+      async (targets) =>
+        new Map(
+          targets.map((t) => [
+            t.token,
+            t.token === gone.token
+              ? { ok: false as const, gone: true, credentialsRejected: false, status: 410, reason: "Unregistered" }
+              : { ok: false as const, gone: false, credentialsRejected: true, status: 403, reason: "InvalidProviderToken" },
+          ]),
+        ),
+    );
+    expect(await push.sendPushToUser(userId, "chargeAlerts", message, { client: db, apns })).toEqual({ devices: 2, delivered: 0 });
+    expect(await db.appPushToken.findUnique({ where: { id: gone.id } })).toBeNull();
+    expect((await db.appPushToken.findUniqueOrThrow({ where: { id: kept.id } })).failureCount).toBe(9);
     errorSpy.mockRestore();
   });
 });

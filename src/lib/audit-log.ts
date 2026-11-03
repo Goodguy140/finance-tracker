@@ -60,6 +60,8 @@ export const AUDIT_ACTIONS = {
   sso_link_rejected: "sso_link_rejected",
   sso_account_unlinked: "sso_account_unlinked",
   plaid_settings_updated: "plaid_settings_updated",
+  apns_settings_updated: "apns_settings_updated",
+  apns_settings_removed: "apns_settings_removed",
   plaid_link_started: "plaid_link_started",
   plaid_item_linked: "plaid_item_linked",
   plaid_item_unlinked: "plaid_item_unlinked",

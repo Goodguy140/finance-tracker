@@ -1,7 +1,8 @@
 import { AdminPlaidIntervalForm } from "@/components/admin/admin-ops-forms";
 import { AdminPageHeader, AdminSection, EmptyState, StatTile, StatusDot, formatRelative } from "@/components/admin/ui";
 import type { DotStatus } from "@/components/admin/ui";
-import { AdminPlaidForm } from "@/components/forms";
+import { AdminApnsForm, AdminPlaidForm } from "@/components/forms";
+import { getApnsAdminStatus } from "@/lib/apns-settings";
 import { getAdminPlaidOverview, type AdminPlaidItemRow } from "@/lib/admin-plaid-overview";
 import {
   MAX_PLAID_SYNC_INTERVAL_MINUTES,
@@ -36,10 +37,11 @@ function statusLabel(item: AdminPlaidItemRow): string {
 
 export default async function AdminIntegrationsPage() {
   await requireAdmin();
-  const [plaidStatus, overview, ops] = await Promise.all([
+  const [plaidStatus, overview, ops, apns] = await Promise.all([
     getPlaidAdminStatus(),
     getAdminPlaidOverview(prisma),
     getOpsSettingsStatus(),
+    getApnsAdminStatus(),
   ]);
   const failing = overview.items.filter((i) => i.status === "ACTIVE" && i.consecutiveSyncFailures > 0).length;
 
@@ -47,7 +49,7 @@ export default async function AdminIntegrationsPage() {
     <>
       <AdminPageHeader
         title="Integrations"
-        description="Plaid bank sync: credentials, background sync, and the health of every connected bank."
+        description="Plaid bank sync: credentials, background sync, and the health of every connected bank. Apple push: alerts for the iPhone app."
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -159,6 +161,7 @@ export default async function AdminIntegrationsPage() {
         min={MIN_PLAID_SYNC_INTERVAL_MINUTES}
         max={MAX_PLAID_SYNC_INTERVAL_MINUTES}
       />
+      <AdminApnsForm {...apns} />
     </>
   );
 }
