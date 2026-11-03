@@ -8,7 +8,7 @@ import { useSession } from '@/session/session-provider';
  * move safe to spend, a budget and the list at once.
  */
 export function useApiMutation<TBody, TResult>(
-  method: 'POST' | 'PATCH' | 'DELETE',
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: (vars: TBody) => string,
   body?: (vars: TBody) => unknown,
   headers?: (vars: TBody) => Record<string, string>,

@@ -197,3 +197,18 @@ export type ReviewQueue = {
   categories: { expense: { id: string; name: string }[]; income: { id: string; name: string }[] };
   banks: LinkedBank[];
 };
+
+export type AlertKind = 'billReminders' | 'chargeAlerts' | 'budgetAlerts';
+
+/** This phone's alert settings on the server: `GET`/`PUT /api/v1/app/device/push`. */
+export type AlertRegistration = {
+  environment: 'production' | 'development';
+  alerts: Record<AlertKind, boolean>;
+  hideAmounts: boolean;
+};
+
+export type AlertStatus = {
+  /** The server has Apple's push key, so it can send to the app at all. */
+  available: boolean;
+  registration: AlertRegistration | null;
+};

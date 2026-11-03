@@ -26,6 +26,12 @@
         }
       ],
       [
+        "expo-notifications",
+        {
+          "enableBackgroundRemoteNotifications": false
+        }
+      ],
+      [
         "expo-local-authentication",
         {
           "faceIDPermission": "Finances uses Face ID to unlock the app when you turn on the lock in Settings."

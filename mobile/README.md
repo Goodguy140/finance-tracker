@@ -5,8 +5,9 @@ finances on the phone. It lives beside the server in this repository but is its 
 its own `package.json`, lockfile, lint and tests. The server's tools ignore this folder.
 
 What it does so far: sign in (with Face ID if you want it); see safe to spend, budgets and what is
-due; browse, search, add and edit transactions with receipts; and review what your banks sent
-(the Review tab). `docs/features.md` in the repository root lists it screen by screen.
+due; browse, search, add and edit transactions with receipts; review what your banks sent
+(the Review tab); and get bill, charge and budget alerts (Settings → Alerts). `docs/features.md`
+in the repository root lists it screen by screen.
 
 ## How sign-in works
 
@@ -28,6 +29,7 @@ The server side is `src/lib/app-devices.ts` and the `/api/v1/app/*` routes; the 
 | `src/screens/` | What each route shows |
 | `src/components/` | Pieces shared between screens: sections, form rows, progress bars, budget lines, the Undo bar |
 | `src/session/` | The stored sign-in (Keychain), the sign-in flow, the session provider |
+| `src/notifications/` | Alerts: asking iOS, registering the phone's Apple push token with the server, and opening the right screen when one is tapped |
 | `src/api/` | Calls to the server's `/api/v1` routes, their types (`types.ts`), and the TanStack Query cache every screen reads through (`query.tsx`) |
 | `src/utils/` | Plain functions with unit tests beside them |
 | `src/state/` | Small app-wide state outside the server cache (the Undo offer after a delete) |
