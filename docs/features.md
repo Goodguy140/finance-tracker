@@ -508,5 +508,13 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
   the server), and **Require Face ID** (Touch ID or the passcode on phones without it): the app
   opens to a lock screen and locks again after 5 minutes in the background; turning it on or off
   asks iOS first; the setting belongs to the sign-in, so a new sign-in starts with it off.
-  `src/screens/settings.tsx`, `src/session/app-lock.tsx`, `src/screens/locked.tsx`
+  `src/screens/settings/index.tsx`, `src/session/app-lock.tsx`, `src/screens/locked.tsx`
+- Alerts (Settings → Alerts): bill reminders, large or unusual charges and budget alerts by Apple
+  push, once the server's admin has saved Apple's key. **Turn on alerts** asks iOS, then a switch
+  per kind and **Hide amounts in alerts** (the alert says only what kind it is). When each alert is
+  due stays on the website's Settings → Notifications. Tapping an alert opens Home (bills),
+  Transactions (charges) or Budgets, after Face ID if the lock is on. The phone registers again at
+  each launch, since Apple can change its token; signing out ends its alerts.
+  `GET`/`PUT /api/v1/app/device/push`. `src/screens/settings/alerts.tsx`,
+  `src/notifications/alerts.ts`, `src/utils/alerts.ts`
 - A token the server no longer accepts signs the phone out with a note on the sign-in screen

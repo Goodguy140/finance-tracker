@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 
 import { QueryProvider } from '@/api/query';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useAlertRegistration, useAlertTaps } from '@/notifications/alerts';
 import { AppLockProvider, useAppLock } from '@/session/app-lock';
 import { SessionProvider, useSession } from '@/session/session-provider';
 
@@ -19,6 +20,8 @@ function RootStack() {
   useEffect(() => {
     if (ready) void SplashScreen.hideAsync();
   }, [ready]);
+  useAlertRegistration(session);
+  useAlertTaps(ready && session !== null && !lock.locked);
   if (!ready) return null;
   const signedIn = session !== null;
   // Locking takes every signed-in screen away, sheets included, rather than covering them.

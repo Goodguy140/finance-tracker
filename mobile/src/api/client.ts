@@ -52,7 +52,7 @@ export async function errorFromResponse(res: Response): Promise<Error> {
 /** Calls a `/api/v1` route as this phone. Throws `SignedOutError` on 401 and `ApiError` on any other failure. */
 export async function apiRequest<T>(
   session: StoredSession,
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
   extraHeaders: Record<string, string> = {},

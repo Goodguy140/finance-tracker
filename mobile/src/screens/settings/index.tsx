@@ -13,7 +13,9 @@ import { useAppLock } from '@/session/app-lock';
 import { useSession } from '@/session/session-provider';
 import { RELOCK_AFTER_MS } from '@/utils/app-lock';
 
-/** Who is signed in and where, the website one tap away, and Sign out. */
+import { AlertsSection } from './alerts';
+
+/** Who is signed in and where, the website one tap away, alerts, the lock, and Sign out. */
 export function Settings() {
   const theme = useTheme();
   const { session, signOut } = useSession();
@@ -60,6 +62,8 @@ export function Settings() {
             <Text style={[styles.link, { color: theme.tint }]}>Open the website</Text>
           </Pressable>
         </Section>
+
+        <AlertsSection />
 
         <LockSection />
 
