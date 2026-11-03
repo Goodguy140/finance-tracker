@@ -4,7 +4,7 @@ import { APP_REDIRECT_URI, exchangeAppSignInCode } from "@/lib/app-devices";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { clientIpFromForwardingHeaders } from "@/lib/client-ip";
 import { prisma } from "@/lib/prisma";
-import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
+import { enforceSlidingWindowRateLimit, RateLimitExceededError } from "@/lib/rate-limit";
 
 // No session and no bearer token yet: the one-time code and its PKCE verifier are the credential.
 export const dynamic = "force-dynamic";
@@ -40,7 +40,8 @@ export async function POST(request: Request) {
   const ip = clientIpFromForwardingHeaders(request.headers.get("x-forwarded-for"), request.headers.get("x-real-ip"));
   try {
     await enforceSlidingWindowRateLimit(`app-token:${ip ?? "unknown"}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS, "Rate limit exceeded.");
-  } catch {
+  } catch (err) {
+    if (!(err instanceof RateLimitExceededError)) throw err;
     return NextResponse.json(
       { error: "slow_down", error_description: "Too many sign-in attempts. Try again shortly." },
       { status: 429, headers: { ...NO_STORE, "Retry-After": "60" } },

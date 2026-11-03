@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { calendarFeedForToken, hashCalendarFeedToken } from "@/lib/calendar-feed";
-import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
+import { enforceSlidingWindowRateLimit, RateLimitExceededError } from "@/lib/rate-limit";
 
 // Fetched by calendar apps' servers with no session; the secret in the path is the credential.
 export const dynamic = "force-dynamic";
@@ -21,7 +21,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
       RATE_LIMIT_WINDOW_MS,
       "Rate limit exceeded.",
     );
-  } catch {
+  } catch (err) {
+    if (!(err instanceof RateLimitExceededError)) throw err;
     return new NextResponse("Too many requests", { status: 429, headers: { "Retry-After": "60" } });
   }
   const ics = await calendarFeedForToken(raw);

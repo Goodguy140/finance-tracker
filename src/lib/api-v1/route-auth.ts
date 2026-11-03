@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authenticateApiToken } from "@/lib/api-token";
-import { enforceSlidingWindowRateLimit } from "@/lib/rate-limit";
+import { enforceSlidingWindowRateLimit, RateLimitExceededError } from "@/lib/rate-limit";
 
 const RATE_LIMIT_MAX = 60;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -29,7 +29,8 @@ export async function authorizeApiRequest(
   }
   try {
     await enforceSlidingWindowRateLimit(`api:${name}:${auth.token.id}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS, "Rate limit exceeded.");
-  } catch {
+  } catch (err) {
+    if (!(err instanceof RateLimitExceededError)) throw err;
     return {
       ok: false,
       response: NextResponse.json(
