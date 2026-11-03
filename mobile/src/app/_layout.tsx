@@ -2,6 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { QueryProvider } from '@/api/query';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -46,14 +47,17 @@ function RootStack() {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <SessionProvider>
-        <QueryProvider>
-          <AppLockProvider>
-            <RootStack />
-          </AppLockProvider>
-        </QueryProvider>
-      </SessionProvider>
-    </ThemeProvider>
+    // Swipeable rows (the Review list) need gesture handling from the root.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <SessionProvider>
+          <QueryProvider>
+            <AppLockProvider>
+              <RootStack />
+            </AppLockProvider>
+          </QueryProvider>
+        </SessionProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }

@@ -496,7 +496,9 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
 - Review: the bank review queue, every month at once, newest first, as the website's queue offers
   each row: link to the entry it matches, pair two rows as one transfer, add (as a transfer or in a
   category, showing the title, note, tags and split the rules give it) or ignore; Link all strong
-  matches and Add all unmatched; the bank's revisions to rows already added (use the bank's amount
+  matches and Add all unmatched. Each row shows the category it would go in (Transfer for transfers);
+  swiping it right uncovers Add (Link or Pair where adding would duplicate an entry or split a
+  transfer) and left uncovers Ignore, each done with a tap. The bank's revisions to rows already added (use the bank's amount
   or keep yours); banks that need signing in again or renewing link to Settings → Banks on the
   website. Pull down checks the banks now, as the log's refresh icon does. `GET /api/v1/review-queue`,
   `POST /api/v1/review-queue/:id`, `/pair`, `/bulk`, `/revisions/:id`, `POST /api/v1/banks/refresh`

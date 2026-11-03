@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import type { QueueRow } from '@/api/types';
 import {
+  acceptRequest,
   addBody,
   banksNeedingAttention,
   defaultDecision,
+  ignoreRequest,
   proposalFor,
   queueAmount,
   queueBadge,
+  queueCategory,
   queueSubtitle,
   strongLinks,
   transferDirection,
@@ -108,4 +111,57 @@ it('lists only banks that need something', () => {
     { id: 'b2', name: 'RBC', lastSyncedAt: null, attention: { kind: 'reauth', message: 'Sign in', actionLabel: 'Sign in again' } },
   ];
   expect(banksNeedingAttention(banks)).toEqual([{ id: 'b2', name: 'RBC', kind: 'reauth', message: 'Sign in', actionLabel: 'Sign in again' }]);
+});
+
+describe('the list row', () => {
+  const categories = {
+    expense: [
+      { id: 'food', name: 'Groceries' },
+      { id: 'fun', name: 'Fun' },
+    ],
+    income: [{ id: 'pay', name: 'Salary' }],
+  };
+
+  it('shows the category the row is added in, of its own type', () => {
+    expect(queueCategory(row(), categories)).toBe('Groceries');
+    expect(queueCategory(row({ type: 'income', suggestedCategoryId: 'pay', direction: 'in' }), categories)).toBe('Salary');
+    expect(queueCategory(row({ suggestedCategoryId: 'gone' }), categories)).toBeNull();
+  });
+
+  it('shows Transfer for a transfer or a pair, and nothing for a link, which keeps its entry', () => {
+    expect(queueCategory(row({ isTransfer: true }), categories)).toBe('Transfer');
+    expect(queueCategory(row({ transferPair: pair }), categories)).toBe('Transfer');
+    expect(queueCategory(row({ match: match('t1', 'high') }), categories)).toBeNull();
+    expect(queueCategory(row({ match: match('t1', 'low') }), categories)).toBe('Groceries');
+  });
+
+  it('accepts a swiped row as proposed: adds in its category, or as a transfer', () => {
+    expect(acceptRequest(row())).toEqual({
+      label: 'Add',
+      path: '/api/v1/review-queue/s1',
+      body: { decision: 'add', countAs: 'expense', categoryId: 'food' },
+    });
+    expect(acceptRequest(row({ isTransfer: true })).body).toEqual({ decision: 'add', countAs: 'transfer' });
+  });
+
+  it('links a strong match and pairs a transfer instead of adding a duplicate', () => {
+    expect(acceptRequest(row({ match: match('t1', 'high') }))).toEqual({
+      label: 'Link',
+      path: '/api/v1/review-queue/s1',
+      body: { decision: 'link', transactionId: 't1' },
+    });
+    expect(acceptRequest(row({ transferPair: pair }))).toEqual({
+      label: 'Pair',
+      path: '/api/v1/review-queue/pair',
+      body: { id: 's1', peerId: 's9' },
+    });
+  });
+
+  it('ignores a row swiped the other way', () => {
+    expect(ignoreRequest(row({ id: 'a/b' }))).toEqual({
+      label: 'Ignore',
+      path: '/api/v1/review-queue/a%2Fb',
+      body: { decision: 'ignore' },
+    });
+  });
 });

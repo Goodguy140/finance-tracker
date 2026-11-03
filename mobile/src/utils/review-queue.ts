@@ -1,4 +1,4 @@
-import type { LinkedBank, QueueProposal, QueueRow } from '@/api/types';
+import type { LinkedBank, QueueProposal, QueueRow, ReviewQueue } from '@/api/types';
 import { formatDay } from '@/utils/dates';
 import { formatCents } from '@/utils/money';
 
@@ -56,14 +56,16 @@ export function proposalReason(proposal: QueueProposal): string | null {
   return null;
 }
 
-/** The line under a row's name: the bank's own name when a rule renamed it, the account, the day. */
+/**
+ * The line under a row's name: the bank's own name when a rule renamed it, the account, the day.
+ * Whether it is a transfer shows where its category does (`queueCategory`).
+ */
 export function queueSubtitle(row: QueueRow, locale?: string): string {
   const title = row.isTransfer ? row.asTransfer.title : row.asNonTransfer.title;
   return [
     title !== row.bankName ? row.bankName : null,
     row.account,
     formatDay(row.date, locale),
-    row.isTransfer ? 'Transfer' : null,
     row.pending ? 'Pending' : null,
   ]
     .filter(Boolean)
@@ -92,4 +94,40 @@ export function queueBadge(count: number): string | undefined {
 /** Banks that need the person on the website (signing in again, renewing access, new accounts). */
 export function banksNeedingAttention(banks: readonly LinkedBank[]) {
   return banks.flatMap((bank) => (bank.attention ? [{ id: bank.id, name: bank.name, ...bank.attention }] : []));
+}
+
+/**
+ * The category the row goes in if it is accepted as proposed (what the website's queue preselects):
+ * "Transfer" for a transfer or a pair, and nothing for a link, which keeps the entry's own.
+ */
+export function queueCategory(row: QueueRow, categories: ReviewQueue['categories']): string | null {
+  const decision = defaultDecision(row);
+  if (decision === 'link') return null;
+  if (decision === 'pair' || row.isTransfer) return 'Transfer';
+  return categories[row.type].find((category) => category.id === row.suggestedCategoryId)?.name ?? null;
+}
+
+export type QueueRequest = { label: string; path: string; body: Record<string, unknown> };
+
+/**
+ * Swiping a row right accepts what the queue proposes, as the row would be saved without changing
+ * anything on it: link a strong match, pair a transfer, otherwise add it in the category shown.
+ * Linking and pairing stand in for "add" there because adding would duplicate the entry or split
+ * the transfer.
+ */
+export function acceptRequest(row: QueueRow): QueueRequest {
+  const one = `${REVIEW_QUEUE_PATH}/${encodeURIComponent(row.id)}`;
+  switch (defaultDecision(row)) {
+    case 'link':
+      return { label: 'Link', path: one, body: { decision: 'link', transactionId: row.match!.transaction.id } };
+    case 'pair':
+      return { label: 'Pair', path: `${REVIEW_QUEUE_PATH}/pair`, body: { id: row.id, peerId: row.transferPair!.id } };
+    default:
+      return { label: 'Add', path: one, body: addBody(row, row.isTransfer, row.suggestedCategoryId) };
+  }
+}
+
+/** Swiping a row left ignores it. */
+export function ignoreRequest(row: Pick<QueueRow, 'id'>): QueueRequest {
+  return { label: 'Ignore', path: `${REVIEW_QUEUE_PATH}/${encodeURIComponent(row.id)}`, body: { decision: 'ignore' } };
 }
