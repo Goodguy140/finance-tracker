@@ -1,4 +1,4 @@
-import { generateKeyPairSync, verify } from "node:crypto";
+import { generateKeyPairSync, verify, type KeyObject } from "node:crypto";
 import { createServer, type Http2Server, type IncomingHttpHeaders } from "node:http2";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -67,8 +67,10 @@ describe("apnsProviderToken", () => {
 });
 
 it("refuses a key that is not an Apple push key", () => {
-  const rsa = generateKeyPairSync("rsa", { modulusLength: 1024 }).privateKey.export({ type: "pkcs8", format: "pem" }).toString();
-  expect(parseApnsKey(rsa)).toMatchObject({ ok: false });
+  const pem = (key: KeyObject) => key.export({ type: "pkcs8", format: "pem" }).toString();
+  // An EC key on another curve, and a key of another type: both are real keys Apple would refuse.
+  expect(parseApnsKey(pem(generateKeyPairSync("ec", { namedCurve: "secp384r1" }).privateKey))).toMatchObject({ ok: false });
+  expect(parseApnsKey(pem(generateKeyPairSync("ed25519").privateKey))).toMatchObject({ ok: false });
   expect(parseApnsKey("not a key")).toMatchObject({ ok: false });
   expect(parseApnsKey(credentials.key)).toMatchObject({ ok: true });
 });
