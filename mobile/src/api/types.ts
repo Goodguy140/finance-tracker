@@ -212,3 +212,22 @@ export type AlertStatus = {
   available: boolean;
   registration: AlertRegistration | null;
 };
+
+/** A recurring bill, pay or transfer as `GET /api/v1/recurring` lists it, with the occurrence it waits on. */
+export type RecurringRule = {
+  id: string;
+  name: string;
+  type: TransactionType;
+  amountCents: number;
+  currency: string;
+  cadence: 'weekly' | 'biweekly' | 'semi_monthly' | 'monthly' | 'quarterly' | 'yearly' | 'biennial';
+  date: string;
+  status: 'overdue' | 'due' | 'upcoming';
+  account: string;
+  toAccount: string | null;
+  category: string | null;
+  autoPost: boolean;
+  endDate: string | null;
+};
+
+export type RecurringList = { today: string; rules: RecurringRule[] };

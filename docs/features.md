@@ -96,7 +96,7 @@ Cards (`src/components/dashboard-cards/`), with their gear settings:
 | Budgets (`budgets`) `budgets-card.tsx` | progress per category with "$X left" / "$X over" on each row and the total, days left in the current month, rollover (`src/lib/budget-rollover.ts`), reallocate (`budget-reallocate-dialog.tsx`), rows under category group headings with group totals, yearly budgets as sinking funds, each name opening its category trend page | per row, hide zero spend, period note |
 | Spending by category (`spending-by-category`) `spending-by-category-card.tsx`, `category-spend-pie.tsx` | pie with colors shared with the log (`src/lib/category-colors.ts`), optional savings slice (`src/lib/savings-transfers.ts`), clicking a category slice opens its trend page | chart height, slices shown, show savings, add up category groups |
 | Cumulative spending (`cumulative-spend`) `cumulative-spend-card.tsx`, `src/lib/cumulative-spend.ts` | running total, expected line, compare with last month / 3-month avg | chart height, expected line, compare with |
-| Recurring (`recurring`) `recurring-card.tsx`, `recurring-transactions-panel.tsx`, `recurring-rule-form.tsx` | rules due in the month as one summary line each (category · account · cadence · date), overdue carry ("Unposted since"), Post, with Skip/Edit/Disable/Remove behind the "⋯" button, auto-post, new/edit/pause/delete, recurring transfers (from/to account, `RecurringTransaction.transferAccountId`, kept out of income and bills), **twice a month** cadence (`SEMI_MONTHLY`: two days, default the 15th and last day, `anchorDay` + `secondAnchorDay`; optional move to the Friday before a weekend, `beforeWeekend`; every forecast, calendar and reminder follows it), a rule on an account in another currency shows its amount in that currency, cash-flow summary; `src/lib/recurring-transactions.ts`, `recurring-post.ts` | cash-flow summary, rules shown |
+| Recurring (`recurring`) `recurring-card.tsx`, `recurring-transactions-panel.tsx`, `recurring-rule-form.tsx` | rules due in the month as one summary line each (category · account · cadence · date), overdue carry ("Unposted since"), Post, with Skip/Edit/Disable/Remove behind the "⋯" button, auto-post, new/edit/pause/delete, recurring transfers (from/to account, `RecurringTransaction.transferAccountId`, kept out of income and bills), **twice a month** cadence (`SEMI_MONTHLY`: two days, default the 15th and last day, `anchorDay` + `secondAnchorDay`; optional move to the Friday before a weekend, `beforeWeekend`; every forecast, calendar and reminder follows it), a rule on an account in another currency shows its amount in that currency, cash-flow summary; `src/lib/recurring-transactions.ts`, `recurring-post.ts`, `recurring-skip.ts` (Post and Skip, shared with the phone) | cash-flow summary, rules shown |
 | Insights (`insights`) `insights-card.tsx` | count per section and the most pressing few, link to `/insights`; leaves out budget and money-owed insights, which this page already shows | insights shown |
 | Upcoming bills (`bills-forecast`) `bills-forecast-card.tsx`, `src/lib/bills-forecast.ts` | bills and income due by day, running net; open one-off plans with a **Planned** chip, "Did this happen?" for plans past their date, **+ Plan** button (the phone's way to plan); recurring transfers (**Transfer**, from and to account) and each credit card's next payment by its due day (**Card payment**, balance owed and minimum; a card a recurring transfer pays is left to that transfer, `cardPaymentsDue` in `src/lib/credit-cards.ts`, shared with bill reminders), listed but kept out of the totals and running net; a subscription's **Decide by** date on its first charge | days ahead (30/60/90), show transfers and card payments |
 | Safe to spend (`safe-to-spend`, tab beside Budgets) `safe-to-spend-card.tsx`, `src/lib/safe-to-spend.ts`, `safe-to-spend-data.ts` | what is free to spend until month end, always for the month now running: income received − spent + recurring and planned income still due − recurring and planned bills still due (outside budgeted categories) − what is left in budgets (with rollover) − savings goals' monthly need; a-day figure for the days left; also a line in the email digest. Opt-in zero-based mode (checkbox on the card, `User.zeroBasedBudgeting`, `zero-based-card.tsx`, `src/lib/zero-based.ts`): shows "To assign" instead = this month's income received and still expected − budgets as set (rollover carries left out) − bills and spending outside budgets − savings goals, plus overspent budgets to cover from another budget | show breakdown |
@@ -362,7 +362,7 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     shares; cents from `splitCentsByShares`, written as `SplitTransactionPart`; in backups
   - Tags (rename, merge, delete): `settings/tags-panel.tsx`, `src/lib/tags*.ts`
   - Subscriptions (shared members, who paid, skip occurrence): `subscriptions-panel.tsx`,
-    `actions/subscriptions.ts`
+    `actions/subscriptions.ts`, `src/lib/recurring-skip.ts`
   - **Subscription cancel helper** (Recurring card and rule form, bills only): "Where to cancel"
     (a link, shown as "Cancel page", or a note) and a "Decide by" date for a trial turning paid or
     a plan renewing, shown as a chip; the bill reminder email warns before that date, once per date
@@ -507,6 +507,14 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
 - Budgets: any month's budgets by category group, with rollover carries, and the yearly budgets as
   sinking funds; ‹ › switch month. `GET /api/v1/budgets` (now also `groupName`, `rollover` and
   `yearly`). `src/screens/budgets/`
+- Bills and pay (Home's "Post or skip bills and pay", and a tapped bill reminder): every recurring
+  bill, pay and transfer that is on, under Overdue, Today, Next 7 days and Later, each with the
+  occurrence it waits on. Swiping right uncovers Post, left uncovers Skip (each done with a tap);
+  tapping a row also offers "I already logged it", which links the entry with the rule's name
+  within 15 days, as the website does without a pick. Rules are added and changed on the website.
+  `GET /api/v1/recurring`, `POST /api/v1/recurring/:id/post` and `/skip` (`src/lib/api-v1/recurring.ts`,
+  the website's `postRecurringOccurrence` and `skipRecurringOccurrence`). `src/screens/bills/`,
+  `src/utils/recurring.ts`
 - Settings: who is signed in, the server, Open the website, Sign out (also revokes the token on
   the server), and **Require Face ID** (Touch ID or the passcode on phones without it): the app
   opens to a lock screen and locks again after 5 minutes in the background; turning it on or off
@@ -515,7 +523,7 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
 - Alerts (Settings → Alerts): bill reminders, large or unusual charges and budget alerts by Apple
   push, once the server's admin has saved Apple's key. **Turn on alerts** asks iOS, then a switch
   per kind and **Hide amounts in alerts** (the alert says only what kind it is). When each alert is
-  due stays on the website's Settings → Notifications. Tapping an alert opens Home (bills),
+  due stays on the website's Settings → Notifications. Tapping an alert opens Bills and pay (bill reminders),
   Transactions (charges) or Budgets, after Face ID if the lock is on. The phone registers again at
   each launch, since Apple can change its token; signing out ends its alerts.
   `GET`/`PUT /api/v1/app/device/push`. `src/screens/settings/alerts.tsx`,

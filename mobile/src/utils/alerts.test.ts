@@ -4,7 +4,7 @@ import { apnsEnvironment, registrationBody, routeForAlert } from './alerts';
 
 describe('routeForAlert', () => {
   it('opens the screen each kind of alert is about', () => {
-    expect(routeForAlert({ kind: 'billReminders', url: '/' })).toBe('/');
+    expect(routeForAlert({ kind: 'billReminders', url: '/' })).toBe('/bills');
     expect(routeForAlert({ kind: 'chargeAlerts' })).toBe('/transactions');
     expect(routeForAlert({ kind: 'budgetAlerts' })).toBe('/budgets');
     expect(routeForAlert({ kind: 'test' })).toBe('/');

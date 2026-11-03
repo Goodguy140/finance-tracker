@@ -15,11 +15,12 @@ export const ALERT_LABELS: Record<AlertKind, string> = {
 
 export const ALERTS_PATH = '/api/v1/app/device/push';
 
-/** The screen a tapped alert opens: what is due on Home, the new charge in Transactions, Budgets. */
-export function routeForAlert(data: unknown): '/' | '/transactions' | '/budgets' | null {
+/** The screen a tapped alert opens: Bills and pay for a reminder, the new charge in Transactions, Budgets. */
+export function routeForAlert(data: unknown): '/' | '/bills' | '/transactions' | '/budgets' | null {
   const kind = typeof data === 'object' && data !== null ? (data as { kind?: unknown }).kind : undefined;
   switch (kind) {
     case 'billReminders':
+      return '/bills';
     case 'test':
       return '/';
     case 'chargeAlerts':
