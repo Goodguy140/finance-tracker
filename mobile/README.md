@@ -6,9 +6,10 @@ its own `package.json`, lockfile, lint and tests. The server's tools ignore this
 
 What it does so far: sign in (with Face ID if you want it); see safe to spend, budgets and what is
 due; post or skip recurring bills and pay; see your financial score and insights, your accounts,
-net worth and each account's register; browse, search, add and edit transactions with receipts;
-review what your banks sent (the Review tab); and get bill, charge and budget alerts (Settings →
-Alerts). `docs/features.md` in the repository root lists it screen by screen.
+net worth and each account's register; browse, search, add (with no connection too) and edit
+transactions with receipts; review what your banks sent (the Review tab); and get bill, charge and
+budget alerts (Settings → Alerts). `docs/features.md` in the repository root lists it screen by
+screen.
 
 ## How sign-in works
 

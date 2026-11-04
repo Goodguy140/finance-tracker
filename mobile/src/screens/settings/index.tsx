@@ -11,6 +11,7 @@ import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAppLock } from '@/session/app-lock';
 import { useSession } from '@/session/session-provider';
+import { useOutbox } from '@/state/outbox';
 import { RELOCK_AFTER_MS } from '@/utils/app-lock';
 
 import { AlertsSection } from './alerts';
@@ -19,11 +20,16 @@ import { AlertsSection } from './alerts';
 export function Settings() {
   const theme = useTheme();
   const { session, signOut } = useSession();
+  const pending = useOutbox();
   const me = useApiQuery<Me>('/api/v1/me');
   const host = session ? session.origin.replace(/^https:\/\//, '') : '';
 
   function confirmSignOut() {
-    Alert.alert('Sign out?', 'This phone will need to sign in again to see your finances.', [
+    const unsent = pending.length;
+    const warning = unsent
+      ? ` ${unsent === 1 ? '1 entry' : `${unsent} entries`} saved on this phone ${unsent === 1 ? 'has' : 'have'} not reached your server yet and will be lost.`
+      : '';
+    Alert.alert('Sign out?', `This phone will need to sign in again to see your finances.${warning}`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Sign out', style: 'destructive', onPress: () => void signOut() },
     ]);

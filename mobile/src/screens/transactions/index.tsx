@@ -8,6 +8,7 @@ import { apiGet } from '@/api/client';
 import { errorText, useApiQuery } from '@/api/query';
 import type { Me, TransactionPage } from '@/api/types';
 import { LoadState } from '@/components/load-state';
+import { OutboxBanner } from '@/components/outbox-banner';
 import { UndoBar } from '@/components/undo-bar';
 import { Spacing } from '@/constants/theme';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
@@ -76,6 +77,7 @@ export function Transactions({ initialNeedsReview = false }: { initialNeedsRevie
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={
           <View style={styles.header}>
+            <OutboxBanner />
             {search ? <QuickAddCard text={search} currency={currency} /> : null}
             <Text style={[styles.heading, { color: theme.textSecondary }]}>{heading}</Text>
             {filtered ? (

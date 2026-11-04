@@ -55,10 +55,10 @@ export async function GET(request: Request) {
  * Scope `transactions:write`. Returns 201 with the entry as GET lists it.
  *
  * An `Idempotency-Key` header (16 to 100 letters, digits, `-` or `_`) makes a retry safe: the
- * same key again within a day answers 200 with the entry the first request added, and
+ * same key again within a week answers 200 with the entry the first request added, and
  * `Idempotent-Replayed: true`, rather than adding it twice. The body of a retry is not compared;
- * a new add needs a new key. 409 while the first request is still being handled, or when the
- * entry it added has since been deleted.
+ * a new add needs a new key. 409 while the first request is still being handled (try again);
+ * 410 when the entry it added has since been deleted (nothing to try again).
  */
 export async function POST(request: Request) {
   const authorized = await authorizeApiRequest(request, API_SCOPES.transactionsWrite, "transactions-write");
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     if (claim.status === "done") {
       const transaction = await getTransactionForApi(prisma, auth.user.id, claim.transactionId);
       if (!transaction) {
-        return NextResponse.json({ error: "This entry was already added, and has since been deleted." }, { status: 409, headers: NO_STORE });
+        return NextResponse.json({ error: "This entry was already added, and has since been deleted." }, { status: 410, headers: NO_STORE });
       }
       return NextResponse.json({ transaction }, { status: 200, headers: { ...NO_STORE, "Idempotent-Replayed": "true" } });
     }

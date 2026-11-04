@@ -12,6 +12,7 @@ import { AppState } from 'react-native';
 import { apiGet, SignedOutError } from '@/api/client';
 import { shouldRetry } from '@/api/retry';
 import { useSession } from '@/session/session-provider';
+import { recallList, rememberList } from '@/state/remembered-lists';
 
 // Data older than `staleTime` is fetched again when the app comes back to the front, as a
 // browser does when its tab is shown again.
@@ -61,6 +62,27 @@ export function useApiQuery<T>(path: string | null) {
     queryKey: ['api', path],
     queryFn: () => apiGet<T>(session!, path!),
     enabled: Boolean(session && path),
+  });
+}
+
+/**
+ * As `useApiQuery`, but starting from the last answer kept on the phone, which is replaced as soon
+ * as the server answers: for the lists the Add sheet needs, so it opens with no connection.
+ */
+export function useRememberedQuery<T>(path: string) {
+  const { session } = useSession();
+  const deviceId = session?.deviceId ?? null;
+  return useQuery({
+    queryKey: ['api', path],
+    queryFn: async () => {
+      const data = await apiGet<T>(session!, path);
+      if (deviceId) rememberList(deviceId, path, data);
+      return data;
+    },
+    enabled: Boolean(session),
+    // Stale from the start, so the server is asked straight away.
+    initialData: () => (deviceId ? recallList<T>(deviceId, path) : undefined),
+    initialDataUpdatedAt: 0,
   });
 }
 

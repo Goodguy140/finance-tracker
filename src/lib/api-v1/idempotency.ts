@@ -8,13 +8,17 @@ import { Prisma, type PrismaClient } from "@prisma/client";
  * A key is claimed before the entry is written (the row is the lock two racing retries contend
  * for), pointed at the entry inside the same database transaction that writes it
  * (`createTransactionFromApi`), and let go again when the add is refused, so a corrected retry
- * can use it. It is remembered for a day; older keys are pruned as new ones arrive.
+ * can use it. It is remembered for a week; older keys are pruned as new ones arrive.
  */
 
 /** Long enough that keys cannot collide by accident, short enough to index; URL-safe. */
 export const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_-]{16,100}$/;
-/** A retry comes within seconds; a day also covers a phone left offline overnight. */
-export const IDEMPOTENCY_KEY_TTL_MS = 24 * 60 * 60 * 1000;
+/**
+ * A retry usually comes within seconds, but the phone keeps an add made with no connection and
+ * sends it again with the same key whenever the server can be reached: a week covers a phone that
+ * was offline for days.
+ */
+export const IDEMPOTENCY_KEY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /**
  * A claim this old with nothing saved belongs to a request that died part-way (the server was
  * restarted mid-add), so a retry may take it over. Far longer than an add takes, and than the

@@ -76,7 +76,7 @@ describe("POST /api/v1/transactions", () => {
 
     await db.transaction.delete({ where: { id: (await corrected.json()).transaction.id } });
     const again = await post({ type: "expense", amount: 8 }, key);
-    expect(again.status).toBe(409);
+    expect(again.status).toBe(410);
     expect((await again.json()).error).toMatch(/deleted/);
     expect(await rows()).toBe(0);
   });

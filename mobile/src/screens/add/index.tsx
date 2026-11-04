@@ -10,7 +10,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 
 
 import { useApiMutation } from '@/api/mutations';
 import { useUploadReceipt } from '@/api/receipts';
-import { errorText, useApiQuery } from '@/api/query';
+import { errorText, useRememberedQuery } from '@/api/query';
 import type { Account, Category, Transaction, TransactionType } from '@/api/types';
 import { FormField, formStyles } from '@/components/form';
 import { LoadState } from '@/components/load-state';
@@ -19,9 +19,11 @@ import { Spacing } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { pickReceipt } from '@/utils/pick-receipt';
 import { useTheme } from '@/hooks/use-theme';
+import { keepForLater } from '@/state/outbox';
 import { offerUndo } from '@/state/undo-offer';
 import { addBody, emptyAddForm, switchAddType, TITLE_MAX, type AddForm } from '@/utils/add';
 import { dateFromYmd, localToday, ymdFromDate } from '@/utils/dates';
+import { failureOutcome, pendingLabel } from '@/utils/outbox';
 import { receiptSize, type ReceiptPhoto } from '@/utils/receipts';
 import { transactionName } from '@/utils/transactions';
 
@@ -38,8 +40,9 @@ const NONE = '';
 export function AddTransaction({ initialType = 'expense' }: { initialType?: TransactionType }) {
   const theme = useTheme();
   const router = useRouter();
-  const categories = useApiQuery<{ categories: Category[] }>('/api/v1/categories');
-  const accounts = useApiQuery<{ accounts: Account[] }>('/api/v1/accounts');
+  // The last lists the server sent, so the sheet opens with no connection.
+  const categories = useRememberedQuery<{ categories: Category[] }>('/api/v1/categories');
+  const accounts = useRememberedQuery<{ accounts: Account[] }>('/api/v1/accounts');
   const failed = categories.error ?? accounts.error;
 
   return (
@@ -94,12 +97,32 @@ function AddEditor({ initialType, categories, accounts }: { initialType: Transac
     try {
       ({ transaction } = await save.mutateAsync({ body: result.body, key }));
     } catch (err) {
+      if (failureOutcome(err).kind === 'unreachable') return keepUntilOnline(result.body, key);
       return setError(err instanceof Error ? err.message : 'Could not add it. Try again.');
     }
     // The entry is in. A receipt that will not upload is offered again or left for later, never a
     // reason to add the entry twice.
     if (photo) await uploadUntilDone(transaction.id, photo);
     offerUndo({ kind: 'added', transactionId: transaction.id, label: transactionName(transaction) });
+    router.back();
+  }
+
+  /**
+   * No connection, or the server is down: the add is kept on the phone and sent with the same key
+   * once the server answers, receipt and all. Home and Transactions say it is waiting.
+   */
+  async function keepUntilOnline(body: Record<string, unknown>, key: string) {
+    const account = accounts.find((a) => a.id === form.accountId) ?? openAccounts[0];
+    const categoryName = categories.find((c) => c.id === form.categoryId)?.name ?? null;
+    const label = pendingLabel(body, account?.currency ?? 'CAD', categoryName);
+    const keptPhoto = await keepForLater({ key, body, label, savedAt: new Date().toISOString() }, photo);
+    if (!keptPhoto) {
+      await new Promise<void>((resolve) =>
+        Alert.alert('Saved without the receipt', 'The entry will be added when your server can be reached; add the photo to it then.', [
+          { text: 'OK', onPress: () => resolve() },
+        ]),
+      );
+    }
     router.back();
   }
 
