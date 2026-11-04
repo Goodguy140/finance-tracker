@@ -281,3 +281,65 @@ export type FinancialScore =
       otherCurrencyAccounts: { name: string; currency: string }[];
       emergencyTargetMonths: number;
     };
+
+export type AccountBalance = { cents: number; date: string; source: 'bank' | 'manual' | 'portfolio' };
+
+/** `GET /api/v1/net-worth`: every open account with its balance, and what they add up to. */
+export type NetWorth = {
+  currency: string;
+  assetsCents: number;
+  liabilitiesCents: number;
+  netCents: number;
+  points: { ym: string; label: string; netCents: number }[];
+  accounts: {
+    id: string;
+    name: string;
+    type: string;
+    typeLabel: string;
+    currency: string;
+    liability: boolean;
+    counted: boolean;
+    balance: AccountBalance | null;
+  }[];
+};
+
+export type NetWorthAccount = NetWorth['accounts'][number];
+
+/** `GET /api/v1/accounts/:id`: the website's account page. */
+export type AccountPage = {
+  account: { id: string; name: string; type: string; typeLabel: string; currency: string; archived: boolean };
+  liability: boolean;
+  balance: AccountBalance | null;
+  history: { ym: string; label: string; cents: number }[];
+  thisMonth: { inCents: number; outCents: number };
+  card: {
+    limitCents: number | null;
+    utilization: { pct: number; high: boolean } | null;
+    highPct: number;
+    dueDay: string | null;
+  } | null;
+  months: number;
+  register: {
+    id: string;
+    date: string;
+    title: string;
+    type: TransactionType;
+    inCents: number;
+    balanceCents: number | null;
+    afterReading: boolean;
+  }[];
+  bank: { institutionName: string; lastSyncedAt: string | null; problem: string | null } | null;
+  waitingInQueue: number;
+  rules: {
+    id: string;
+    name: string;
+    type: string;
+    amountCents: number;
+    cadence: string;
+    date: string;
+    transfer: { otherName: string; into: boolean } | null;
+  }[];
+  goals: { id: string; name: string; targetCents: number; currency: string; percent: number }[];
+};
+
+export type RegisterRow = AccountPage['register'][number];

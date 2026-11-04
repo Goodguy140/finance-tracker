@@ -523,6 +523,14 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
   and how it moved. `GET /api/v1/score`, `GET /api/v1/insights`, `POST /api/v1/insights/dismiss` and
   `/restore` (`src/lib/api-v1/insights.ts`, the website's `loadInsights` and `loadFinancialScore`;
   `src/lib/insights/dismiss.ts` behind both apps' buttons). `src/screens/insights/`, `src/utils/insights.ts`
+- Accounts (Home's Net worth card, "See accounts and their registers"): net worth with what you have
+  and what you owe, then every open account with its latest balance (other currencies listed apart,
+  out of the totals), as Reports' Net worth. An account opens to the website's account page: balance
+  and where it came from, money in and out this month, a card's limit, use and due day, the bank and
+  what it needs, the register over the last 3 or 12 months with its running balance (entries after the
+  latest balance marked *; an entry opens for editing), recurring rules and savings goals.
+  `GET /api/v1/net-worth`, `GET /api/v1/accounts/:id?months=` (`src/lib/api-v1/accounts.ts`, the
+  website's `loadNetWorth` and `loadAccountPage`). `src/screens/accounts/`, `src/utils/accounts.ts`
 - Settings: who is signed in, the server, Open the website, Sign out (also revokes the token on
   the server), and **Require Face ID** (Touch ID or the passcode on phones without it): the app
   opens to a lock screen and locks again after 5 minutes in the background; turning it on or off
