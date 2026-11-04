@@ -24,7 +24,7 @@ import { offerUndo } from '@/state/undo-offer';
 import { addBody, emptyAddForm, switchAddType, TITLE_MAX, type AddForm } from '@/utils/add';
 import { dateFromYmd, localToday, ymdFromDate } from '@/utils/dates';
 import { failureOutcome, pendingLabel } from '@/utils/outbox';
-import { receiptSize, type ReceiptPhoto } from '@/utils/receipts';
+import { isImageReceipt, receiptSize, type ReceiptPhoto } from '@/utils/receipts';
 import { transactionName } from '@/utils/transactions';
 
 const TYPES: { value: TransactionType; label: string }[] = [
@@ -36,8 +36,13 @@ const TYPES: { value: TransactionType; label: string }[] = [
 /** The Picker value for "Automatic" (or "Choose" on a transfer): no id sent. */
 const NONE = '';
 
+/** What the sheet starts with when Siri or a shared receipt opened it. */
+export type AddPrefill = { amount: string; title: string; photo: ReceiptPhoto | null };
+
+const NO_PREFILL: AddPrefill = { amount: '', title: '', photo: null };
+
 /** Logs an expense, income or transfer, as the website's Add card does. */
-export function AddTransaction({ initialType = 'expense' }: { initialType?: TransactionType }) {
+export function AddTransaction({ initialType = 'expense', prefill = NO_PREFILL }: { initialType?: TransactionType; prefill?: AddPrefill }) {
   const theme = useTheme();
   const router = useRouter();
   // The last lists the server sent, so the sheet opens with no connection.
@@ -48,7 +53,7 @@ export function AddTransaction({ initialType = 'expense' }: { initialType?: Tran
   return (
     <>
       {categories.data && accounts.data ? (
-        <AddEditor initialType={initialType} categories={categories.data.categories} accounts={accounts.data.accounts} />
+        <AddEditor initialType={initialType} prefill={prefill} categories={categories.data.categories} accounts={accounts.data.accounts} />
       ) : (
         <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: theme.background }} contentContainerStyle={formStyles.content}>
           <LoadState loading={!failed} error={failed ? errorText(failed) : null} />
@@ -62,13 +67,23 @@ export function AddTransaction({ initialType = 'expense' }: { initialType?: Tran
   );
 }
 
-function AddEditor({ initialType, categories, accounts }: { initialType: TransactionType; categories: Category[]; accounts: Account[] }) {
+function AddEditor({
+  initialType,
+  prefill,
+  categories,
+  accounts,
+}: {
+  initialType: TransactionType;
+  prefill: AddPrefill;
+  categories: Category[];
+  accounts: Account[];
+}) {
   const theme = useTheme();
   const scheme = useColorScheme();
   const router = useRouter();
-  const [form, setForm] = useState<AddForm>(() => emptyAddForm(localToday(), initialType));
+  const [form, setForm] = useState<AddForm>(() => ({ ...emptyAddForm(localToday(), initialType), amount: prefill.amount, title: prefill.title }));
   const [error, setError] = useState<string | null>(null);
-  const [photo, setPhoto] = useState<ReceiptPhoto | null>(null);
+  const [photo, setPhoto] = useState<ReceiptPhoto | null>(prefill.photo);
   const upload = useUploadReceipt();
   // One key per thing being added: sending the same add again after a dropped connection is
   // answered with the entry already made. Changing the form first makes it a new add.
@@ -246,9 +261,12 @@ function AddEditor({ initialType, categories, accounts }: { initialType: Transac
         <Section title="Receipt">
           {photo ? (
             <View style={styles.photoRow}>
-              <Image source={{ uri: photo.uri }} contentFit="cover" style={[styles.thumb, { backgroundColor: theme.track }]} />
+              {isImageReceipt(photo.mimeType) ? (
+                <Image source={{ uri: photo.uri }} contentFit="cover" style={[styles.thumb, { backgroundColor: theme.track }]} />
+              ) : null}
               <Text style={[styles.photoText, { color: theme.textSecondary }]}>
-                {photo.sizeBytes ? `Photo, ${receiptSize(photo.sizeBytes)}` : 'Photo'} · uploads when you tap Add
+                {isImageReceipt(photo.mimeType) ? 'Photo' : 'PDF'}
+                {photo.sizeBytes ? `, ${receiptSize(photo.sizeBytes)}` : ''} · uploads when you tap Add
               </Text>
               <Pressable onPress={() => setPhoto(null)} accessibilityRole="button" hitSlop={8}>
                 <Text style={[styles.link, { color: theme.danger }]}>Remove</Text>

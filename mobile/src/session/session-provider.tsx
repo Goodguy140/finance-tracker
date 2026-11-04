@@ -4,6 +4,7 @@ import { clearSession, loadSession, saveSession, type StoredSession } from '@/se
 import { revokeOnServer } from '@/session/sign-in-with-server';
 import { clearOutbox, pendingAdds } from '@/state/outbox';
 import { forgetLists } from '@/state/remembered-lists';
+import { clearWidgets } from '@/widgets/update';
 
 type SessionContextValue = {
   /** Undefined while the Keychain is still being read. */
@@ -41,6 +42,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const unsent = pendingAdds().length;
       clearOutbox();
       forgetLists();
+      clearWidgets();
       const lost = unsent > 0 ? `${unsent === 1 ? '1 entry' : `${unsent} entries`} saved on this phone had not reached the server and were let go.` : null;
       setNotice([options.notice, lost].filter(Boolean).join(' ') || null);
       setSession(null);

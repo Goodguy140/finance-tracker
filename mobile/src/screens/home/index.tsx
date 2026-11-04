@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { errorText, useApiQuery } from '@/api/query';
@@ -18,6 +18,7 @@ import { formatDay, relativeDay } from '@/utils/dates';
 import { bandTone, SCORE_PATH, scoreChangeText } from '@/utils/insights';
 import { formatCents, formatPeriodMonth } from '@/utils/money';
 import { safeToSpendBreakdown, safeToSpendLine } from '@/utils/safe-to-spend';
+import { updateWidgets } from '@/widgets/update';
 
 /** The month at a glance: safe to spend, budgets to watch, the week's bills and pay, and what is waiting. */
 export function Home() {
@@ -26,6 +27,10 @@ export function Home() {
   const summary = useApiQuery<Summary>('/api/v1/summary');
   const { refreshing, onRefresh } = usePullToRefresh(summary.refetch);
   const data = summary.data;
+  // The home screen widgets show what Home last loaded.
+  useEffect(() => {
+    if (data) updateWidgets(data);
+  }, [data]);
 
   return (
     <>
