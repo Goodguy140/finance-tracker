@@ -22,6 +22,14 @@ ignore it. Read `README.md` here for how sign-in and TestFlight builds work.
   (`EXPO_TOKEN`).
 - `.easignore` at the repository root decides what EAS uploads. It leaves out everything outside
   `mobile/`; keep it that way.
+- **A new app extension, App Group or capability needs one build by hand** (README → TestFlight):
+  until then the workflow's non-interactive builds fail on credentials. Batch such changes, and
+  check them before asking for that build: `npx expo prebuild -p ios --no-install` (the `ios/`
+  folder is ignored), then `node node_modules/expo-widgets/scripts/build-bundle.mjs "$PWD"` and
+  `build-layout-registry.mjs "$PWD" ios` for the widgets.
+- **Widget bodies (`'widget'` in `src/widgets/`) run in iOS's widget process**, not the app: only
+  their props and what they import from `@expo/ui/swift-ui`, `expo-widgets` and `react-native`
+  exist there. Format everything in the app (`src/utils/widgets.ts`).
 
 This is an Expo/React Native mobile application. Prioritize mobile-first patterns, performance, and cross-platform compatibility.
 

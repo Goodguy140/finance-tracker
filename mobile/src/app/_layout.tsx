@@ -7,6 +7,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useOutboxSender } from '@/api/outbox-sender';
 import { QueryProvider } from '@/api/query';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useSharedReceipts } from '@/launch/shared-receipts';
+import { SiriAdds } from '@/launch/siri-adds';
 import { useAlertRegistration, useAlertTaps } from '@/notifications/alerts';
 import { AppLockProvider, useAppLock } from '@/session/app-lock';
 import { SessionProvider, useSession } from '@/session/session-provider';
@@ -25,26 +27,32 @@ function RootStack() {
   useAlertRegistration(session);
   // Waiting adds go out even while the app is locked: sending them shows nothing.
   useOutboxSender(session);
-  useAlertTaps(ready && session !== null && !lock.locked);
+  const open = ready && session !== null && !lock.locked;
+  useAlertTaps(open);
+  useSharedReceipts(open);
   if (!ready) return null;
   const signedIn = session !== null;
   // Locking takes every signed-in screen away, sheets included, rather than covering them.
   const locked = signedIn && lock.locked;
   return (
-    <Stack>
-      <Stack.Protected guard={locked}>
-        <Stack.Screen name="locked" options={{ headerShown: false, animation: 'none' }} />
-      </Stack.Protected>
-      <Stack.Protected guard={signedIn && !locked}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="add" options={{ presentation: 'modal', headerShadowVisible: false }} />
-        <Stack.Screen name="receipt/[id]" options={{ presentation: 'modal', headerShadowVisible: false }} />
-        <Stack.Screen name="outbox" options={{ presentation: 'modal', headerShadowVisible: false }} />
-      </Stack.Protected>
-      <Stack.Protected guard={!signedIn}>
-        <Stack.Screen name="sign-in" options={{ headerShown: false }} />
-      </Stack.Protected>
-    </Stack>
+    <>
+      {open ? <SiriAdds /> : null}
+      <Stack>
+        <Stack.Protected guard={locked}>
+          <Stack.Screen name="locked" options={{ headerShown: false, animation: 'none' }} />
+        </Stack.Protected>
+        <Stack.Protected guard={signedIn && !locked}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="add" options={{ presentation: 'modal', headerShadowVisible: false }} />
+          <Stack.Screen name="receipt/[id]" options={{ presentation: 'modal', headerShadowVisible: false }} />
+          <Stack.Screen name="outbox" options={{ presentation: 'modal', headerShadowVisible: false }} />
+          <Stack.Screen name="share" options={{ presentation: 'modal', headerShadowVisible: false }} />
+        </Stack.Protected>
+        <Stack.Protected guard={!signedIn}>
+          <Stack.Screen name="sign-in" options={{ headerShown: false }} />
+        </Stack.Protected>
+      </Stack>
+    </>
   );
 }
 

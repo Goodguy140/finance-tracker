@@ -502,6 +502,20 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
   receipts listed on `GET /api/v1/transactions/:id`; the website's limits and type checks
   (`src/lib/attachments.ts`). `src/screens/transactions/receipts.tsx`, `src/screens/receipt.tsx`,
   `src/utils/pick-receipt.ts`, `src/api/receipts.ts`
+- Share a receipt (the share sheet in Photos, Mail, Files and other apps, for one photo or PDF):
+  Finances opens on the receipt and offers **Add a New Entry With It** (the Add sheet, receipt
+  attached, and so it works with no connection too) or one of the latest entries, or one a search
+  finds, to keep it with. Shared while the app is locked or signed out, it opens after Face ID or
+  signing in. Uses `expo-sharing`'s share extension. `src/screens/share.tsx`, `src/app/+native-intent.ts`,
+  `src/launch/shared-receipts.ts`, `src/utils/shared-receipt.ts`
+- Siri and Shortcuts: "Log an expense in Finances" (or "Add an expense", "Log a purchase") asks how
+  much, then opens the Add sheet with the amount, and from the Shortcuts app what it was for, filled
+  in; nothing is saved until Add is tapped. `app-intents/LogExpenseIntent.swift`,
+  `app-intents/AppShortcuts.swift` (`expo-app-intents`), `src/launch/siri-adds.tsx`, `src/utils/siri.ts`
+- Home Screen widgets: **Safe to Spend** (small, and on the Lock Screen) and **Bills and Pay**
+  (medium and large: the next 7 days' bills and pay, as Home lists them). They show what Home last
+  loaded, "As of" when; amounts are hidden on a locked phone's Lock Screen; signing out empties them.
+  Tapping opens Home or Bills and pay. `src/widgets/` (`expo-widgets`), `src/utils/widgets.ts`
 - Review: the bank review queue, every month at once, newest first, as the website's queue offers
   each row: link to the entry it matches, pair two rows as one transfer, add (as a transfer or in a
   category, showing the title, note, tags and split the rules give it) or ignore; Link all strong
