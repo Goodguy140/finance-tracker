@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { errorText, useApiQuery } from '@/api/query';
-import type { FinancialScore, Summary } from '@/api/types';
+import type { FinancialScore, NetWorth, Summary } from '@/api/types';
 import { BudgetLine } from '@/components/budget-line';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
@@ -12,6 +12,7 @@ import { UndoBar } from '@/components/undo-bar';
 import { Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
+import { NET_WORTH_PATH } from '@/utils/accounts';
 import { formatDay, relativeDay } from '@/utils/dates';
 import { bandTone, SCORE_PATH, scoreChangeText } from '@/utils/insights';
 import { formatCents, formatPeriodMonth } from '@/utils/money';
@@ -40,6 +41,7 @@ export function Home() {
             <BudgetsCard data={data} />
             <ComingUp data={data} />
             <ScoreRow />
+            <NetWorthRow />
           </>
         ) : null}
       </ScrollView>
@@ -223,6 +225,30 @@ function ScoreRow() {
       )}
       <Pressable onPress={() => router.push('/insights')} accessibilityRole="button" hitSlop={8}>
         <Text style={[styles.link, { color: theme.tint }]}>See insights and where to improve</Text>
+      </Pressable>
+    </Section>
+  );
+}
+
+/** Net worth, with the way to every account and its register. Loads on its own, as the score does. */
+function NetWorthRow() {
+  const theme = useTheme();
+  const router = useRouter();
+  const worth = useApiQuery<NetWorth>(NET_WORTH_PATH).data;
+  if (!worth) return null;
+  return (
+    <Section title="Net worth">
+      {worth.accounts.some((a) => a.balance) ? (
+        <Text
+          style={[styles.scoreNumber, { color: worth.netCents < 0 ? theme.danger : theme.text }]}
+          accessibilityLabel={`Net worth ${formatCents(worth.netCents, worth.currency)}`}>
+          {formatCents(worth.netCents, worth.currency)}
+        </Text>
+      ) : (
+        <Text style={[styles.muted, { color: theme.textSecondary }]}>No account balances yet. Add them on the website.</Text>
+      )}
+      <Pressable onPress={() => router.push('/accounts')} accessibilityRole="button" hitSlop={8}>
+        <Text style={[styles.link, { color: theme.tint }]}>See accounts and their registers</Text>
       </Pressable>
     </Section>
   );

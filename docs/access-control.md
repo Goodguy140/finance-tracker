@@ -139,7 +139,8 @@ token (`Authorization: Bearer ftd_…`).
   a rule waits on with `POST /api/v1/recurring/:id/post` and `/skip`, as the website's Post and Skip
   do), insights and the financial score (`GET /api/v1/insights`, `GET /api/v1/score`, and hiding or
   putting back one insight with `POST /api/v1/insights/dismiss` and `/restore`, as the website's
-  Snooze, Dismiss and Restore do), and the bank review queue (`GET /api/v1/review-queue`, deciding rows with
+  Snooze, Dismiss and Restore do), accounts (`GET /api/v1/net-worth`, and one account's page with
+  its register at `GET /api/v1/accounts/:id`, read only), and the bank review queue (`GET /api/v1/review-queue`, deciding rows with
   `POST /api/v1/review-queue/:id`, `/pair`, `/bulk`, `/revisions/:id`, the same decisions as the
   website's queue buttons, which need no step-up there either; `POST /api/v1/banks/refresh` checks
   the person's banks as the log's refresh icon does). Linking, unlinking or signing in to a bank
