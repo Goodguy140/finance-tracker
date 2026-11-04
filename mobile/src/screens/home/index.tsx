@@ -7,6 +7,7 @@ import { errorText, useApiQuery } from '@/api/query';
 import type { FinancialScore, NetWorth, Summary } from '@/api/types';
 import { BudgetLine } from '@/components/budget-line';
 import { LoadState } from '@/components/load-state';
+import { OutboxBanner } from '@/components/outbox-banner';
 import { Section } from '@/components/section';
 import { UndoBar } from '@/components/undo-bar';
 import { Spacing } from '@/constants/theme';
@@ -33,6 +34,7 @@ export function Home() {
         style={{ backgroundColor: theme.background }}
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+        <OutboxBanner />
         <LoadState loading={summary.isPending} error={summary.error && !data ? errorText(summary.error) : null} />
         {data ? (
           <>

@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 
 import { clearSession, loadSession, saveSession, type StoredSession } from '@/session/store';
 import { revokeOnServer } from '@/session/sign-in-with-server';
+import { clearOutbox, pendingAdds } from '@/state/outbox';
+import { forgetLists } from '@/state/remembered-lists';
 
 type SessionContextValue = {
   /** Undefined while the Keychain is still being read. */
@@ -35,7 +37,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async (options: { notice?: string; revoke?: boolean } = {}) => {
       if (session && options.revoke !== false) await revokeOnServer(session);
       await clearSession();
-      setNotice(options.notice ?? null);
+      // What this sign-in kept on the phone goes with it: the next one may be someone else's.
+      const unsent = pendingAdds().length;
+      clearOutbox();
+      forgetLists();
+      const lost = unsent > 0 ? `${unsent === 1 ? '1 entry' : `${unsent} entries`} saved on this phone had not reached the server and were let go.` : null;
+      setNotice([options.notice, lost].filter(Boolean).join(' ') || null);
       setSession(null);
     },
     [session],

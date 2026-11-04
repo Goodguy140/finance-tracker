@@ -103,7 +103,7 @@ External integrations authenticate with personal access tokens (`Authorization: 
   `transactions:write` (`POST /api/v1/transactions`: an expense, income or transfer between two
   of the user's open accounts; an expense or income that a "Mark as transfer" rule matches is
   booked as a transfer, as a statement import books it; a token's adds wait in Needs review;
-  an `Idempotency-Key` header makes a retry answer with the entry already made, keys kept a day
+  an `Idempotency-Key` header makes a retry answer with the entry already made, keys kept a week
   in `ApiIdempotencyKey`) and
   `accounts:read` (`GET /api/v1/accounts`, `GET /api/v1/categories`, `GET /api/v1/tags`). Writes are audit-logged
   per entry (`api_transaction_created`).

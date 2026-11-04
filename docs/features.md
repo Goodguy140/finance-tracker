@@ -486,6 +486,15 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
   (`GET /api/v1/quick-add`). Every add sends an `Idempotency-Key`, so a retry after a dropped
   connection never adds twice. The phone's adds skip Needs review. `src/screens/add/`,
   `src/screens/transactions/quick-add-card.tsx`, `src/utils/add.ts`
+- Adding with no connection: the Add sheet opens from the last categories and accounts the server
+  sent, and an add the server cannot take (no connection, no answer, a 5xx such as a proxy's for a
+  server that is down) is kept on the phone, receipt photo and all, then sent with its original
+  `Idempotency-Key` as soon as the server answers: at once, whenever the app comes to the front, and
+  every 30 seconds (keys are kept a week, so one that did get through is never added twice; an add
+  deleted since answers 410 and is let go). Home and Transactions say what is waiting; its list
+  offers Send now and Discard, and shows any the server refused. Signing out lets them go, and says
+  so. `src/state/outbox.ts`, `src/api/outbox-sender.ts`, `src/utils/outbox.ts`, `src/screens/outbox.tsx`,
+  `src/state/remembered-lists.ts`
 - Receipts: a photo from the camera or library when adding (uploaded once the entry is in; a failed
   upload offers Try Again or Skip, never a second entry) or from an entry's editor; photos open full
   screen with pinch to zoom and can be removed; PDFs are listed and open on the website.

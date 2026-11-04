@@ -85,7 +85,7 @@ describe("claimIdempotencyKey", () => {
     expect(retries.map((r) => r.status).sort()).toEqual(["busy", "claimed"]);
   });
 
-  it("forgets keys after a day", async () => {
+  it("forgets keys after a week", async () => {
     const old = await claimIdempotencyKey(db, userId, KEY, at(0));
     if (old.status !== "claimed") throw new Error("expected a claim");
     await finish(old.keyId);

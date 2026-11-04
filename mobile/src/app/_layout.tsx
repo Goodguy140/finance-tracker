@@ -4,6 +4,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { useOutboxSender } from '@/api/outbox-sender';
 import { QueryProvider } from '@/api/query';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAlertRegistration, useAlertTaps } from '@/notifications/alerts';
@@ -22,6 +23,8 @@ function RootStack() {
     if (ready) void SplashScreen.hideAsync();
   }, [ready]);
   useAlertRegistration(session);
+  // Waiting adds go out even while the app is locked: sending them shows nothing.
+  useOutboxSender(session);
   useAlertTaps(ready && session !== null && !lock.locked);
   if (!ready) return null;
   const signedIn = session !== null;
@@ -36,6 +39,7 @@ function RootStack() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="add" options={{ presentation: 'modal', headerShadowVisible: false }} />
         <Stack.Screen name="receipt/[id]" options={{ presentation: 'modal', headerShadowVisible: false }} />
+        <Stack.Screen name="outbox" options={{ presentation: 'modal', headerShadowVisible: false }} />
       </Stack.Protected>
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="sign-in" options={{ headerShown: false }} />
