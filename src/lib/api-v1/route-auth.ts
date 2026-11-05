@@ -42,6 +42,22 @@ export async function authorizeApiRequest(
   return { ok: true, auth };
 }
 
+/**
+ * As `authorizeApiRequest` with scope `app`, for routes only the phone app itself may use: a
+ * device token (`src/lib/app-devices.ts`), never a personal access token. Answers that phone's id.
+ */
+export async function authorizeAppDevice(
+  request: Request,
+  name: string,
+): Promise<{ ok: true; auth: Authorized; appDeviceId: string } | { ok: false; response: NextResponse }> {
+  const authorized = await authorizeApiRequest(request, "app", name);
+  if (!authorized.ok) return authorized;
+  if (authorized.auth.token.kind !== "device") {
+    return { ok: false, response: apiError("Only the phone app can do this.", 403) };
+  }
+  return { ok: true, auth: authorized.auth, appDeviceId: authorized.auth.token.id };
+}
+
 export const NO_STORE = { "Cache-Control": "no-store" } as const;
 
 /** `{ error }` with a status, never cached. */

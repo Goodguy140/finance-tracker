@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
@@ -16,9 +17,10 @@ import { RELOCK_AFTER_MS } from '@/utils/app-lock';
 
 import { AlertsSection } from './alerts';
 
-/** Who is signed in and where, the website one tap away, alerts, the lock, and Sign out. */
+/** Who is signed in and where, the website one tap away, banks, alerts, the lock, and Sign out. */
 export function Settings() {
   const theme = useTheme();
+  const router = useRouter();
   const { session, signOut } = useSession();
   const pending = useOutbox();
   const me = useApiQuery<Me>('/api/v1/me');
@@ -54,9 +56,7 @@ export function Settings() {
           )}
         </Section>
 
-        <Section
-          title="Server"
-          footer="Reports, imports, rules, bank connections and settings are on the website.">
+        <Section title="Server" footer="Reports, imports, rules and the rest of your settings are on the website.">
           <Text style={[styles.title, { color: theme.text }]} selectable>
             {host}
           </Text>
@@ -66,6 +66,12 @@ export function Settings() {
             accessibilityHint="Opens the website in Safari"
             hitSlop={8}>
             <Text style={[styles.link, { color: theme.tint }]}>Open the website</Text>
+          </Pressable>
+        </Section>
+
+        <Section title="Banks" footer="What each bank connection needs, and where its accounts' transactions go.">
+          <Pressable onPress={() => router.push('/settings/banks')} accessibilityRole="button" hitSlop={8}>
+            <Text style={[styles.link, { color: theme.tint }]}>Bank connections ›</Text>
           </Pressable>
         </Section>
 

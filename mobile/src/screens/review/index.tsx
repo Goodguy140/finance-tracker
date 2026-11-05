@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useCallback, useState } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { RefreshControl, ScrollView } from 'react-native-gesture-handler';
 
 import { refreshBanks, type BankRefresh } from '@/api/banks';
@@ -150,7 +150,7 @@ export function ReviewQueue() {
           <LoadState loading={query.isPending} error={query.error ? errorText(query.error) : null} />
           {data && !query.error ? (
             <>
-              <BanksNeedingYou data={data} origin={session?.origin ?? null} />
+              <BanksNeedingYou data={data} />
               {rows.length === 0 && data.revisions.length === 0 ? (
                 <Section>
                   <Text style={[styles.muted, { color: theme.textSecondary }]}>
@@ -199,21 +199,19 @@ export function ReviewQueue() {
   );
 }
 
-function BanksNeedingYou({ data, origin }: { data: ReviewQueueData; origin: string | null }) {
+/** Banks that need the person; each opens the Banks screen, which fixes it or says where to. */
+function BanksNeedingYou({ data }: { data: ReviewQueueData }) {
   const theme = useTheme();
+  const router = useRouter();
   const banks = banksNeedingAttention(data.banks);
   if (banks.length === 0) return null;
   return (
-    <Section title="Your banks" footer="Signing in to a bank happens on the website.">
+    <Section title="Your banks">
       {banks.map((bank) => (
         <View key={bank.id} style={styles.bank}>
           <Text style={[styles.body, { color: theme.text }]}>{bank.message}</Text>
-          <Pressable
-            onPress={() => origin && void Linking.openURL(`${origin}/settings/banks`)}
-            accessibilityRole="link"
-            accessibilityHint="Opens the website in Safari"
-            hitSlop={8}>
-            <Text style={[styles.link, { color: theme.tint }]}>{bank.actionLabel} on the website ›</Text>
+          <Pressable onPress={() => router.push('/review/banks')} accessibilityRole="button" hitSlop={8}>
+            <Text style={[styles.link, { color: theme.tint }]}>{bank.actionLabel} ›</Text>
           </Pressable>
         </View>
       ))}

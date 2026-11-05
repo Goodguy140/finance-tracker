@@ -185,7 +185,9 @@ export const config = {
   // the secret in the path is its credential (`src/lib/calendar-feed.ts`).
   // `.well-known/apple-app-site-association` is fetched by Apple's servers, with no cookies and
   // no redirects followed, to let the phone app use this domain's passkeys (`apple-app-site.ts`).
+  // `plaid/oauth` is where a bank's own sign-in sends someone back to the phone app; iOS opens
+  // the app instead, and the page shows only if it did not, so it must load signed out.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/health|api/v1|api/plaid/webhook$|api/calendar/|manifest\\.webmanifest$|sw\\.js$|icons/|icon\\.svg$|apple-icon\\.png$|offline$|\\.well-known/apple-app-site-association$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/health|api/v1|api/plaid/webhook$|api/calendar/|manifest\\.webmanifest$|sw\\.js$|icons/|icon\\.svg$|apple-icon\\.png$|offline$|\\.well-known/apple-app-site-association$|plaid/oauth$).*)",
   ],
 };

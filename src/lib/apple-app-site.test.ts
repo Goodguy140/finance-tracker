@@ -25,7 +25,10 @@ describe("the app's home server", () => {
     const file = getAssociation();
     expect(file.status).toBe(200);
     expect(file.headers.get("content-type")).toContain("application/json");
-    expect(await file.json()).toEqual({ webcredentials: { apps: [APP_ID] } });
+    expect(await file.json()).toEqual({
+      webcredentials: { apps: [APP_ID] },
+      applinks: { details: [{ appIDs: [APP_ID], components: [{ "/": "/plaid/oauth", comment: "Plaid Link OAuth return" }] }] },
+    });
 
     expect((await getServerInfo().json()).passkeySignIn).toEqual({
       optionsPath: "/api/v1/app/passkey/options",

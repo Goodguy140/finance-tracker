@@ -155,8 +155,10 @@ otherwise). Audit: `mfa_verified` (`method: "passkey-signin"`, `via: "app"`) and
   its register at `GET /api/v1/accounts/:id`, read only), and the bank review queue (`GET /api/v1/review-queue`, deciding rows with
   `POST /api/v1/review-queue/:id`, `/pair`, `/bulk`, `/revisions/:id`, the same decisions as the
   website's queue buttons, which need no step-up there either; `POST /api/v1/banks/refresh` checks
-  the person's banks as the log's refresh icon does). Linking, unlinking or signing in to a bank
-  stays on the website), and the phone's own alert registration (`GET`/`PUT`/`DELETE
+  the person's banks as the log's refresh icon does), bank connections (`GET /api/v1/banks`, and
+  choosing the app account a bank account fills with `PUT /api/v1/banks/accounts/:id`, which needs
+  no step-up on the website either; connecting and fixing banks are below; unlinking stays on the
+  website), and the phone's own alert registration (`GET`/`PUT`/`DELETE
   /api/v1/app/device/push`: its Apple push token and which alerts it wants; device tokens only, so a
   personal access token gets 403). Adds, edits, deletes and undos are audit-logged (`api_transaction_created`
   with `via: "app"`, `api_transaction_updated`, `_deleted`, `_restored`, and `api_recurring_posted`
@@ -164,6 +166,22 @@ otherwise). Audit: `mfa_verified` (`method: "passkey-signin"`, `via: "app"`) and
   linked from the queue (`plaid_transactions_committed` with `via: "app"`); the phone's adds skip
   Needs review, since the person typed them. Nothing on `/api/v1` clears or restores data in bulk, changes
   sign-in, or reaches admin controls.
+- Connecting a bank, or fixing one (signing in again, renewing access, sharing new accounts),
+  needs Face ID, as the website asks "Confirm it's you" before Plaid Link (`requireFreshMfa`): a
+  bank connection is a standing credential to someone's account, so a stolen device token alone
+  must not be able to make one. The phone gets a single-use `authenticate` challenge for the
+  signed-in user (`POST /api/v1/app/step-up/options`), signs it with a passkey behind Face ID, and
+  sends the assertion with `POST /api/v1/banks/link`, which checks it as the website's step-up does
+  (`verifyAuthentication`, the user's own passkey) before minting a Link token. That starts an
+  `AppBankLink` row allowing one finish (`POST /api/v1/banks/link/:id/complete`), from the same
+  phone, within 30 minutes; finishing uses it up first. What Link returns goes through the
+  website's `linkBank` and `completeUpdate`, so the billing refusals are the same. Device tokens
+  only (`authorizeAppDevice`): a personal access token gets 403. Only the app's home server
+  (`APPLE_APP_ID`) gives Link a redirect address, `https://<server>/plaid/oauth`, a static page
+  outside the session gate that the app-site association hands to the app. Audit: `mfa_verified`
+  (`method: "passkey"`, `via: "app"`, `for: "bank-link"`), `plaid_link_started`,
+  `plaid_item_linked` or `plaid_item_update_completed`, and `plaid_account_mapped`, each with
+  `via: "app"`. `src/lib/app-bank-link.ts`.
 - It ends when the phone signs out (`POST /api/v1/app/revoke`), when the person signs it out
   under **Settings → Security → Signed-in apps**, after 90 days unused, and on anything that
   bumps `User.tokenVersion` (password change or reset, suspension, `reset-mfa.cjs`). A

@@ -470,7 +470,8 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
 - Face ID sign-in on the home server (the one a build is made for, `HOME_SERVER_DOMAIN` on EAS,
   never committed): **Sign In with Face ID** uses a passkey added on the web, through iOS's
   passkey sheet, with no browser sheet. The address field starts with that server. On any other
-  server the app signs in through the web page and says Face ID sign-in is not available there.
+  server the app signs in through the web page and says Face ID sign-in and connecting banks in
+  the app are not available there.
   `app.config.ts`, `passkeys/Passkeys.swift`, `src/session/passkeys.ts`,
   `src/utils/passkey-sign-in.ts`, `src/utils/home-server.ts`
 - Tabs (`src/app/(tabs)/_layout.tsx`, native tab bar): Home, Transactions, Review (badged with the
@@ -532,8 +533,8 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
   swiping it right uncovers Add (Link or Pair where adding would duplicate an entry or split a
   transfer) and left uncovers Ignore, each done with a tap (`src/components/swipe-row.tsx`: the list
   waits for a sideways drag before scrolling, one row open at a time). The bank's revisions to rows already added (use the bank's amount
-  or keep yours); banks that need signing in again or renewing link to Settings → Banks on the
-  website. Pull down checks the banks now, as the log's refresh icon does. `GET /api/v1/review-queue`,
+  or keep yours); banks that need signing in again, renewing or new accounts open the Banks screen
+  (below). Pull down checks the banks now, as the log's refresh icon does. `GET /api/v1/review-queue`,
   `POST /api/v1/review-queue/:id`, `/pair`, `/bulk`, `/revisions/:id`, `POST /api/v1/banks/refresh`
   (`src/lib/api-v1/review-queue.ts`). `src/screens/review/`, `src/utils/review-queue.ts`
 - Budgets: any month's budgets by category group, with rollover carries, and the yearly budgets as
@@ -563,6 +564,19 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
   latest balance marked *; an entry opens for editing), recurring rules and savings goals.
   `GET /api/v1/net-worth`, `GET /api/v1/accounts/:id?months=` (`src/lib/api-v1/accounts.ts`, the
   website's `loadNetWorth` and `loadAccountPage`). `src/screens/accounts/`, `src/utils/accounts.ts`
+- Banks (Settings → Bank connections, and Review's "Your banks"): each bank connection with what
+  it needs, when it was last checked, and its accounts, each with a picker for the app account its
+  transactions go to (same currency only, or Not synced). On the home server, once the server sets
+  `APPLE_APP_ID` and the person has a passkey, **Connect a Bank** (with how much history to fetch)
+  and each bank's Sign in again, Renew access or new-accounts button run in the app: Face ID
+  confirms it's you, then Plaid Link opens full screen (`react-native-plaid-link-sdk`). A bank's own
+  app or site sends the person back through `https://<server>/plaid/oauth`, a universal link the
+  app ignores (`src/utils/system-path.ts`) because Link picks it up itself. Anywhere else the screen
+  says why and links to the website. Disconnecting stays on the website. `GET /api/v1/banks`,
+  `PUT /api/v1/banks/accounts/:id`, `POST /api/v1/app/step-up/options`, `POST /api/v1/banks/link`
+  and `/link/:id/complete` (`src/lib/api-v1/banks.ts`, `src/lib/app-bank-link.ts`, the website's
+  `linkBank`, `completeUpdate` and account mapping). `src/screens/banks.tsx`,
+  `src/session/bank-link.ts`, `src/utils/banks.ts`
 - Settings: who is signed in, the server, Open the website, Sign out (also revokes the token on
   the server), and **Require Face ID** (Touch ID or the passcode on phones without it): the app
   opens to a lock screen and locks again after 5 minutes in the background; turning it on or off
