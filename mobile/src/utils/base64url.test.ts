@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { base64UrlFromBase64, base64UrlFromBytes } from '@/utils/base64url';
+import { base64FromBase64Url, base64UrlFromBase64, base64UrlFromBytes } from '@/utils/base64url';
 
 describe('base64UrlFromBytes', () => {
   it('matches btoa for every length, including the ones base64 pads', () => {
@@ -19,5 +19,14 @@ describe('base64UrlFromBytes', () => {
 describe('base64UrlFromBase64', () => {
   it('swaps the two characters and drops the padding', () => {
     expect(base64UrlFromBase64('+/+/ab==')).toBe('-_-_ab');
+  });
+});
+
+describe('base64FromBase64Url', () => {
+  it('round-trips with base64UrlFromBase64 for every length, putting the padding back', () => {
+    for (let length = 0; length <= 40; length++) {
+      const base64 = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(length))));
+      expect(base64FromBase64Url(base64UrlFromBase64(base64))).toBe(base64);
+    }
   });
 });

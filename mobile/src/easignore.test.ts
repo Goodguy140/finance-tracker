@@ -17,6 +17,8 @@ describe('.easignore', () => {
       'mobile/package-lock.json',
       'mobile/app.json',
       'mobile/eas.json',
+      'mobile/app.config.ts',
+      'mobile/passkeys/Passkeys.swift',
       'mobile/src',
       'mobile/src/app/_layout.tsx',
       'mobile/assets',

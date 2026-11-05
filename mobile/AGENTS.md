@@ -18,6 +18,14 @@ ignore it. Read `README.md` here for how sign-in and TestFlight builds work.
   (`src/api/query.tsx`), which signs the phone out on a 401 and empties the cache on sign-out.
 - **The redirect `financetracker://signed-in` is shared** with the server's `APP_REDIRECT_URI`;
   change both or neither.
+- **The home server's domain is never committed.** It reaches the build only through the EAS
+  variable `HOME_SERVER_DOMAIN` (`app.config.ts`); tests use `finances.example.com`. Features
+  that need the app and server paired (Face ID sign-in) check `isHomeServer`
+  (`src/utils/home-server.ts`) and must keep working, without them, on every other server.
+- **Swift in `app-intents/` and `passkeys/` is compiled into the app** (Expo inline modules,
+  `experiments.inlineModules.watchedDirectories`): each module class is named after its file, and
+  the app target is Swift 5 mode. Nothing here compiles Swift, so copy shapes from an Expo module
+  that already builds (`node_modules/expo-*/ios`) and keep logic in tested TypeScript.
 - **Never commit Apple or Expo credentials.** They live on EAS and in GitHub secrets
   (`EXPO_TOKEN`).
 - `.easignore` at the repository root decides what EAS uploads. It leaves out everything outside

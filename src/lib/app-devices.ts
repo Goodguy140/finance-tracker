@@ -14,6 +14,10 @@ import { prisma as defaultPrisma } from "@/lib/prisma";
  * 3. The app posts the code and its verifier to `POST /api/v1/app/token` and gets a device
  *    token, which it keeps in the Keychain and sends as `Authorization: Bearer ftd_…`.
  *
+ * The app can also sign in with a passkey directly, on the one server it is built for (its
+ * associated domain): `src/lib/app-passkey-sign-in.ts` verifies the passkey as the login page
+ * does and hands out a device token through `issueAppDeviceToken`, with no browser sheet.
+ *
  * Device tokens are long-lived (until signed out, `APP_DEVICE_IDLE_DAYS` unused, or a
  * `User.tokenVersion` bump) rather than short tokens with rotating refresh tokens: an app, a
  * widget and background refresh all hold the same token, and refreshes racing each other
@@ -132,10 +136,7 @@ export async function createAppSignInCode(
 ): Promise<{ ok: true; code: string } | { ok: false; error: string }> {
   const live = await listAppDevices(input.userId, client, now);
   if (live.length >= MAX_APP_DEVICES) {
-    return {
-      ok: false,
-      error: `This account already has ${MAX_APP_DEVICES} phones signed in. Sign one out under Settings → Security first.`,
-    };
+    return { ok: false, error: tooManyAppDevicesMessage() };
   }
   const code = crypto.randomBytes(32).toString("base64url");
   await client.$transaction([
@@ -188,20 +189,42 @@ export async function exchangeAppSignInCode(
   }
   if (row.user.disabledAt) return { ok: false, status: 403, error: "This account has been suspended." };
 
+  const { token, device } = await issueAppDeviceToken(
+    { user: row.user, deviceName: row.deviceName, platform: input.platform, appVersion: input.appVersion },
+    client,
+    now,
+  );
+  return { ok: true, token, device, user: row.user };
+}
+
+/**
+ * Creates the device and its token. Callers have already decided the person may have one:
+ * the account is not suspended, and it has a slot (`MAX_APP_DEVICES`).
+ */
+export async function issueAppDeviceToken(
+  input: { user: Pick<User, "id" | "tokenVersion">; deviceName: string; platform?: string; appVersion?: string },
+  client: PrismaClient = defaultPrisma,
+  now = Date.now(),
+): Promise<{ token: string; device: AppDevice }> {
   const raw = DEVICE_TOKEN_PREFIX + crypto.randomBytes(32).toString("base64url");
   const device = await client.appDevice.create({
     data: {
-      userId: row.userId,
-      name: row.deviceName,
+      userId: input.user.id,
+      name: cleanDeviceName(input.deviceName),
       platform: (input.platform ?? "ios").slice(0, 20) || "ios",
       appVersion: input.appVersion ? input.appVersion.slice(0, 40) : null,
       tokenHash: hashSecret(raw),
       tokenPrefix: raw.slice(0, DISPLAY_PREFIX_LEN),
-      tokenVersion: row.user.tokenVersion,
+      tokenVersion: input.user.tokenVersion,
       lastUsedAt: new Date(now),
     },
   });
-  return { ok: true, token: raw, device, user: row.user };
+  return { token: raw, device };
+}
+
+/** The refusal `createAppSignInCode` gives, for any other way in. */
+export function tooManyAppDevicesMessage(): string {
+  return `This account already has ${MAX_APP_DEVICES} phones signed in. Sign one out under Settings → Security first.`;
 }
 
 export type AppDeviceAuth =

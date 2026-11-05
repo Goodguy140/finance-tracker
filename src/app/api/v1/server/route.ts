@@ -1,5 +1,28 @@
 import { NextResponse } from "next/server";
 import { APP_REDIRECT_URI } from "@/lib/app-devices";
+import { appleAppId } from "@/lib/apple-app-site";
+import { getWebAuthnRp } from "@/lib/webauthn-rp";
+
+// `APPLE_APP_ID` is read at request time, from the container's environment.
+export const dynamic = "force-dynamic";
+
+/**
+ * Passkey sign-in inside the app, offered only by the app's home server (`APPLE_APP_ID` set,
+ * so its app-site association names the app). `rpId` is the domain the passkeys belong to; the
+ * app offers Face ID only when it is the domain the app was built for.
+ */
+function passkeySignIn() {
+  if (!appleAppId()) return undefined;
+  try {
+    return {
+      optionsPath: "/api/v1/app/passkey/options",
+      tokenPath: "/api/v1/app/passkey/token",
+      rpId: getWebAuthnRp().rpID,
+    };
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * GET /api/v1/server — public. The phone app calls it with the address someone typed in, to
@@ -18,6 +41,7 @@ export function GET() {
         revokePath: "/api/v1/app/revoke",
         redirectUri: APP_REDIRECT_URI,
       },
+      passkeySignIn: passkeySignIn(),
     },
     { headers: { "Cache-Control": "no-store" } },
   );
