@@ -277,7 +277,10 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     Confirm it's you), `POST /api/v1/app/token` (one-time code + PKCE verifier for a device token),
     `POST /api/v1/app/revoke`, `GET /api/v1/me`, public `GET /api/v1/server`; `src/lib/app-devices.ts`,
     `AppDevice` and `AppSignInCode` tables. Device tokens work on every `/api/v1` route. Signed-out
-    visits to `/app/…` go to `/login?next=` and come back (`src/proxy.ts`)
+    visits to `/app/…` go to `/login?next=` and come back (`src/proxy.ts`). Face ID sign-in for
+    the app's home server (`APPLE_APP_ID` set): `/.well-known/apple-app-site-association`
+    (`src/lib/apple-app-site.ts`), `POST /api/v1/app/passkey/options` and `/token`
+    (`src/lib/app-passkey-sign-in.ts`), advertised as `passkeySignIn` in `GET /api/v1/server`
   - Notifications (budget alert emails): `budget-alert-preferences.tsx`,
     `src/lib/budget-alert-dispatch.ts`
   - Email digest (off / weekly on Mondays / monthly on the 1st, after 7am local; spent and
@@ -464,6 +467,12 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
 - Sign in: server address, then the server's own sign-in page in the system sheet (PKCE); the
   device token is kept in the Keychain. `src/screens/sign-in.tsx`, `src/session/*`,
   `src/utils/sign-in.ts`
+- Face ID sign-in on the home server (the one a build is made for, `HOME_SERVER_DOMAIN` on EAS,
+  never committed): **Sign In with Face ID** uses a passkey added on the web, through iOS's
+  passkey sheet, with no browser sheet. The address field starts with that server. On any other
+  server the app signs in through the web page and says Face ID sign-in is not available there.
+  `app.config.ts`, `passkeys/Passkeys.swift`, `src/session/passkeys.ts`,
+  `src/utils/passkey-sign-in.ts`, `src/utils/home-server.ts`
 - Tabs (`src/app/(tabs)/_layout.tsx`, native tab bar): Home, Transactions, Review (badged with the
   bank rows waiting), Budgets, Settings. Data is cached and
   refetched when the app comes back to the front (`src/api/query.tsx`, TanStack Query)

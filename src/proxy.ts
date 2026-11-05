@@ -183,7 +183,9 @@ export const config = {
   // signature on every delivery instead. Anchored so nothing beside it slips through.
   // `api/calendar/<secret>.ics` is fetched by calendar apps' servers, which have no session;
   // the secret in the path is its credential (`src/lib/calendar-feed.ts`).
+  // `.well-known/apple-app-site-association` is fetched by Apple's servers, with no cookies and
+  // no redirects followed, to let the phone app use this domain's passkeys (`apple-app-site.ts`).
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/health|api/v1|api/plaid/webhook$|api/calendar/|manifest\\.webmanifest$|sw\\.js$|icons/|icon\\.svg$|apple-icon\\.png$|offline$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/health|api/v1|api/plaid/webhook$|api/calendar/|manifest\\.webmanifest$|sw\\.js$|icons/|icon\\.svg$|apple-icon\\.png$|offline$|\\.well-known/apple-app-site-association$).*)",
   ],
 };

@@ -126,6 +126,18 @@ authenticator code, SSO and the `/mfa` wall all apply. **Allow** needs "Confirm 
 only. `POST /api/v1/app/token` trades the code and its PKCE verifier (S256 only) for a device
 token (`Authorization: Bearer ftd_…`).
 
+On the app's home server (`APPLE_APP_ID` set) the app can also sign in with Face ID and a passkey,
+without the sheet (`src/lib/app-passkey-sign-in.ts`). `POST /api/v1/app/passkey/options` hands out
+a single-use `signin` challenge and `POST /api/v1/app/passkey/token` checks the assertion exactly
+as the login page's passkey provider does: the same challenge rows, user verification required,
+the origin and RP ID from `NEXTAUTH_URL`, suspended accounts refused, both rate limited per IP
+under the login page's keys. A passkey is both factors, so there is no `/mfa` wall after it, and no
+Allow page: the person started it in the app on their own phone and passed Face ID. iOS offers
+the domain's passkeys to the app only because the server's
+`/.well-known/apple-app-site-association` names it (served only with `APPLE_APP_ID`; 404
+otherwise). Audit: `mfa_verified` (`method: "passkey-signin"`, `via: "app"`) and
+`app_device_signed_in` (`method: "passkey"`).
+
 - The code lives for one minute, is stored as a hash, and works once: it is deleted on the
   first try whether or not the verifier matches.
 - A device token is 256 random bits, stored as a SHA-256 hash in `AppDevice`, and reaches every

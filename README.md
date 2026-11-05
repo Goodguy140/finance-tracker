@@ -59,6 +59,7 @@ Most of these can also be set under **Settings → Server admin**; a value set i
 | `ALLOW_PUBLIC_SIGNUP` | `true` or `false`. Signup is closed by default in production. |
 | `DISABLE_PASSWORD_LOGIN` | `false` re-enables password sign-in if SSO breaks. |
 | `LOGIN_MAX_PER_IP` | Raise if many users share one IP (default 30 attempts per 15 minutes). |
+| `APPLE_APP_ID` | Only on the server an iPhone app build is made for: its Team ID and bundle id, e.g. `ABCDE12345.com.example.finances`. Serves Apple's app-site association file so the app can offer Face ID sign-in with this server's passkeys (see `mobile/README.md`). |
 | `TRUSTED_PROXY_HOPS` | Number of reverse proxies in front of the app that append to `X-Forwarded-For` (default 1). Set to 2 for, say, Cloudflare in front of nginx. Per-IP rate limits and the audit log use the address the outermost one saw. |
 | `AUTHENTIK_ISSUER`, `AUTHENTIK_CLIENT_ID`, `AUTHENTIK_CLIENT_SECRET`, `AUTHENTIK_ENABLED` | Authentik SSO. Redirect URI is `<NEXTAUTH_URL>/api/auth/callback/authentik`. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Email: password reset, budget alerts, the weekly or monthly digest, bill reminders and large-charge alerts. |

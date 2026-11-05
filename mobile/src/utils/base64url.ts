@@ -19,3 +19,9 @@ export function base64UrlFromBytes(bytes: Uint8Array): string {
 export function base64UrlFromBase64(base64: string): string {
   return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
+
+/** base64url (padded or not) to standard base64 with its padding, as Swift's `Data(base64Encoded:)` reads it. */
+export function base64FromBase64Url(base64url: string): string {
+  const base64 = base64url.replace(/=+$/, '').replace(/-/g, '+').replace(/_/g, '/');
+  return base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+}
