@@ -12,6 +12,11 @@
       "supportsTablet": false,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.com.goodguy140.financetracker"
+        ]
       }
     },
     "plugins": [
@@ -103,6 +108,19 @@
       "eas": {
         "projectId": "35c86e32-7384-47ec-b5e5-1a999ffaa852"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/35c86e32-7384-47ec-b5e5-1a999ffaa852"
+    },
+    "android": {
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ]
     }
   }
 }
