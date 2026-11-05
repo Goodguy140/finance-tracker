@@ -41,6 +41,12 @@ describe("proxy matcher", () => {
     expect(matcher.test("/.well-known/other")).toBe(true);
   });
 
+  it("lets a bank's sign-in return to the phone app signed out, and nothing beside it", () => {
+    expect(matcher.test("/plaid/oauth")).toBe(false);
+    expect(matcher.test("/plaid/oauth/x")).toBe(true);
+    expect(matcher.test("/plaid")).toBe(true);
+  });
+
   it("lets calendar apps fetch a calendar feed link, and nothing beside it", () => {
     expect(matcher.test("/api/calendar/cal_abc.ics")).toBe(false);
     expect(matcher.test("/api/calendar")).toBe(true);

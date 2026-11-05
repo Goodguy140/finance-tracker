@@ -194,6 +194,7 @@ model User {
   appDevices                AppDevice[]
   appPushTokens             AppPushToken[]
   appSignInCodes            AppSignInCode[]
+  appBankLinks              AppBankLink[]
   apiIdempotencyKeys        ApiIdempotencyKey[]
   webAuthnCredentials       WebAuthnCredential[]
   mfaChallenges             MfaChallenge[]
@@ -393,8 +394,37 @@ model AppDevice {
 
   user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   pushToken AppPushToken?
+  bankLinks AppBankLink[]
 
   @@index([userId])
+}
+
+/**
+ * A bank connection the phone app started (`POST /api/v1/banks/link`) after Face ID confirmed it
+ * was the account's owner, as the website's "Confirm it's you" does before Plaid Link opens.
+ * Plaid Link then runs on the phone for minutes, so finishing it (`POST
+ * /api/v1/banks/link/:id/complete`) is allowed by this row rather than by a second Face ID:
+ * once, from the same phone, before it expires (`src/lib/app-bank-link.ts`).
+ */
+model AppBankLink {
+  id          String   @id @default(cuid())
+  userId      String
+  appDeviceId String
+  /// "create" (a new bank) or "update" (an existing connection: `plaidItemId`, `updateKind`).
+  mode        String
+  plaidItemId String?
+  /// "reauth" (sign in again, renew access) or "accounts" (share new accounts).
+  updateKind  String?
+  /// For "create": the days of history asked for (`HISTORY_WINDOWS`).
+  historyDays Int?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appDevice AppDevice @relation(fields: [appDeviceId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([appDeviceId])
 }
 
 /**
@@ -595,11 +625,11 @@ model Account {
 }
 
 model Category {
-  id                 String       @id @default(cuid())
+  id                 String        @id @default(cuid())
   userId             String
   name               String
   kind               CategoryKind
-  isDefault          Boolean      @default(false)
+  isDefault          Boolean       @default(false)
   /// Budget rollover: from this month (YYYY-MM) on, what is left of each month's budget, or
   /// what went over it, carries into the next. Null when rollover is off.
   rolloverSinceMonth String?
@@ -609,8 +639,8 @@ model Category {
   /// Need or want, for the financial score's 50/30/20 split. Null until the user picks: the
   /// score then guesses from the name and group (`guessSpendingRole`).
   spendingRole       SpendingRole?
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions          Transaction[]

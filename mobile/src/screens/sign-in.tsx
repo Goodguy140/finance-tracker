@@ -101,7 +101,7 @@ export function SignIn() {
         {elsewhere ? (
           <Text style={[styles.message, { color: theme.warning }]}>
             This isn&apos;t the server this app was built for. You can sign in and use the app as usual, but Face ID
-            sign-in won&apos;t be available.
+            sign-in and connecting banks in the app won&apos;t be available.
           </Text>
         ) : null}
 

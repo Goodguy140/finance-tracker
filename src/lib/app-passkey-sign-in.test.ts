@@ -1,10 +1,9 @@
-import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PrismaClient } from "@prisma/client";
-import { isoBase64URL, isoCBOR } from "@simplewebauthn/server/helpers";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { registerIosPasskey } from "@/test-support/ios-passkey";
 import { copyMigratedDatabase } from "@/test-support/migrated-db";
 
 /**
@@ -42,70 +41,17 @@ afterAll(async () => {
 
 let seq = 0;
 let userId: string;
-let credentialId: string;
-let privateKey: KeyObject;
+let passkey: Awaited<ReturnType<typeof registerIosPasskey>>;
 
 beforeEach(async () => {
   seq += 1;
   userId = (await db.user.create({ data: { email: `face${seq}@example.test`, displayName: "Face" } })).id;
-
-  const pair = generateKeyPairSync("ec", { namedCurve: "P-256" });
-  privateKey = pair.privateKey;
-  const jwk = pair.publicKey.export({ format: "jwk" });
-  const coseKey = isoCBOR.encode(
-    new Map<number, number | Uint8Array>([
-      [1, 2], // kty: EC2
-      [3, -7], // alg: ES256
-      [-1, 1], // crv: P-256
-      [-2, isoBase64URL.toBuffer(jwk.x!)],
-      [-3, isoBase64URL.toBuffer(jwk.y!)],
-    ]),
-  );
-  credentialId = isoBase64URL.fromBuffer(new TextEncoder().encode(`credential-${seq}`));
-  await db.webAuthnCredential.create({
-    data: {
-      userId,
-      credentialId,
-      publicKey: isoBase64URL.fromBuffer(coseKey),
-      counter: 0,
-      deviceType: "multiDevice",
-      backedUp: true,
-      name: "iCloud Keychain",
-    },
-  });
+  passkey = await registerIosPasskey(db, userId, RP_ID);
 });
-
-/**
- * What the app sends: iOS's assertion with its bytes base64url-encoded. iOS writes the origin as
- * `https://<rp id>` and, for a synced passkey, a signature counter of 0.
- */
-function iosAssertion(challenge: string, origin = `https://${RP_ID}`) {
-  const clientDataJSON = Buffer.from(JSON.stringify({ type: "webauthn.get", challenge, origin }));
-  const flags = 0x01 | 0x04 | 0x08 | 0x10; // user present, user verified, backup eligible, backed up
-  const authenticatorData = Buffer.concat([
-    createHash("sha256").update(RP_ID).digest(),
-    Buffer.from([flags]),
-    Buffer.alloc(4),
-  ]);
-  const signed = Buffer.concat([authenticatorData, createHash("sha256").update(clientDataJSON).digest()]);
-  return {
-    id: credentialId,
-    rawId: credentialId,
-    type: "public-key",
-    authenticatorAttachment: "platform",
-    clientExtensionResults: {},
-    response: {
-      clientDataJSON: isoBase64URL.fromBuffer(clientDataJSON),
-      authenticatorData: isoBase64URL.fromBuffer(authenticatorData),
-      signature: isoBase64URL.fromBuffer(sign("sha256", signed, privateKey)),
-      userHandle: isoBase64URL.fromBuffer(new TextEncoder().encode(userId)),
-    },
-  };
-}
 
 async function signIn(origin?: string) {
   const { challengeId, options } = await createAuthenticationOptions("signin", null);
-  const response = iosAssertion(options.challenge, origin);
+  const response = passkey.assert(options.challenge, origin);
   const result = await lib.signInAppWithPasskey({ challengeId, response, deviceName: "Sam's iPhone", platform: "ios" }, { client: db });
   return { result, challengeId, response };
 }

@@ -18,7 +18,14 @@ export function appleAppId(raw: string | undefined = process.env.APPLE_APP_ID): 
   return value && APP_ID_PATTERN.test(value) ? value : null;
 }
 
-/** `webcredentials`: the app may offer this domain's passkeys. */
+/**
+ * `webcredentials`: the app may offer this domain's passkeys. `applinks`: this domain's
+ * `/plaid/oauth` opens the app, which is where a bank's own sign-in sends someone back to Plaid
+ * Link (`PLAID_OAUTH_PATH` in `src/lib/app-bank-link.ts`; the query string is Plaid's).
+ */
 export function appleAppSiteAssociation(appId: string) {
-  return { webcredentials: { apps: [appId] } };
+  return {
+    webcredentials: { apps: [appId] },
+    applinks: { details: [{ appIDs: [appId], components: [{ "/": "/plaid/oauth", comment: "Plaid Link OAuth return" }] }] },
+  };
 }

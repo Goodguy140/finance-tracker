@@ -20,8 +20,11 @@ ignore it. Read `README.md` here for how sign-in and TestFlight builds work.
   change both or neither.
 - **The home server's domain is never committed.** It reaches the build only through the EAS
   variable `HOME_SERVER_DOMAIN` (`app.config.ts`); tests use `finances.example.com`. Features
-  that need the app and server paired (Face ID sign-in) check `isHomeServer`
+  that need the app and server paired (Face ID sign-in, connecting banks) check `isHomeServer`
   (`src/utils/home-server.ts`) and must keep working, without them, on every other server.
+- **`https://<home server>/plaid/oauth` opens the app** (a bank sending someone back to Plaid
+  Link). `src/utils/system-path.ts` keeps it from changing screen; Link handles it. Keep that path
+  in step with `PLAID_OAUTH_PATH` in the server's `src/lib/app-bank-link.ts`.
 - **Swift in `app-intents/` and `passkeys/` is compiled into the app** (Expo inline modules,
   `experiments.inlineModules.watchedDirectories`): each module class is named after its file, and
   the app target is Swift 5 mode. Nothing here compiles Swift, so copy shapes from an Expo module

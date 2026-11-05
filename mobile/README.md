@@ -9,7 +9,8 @@ due; post or skip recurring bills and pay; see your financial score and insights
 net worth and each account's register; browse, search, add (with no connection too) and edit
 transactions with receipts; share a receipt to it from Photos, Mail or Files; say "Log an expense
 in Finances" to Siri; put safe to spend and the week's bills on the Home Screen; review what your
-banks sent (the Review tab); and get bill, charge and budget alerts (Settings → Alerts).
+banks sent (the Review tab); connect and fix banks (Settings → Bank connections); and get bill,
+charge and budget alerts (Settings → Alerts).
 `docs/features.md` in the repository root lists it screen by screen.
 
 ## How sign-in works
@@ -35,7 +36,7 @@ its login page does (`src/lib/app-passkey-sign-in.ts`, `POST /api/v1/app/passkey
 iOS lets an app use a domain's passkeys only when both sides name each other:
 
 - the app's entitlements list `webcredentials:<domain>` (and `applinks:<domain>`, for bank
-  sign-ins later), which `app.config.ts` adds from **`HOME_SERVER_DOMAIN`** when building;
+  sign-ins, below), which `app.config.ts` adds from **`HOME_SERVER_DOMAIN`** when building;
 - the server serves `/.well-known/apple-app-site-association` naming the app, which it does only
   when **`APPLE_APP_ID`** is set (`C5SNKYWDNZ.com.goodguy140.financetracker`, the Team ID and the
   bundle id).
@@ -46,9 +47,25 @@ environment **production**, visibility **Plain text** or **Sensitive** (not Secr
 on the computer that starts the build, where secrets are hidden). Builds without it work as before.
 
 Every other server still works: the app signs in through its web page, and the sign-in screen says
-that Face ID sign-in is not available there. The app and passkey code: `passkeys/Passkeys.swift`
-(an inline module), `src/session/passkeys.ts`, `src/utils/passkey-sign-in.ts` and
-`src/utils/home-server.ts`.
+that Face ID sign-in and connecting banks are not available there. The app and passkey code:
+`passkeys/Passkeys.swift` (an inline module), `src/session/passkeys.ts`,
+`src/utils/passkey-sign-in.ts` and `src/utils/home-server.ts`.
+
+### Connecting banks in the app
+
+Settings → Bank connections lists each bank, what it needs and where each of its accounts'
+transactions go, on any server. On the home server it also connects a bank and fixes one (signing
+in again, renewing access, sharing new accounts) with Plaid Link's iOS SDK
+(`react-native-plaid-link-sdk`): Face ID first, with the same passkey, because the website asks
+"Confirm it's you" before a bank connection too. The server's side is `src/lib/app-bank-link.ts`.
+
+Many banks sign you in on their own site or app, then send you back to Plaid Link. On iOS that
+return address must be an https link that opens the app: the server's `/plaid/oauth`, which its
+app-site association hands to the app (`applinks:`), and which must also be added in the Plaid
+dashboard's API settings under **Allowed redirect URIs** as `https://<domain>/plaid/oauth`.
+Link picks the return up itself; the app only keeps the link from changing screen
+(`src/utils/system-path.ts`). The app code: `src/screens/banks.tsx`, `src/session/bank-link.ts`
+and `src/utils/banks.ts`.
 
 ## Layout
 

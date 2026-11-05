@@ -91,7 +91,7 @@ export function queueBadge(count: number): string | undefined {
   return count > 99 ? '99+' : String(count);
 }
 
-/** Banks that need the person on the website (signing in again, renewing access, new accounts). */
+/** Banks that need the person (signing in again, renewing access, new accounts). */
 export function banksNeedingAttention(banks: readonly LinkedBank[]) {
   return banks.flatMap((bank) => (bank.attention ? [{ id: bank.id, name: bank.name, ...bank.attention }] : []));
 }
