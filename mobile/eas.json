@@ -6,7 +6,8 @@
   "build": {
     "production": {
       "environment": "production",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "channel": "production"
     }
   },
   "submit": {

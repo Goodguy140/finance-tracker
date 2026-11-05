@@ -150,3 +150,41 @@ databases and `.env` never leave the computer.
 | Apple team | `eas.json` `submit.production.ios.appleTeamId` | `C5SNKYWDNZ` |
 | App Store Connect app (Apple ID) | `eas.json` `submit.production.ios.ascAppId` | `6829763438` |
 | EAS project | `app.json` `extra.eas.projectId` | `@goodguy140/finance-tracker` |
+
+## Updates without a new build
+
+Builds include `expo-updates`, so changes to the app's JavaScript, styles and images can reach
+phones through EAS Update, with no new build and no TestFlight upload. Build 16 and earlier came
+before it and never receive updates; the first build made after it replaces them.
+
+**What still needs a build.** Anything compiled into the app: a package with native code, a change
+to `app.json`, `app.config.ts` or a config plugin's options, Swift in `app-intents/` or
+`passkeys/`, the widget layouts in `src/widgets/`, and an Expo SDK upgrade.
+
+**Runtime version.** `runtimeVersion` in `app.json` uses the fingerprint policy: a hash of
+everything in that list (`fingerprint.config.js` adds the three folders Expo's hash leaves out).
+An update reaches only builds made from the same native code, so after a native change it simply
+skips older builds rather than running code they cannot support. An update that a build should
+have got and did not usually means the two were made from different native code: compare the
+runtime version `eas update` prints with the build's on expo.dev.
+
+**Channel.** Builds from the `production` profile in `eas.json` (the iOS TestFlight workflow and
+builds by hand) take updates published to the `production` channel.
+
+**Publishing**, from a computer signed in to Expo (`npx eas-cli@latest whoami`), on an up-to-date
+checkout of `main`:
+
+```bash
+cd mobile
+npm ci
+npx eas-cli@latest update --channel production --environment production --platform ios --message "What changed"
+```
+
+`--environment production` loads `HOME_SERVER_DOMAIN`, as a build does. An update carries its own
+copy of the app config; published without the domain, that copy has no home server (no Face ID
+sign-in), and its runtime version matches no build, so it reaches no one. `--platform ios` because there is no Android app.
+`npx eas-cli@latest update:rollback` undoes the latest update.
+
+**Seeing it on the phone.** The app checks for an update each time it starts from closed and
+downloads it in the background, then runs it the next time it starts. Swipe Finances away in the
+app switcher and open it, then do that once more.

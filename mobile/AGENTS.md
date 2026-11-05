@@ -33,6 +33,11 @@ ignore it. Read `README.md` here for how sign-in and TestFlight builds work.
   (`EXPO_TOKEN`).
 - `.easignore` at the repository root decides what EAS uploads. It leaves out everything outside
   `mobile/`; keep it that way.
+- **JavaScript reaches phones by EAS Update; native code needs a build** (README → Updates without
+  a new build). `runtimeVersion` is the fingerprint policy, and `fingerprint.config.js` adds the
+  folders Expo's hash cannot see (`app-intents/`, `passkeys/`, `src/widgets/`): add any new folder
+  of code that is compiled into the build there, or an update could reach a build without it.
+  Publish with `--environment production`, as builds use.
 - **A new app extension, App Group or capability needs one build by hand** (README → TestFlight):
   until then the workflow's non-interactive builds fail on credentials. Batch such changes, and
   check them before asking for that build: `npx expo prebuild -p ios --no-install` (the `ios/`
