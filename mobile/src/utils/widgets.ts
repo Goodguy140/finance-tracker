@@ -18,6 +18,7 @@ export function asOfLine(now: Date, locale?: string): string {
 export function safeToSpendWidgetProps(summary: Summary, now: Date, locale?: string): SafeToSpendWidgetProps {
   const safe = summary.safeToSpend;
   return {
+    ready: true,
     amount: formatCents(safe.safeCents, summary.currency, locale),
     negative: safe.safeCents < 0,
     perDay: safeToSpendLine(safe, summary.currency),
@@ -33,6 +34,7 @@ export function billsWidgetProps(summary: Summary, now: Date, locale?: string): 
     upcoming.incomeCents > 0 ? `Pay ${money(upcoming.incomeCents)}` : null,
   ].filter((part) => part !== null);
   return {
+    ready: true,
     title: `Next ${upcoming.days} days`,
     rows: upcoming.items.map((item) => ({
       day: item.overdue ? `Overdue since ${formatDay(item.date, locale)}` : formatDay(item.date, locale),
@@ -46,7 +48,3 @@ export function billsWidgetProps(summary: Summary, now: Date, locale?: string): 
     asOf: asOfLine(now, locale),
   };
 }
-
-/** What both widgets show before the app has loaded, and after signing out: no numbers at all. */
-export const SIGNED_OUT_SAFE_TO_SPEND: SafeToSpendWidgetProps = { amount: null, negative: false, perDay: '', asOf: '' };
-export const SIGNED_OUT_BILLS: BillsWidgetProps = { title: '', rows: null, empty: '', totals: '', asOf: '' };

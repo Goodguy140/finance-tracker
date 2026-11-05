@@ -30,6 +30,11 @@ ignore it. Read `README.md` here for how sign-in and TestFlight builds work.
 - **Widget bodies (`'widget'` in `src/widgets/`) run in iOS's widget process**, not the app: only
   their props and what they import from `@expo/ui/swift-ui`, `expo-widgets` and `react-native`
   exist there. Format everything in the app (`src/utils/widgets.ts`).
+- **Widget props never hold null or undefined.** They are stored in UserDefaults, which takes only
+  property-list values; a null in the props a widget starts with made the app crash on launch
+  (build 12). Say "no data yet" with a flag (`ready: false`). `src/utils/widgets.test.ts` checks
+  every prop. Files the widget layouts load (`src/widgets/*`) import each other by relative path
+  only: `build-layout-registry.mjs` bundles them alone and resolves nothing else.
 
 This is an Expo/React Native mobile application. Prioritize mobile-first patterns, performance, and cross-platform compatibility.
 
