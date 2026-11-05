@@ -462,7 +462,10 @@ Nav `src/components/admin/admin-nav.tsx`; actions `actions/admin*.ts`.
 
 An Expo app with its own `package.json`, checks and README (`mobile/README.md`). Installed through
 TestFlight only, built on EAS by the **iOS TestFlight** workflow
-(`.github/workflows/ios-testflight.yml`, run by hand).
+(`.github/workflows/ios-testflight.yml`, run by hand). JavaScript and asset changes can reach
+installed builds without a new build through EAS Update on the `production` channel
+(`expo-updates`; runtime version from `fingerprint.config.js`; README → Updates without a new
+build).
 
 - Sign in: server address, then the server's own sign-in page in the system sheet (PKCE); the
   device token is kept in the Keychain. `src/screens/sign-in.tsx`, `src/session/*`,
