@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Summary } from '@/api/types';
 import { billsWidgetProps, safeToSpendWidgetProps } from '@/utils/widgets';
+import { SIGNED_OUT_BILLS, SIGNED_OUT_SAFE_TO_SPEND } from '@/widgets/signed-out';
 
 const NOW = new Date(2026, 10, 4, 15, 40);
 
@@ -71,5 +72,42 @@ describe('billsWidgetProps', () => {
     expect(props.rows).toEqual([]);
     expect(props.empty).toBe('Nothing due in the next 7 days.');
     expect(props.totals).toBe('');
+  });
+});
+
+/**
+ * Why a value can't be stored in UserDefaults, where widget props are kept: it takes strings,
+ * numbers, booleans, lists and objects of those, and refuses anything else. A null in the props
+ * the widgets start with crashed build 12 on launch.
+ */
+function propertyListProblems(value: unknown, path = 'props'): string[] {
+  if (typeof value === 'string' || typeof value === 'boolean') return [];
+  if (typeof value === 'number') return Number.isFinite(value) ? [] : [`${path} is ${value}`];
+  if (Array.isArray(value)) return value.flatMap((item, index) => propertyListProblems(item, `${path}[${index}]`));
+  if (value !== null && typeof value === 'object') {
+    return Object.entries(value).flatMap(([key, item]) => propertyListProblems(item, `${path}.${key}`));
+  }
+  return [`${path} is ${String(value)}`];
+}
+
+describe('widget props', () => {
+  it('hold only values iOS can store, signed in or out: no null or undefined anywhere', () => {
+    const busy = summary({
+      upcoming: {
+        days: 7,
+        items: [{ date: '2026-11-05', name: 'Rent', type: 'expense', amountCents: 120000, overdue: false, planned: false }],
+        billsCents: 120000,
+        incomeCents: 0,
+      },
+    });
+    const all = {
+      signedOutSafeToSpend: SIGNED_OUT_SAFE_TO_SPEND,
+      signedOutBills: SIGNED_OUT_BILLS,
+      safeToSpend: safeToSpendWidgetProps(busy, NOW, 'en-US'),
+      bills: billsWidgetProps(busy, NOW, 'en-US'),
+      noBills: billsWidgetProps(summary(), NOW, 'en-US'),
+    };
+    expect(propertyListProblems(all)).toEqual([]);
+    expect([SIGNED_OUT_SAFE_TO_SPEND.ready, SIGNED_OUT_BILLS.ready, all.safeToSpend.ready, all.bills.ready]).toEqual([false, false, true, true]);
   });
 });

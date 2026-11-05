@@ -9,21 +9,24 @@ import {
   privacySensitive,
   widgetURL,
 } from '@expo/ui/swift-ui/modifiers';
-import { createWidget, type WidgetEnvironment } from 'expo-widgets';
+import { createWidget, type Widget, type WidgetEnvironment } from 'expo-widgets';
 import { PlatformColor } from 'react-native';
+
+import { SIGNED_OUT_BILLS } from './signed-out';
 
 /** One bill or payday as the widget lists it, formatted by the app. */
 export type BillsWidgetRow = { day: string; name: string; amount: string; income: boolean; overdue: boolean };
 
 /**
  * What the Bills and pay widget shows, written by the app (`src/widgets/update.ts`) each time Home
- * loads: the same list as Home's "Next 7 days". `rows` is null until the app has loaded once, and
- * again after signing out.
+ * loads: the same list as Home's "Next 7 days". `ready` is false until the app has loaded once,
+ * and again after signing out. No value may be null (see `./signed-out.ts`).
  */
 export type BillsWidgetProps = {
+  ready: boolean;
   /** "Next 7 days". */
   title: string;
-  rows: BillsWidgetRow[] | null;
+  rows: BillsWidgetRow[];
   /** "Nothing due in the next 7 days." */
   empty: string;
   /** "Bills $230.00 · Pay $1,500.00", or "". */
@@ -38,7 +41,7 @@ const BillsWidget = (props: BillsWidgetProps, environment: WidgetEnvironment) =>
   const fill = frame({ maxWidth: Infinity, maxHeight: Infinity, alignment: 'topLeading' });
   const open = widgetURL('financetracker:///bills');
 
-  if (props.rows === null) {
+  if (!props.ready) {
     return (
       <VStack alignment="leading" spacing={4} modifiers={[fill, background, open]}>
         <Text modifiers={[font({ textStyle: 'headline' })]}>Bills and pay</Text>
@@ -93,10 +96,12 @@ const BillsWidget = (props: BillsWidgetProps, environment: WidgetEnvironment) =>
   );
 };
 
-export default createWidget<BillsWidgetProps>('BillsAndPay', BillsWidget, {
-  title: '',
-  rows: null,
-  empty: '',
-  totals: '',
-  asOf: '',
-});
+// Created when the app loads this file (see the note in ./safe-to-spend.tsx).
+let widget: Widget<BillsWidgetProps> | null = null;
+try {
+  widget = createWidget<BillsWidgetProps>('BillsAndPay', BillsWidget, SIGNED_OUT_BILLS);
+} catch {
+  widget = null;
+}
+
+export default widget;

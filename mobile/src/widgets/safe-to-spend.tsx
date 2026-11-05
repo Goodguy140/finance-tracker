@@ -10,16 +10,20 @@ import {
   privacySensitive,
   widgetURL,
 } from '@expo/ui/swift-ui/modifiers';
-import { createWidget, type WidgetEnvironment } from 'expo-widgets';
+import { createWidget, type Widget, type WidgetEnvironment } from 'expo-widgets';
 import { PlatformColor } from 'react-native';
+
+import { SIGNED_OUT_SAFE_TO_SPEND } from './signed-out';
 
 /**
  * What the Safe to spend widget shows, written by the app (`src/widgets/update.ts`) each time Home
  * loads. Every string comes formatted: the widget runs in its own small runtime and can't format
- * money. `amount` is null until the app has loaded once, and again after signing out.
+ * money. `ready` is false until the app has loaded once, and again after signing out. No value
+ * may be null (see `./signed-out.ts`).
  */
 export type SafeToSpendWidgetProps = {
-  amount: string | null;
+  ready: boolean;
+  amount: string;
   negative: boolean;
   /** "About $45.00 a day for 12 days." */
   perDay: string;
@@ -38,7 +42,7 @@ const SafeToSpendWidget = (props: SafeToSpendWidgetProps, environment: WidgetEnv
   const background = containerBackground(PlatformColor(lockScreen ? 'clearColor' : 'systemBackground'), 'widget');
   const fill = frame({ maxWidth: Infinity, maxHeight: Infinity, alignment: 'topLeading' });
 
-  if (props.amount === null) {
+  if (!props.ready) {
     if (family === 'accessoryInline') return <Text modifiers={[open]}>Safe to spend: open Finances</Text>;
     return (
       <VStack alignment="leading" spacing={4} modifiers={[fill, background, open]}>
@@ -85,9 +89,13 @@ const SafeToSpendWidget = (props: SafeToSpendWidgetProps, environment: WidgetEnv
   );
 };
 
-export default createWidget<SafeToSpendWidgetProps>('SafeToSpend', SafeToSpendWidget, {
-  amount: null,
-  negative: false,
-  perDay: '',
-  asOf: '',
-});
+// Created when the app loads this file, which also hands iOS the widget's layout. A widget that
+// can't be set up must not stop the app opening, so a failure leaves it null.
+let widget: Widget<SafeToSpendWidgetProps> | null = null;
+try {
+  widget = createWidget<SafeToSpendWidgetProps>('SafeToSpend', SafeToSpendWidget, SIGNED_OUT_SAFE_TO_SPEND);
+} catch {
+  widget = null;
+}
+
+export default widget;
