@@ -572,10 +572,15 @@ TestFlight only, built on EAS by the **iOS TestFlight** workflow
   confirms it's you, then Plaid Link opens full screen (`react-native-plaid-link-sdk`). A bank's own
   app or site sends the person back through `https://<server>/plaid/oauth`, a universal link the
   app ignores (`src/utils/system-path.ts`) because Link picks it up itself. Anywhere else the screen
-  says why and links to the website. Disconnecting stays on the website. `GET /api/v1/banks`,
-  `PUT /api/v1/banks/accounts/:id`, `POST /api/v1/app/step-up/options`, `POST /api/v1/banks/link`
-  and `/link/:id/complete` (`src/lib/api-v1/banks.ts`, `src/lib/app-bank-link.ts`, the website's
-  `linkBank`, `completeUpdate` and account mapping). `src/screens/banks.tsx`,
+  says why and links to the website. Disconnecting stays on the website. Syncing by hand, for
+  servers whose background sweep is off: **Sync Now** on each bank runs whatever the schedule (as
+  the website's Sync now), and the toolbar's sync button or pulling down checks every bank not
+  checked in the last 15 minutes (as the Review tab does). A sync that finds a bank wants signing
+  in again turns its card into that prompt, with the Sign in again button first; new rows offer
+  "Review them". `GET /api/v1/banks`, `PUT /api/v1/banks/accounts/:id`, `POST /api/v1/banks/:id/sync`,
+  `POST /api/v1/app/step-up/options`, `POST /api/v1/banks/link` and `/link/:id/complete`
+  (`src/lib/api-v1/banks.ts`, `src/lib/app-bank-link.ts`, the website's `syncBank`, `linkBank`,
+  `completeUpdate` and account mapping). `src/screens/banks.tsx`,
   `src/session/bank-link.ts`, `src/utils/banks.ts`
 - Settings: who is signed in, the server, Open the website, Sign out (also revokes the token on
   the server), and **Require Face ID** (Touch ID or the passcode on phones without it): the app

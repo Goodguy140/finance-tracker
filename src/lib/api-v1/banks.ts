@@ -1,9 +1,11 @@
 import type { PrismaClient } from "@prisma/client";
 import { appleAppId } from "@/lib/apple-app-site";
 import { describePlaidItemAttention } from "@/lib/plaid/attention";
+import { PlaidApiError } from "@/lib/plaid/client";
 import { getPlaidConfig } from "@/lib/plaid/config";
 import { setPlaidAccountMapping } from "@/lib/plaid/connections";
 import { checkMappingAllowed } from "@/lib/plaid/mapping";
+import type { SyncBankOutcome } from "@/lib/plaid/sync-bank";
 import { HISTORY_WINDOWS } from "@/lib/plaid/window";
 
 /**
@@ -93,4 +95,82 @@ export async function mapBankAccountForApp(
 
   await setPlaidAccountMapping(db, plaidAccount, account.id);
   return { ok: true, plaidAccount, account };
+}
+
+export type AppBankSync =
+  | {
+      ok: true;
+      plaidItemId: string;
+      institutionName: string;
+      outcome: SyncBankOutcome;
+      tone: "success" | "neutral" | "warning";
+      message: string;
+      staged: number;
+      /** The bank refused until the person signs in again; its `attention` now says so. */
+      needsSignIn: boolean;
+    }
+  | { ok: false; status: 404; error: string };
+
+function count(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** What the Banks screen says under a bank once its sync is done. */
+export function describeAppBankSync(institutionName: string, outcome: SyncBankOutcome) {
+  switch (outcome.kind) {
+    case "synced": {
+      const { staged, skipped } = outcome.summary;
+      const parts = [staged > 0 ? `${count(staged, "new transaction", "new transactions")} to review.` : "No new transactions."];
+      if (skipped.unmapped > 0) {
+        parts.push(`${count(skipped.unmapped, "transaction", "transactions")} from accounts set to Not synced ${skipped.unmapped === 1 ? "was" : "were"} skipped.`);
+      }
+      return { tone: staged > 0 ? ("success" as const) : ("neutral" as const), message: parts.join(" "), staged };
+    }
+    case "busy":
+      return { tone: "neutral" as const, message: `${institutionName} is already syncing. Check again in a minute.`, staged: 0 };
+    case "needs-reauth":
+      return {
+        tone: "warning" as const,
+        message: `${institutionName} needs you to sign in again before it shares new transactions.`,
+        staged: 0,
+      };
+    case "failed":
+      return {
+        tone: "warning" as const,
+        // Plaid's own message is written for a person; anything else is internal.
+        message:
+          outcome.error instanceof PlaidApiError && outcome.error.message
+            ? outcome.error.message
+            : `${institutionName} could not be reached. Try again later.`,
+        staged: 0,
+      };
+  }
+}
+
+/**
+ * "Sync now" for one bank from the app, as the website's Settings → Banks button: always runs,
+ * whatever the background sweep's interval or backoff, because a person asked. Nothing enters
+ * the log; rows wait on Review. A bank that turns out to need signing in again is flagged by
+ * the sync itself (`syncBank`), so the screen's next read shows it with its fix.
+ */
+export async function syncBankForApp(
+  deps: { db: PrismaClient; sync: (plaidItemId: string) => Promise<SyncBankOutcome> },
+  userId: string,
+  plaidItemId: string,
+): Promise<AppBankSync> {
+  const item = await deps.db.plaidItem.findFirst({
+    where: { id: plaidItemId, userId },
+    select: { id: true, institutionName: true },
+  });
+  if (!item) return { ok: false, status: 404, error: "That bank connection was not found." };
+  const institutionName = item.institutionName ?? "Your bank";
+  const outcome = await deps.sync(item.id);
+  return {
+    ok: true,
+    plaidItemId: item.id,
+    institutionName,
+    outcome,
+    ...describeAppBankSync(institutionName, outcome),
+    needsSignIn: outcome.kind === "needs-reauth",
+  };
 }

@@ -54,7 +54,8 @@ that Face ID sign-in and connecting banks are not available there. The app and p
 ### Connecting banks in the app
 
 Settings → Bank connections lists each bank, what it needs and where each of its accounts'
-transactions go, on any server. On the home server it also connects a bank and fixes one (signing
+transactions go, on any server, and syncs them by hand (Sync Now on a bank, or Sync All), since
+a server's background sweep can be off. On the home server it also connects a bank and fixes one (signing
 in again, renewing access, sharing new accounts) with Plaid Link's iOS SDK
 (`react-native-plaid-link-sdk`): Face ID first, with the same passkey, because the website asks
 "Confirm it's you" before a bank connection too. The server's side is `src/lib/app-bank-link.ts`.

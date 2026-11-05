@@ -213,6 +213,44 @@ describe("matching bank accounts to the app's accounts", () => {
   });
 });
 
+describe("syncing a bank now from the app", () => {
+  it("runs the bank's sync and says what came of it, and a bank that wants a sign-in shows its fix", async () => {
+    const { linkBank } = await import("@/lib/plaid/connections");
+    const { syncBank } = await import("@/lib/plaid/sync-bank");
+    const { createSyncStore } = await import("@/lib/plaid/sync-store");
+    const { PlaidApiError } = await import("@/lib/plaid/client");
+    await linkBank({ prisma: db, client }, { user, publicToken: publicToken(), days: 90 });
+    const item = await db.plaidItem.findFirstOrThrow({ where: { userId: user.id } });
+    const syncWith = (c: PlaidClient) => vi.fn((id: string) => syncBank({ client: c, store: createSyncStore(), prisma: db }, id));
+
+    const ok = await banks.syncBankForApp({ db, sync: syncWith(client) }, user.id, item.id);
+    expect(ok).toMatchObject({ ok: true, needsSignIn: false, outcome: { kind: "synced" } });
+    // Nothing is matched yet, so every row the bank sent was skipped, and the screen says why.
+    expect(ok.ok && ok.message).toMatch(/^No new transactions\. \d+ transactions? from accounts set to Not synced (was|were) skipped\.$/);
+
+    const signedOut: PlaidClient = {
+      ...client,
+      transactionsSync: async () => {
+        throw new PlaidApiError({
+          message: "the login details of this item have changed",
+          errorCode: "ITEM_LOGIN_REQUIRED",
+          errorType: "ITEM_ERROR",
+          requestId: null,
+          httpStatus: 400,
+        });
+      },
+    };
+    const refused = await banks.syncBankForApp({ db, sync: syncWith(signedOut) }, user.id, item.id);
+    expect(refused).toMatchObject({ ok: true, needsSignIn: true, tone: "warning" });
+    const screen = await banks.banksForApp(db, user.id, true);
+    expect(screen.banks[0].attention).toMatchObject({ kind: "reauth", updateKind: "reauth", actionLabel: "Sign in again" });
+
+    const notYours = syncWith(client);
+    expect(await banks.syncBankForApp({ db, sync: notYours }, "someone-else", item.id)).toMatchObject({ ok: false, status: 404 });
+    expect(notYours).not.toHaveBeenCalled();
+  });
+});
+
 describe("whether the app can connect banks itself", () => {
   it("needs a passkey to confirm with, and a server that names the app", async () => {
     const noPasskey = await db.user.create({ data: { email: `nopasskey${seq}@example.test`, displayName: "None" } });
