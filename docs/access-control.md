@@ -156,8 +156,9 @@ otherwise). Audit: `mfa_verified` (`method: "passkey-signin"`, `via: "app"`) and
   `POST /api/v1/review-queue/:id`, `/pair`, `/bulk`, `/revisions/:id`, the same decisions as the
   website's queue buttons, which need no step-up there either; `POST /api/v1/banks/refresh` checks
   the person's banks as the log's refresh icon does), bank connections (`GET /api/v1/banks`, and
-  choosing the app account a bank account fills with `PUT /api/v1/banks/accounts/:id`, which needs
-  no step-up on the website either; connecting and fixing banks are below; unlinking stays on the
+  choosing the app account a bank account fills with `PUT /api/v1/banks/accounts/:id`, and syncing
+  one bank now with `POST /api/v1/banks/:id/sync`, neither of which needs a step-up on the website
+  either; connecting and fixing banks are below; unlinking stays on the
   website), and the phone's own alert registration (`GET`/`PUT`/`DELETE
   /api/v1/app/device/push`: its Apple push token and which alerts it wants; device tokens only, so a
   personal access token gets 403). Adds, edits, deletes and undos are audit-logged (`api_transaction_created`
