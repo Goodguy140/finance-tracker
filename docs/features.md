@@ -484,15 +484,17 @@ build).
   waiting for review (open the Review tab and Transactions' Needs review), budgets at 80% or more with the month's total,
   and bills and pay due in the next 7 days, overdue ones flagged. One call, `GET /api/v1/summary`
   (`src/lib/api-v1/summary.ts`). `src/screens/home/`
-- Home's spending charts, the dashboard's two cards for the month: Cumulative spending (running
-  total by day, the expected pace from budgets or the last 3 months, and Compare with: None / Last
-  month / 3-month avg; hold a finger on it to read a day) and Spending by category (a Swift Charts
-  donut with the dashboard's colours, groups added up and the tail rolled into Other categories as
-  the card does, and Show savings). Both start from the website card's settings; a pick on the phone
-  is kept on the phone. `GET /api/v1/spending` (`src/lib/api-v1/spending.ts`, built with the
+- Home's spending charts, the dashboard's two cards for the month in one card that swipes between
+  them (or pick one from the pills under it), as the website's phone carousel does: Spending by
+  category (a Swift Charts donut with the dashboard's colours, groups added up and the tail rolled
+  into Other categories as the card does, and Show savings) and Cumulative spending (running total
+  by day, the expected pace from budgets or the last 3 months, and Compare with: None / Last month /
+  3-month avg; a finger on it shows a day, and resting it first reads along the days without turning
+  the page). Both start from the website card's settings; a pick on the phone, and the chart last
+  shown, are kept on the phone. `GET /api/v1/spending` (`src/lib/api-v1/spending.ts`, built with the
   dashboard's own functions; the pie's slices from `src/lib/category-pie.ts`, shared with the card).
-  `src/screens/home/spending.tsx`, `src/components/line-chart.tsx` (plain views, no native drawing
-  library), `src/utils/spending.ts`, `src/state/spending-options.ts`
+  `src/screens/home/spending.tsx`, `src/components/swipe-pages.tsx`, `src/components/line-chart.tsx`
+  (plain views, no native drawing library), `src/utils/spending.ts`, `src/state/spending-options.ts`
 - Transactions: the log a month at a time (‹ ›), grouped by day; search across every month
   (title, note, bank text or amount, as the website's search matches); filter by Needs review
   (every month) and spending, income or transfers. A row opens an editor for title, amount,

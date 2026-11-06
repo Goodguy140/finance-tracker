@@ -26,3 +26,9 @@ export function settleSwipe(x: number, velocityX: number, width: number, leading
   if (trailing && x < 0 && projected < -width / 2) return -width;
   return 0;
 }
+
+/** The page of a paging row that is mostly on screen at scroll offset `x`, never past either end. */
+export function pageAt(x: number, width: number, count: number): number {
+  if (width <= 0 || count <= 0) return 0;
+  return Math.min(count - 1, Math.max(0, Math.round(x / width)));
+}

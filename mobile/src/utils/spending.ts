@@ -9,8 +9,18 @@ import { formatCents } from '@/utils/money';
 
 export const SPENDING_PATH = '/api/v1/spending';
 
-/** What the person picked on the phone; anything left out follows the website's card. */
-export type SpendingOptions = { compareWith?: SpendingComparison; showSavings?: boolean };
+/** Home's two charts, in the order the website's phone carousel shows them. */
+export const SPENDING_CHARTS = ['categories', 'cumulative'] as const;
+
+/**
+ * What the person picked on the phone: Compare with and Show savings (left out, they follow the
+ * website's card), and which chart Home shows.
+ */
+export type SpendingOptions = {
+  compareWith?: SpendingComparison;
+  showSavings?: boolean;
+  chart?: (typeof SPENDING_CHARTS)[number];
+};
 
 export function spendingPath(options: SpendingOptions): string {
   const params: string[] = [];

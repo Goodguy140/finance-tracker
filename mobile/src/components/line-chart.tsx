@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 
 import { useTheme } from '@/hooks/use-theme';
@@ -25,11 +25,15 @@ export type ChartSeries = {
 
 const AXIS_WIDTH = 40;
 const LABEL_HEIGHT = 18;
+/** How long a finger rests on the chart before sliding it reads along the days instead of swiping the card. */
+const HOLD_MS = 250;
 
 /**
  * A line chart of amounts by day, drawn with plain views: each straight piece of line is a thin
  * view turned to its slope, so it needs no native drawing library and reaches phones in an update.
- * Holding a finger on it picks the day under the finger (`onSelect`); lifting it lets go.
+ * A finger on it picks the day under it (`onSelect`); lifting it lets go. Resting the finger for a
+ * moment turns on reading along the days (`onScrubbingChange`), so the card it sits in can stop
+ * swiping between pages until the finger lifts; a quick sideways swipe still turns the page.
  */
 export function LineChart(props: {
   series: readonly ChartSeries[];
@@ -42,6 +46,7 @@ export function LineChart(props: {
   height: number;
   selected: number | null;
   onSelect: (index: number | null) => void;
+  onScrubbingChange?: (scrubbing: boolean) => void;
   accessibilityLabel: string;
 }) {
   const theme = useTheme();
@@ -50,6 +55,24 @@ export function LineChart(props: {
   const { height, maxCents, dayCount } = props;
   const xOf = (index: number) => (dayCount <= 1 ? 0 : (index / (dayCount - 1)) * plotWidth);
   const pick = (x: number) => props.onSelect(dayIndexAt(x, plotWidth, dayCount));
+  const hold = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrubbing = useRef(false);
+  const { onSelect, onScrubbingChange } = props;
+  const letGo = () => {
+    if (hold.current) clearTimeout(hold.current);
+    hold.current = null;
+    onSelect(null);
+    if (scrubbing.current) onScrubbingChange?.(false);
+    scrubbing.current = false;
+  };
+  // A finger still down when the chart goes away must not leave its card unable to swipe.
+  useEffect(
+    () => () => {
+      if (hold.current) clearTimeout(hold.current);
+      if (scrubbing.current) onScrubbingChange?.(false);
+    },
+    [onScrubbingChange],
+  );
 
   return (
     <View
@@ -117,11 +140,18 @@ export function LineChart(props: {
         style={[styles.touch, { width: plotWidth, height }]}
         onStartShouldSetResponder={() => true}
         onMoveShouldSetResponder={() => true}
-        onResponderGrant={(event) => pick(event.nativeEvent.locationX)}
+        onResponderGrant={(event) => {
+          pick(event.nativeEvent.locationX);
+          hold.current = setTimeout(() => {
+            hold.current = null;
+            scrubbing.current = true;
+            onScrubbingChange?.(true);
+          }, HOLD_MS);
+        }}
         onResponderMove={(event) => pick(event.nativeEvent.locationX)}
-        onResponderRelease={() => props.onSelect(null)}
-        onResponderTerminate={() => props.onSelect(null)}
-        onResponderTerminationRequest={() => true}
+        onResponderRelease={letGo}
+        onResponderTerminate={letGo}
+        onResponderTerminationRequest={() => !scrubbing.current}
       />
     </View>
   );
