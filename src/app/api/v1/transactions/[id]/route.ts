@@ -24,7 +24,8 @@ export async function GET(request: Request, { params }: Params) {
 
 /**
  * PATCH /api/v1/transactions/:id with any of `title`, `note`, `date`, `postedDate` (null clears),
- * `amountCents`, `categoryId`, `accountId` (null clears), `tags` (the whole list), `reviewed: true`.
+ * `amountCents`, `categoryId`, `accountId` (null clears), a transfer's `transferAccountId` (null
+ * clears), `tags` (the whole list), `reviewed: true`.
  * Returns the entry as it now is. Scope `app`: the phone edits, a personal access token with
  * `transactions:write` still only adds, as it always could.
  */

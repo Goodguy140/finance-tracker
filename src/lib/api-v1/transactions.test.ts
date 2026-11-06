@@ -303,6 +303,8 @@ describe("updating, deleting and undoing from the phone", () => {
 
     const row = await expense();
     expect(await api.updateTransactionFromApi(db, user.id, row.id, { colour: "red" })).toMatchObject({ ok: false, error: "Unknown field 'colour'." });
+    // Only a transfer has another side.
+    expect(await api.updateTransactionFromApi(db, user.id, row.id, { transferAccountId: visaId })).toMatchObject({ ok: false, status: 400 });
     const archived = await db.account.create({ data: { userId: user.id, name: "Old", type: "CHEQUING", archived: true } });
     expect(await api.updateTransactionFromApi(db, user.id, row.id, { accountId: archived.id })).toMatchObject({ ok: false, status: 404 });
     const salary = await db.category.findFirstOrThrow({ where: { userId: user.id, kind: "INCOME" } });
@@ -312,6 +314,69 @@ describe("updating, deleting and undoing from the phone", () => {
     expect(await api.updateTransactionFromApi(db, stranger.id, row.id, { title: "Mine now" })).toMatchObject({ ok: false, status: 404 });
     expect(await api.deleteTransactionFromApi(db, stranger.id, row.id)).toBeNull();
     expect((await db.transaction.findUniqueOrThrow({ where: { id: row.id } })).title).toBe("Lunch");
+  });
+
+  it("changes a transfer's accounts, keeping the sign so a positive amount still left `accountId`", async () => {
+    const chequing = await db.account.create({ data: { userId: user.id, name: "Chequing", type: "CHEQUING" } });
+    const savings = await db.account.create({ data: { userId: user.id, name: "Savings", type: "SAVINGS" } });
+    const transfer = await db.transaction.create({
+      data: {
+        userId: user.id,
+        categoryId: foodId,
+        accountId: chequing.id,
+        transferAccountId: visaId,
+        type: "TRANSFER",
+        amountCents: 50_000,
+        needsReview: true,
+        date: new Date(Date.UTC(2026, 9, 5)),
+      },
+    });
+
+    const moved = await api.updateTransactionFromApi(db, user.id, transfer.id, { transferAccountId: savings.id });
+    expect(moved).toMatchObject({
+      ok: true,
+      transaction: { accountId: chequing.id, transferAccountId: savings.id, transferAccountName: "Savings", amountCents: 50_000, needsReview: false },
+    });
+    // Both sides at once, the other way round: Savings to Chequing.
+    const reversed = await api.updateTransactionFromApi(db, user.id, transfer.id, { accountId: savings.id, transferAccountId: chequing.id });
+    expect(reversed).toMatchObject({ ok: true, transaction: { accountId: savings.id, transferAccountId: chequing.id, amountCents: 50_000 } });
+    expect(await api.updateTransactionFromApi(db, user.id, transfer.id, { transferAccountId: null })).toMatchObject({
+      ok: true,
+      transaction: { accountId: savings.id, transferAccountId: null },
+    });
+
+    // One account on both sides, a closed account, or one that is not the user's.
+    expect(await api.updateTransactionFromApi(db, user.id, transfer.id, { transferAccountId: savings.id })).toMatchObject({
+      ok: false,
+      error: "A transfer needs two different accounts.",
+    });
+    const archived = await db.account.create({ data: { userId: user.id, name: "Old", type: "CHEQUING", archived: true } });
+    expect(await api.updateTransactionFromApi(db, user.id, transfer.id, { transferAccountId: archived.id })).toMatchObject({ ok: false, status: 404 });
+    const stranger = await db.user.create({ data: { email: `t${seq}@example.test`, displayName: "T" } });
+    const theirs = await db.account.create({ data: { userId: stranger.id, name: "Theirs", type: "CHEQUING" } });
+    expect(await api.updateTransactionFromApi(db, user.id, transfer.id, { accountId: theirs.id })).toMatchObject({ ok: false, status: 404 });
+    expect(await db.transaction.findUniqueOrThrow({ where: { id: transfer.id } })).toMatchObject({ accountId: savings.id, transferAccountId: null });
+  });
+
+  it("keeps a paired transfer's accounts, which come from its two bank rows", async () => {
+    const chequing = await db.account.create({ data: { userId: user.id, name: "Chequing", type: "CHEQUING" } });
+    const savings = await db.account.create({ data: { userId: user.id, name: "Savings", type: "SAVINGS" } });
+    const leg = (accountId: string, transferAccountId: string, amountCents: number) =>
+      db.transaction.create({
+        data: { userId: user.id, categoryId: foodId, accountId, transferAccountId, type: "TRANSFER", amountCents, date: new Date(Date.UTC(2026, 9, 5)) },
+      });
+    const out = await leg(chequing.id, visaId, 20_000);
+    const into = await leg(visaId, chequing.id, -20_000);
+    await db.transaction.update({ where: { id: out.id }, data: { transferPeerId: into.id } });
+    await db.transaction.update({ where: { id: into.id }, data: { transferPeerId: out.id } });
+
+    expect(await api.updateTransactionFromApi(db, user.id, out.id, { transferAccountId: savings.id })).toMatchObject({ ok: false, status: 400 });
+    expect(await api.updateTransactionFromApi(db, user.id, into.id, { accountId: savings.id })).toMatchObject({ ok: false, status: 400 });
+    // The rest of it still edits, and the list says it is paired.
+    expect(await api.updateTransactionFromApi(db, user.id, out.id, { title: "Card payment", transferAccountId: visaId })).toMatchObject({
+      ok: true,
+      transaction: { title: "Card payment", transferAccountId: visaId, transferPeerId: into.id },
+    });
   });
 
   it("deletes an entry and puts it back once", async () => {
