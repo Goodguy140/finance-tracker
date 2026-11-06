@@ -80,6 +80,8 @@ export function serializeTransaction(tx: Row) {
     accountName: tx.account?.name ?? null,
     transferAccountId: tx.transferAccountId,
     transferAccountName: tx.transferAccount?.name ?? null,
+    /** The other leg of a paired transfer, both sides in the log; its accounts come from the pair. */
+    transferPeerId: tx.transferPeerId,
     note: tx.note,
     tags: tx.tags.map((t) => t.tag.name),
     splits: tx.splitParts.map((p) => ({ categoryId: p.categoryId, amountCents: p.amountCents })),
@@ -370,6 +372,8 @@ const updateSchema = z
     amountCents: amountCents.optional(),
     categoryId: z.string().min(1).optional(),
     accountId: z.string().min(1).nullable().optional(),
+    /** A transfer's other side (null clears); `accountId` is the side the entry is booked on. */
+    transferAccountId: z.string().min(1).nullable().optional(),
     /** The entry's whole tag list: tags left out are taken off. */
     tags: z.array(z.string().trim().min(1).max(50)).max(20).optional(),
     /** Only marks the entry looked at; any other change does that too. */
@@ -384,9 +388,12 @@ export type UpdateResult =
 /**
  * Edits one entry from the phone: title, note, dates, amount, category, account and tags, or
  * just marks it reviewed. Saving any change counts as looking at the entry, as the website's
- * edit dialog does. What the phone does not edit is refused rather than half-applied, and
- * stays on the website: a split's lines, amounts owed back, credits, and the accounts and
- * amount of a transfer.
+ * edit dialog does. A transfer's two accounts can change too: `accountId` and
+ * `transferAccountId` keep their stored meaning and the amount keeps its sign, so a positive
+ * amount still left `accountId`; naming them the other way round reverses the transfer.
+ * What the phone does not edit is refused rather than half-applied, and stays on the website:
+ * a split's lines, amounts owed back, credits, a transfer's amount, and the accounts of a
+ * paired transfer, which each leg takes from its own bank row.
  */
 export async function updateTransactionFromApi(
   db: PrismaClient,
@@ -407,6 +414,8 @@ export async function updateTransactionFromApi(
       id: true,
       type: true,
       accountId: true,
+      transferAccountId: true,
+      transferPeerId: true,
       categoryId: true,
       creditCents: true,
       _count: { select: { splitParts: true, owedShares: true } },
@@ -419,8 +428,18 @@ export async function updateTransactionFromApi(
   const isSplit = existing._count.splitParts > 0;
   const changesAccount = input.accountId !== undefined && input.accountId !== existing.accountId;
   const changesCategory = input.categoryId !== undefined && input.categoryId !== existing.categoryId;
-  if (isTransfer && (input.amountCents !== undefined || changesAccount || changesCategory)) {
-    return refuse("A transfer's amount and accounts are changed on the website.");
+  const changesTransferAccount =
+    input.transferAccountId !== undefined && input.transferAccountId !== existing.transferAccountId;
+  if (!isTransfer && input.transferAccountId !== undefined) return refuse("Only a transfer has 'transferAccountId'.");
+  if (isTransfer && input.amountCents !== undefined) return refuse("A transfer's amount can't be changed.");
+  if (isTransfer && changesCategory) return refuse("A transfer stays in the transfer category.");
+  if (isTransfer && existing.transferPeerId && (changesAccount || changesTransferAccount)) {
+    return refuse("Both sides of this transfer are in your log, each from its own bank; unpair it on the website to change its accounts.");
+  }
+  if (isTransfer && (changesAccount || changesTransferAccount)) {
+    const from = input.accountId !== undefined ? input.accountId : existing.accountId;
+    const to = input.transferAccountId !== undefined ? input.transferAccountId : existing.transferAccountId;
+    if (from && from === to) return refuse("A transfer needs two different accounts.");
   }
   if (input.amountCents !== undefined && (isSplit || existing._count.owedShares > 0 || existing.creditCents)) {
     return refuse("This entry is split, has amounts owed back or credits; change its amount on the website.");
@@ -434,8 +453,9 @@ export async function updateTransactionFromApi(
     const ok = await db.category.count({ where: { id: input.categoryId, userId, kind } });
     if (!ok) return { ok: false, status: 404, error: `No ${kind.toLowerCase()} category with that id.` };
   }
-  if (changesAccount && input.accountId) {
-    const ok = await db.account.count({ where: { id: input.accountId, userId, archived: false } });
+  for (const accountId of [changesAccount ? input.accountId : null, changesTransferAccount ? input.transferAccountId : null]) {
+    if (!accountId) continue;
+    const ok = await db.account.count({ where: { id: accountId, userId, archived: false } });
     if (!ok) return { ok: false, status: 404, error: "No open account with that id." };
   }
 
@@ -451,6 +471,7 @@ export async function updateTransactionFromApi(
         ...(input.amountCents !== undefined ? { amountCents: input.amountCents } : {}),
         ...(changesCategory ? { categoryId: input.categoryId } : {}),
         ...(changesAccount ? { accountId: input.accountId } : {}),
+        ...(changesTransferAccount ? { transferAccountId: input.transferAccountId } : {}),
       },
     });
     if (input.tags) await replaceTransactionTags(tx, existing.id, await resolveTagIds(tx, userId, input.tags));

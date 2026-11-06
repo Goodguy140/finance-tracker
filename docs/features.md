@@ -506,10 +506,13 @@ build).
 - Transactions: the log a month at a time (‹ ›), grouped by day; search across every month
   (title, note, bank text or amount, as the website's search matches); filter by Needs review
   (every month) and spending, income or transfers. A row opens an editor for title, amount,
-  dates, category, account, tags and note, plus Mark reviewed and Delete with an Undo bar.
-  Splits, amounts owed back, credits and a transfer's amount and accounts show but are changed on
-  the website. `GET /api/v1/transactions` (now `q`, `tagId`, `needsReview`), `GET`/`PATCH`/`DELETE
-  /api/v1/transactions/:id`, `POST /api/v1/undo/:undoId`, `GET /api/v1/tags`
+  dates, category, account, tags and note, plus Mark reviewed and Delete with an Undo bar. A
+  transfer shows From and To in place of category and account, and either can be changed (picked
+  the other way round, the transfer is reversed); a paired transfer keeps the accounts of its two
+  bank rows until it is unpaired on the website. Splits, amounts owed back and credits show but
+  are changed on the website; a transfer's amount is not changed anywhere. `GET
+  /api/v1/transactions` (now `q`, `tagId`, `needsReview`), `GET`/`PATCH`/`DELETE
+  /api/v1/transactions/:id` (`PATCH` takes a transfer's `transferAccountId`), `POST /api/v1/undo/:undoId`, `GET /api/v1/tags`
   (`src/lib/api-v1/transactions.ts`). `src/screens/transactions/`
 - Add (the + on Home and Transactions, a sheet): expense, income or transfer with amount, title, date,
   category and account (Automatic uses the user's rules and past titles, as the website's Add card

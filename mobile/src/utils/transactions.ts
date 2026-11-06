@@ -79,7 +79,10 @@ export type EditForm = {
   date: string;
   postedDate: string | null;
   categoryId: string;
+  /** The account the entry is booked on. A transfer's positive amount left it, a negative one arrived in it. */
   accountId: string | null;
+  /** A transfer's other side. */
+  transferAccountId: string | null;
   note: string;
   tags: string;
 };
@@ -92,6 +95,7 @@ export function formFromTransaction(row: Transaction): EditForm {
     postedDate: row.postedDate,
     categoryId: row.categoryId,
     accountId: row.accountId,
+    transferAccountId: row.transferAccountId,
     note: row.note ?? '',
     tags: row.tags.join(', '),
   };
@@ -110,6 +114,13 @@ export function changedFields(row: Transaction, form: EditForm): { body: Record<
   if (form.postedDate !== original.postedDate) body.postedDate = form.postedDate;
   if (form.categoryId !== original.categoryId) body.categoryId = form.categoryId;
   if (form.accountId !== original.accountId) body.accountId = form.accountId;
+  if (row.type === 'transfer' && form.transferAccountId !== original.transferAccountId) {
+    body.transferAccountId = form.transferAccountId;
+  }
+  const movesTransfer = row.type === 'transfer' && ('accountId' in body || 'transferAccountId' in body);
+  if (movesTransfer && form.accountId && form.accountId === form.transferAccountId) {
+    return { error: 'Choose two different accounts.' };
+  }
   if (form.amount.trim() !== original.amount) {
     const cents = parseAmountInput(form.amount);
     if (cents === null) return { error: 'Enter the amount as a number, like 12.50.' };
@@ -120,9 +131,30 @@ export function changedFields(row: Transaction, form: EditForm): { body: Record<
   return { body };
 }
 
+/**
+ * Which of the form's two account fields a transfer's From and To are. The amount's sign says
+ * which way the money went (positive left `accountId`) and is never changed, so picking the
+ * accounts the other way round reverses the transfer.
+ */
+export function transferSides(row: Pick<Transaction, 'amountCents'>): {
+  from: 'accountId' | 'transferAccountId';
+  to: 'accountId' | 'transferAccountId';
+} {
+  return row.amountCents >= 0 ? { from: 'accountId', to: 'transferAccountId' } : { from: 'transferAccountId', to: 'accountId' };
+}
+
 /** Why the phone cannot change a field of this entry, or null when it can. */
 export function lockedReason(row: Transaction, field: 'amount' | 'category' | 'account'): string | null {
-  if (row.type === 'transfer') return "A transfer's amount and accounts are changed on the website.";
+  if (row.type === 'transfer') {
+    if (field === 'amount') return "A transfer's amount can't be changed.";
+    if (field === 'category') return 'A transfer has no category.';
+    // A server from before the phone could change them refuses it, and does not send this.
+    if (row.transferPeerId === undefined) return "This server is too old to change a transfer's accounts from the phone.";
+    if (row.transferPeerId) {
+      return 'Both sides of this transfer are in your log, each from its own bank. Unpair it on the website to change its accounts.';
+    }
+    return null;
+  }
   if (field === 'account') return null;
   if (row.splits.length > 0) return 'This entry is split; change its amounts and categories on the website.';
   if (field === 'amount' && row.owedToYouCents > 0) return 'Someone owes you part of this; change its amount on the website.';
