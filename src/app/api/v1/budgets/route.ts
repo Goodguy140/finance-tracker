@@ -88,6 +88,8 @@ export async function GET(request: Request) {
   return NextResponse.json(
     {
       periodMonth: progress.periodMonth,
+      // The month budgets are changed from (the user's own this month); the phone edits only there.
+      currentMonth: currentYmInTimeZone(auth.user.timezone),
       currency: progress.currency,
       budgets: progress.budgets.map((row) => ({
         categoryId: row.categoryId,

@@ -573,8 +573,15 @@ build).
   `POST /api/v1/review-queue/:id`, `/pair`, `/bulk`, `/revisions/:id`, `POST /api/v1/banks/refresh`
   (`src/lib/api-v1/review-queue.ts`). `src/screens/review/`, `src/utils/review-queue.ts`
 - Budgets: any month's budgets by category group, with rollover carries, and the yearly budgets as
-  sinking funds; ‹ › switch month. `GET /api/v1/budgets` (now also `groupName`, `rollover` and
-  `yearly`). `src/screens/budgets/`
+  sinking funds; ‹ › switch month. `GET /api/v1/budgets` (now also `groupName`, `rollover`,
+  `yearly` and `currentMonth`). On this month's page a budget opens a sheet with what Settings →
+  Categories sets: the monthly budget from this month on (cleared, it is removed every month, after
+  a confirm), rollover, and the yearly budget; **Add a Budget** does the same for a category without
+  one. A budget that is over offers **Cover the $X over from other budgets**, the Budgets card's
+  reallocate dialog: other budgets with room, filled in from the roomiest first, any amount
+  changeable. `PATCH /api/v1/budgets/:categoryId`, `POST /api/v1/budgets/:categoryId/cover`
+  (`src/lib/api-v1/budget-edits.ts`; the website's actions and these share `src/lib/budget-edits.ts`).
+  `src/screens/budgets/`, `src/app/budget.tsx`, `src/app/budget-cover.tsx`, `src/utils/budget-edits.ts`
 - Bills and pay (Home's "Post or skip bills and pay", and a tapped bill reminder): every recurring
   bill, pay and transfer that is on, under Overdue, Today, Next 7 days and Later, each with the
   occurrence it waits on. Swiping right uncovers Post, left uncovers Skip (each done with a tap);

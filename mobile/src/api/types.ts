@@ -35,6 +35,8 @@ export type YearlyBudgetRow = {
 
 export type Budgets = {
   periodMonth: string;
+  /** The person's own this month, which budgets are changed from. Absent from servers that take no changes. */
+  currentMonth?: string;
   currency: string;
   budgets: BudgetRow[];
   totalLimitCents: number;

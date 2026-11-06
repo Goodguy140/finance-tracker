@@ -5,8 +5,7 @@ import { CategoryKind } from "@prisma/client";
 import { toCents } from "@/lib/money";
 import { currentYmInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
-import { buildMonthlyBudgetProgress } from "@/lib/budget-progress";
-import { computeReallocationPlan } from "@/lib/budget-reallocation";
+import { reallocateBudgets } from "@/lib/budget-edits";
 import { requireUser } from "@/lib/session";
 import {
   applyBudgetSuggestionsSchema,
@@ -155,65 +154,7 @@ export const reallocateBudgetAction = formAction(async (formData: FormData) => {
   }
   const payload = parsed.data;
 
-  // Period is derived server-side; the client cannot reallocate a past month.
-  const periodMonth = currentYmInTimeZone(user.timezone);
-  const progress = await buildMonthlyBudgetProgress(user.id, periodMonth);
-
-  // The plan works on what each budget has this month, rollover carry included; what is
-  // stored is the monthly budget, so the carry comes back off before saving.
-  const carryByCategory = new Map(progress.budgets.map((row) => [row.categoryId, row.carryCents]));
-  const updates = computeReallocationPlan(
-    progress.budgets,
-    payload.destinationCategoryId,
-    payload.transfers,
-  ).map((update) => ({ ...update, newLimitCents: update.newLimitCents - (carryByCategory.get(update.categoryId) ?? 0) }));
-  // A surplus carried in can be spent but not moved: it would leave a monthly budget below zero.
-  const belowZero = updates.find((update) => update.newLimitCents < 0);
-  if (belowZero) {
-    const row = progress.budgets.find((b) => b.categoryId === belowZero.categoryId);
-    throw new Error(
-      `${row?.categoryName ?? "That budget"} can give at most ${((row?.baseLimitCents ?? 0) / 100).toFixed(2)} this month.`,
-    );
-  }
-
-  // Preserve any carried-forward label when creating a fresh current-month row.
-  const affectedCategoryIds = updates.map((update) => update.categoryId);
-  const priorBudgets = await prisma.budget.findMany({
-    where: {
-      userId: user.id,
-      categoryId: { in: affectedCategoryIds },
-      periodMonth: { lte: periodMonth },
-    },
-    orderBy: { periodMonth: "desc" },
-    select: { categoryId: true, name: true },
-  });
-  const nameByCategory = new Map<string, string | null>();
-  for (const budget of priorBudgets) {
-    if (!nameByCategory.has(budget.categoryId)) nameByCategory.set(budget.categoryId, budget.name);
-  }
-
-  await prisma.$transaction(
-    updates.map((update) =>
-      prisma.budget.upsert({
-        where: {
-          userId_categoryId_periodMonth: {
-            userId: user.id,
-            categoryId: update.categoryId,
-            periodMonth,
-          },
-        },
-        update: { limitCents: update.newLimitCents },
-        create: {
-          userId: user.id,
-          categoryId: update.categoryId,
-          periodMonth,
-          limitCents: update.newLimitCents,
-          name: nameByCategory.get(update.categoryId) ?? null,
-        },
-      }),
-    ),
-  );
-
+  await reallocateBudgets(prisma, user, payload.destinationCategoryId, payload.transfers);
   revalidatePath("/");
   revalidatePath("/settings", "layout");
 });
