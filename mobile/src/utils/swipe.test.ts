@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { clampSwipe, settleSwipe } from './swipe';
+import { clampSwipe, pageAt, settleSwipe } from './swipe';
 
 const W = 96;
 
@@ -45,5 +45,17 @@ describe('settleSwipe', () => {
   it('never opens a side with no button', () => {
     expect(settleSwipe(80, 0, W, false, true)).toBe(0);
     expect(settleSwipe(-80, 0, W, true, false)).toBe(0);
+  });
+});
+
+describe('pageAt', () => {
+  it('is the page more than half on screen, and stays within the pages when the row bounces past an end', () => {
+    expect(pageAt(0, 360, 2)).toBe(0);
+    expect(pageAt(179, 360, 2)).toBe(0);
+    expect(pageAt(181, 360, 2)).toBe(1);
+    expect(pageAt(-40, 360, 2)).toBe(0);
+    expect(pageAt(420, 360, 2)).toBe(1);
+    // Before the row has a width there is only the first page.
+    expect(pageAt(100, 0, 2)).toBe(0);
   });
 });

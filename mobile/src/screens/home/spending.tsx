@@ -6,6 +6,7 @@ import { Platform, StyleSheet, Switch, Text, View } from 'react-native';
 import type { Spending, SpendingComparison } from '@/api/types';
 import { LineChart, type ChartSeries } from '@/components/line-chart';
 import { Section } from '@/components/section';
+import { SwipePages, type SwipePage } from '@/components/swipe-pages';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatCents, formatPeriodMonth } from '@/utils/money';
@@ -21,6 +22,8 @@ import {
   expectedLegend,
   savingsNote,
   sliceShares,
+  SPENDING_CHARTS,
+  type SpendingOptions,
 } from '@/utils/spending';
 
 const CHART_HEIGHT = 170;
@@ -30,13 +33,69 @@ const PIE_HEIGHT = 210;
 const PIE_SUPPORTED = Platform.OS === 'ios' && Number.parseInt(String(Platform.Version), 10) >= 17;
 
 /**
+ * The website's two spending cards in one, as its phone layout has them: swipe between Spending by
+ * category and Cumulative spending, or pick one from the pills under them. The page last shown is
+ * kept on the phone.
+ */
+export function SpendingCharts(props: {
+  data: Spending;
+  options: SpendingOptions;
+  onOptions: (change: SpendingOptions) => void;
+  updating: boolean;
+}) {
+  const { data, options, onOptions, updating } = props;
+  // The chart being read along by a resting finger keeps the card from swiping underneath it.
+  const [scrubbing, setScrubbing] = useState(false);
+  const pages: SwipePage[] = [
+    {
+      key: 'categories',
+      label: data.categories.grouped ? 'By group' : 'By category',
+      content: (
+        <CategorySpending
+          data={data}
+          showSavings={options.showSavings ?? data.showSavings}
+          onShowSavings={(showSavings) => onOptions({ showSavings })}
+          updating={updating}
+        />
+      ),
+    },
+    {
+      key: 'cumulative',
+      label: 'Cumulative',
+      content: (
+        <CumulativeSpending
+          data={data}
+          compareWith={options.compareWith ?? data.compareWith}
+          onCompare={(compareWith) => onOptions({ compareWith })}
+          onScrubbingChange={setScrubbing}
+          updating={updating}
+        />
+      ),
+    },
+  ];
+  const index = Math.max(0, pages.findIndex((page) => page.key === (options.chart ?? SPENDING_CHARTS[0])));
+  return (
+    <Section title={`Spending · ${formatPeriodMonth(data.month)}`}>
+      <SwipePages
+        pages={pages}
+        index={index}
+        onIndexChange={(i) => onOptions({ chart: SPENDING_CHARTS[i] })}
+        scrollEnabled={!scrubbing}
+        accessibilityLabel="Spending charts"
+      />
+    </Section>
+  );
+}
+
+/**
  * The website's Cumulative spending card: the month's running total by day, the pace the budgets
  * (or the last 3 months) expected, and, if picked, an earlier month's running total to compare.
  */
-export function CumulativeSpendingCard(props: {
+function CumulativeSpending(props: {
   data: Spending;
   compareWith: SpendingComparison;
   onCompare: (compareWith: SpendingComparison) => void;
+  onScrubbingChange: (scrubbing: boolean) => void;
   updating: boolean;
 }) {
   const { data } = props;
@@ -65,7 +124,7 @@ export function CumulativeSpendingCard(props: {
     .join('. ');
 
   return (
-    <Section title={`Spending · ${formatPeriodMonth(data.month)}`}>
+    <View style={styles.body}>
       <View style={[styles.head, { opacity: props.updating ? 0.6 : 1 }]}>
         <Text style={[styles.total, { color: theme.text }]}>{picked ? picked.total : money(data.cumulative.totalCents)}</Text>
         <View style={styles.lines}>
@@ -94,6 +153,7 @@ export function CumulativeSpendingCard(props: {
           height={CHART_HEIGHT}
           selected={selected}
           onSelect={setSelected}
+          onScrubbingChange={props.onScrubbingChange}
           accessibilityLabel={summary}
         />
       </View>
@@ -114,7 +174,7 @@ export function CumulativeSpendingCard(props: {
           accessibilityLabel="Compare with"
         />
       </View>
-    </Section>
+    </View>
   );
 }
 
@@ -142,7 +202,7 @@ function LegendLine({ color, label, dashed }: { color: string; label: string; da
  * there are groups), the tail rolled into "Other categories", and, if turned on, what was moved
  * into savings beside them.
  */
-export function CategorySpendingCard(props: {
+function CategorySpending(props: {
   data: Spending;
   showSavings: boolean;
   onShowSavings: (show: boolean) => void;
@@ -156,7 +216,7 @@ export function CategorySpendingCard(props: {
   const note = savingsNote(data);
 
   return (
-    <Section title={`${data.categories.grouped ? 'By group' : 'By category'} · ${formatPeriodMonth(data.month)}`}>
+    <View style={styles.body}>
       {slices.length === 0 ? (
         <Text style={[styles.muted, { color: theme.textSecondary }]}>No spending in a category this month yet.</Text>
       ) : (
@@ -214,11 +274,13 @@ export function CategorySpendingCard(props: {
         <Text style={[styles.rowName, { color: theme.text }]}>Show savings</Text>
         <Switch value={props.showSavings} onValueChange={props.onShowSavings} accessibilityLabel="Show savings beside the categories" />
       </View>
-    </Section>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // A page's own column, spaced as a card's is.
+  body: { gap: Spacing.three },
   head: { gap: 2 },
   // Two lines' room under the total, so the chart stays put while a finger moves along it.
   lines: { minHeight: 36, gap: 2 },

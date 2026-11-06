@@ -23,7 +23,7 @@ import { safeToSpendBreakdown, safeToSpendLine } from '@/utils/safe-to-spend';
 import { spendingPath } from '@/utils/spending';
 import { updateWidgets } from '@/widgets/update';
 
-import { CategorySpendingCard, CumulativeSpendingCard } from './spending';
+import { SpendingCharts } from './spending';
 
 /**
  * The month at a glance: safe to spend, what is waiting, spending so far and by category, budgets to
@@ -59,22 +59,14 @@ export function Home() {
             <SafeToSpendCard data={data} />
             <Waiting data={data} />
             {charts ? (
-              <CumulativeSpendingCard
+              <SpendingCharts
                 data={charts}
-                compareWith={spendingOptions.compareWith ?? charts.compareWith}
-                onCompare={(compareWith) => setSpendingOptions({ compareWith })}
+                options={spendingOptions}
+                onOptions={setSpendingOptions}
                 updating={spending.isPlaceholderData}
               />
             ) : null}
             <BudgetsCard data={data} />
-            {charts ? (
-              <CategorySpendingCard
-                data={charts}
-                showSavings={spendingOptions.showSavings ?? charts.showSavings}
-                onShowSavings={(showSavings) => setSpendingOptions({ showSavings })}
-                updating={spending.isPlaceholderData}
-              />
-            ) : null}
             <ComingUp data={data} />
             <ScoreRow />
             <NetWorthRow />
