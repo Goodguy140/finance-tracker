@@ -140,6 +140,7 @@ import type { BillsForecastItem } from "@/components/dashboard-cards/bills-forec
 import { requireUser } from "@/lib/session";
 import { formatCurrency } from "@/lib/money";
 import { OwedToYouList, type OwedToYouItem } from "@/components/owed-to-you";
+import { OWED_TO_YOU_ORDER, owedToYouWhere } from "@/lib/owed-to-you";
 
 const cadenceLabels: Record<RecurringCadence, string> = {
   WEEKLY: "Weekly",
@@ -168,9 +169,6 @@ type SearchParams = Promise<{
 }>;
 
 export const dynamic = "force-dynamic";
-
-/** How long a share paid back stays in "Owed to you", where it can still be undone. */
-const OWED_PAID_RECENT_DAYS = 30;
 
 /** Shapes a stored verification for the log badge; null for unverified rows. */
 function toVerificationInfo(
@@ -436,12 +434,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     // "Owed to you": everything still outstanding whatever the period, since a debt from
     // March is no less owed in May, and what was paid back lately so a slip can be undone.
     prisma.owedShare.findMany({
-      where: {
-        userId: user.id,
-        OR: [{ paidAt: null }, { paidAt: { gte: new Date(now.getTime() - OWED_PAID_RECENT_DAYS * 24 * 60 * 60 * 1000) } }],
-      },
+      where: owedToYouWhere(user.id, now),
       include: { transaction: { select: { title: true, date: true, category: { select: { name: true } } } } },
-      orderBy: [{ transaction: { date: "desc" } }, { createdAt: "asc" }],
+      orderBy: OWED_TO_YOU_ORDER,
     }),
   ]);
 

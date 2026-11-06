@@ -1,5 +1,15 @@
-import type { Transaction, TransactionType } from '@/api/types';
+import type { OwedShare, Transaction, TransactionType } from '@/api/types';
 import { formatCents } from '@/utils/money';
+import {
+  owedLinesFrom,
+  parseOwedLines,
+  parseSplitLines,
+  sameOwedLines,
+  sameSplitLines,
+  splitLinesFrom,
+  type OwedLine,
+  type SplitLine,
+} from '@/utils/split-owed';
 
 /** A day's entries, newest day first, as the list shows them. Rows must come newest first, as the API sends them. */
 export function groupByDay(rows: readonly Transaction[]): { day: string; data: Transaction[] }[] {
@@ -85,12 +95,22 @@ export type EditForm = {
   transferAccountId: string | null;
   note: string;
   tags: string;
+  /** An expense's split lines; empty when it is booked whole in `categoryId`. */
+  splits: SplitLine[];
+  /** Who owes part of an expense back. With any, `amount` is what was paid in all. */
+  owed: OwedLine[];
 };
 
-export function formFromTransaction(row: Transaction): EditForm {
+/** Whether the server lets the phone change this entry's split lines and who owes part of it. */
+export function canEditSplitsAndShares(row: Transaction & { owedShares?: unknown }): boolean {
+  return row.type === 'expense' && row.owedShares !== undefined;
+}
+
+export function formFromTransaction(row: Transaction & { owedShares?: OwedShare[] }): EditForm {
   return {
     title: row.title ?? '',
-    amount: amountInputText(row.amountCents),
+    // What was paid: the entry's own part plus what others owe on it.
+    amount: amountInputText(row.amountCents + row.owedToYouCents),
     date: row.date,
     postedDate: row.postedDate,
     categoryId: row.categoryId,
@@ -98,6 +118,8 @@ export function formFromTransaction(row: Transaction): EditForm {
     transferAccountId: row.transferAccountId,
     note: row.note ?? '',
     tags: row.tags.join(', '),
+    splits: splitLinesFrom(row.splits),
+    owed: owedLinesFrom(row.owedShares ?? []),
   };
 }
 
@@ -105,7 +127,10 @@ export function formFromTransaction(row: Transaction): EditForm {
  * What to send to `PATCH /api/v1/transactions/:id`: only the fields the person changed, so a
  * field the phone does not edit is never touched. An error when the amount is not a number.
  */
-export function changedFields(row: Transaction, form: EditForm): { body: Record<string, unknown> } | { error: string } {
+export function changedFields(
+  row: Transaction & { owedShares?: OwedShare[] },
+  form: EditForm,
+): { body: Record<string, unknown> } | { error: string } {
   const body: Record<string, unknown> = {};
   const original = formFromTransaction(row);
   if (form.title.trim() !== original.title.trim()) body.title = form.title.trim() || null;
@@ -121,7 +146,13 @@ export function changedFields(row: Transaction, form: EditForm): { body: Record<
   if (movesTransfer && form.accountId && form.accountId === form.transferAccountId) {
     return { error: 'Choose two different accounts.' };
   }
-  if (form.amount.trim() !== original.amount) {
+  const splitOwed = splitOwedChanges(row, form, original);
+  if ('error' in splitOwed) return splitOwed;
+  if (splitOwed.handled) {
+    Object.assign(body, splitOwed.body);
+    // A split's categories go in its lines.
+    if ('splits' in splitOwed.body) delete body.categoryId;
+  } else if (form.amount.trim() !== original.amount) {
     const cents = parseAmountInput(form.amount);
     if (cents === null) return { error: 'Enter the amount as a number, like 12.50.' };
     if (cents !== row.amountCents) body.amountCents = cents;
@@ -129,6 +160,58 @@ export function changedFields(row: Transaction, form: EditForm): { body: Record<
   const tags = parseTagsInput(form.tags);
   if (tags.join('\n').toLowerCase() !== row.tags.join('\n').toLowerCase()) body.tags = tags;
   return { body };
+}
+
+/**
+ * The amount, split lines and shares to send for an expense that is or becomes split or shared;
+ * `handled: false` leaves a plain amount change to the caller.
+ */
+function splitOwedChanges(
+  row: Transaction & { owedShares?: OwedShare[] },
+  form: EditForm,
+  original: EditForm,
+): { handled: false } | { handled: true; body: Record<string, unknown> } | { error: string } {
+  const wasSplit = original.splits.length > 0;
+  const isSplit = form.splits.length > 0;
+  const hadShares = original.owed.length > 0;
+  const hasShares = form.owed.some((line) => line.name.trim() || line.amount.trim());
+  if (!wasSplit && !isSplit && !hadShares && !hasShares) return { handled: false };
+  if (!canEditSplitsAndShares(row)) return { handled: false };
+  const body: Record<string, unknown> = {};
+
+  const paid = form.amount.trim() === original.amount ? row.amountCents + row.owedToYouCents : parseAmountInput(form.amount);
+  if (paid === null) return { error: 'Enter the amount as a number, like 12.50.' };
+  const paidChanged = paid !== row.amountCents + row.owedToYouCents;
+
+  if (isSplit) {
+    const parsed = parseSplitLines(form.splits);
+    if ('error' in parsed) return parsed;
+    if (parsed.lines.length < 2) return { error: 'A split needs two lines or more. Remove the split to book it in one category.' };
+    const sum = parsed.lines.reduce((total, line) => total + line.amountCents, 0);
+    if (sum !== paid) {
+      const money = (cents: number) => formatCents(cents, row.currency ?? 'CAD');
+      return { error: `The lines add up to ${money(sum)}, but the amount is ${money(paid)}. Make them match.` };
+    }
+    if (!sameSplitLines(form.splits, original.splits) || paidChanged) body.splits = parsed.lines;
+    if (paidChanged) body.amountCents = paid;
+    return { handled: true, body };
+  }
+
+  if (wasSplit) {
+    // The split was removed: book it whole, in the category picked.
+    body.splits = [{ categoryId: form.categoryId, amountCents: paid }];
+    if (paidChanged) body.amountCents = paid;
+    return { handled: true, body };
+  }
+
+  const shares = parseOwedLines(form.owed);
+  if ('error' in shares) return shares;
+  if (!sameOwedLines(form.owed, original.owed) || paidChanged) {
+    if (shares.shares.length > 0 && paid < 0) return { error: 'Only a purchase can be owed back, not a refund.' };
+    body.owedShares = shares.shares;
+    if (paidChanged) body.paidCents = paid;
+  }
+  return { handled: true, body };
 }
 
 /**
@@ -156,6 +239,10 @@ export function lockedReason(row: Transaction, field: 'amount' | 'category' | 'a
     return null;
   }
   if (field === 'account') return null;
+  if (canEditSplitsAndShares(row as Transaction & { owedShares?: unknown })) {
+    if (field === 'amount' && row.creditCents) return 'This entry has credits taken off; change its amount on the website.';
+    return null;
+  }
   if (row.splits.length > 0) return 'This entry is split; change its amounts and categories on the website.';
   if (field === 'amount' && row.owedToYouCents > 0) return 'Someone owes you part of this; change its amount on the website.';
   if (field === 'amount' && row.creditCents) return 'This entry has credits taken off; change its amount on the website.';

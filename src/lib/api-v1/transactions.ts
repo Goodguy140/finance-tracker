@@ -7,7 +7,8 @@ import { MAX_AMOUNT_CENTS } from "@/lib/money";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import { addTagsToTransaction, resolveTagIds } from "@/lib/tags-server";
 import { appendRuleNote, resolveRuleOutcome, ruleSplitLines } from "@/lib/transaction-rules";
-import { saveSplitLines } from "@/lib/split-lines";
+import { OWED_SHARE_NAME_MAX, owedTotalCents, ownPartCents, saveOwedShares } from "@/lib/owed-shares";
+import { assertSplitLinesMatch, saveSplitLines } from "@/lib/split-lines";
 import { TRANSACTION_NOTE_MAX, TRANSACTION_TITLE_MAX } from "@/lib/text-limits";
 import { loadRuleContext } from "@/lib/transaction-rules-server";
 import { transactionSearchWhere } from "@/lib/search/search-data";
@@ -358,9 +359,21 @@ export async function getTransactionForApi(db: PrismaClient, userId: string, id:
     include: {
       ...transactionInclude,
       attachments: { select: { id: true, fileName: true, contentType: true, sizeBytes: true }, orderBy: { createdAt: "asc" } },
+      owedShares: { select: { id: true, name: true, amountCents: true, paidAt: true }, orderBy: { createdAt: "asc" } },
     },
   });
-  return row ? { ...serializeTransaction(row), attachments: row.attachments } : null;
+  if (!row) return null;
+  return {
+    ...serializeTransaction(row),
+    attachments: row.attachments,
+    /** Who owes part of it back, in the order they were added; `paidAt` once paid back. */
+    owedShares: row.owedShares.map((share) => ({
+      id: share.id,
+      name: share.name,
+      amountCents: share.amountCents,
+      paidAt: share.paidAt?.toISOString() ?? null,
+    })),
+  };
 }
 
 const updateSchema = z
@@ -378,6 +391,33 @@ const updateSchema = z
     tags: z.array(z.string().trim().min(1).max(50)).max(20).optional(),
     /** Only marks the entry looked at; any other change does that too. */
     reviewed: z.literal(true).optional(),
+    /**
+     * An expense's split lines, all of them, adding up to its amount: two or more split it (the
+     * first line's category becomes the entry's), one line books it whole in that category.
+     */
+    splits: z
+      .array(z.object({ categoryId: z.string().min(1), amountCents }).strict())
+      .min(1, "A split needs at least one line.")
+      .max(20)
+      .optional(),
+    /**
+     * Who owes part of an expense back, all of them (an empty list removes them): a row with the
+     * `id` of a share already on it edits that share and keeps whether it was paid back.
+     */
+    owedShares: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1).nullable().optional(),
+            name: z.string().trim().min(1, "Say who owes each amount.").max(OWED_SHARE_NAME_MAX),
+            amountCents: z.number().int().min(1, "An amount owed must be positive.").max(MAX_AMOUNT_CENTS),
+          })
+          .strict(),
+      )
+      .max(20)
+      .optional(),
+    /** With `owedShares`: what was paid in all, the shares included. Left out, it stays as it was. */
+    paidCents: amountCents.optional(),
   })
   .strict();
 
@@ -391,9 +431,12 @@ export type UpdateResult =
  * edit dialog does. A transfer's two accounts can change too: `accountId` and
  * `transferAccountId` keep their stored meaning and the amount keeps its sign, so a positive
  * amount still left `accountId`; naming them the other way round reverses the transfer.
+ * An expense's split lines and who owes part of it back are sent whole (`splits`, `owedShares`
+ * with `paidCents`), and checked as the website's edit dialog checks them: lines add up to the
+ * amount, shares to no more than was paid, and never both on one entry.
  * What the phone does not edit is refused rather than half-applied, and stays on the website:
- * a split's lines, amounts owed back, credits, a transfer's amount, and the accounts of a
- * paired transfer, which each leg takes from its own bank row.
+ * credits, a transfer's amount, and the accounts of a paired transfer, which each leg takes
+ * from its own bank row.
  */
 export async function updateTransactionFromApi(
   db: PrismaClient,
@@ -417,8 +460,11 @@ export async function updateTransactionFromApi(
       transferAccountId: true,
       transferPeerId: true,
       categoryId: true,
+      amountCents: true,
       creditCents: true,
-      _count: { select: { splitParts: true, owedShares: true } },
+      recurringTransactionId: true,
+      owedShares: { select: { id: true, amountCents: true } },
+      _count: { select: { splitParts: true } },
     },
   });
   if (!existing) return { ok: false, status: 404, error: "No transaction with that id." };
@@ -441,10 +487,63 @@ export async function updateTransactionFromApi(
     const to = input.transferAccountId !== undefined ? input.transferAccountId : existing.transferAccountId;
     if (from && from === to) return refuse("A transfer needs two different accounts.");
   }
-  if (input.amountCents !== undefined && (isSplit || existing._count.owedShares > 0 || existing.creditCents)) {
-    return refuse("This entry is split, has amounts owed back or credits; change its amount on the website.");
+  const isExpense = existing.type === TransactionType.EXPENSE;
+  const hasShares = existing.owedShares.length > 0;
+  if (!isExpense && (input.splits || input.owedShares || input.paidCents !== undefined)) {
+    return refuse("Only an expense can be split or have amounts owed back.");
   }
-  if (changesCategory && isSplit) return refuse("A split entry's categories are changed on the website.");
+  if (input.paidCents !== undefined && !input.owedShares) return refuse("Send 'paidCents' with 'owedShares'.");
+  if (input.owedShares && input.amountCents !== undefined) {
+    return refuse("With 'owedShares', send what was paid as 'paidCents', not 'amountCents'.");
+  }
+  if (input.splits && input.categoryId !== undefined) return refuse("A split's categories go in its lines, not 'categoryId'.");
+  if (input.amountCents !== undefined && ((isSplit && !input.splits) || hasShares || existing.creditCents)) {
+    return refuse(
+      isSplit && !input.splits
+        ? "This entry is split; send its lines with the new amount."
+        : "This entry has amounts owed back or credits; its amount is changed with them.",
+    );
+  }
+  if (input.paidCents !== undefined && existing.creditCents) {
+    return refuse("This entry has credits taken off; change what was paid on the website.");
+  }
+  if (changesCategory && isSplit) return refuse("A split entry's categories are changed in its lines.");
+
+  // What the entry counts as spending once this is saved: what was paid, less what others owe.
+  let newAmountCents = input.amountCents ?? existing.amountCents;
+  if (input.owedShares) {
+    const knownIds = new Set(existing.owedShares.map((share) => share.id));
+    if (input.owedShares.some((row) => row.id && !knownIds.has(row.id))) {
+      return refuse("That owed amount no longer exists. Reload and try again.");
+    }
+    if (input.owedShares.length > 0 && !hasShares && existing.recurringTransactionId) {
+      // A shared subscription credits its members' shares onto this same amount when they pay;
+      // a second way of netting on top of that would count them twice (as the website refuses).
+      const members = await db.subscriptionMember.count({
+        where: { userId, recurringTransactionId: existing.recurringTransactionId },
+      });
+      if (members > 0) return refuse("This bill's subscription already splits it. Track who owes what on the subscription instead.");
+    }
+    const paid = input.paidCents ?? existing.amountCents + owedTotalCents(existing.owedShares);
+    try {
+      newAmountCents = ownPartCents(paid, input.owedShares);
+    } catch (err) {
+      return refuse(err instanceof Error ? err.message : "Those amounts owed can't be saved.");
+    }
+  }
+  const willBeSplit = input.splits ? input.splits.length > 1 : isSplit;
+  const willHaveShares = input.owedShares ? input.owedShares.length > 0 : hasShares;
+  if (willBeSplit && willHaveShares) return refuse("A split expense cannot have amounts owed back. Remove the split first.");
+  if (input.splits) {
+    try {
+      assertSplitLinesMatch(input.splits, newAmountCents);
+    } catch (err) {
+      return refuse(err instanceof Error ? err.message : "The split lines must add up to the expense.");
+    }
+    const categoryIds = [...new Set(input.splits.map((line) => line.categoryId))];
+    const owned = await db.category.count({ where: { id: { in: categoryIds }, userId, kind: CategoryKind.EXPENSE } });
+    if (owned !== categoryIds.length) return { ok: false, status: 404, error: "No expense category with that id." };
+  }
   if (existing.type === TransactionType.INCOME && input.amountCents !== undefined && input.amountCents < 0) {
     return refuse("Income must be positive.");
   }
@@ -468,13 +567,21 @@ export async function updateTransactionFromApi(
         ...(input.note !== undefined ? { note: input.note || null } : {}),
         ...(input.date !== undefined ? { date: dateFromYmd(input.date) } : {}),
         ...(input.postedDate !== undefined ? { postedDate: input.postedDate ? dateFromYmd(input.postedDate) : null } : {}),
-        ...(input.amountCents !== undefined ? { amountCents: input.amountCents } : {}),
+        ...(newAmountCents !== existing.amountCents ? { amountCents: newAmountCents } : {}),
         ...(changesCategory ? { categoryId: input.categoryId } : {}),
+        // A split's own category is only a label: the first line's, which is where the expense
+        // lands when one line is all that is left (as the website books it).
+        ...(input.splits ? { categoryId: input.splits[0].categoryId } : {}),
         ...(changesAccount ? { accountId: input.accountId } : {}),
         ...(changesTransferAccount ? { transferAccountId: input.transferAccountId } : {}),
       },
     });
     if (input.tags) await replaceTransactionTags(tx, existing.id, await resolveTagIds(tx, userId, input.tags));
+    if (input.owedShares) {
+      const rows = input.owedShares.map((row) => ({ id: row.id ?? null, name: row.name, amountCents: row.amountCents }));
+      await saveOwedShares(tx, { userId, transactionId: existing.id, rows });
+    }
+    if (input.splits) await saveSplitLines(tx, { userId, transactionId: existing.id, lines: input.splits });
     return tx.transaction.findUniqueOrThrow({ where: { id: existing.id }, include: transactionInclude });
   });
   return { ok: true, transaction: serializeTransaction(row) };

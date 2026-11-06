@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { setOwedSharePaid } from "@/lib/owed-to-you";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { setOwedSharePaidSchema } from "@/lib/validation";
@@ -17,10 +18,8 @@ export const setOwedSharePaidAction = formAction(async (formData: FormData) => {
     paid: getFormValue(formData, "paid"),
   });
 
-  const updated = await prisma.owedShare.updateMany({
-    where: { id: payload.shareId, userId: user.id },
-    data: { paidAt: payload.paid === "true" ? new Date() : null },
-  });
-  if (updated.count === 0) throw new Error("That owed amount no longer exists.");
+  if (!(await setOwedSharePaid(prisma, user.id, payload.shareId, payload.paid === "true"))) {
+    throw new Error("That owed amount no longer exists.");
+  }
   revalidatePath("/");
 });

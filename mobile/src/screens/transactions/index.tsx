@@ -6,7 +6,7 @@ import { Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from '
 
 import { apiGet } from '@/api/client';
 import { errorText, useApiQuery } from '@/api/query';
-import type { Me, TransactionPage } from '@/api/types';
+import type { Me, OwedToYou, TransactionPage } from '@/api/types';
 import { LoadState } from '@/components/load-state';
 import { OutboxBanner } from '@/components/outbox-banner';
 import { UndoBar } from '@/components/undo-bar';
@@ -17,6 +17,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useSession } from '@/session/session-provider';
 import { localMonth, localToday, relativeDay, shiftMonth } from '@/utils/dates';
 import { formatPeriodMonth } from '@/utils/money';
+import { OWED_PATH, owedSummary } from '@/utils/owed';
 import { groupByDay, listPath, type ListFilters, type TransactionType } from '@/utils/transactions';
 
 import { QuickAddCard } from './quick-add-card';
@@ -78,7 +79,7 @@ export function Transactions({ initialNeedsReview = false }: { initialNeedsRevie
         ListHeaderComponent={
           <View style={styles.header}>
             <OutboxBanner />
-            {search ? <QuickAddCard text={search} currency={currency} /> : null}
+            {search ? <QuickAddCard text={search} currency={currency} /> : <OwedLine />}
             <Text style={[styles.heading, { color: theme.textSecondary }]}>{heading}</Text>
             {filtered ? (
               <Pressable onPress={() => setFilters({ type: null, needsReview: false })} accessibilityRole="button" hitSlop={8}>
@@ -179,3 +180,18 @@ const styles = StyleSheet.create({
   },
   empty: { fontSize: 15, textAlign: 'center', marginTop: Spacing.five },
 });
+
+/** "Owed to you: $45.00 from 2 people ›" above the log while anyone owes something back. */
+function OwedLine() {
+  const theme = useTheme();
+  const router = useRouter();
+  // An older server answers 404, and the line stays away.
+  const owed = useApiQuery<OwedToYou>(OWED_PATH);
+  const summary = owed.data ? owedSummary(owed.data) : null;
+  if (!summary) return null;
+  return (
+    <Pressable onPress={() => router.push('/transactions/owed')} accessibilityRole="button" hitSlop={8}>
+      <Text style={[styles.link, { color: theme.tint }]}>Owed to you: {summary} ›</Text>
+    </Pressable>
+  );
+}

@@ -115,7 +115,33 @@ export type Transaction = {
 export type Attachment = { id: string; fileName: string; contentType: string; sizeBytes: number };
 
 /** One entry as `GET /api/v1/transactions/:id` answers: the list's fields and its receipts. */
-export type TransactionDetail = Transaction & { attachments?: Attachment[] };
+/** Someone who owes part of an expense back. */
+export type OwedShare = { id: string; name: string; amountCents: number; paidAt: string | null };
+
+export type TransactionDetail = Transaction & {
+  attachments?: Attachment[];
+  /**
+   * Who owes part of it back. Sent by servers that let the phone change splits and shares; an
+   * older one leaves it out and refuses both.
+   */
+  owedShares?: OwedShare[];
+};
+
+/** `GET /api/v1/owed`: what people owe back, outstanding first in importance, newest expense first. */
+export type OwedToYou = {
+  currency: string;
+  outstandingCents: number;
+  items: {
+    id: string;
+    name: string;
+    amountCents: number;
+    currency: string;
+    transactionId: string;
+    expenseLabel: string;
+    expenseDate: string;
+    paidAt: string | null;
+  }[];
+};
 
 export type TransactionPage = { transactions: Transaction[]; nextCursor: string | null };
 
