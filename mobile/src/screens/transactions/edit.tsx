@@ -17,11 +17,13 @@ import { offerUndo } from '@/state/undo-offer';
 import { dateFromYmd, ymdFromDate } from '@/utils/dates';
 import { formatCents } from '@/utils/money';
 import {
+  amountInputText,
   changedFields,
   formFromTransaction,
   lockedReason,
   transactionName,
   transactionSubtitle,
+  transferSides,
   type EditForm,
 } from '@/utils/transactions';
 
@@ -74,11 +76,26 @@ function Editor({ row, categories, accounts }: { row: TransactionDetail; categor
   const kind = row.type === 'income' ? 'income' : 'expense';
   const categoryOptions = categories.filter((c) => c.kind === kind || c.id === row.categoryId);
   // An archived account stays listed only while the entry is on it.
-  const accountOptions = accounts.filter((a) => !a.archived || a.id === row.accountId);
+  const accountOptions = accounts.filter((a) => !a.archived || a.id === row.accountId || a.id === row.transferAccountId);
   const amountLock = lockedReason(row, 'amount');
   const categoryLock = lockedReason(row, 'category');
   const accountLock = lockedReason(row, 'account');
   const currency = row.currency ?? 'CAD';
+  const sides = transferSides(row);
+  // A locked side is shown as saved.
+  const savedName = (side: 'accountId' | 'transferAccountId') =>
+    (side === 'accountId' ? row.accountName : row.transferAccountName) ?? 'Not set';
+
+  const accountPicker = (value: string | null, onChange: (id: string | null) => void, emptyLabel: string) => (
+    <Host matchContents>
+      <Picker selectedValue={value ?? NO_ACCOUNT} onValueChange={(v) => onChange(v === NO_ACCOUNT ? null : String(v))}>
+        <Picker.Item label={emptyLabel} value={NO_ACCOUNT} />
+        {accountOptions.map((a) => (
+          <Picker.Item key={a.id} label={a.name} value={a.id} />
+        ))}
+      </Picker>
+    </Host>
+  );
 
   function submit() {
     if ('error' in change) return setError(change.error);
@@ -136,7 +153,8 @@ function Editor({ row, categories, accounts }: { row: TransactionDetail; categor
           </FormField>
           <FormField label="Amount" note={amountLock}>
             <TextInput
-              value={form.amount}
+              // A transfer's sign is which way it went, which From and To already say.
+              value={row.type === 'transfer' ? amountInputText(Math.abs(row.amountCents)) : form.amount}
               onChangeText={(v) => set('amount', v)}
               editable={!amountLock}
               keyboardType="numbers-and-punctuation"
@@ -176,37 +194,47 @@ function Editor({ row, categories, accounts }: { row: TransactionDetail; categor
           ) : null}
         </Section>
 
-        <Section>
-          <FormField label="Category" note={categoryLock}>
-            {categoryLock ? (
-              <Text style={[formStyles.value, { color: theme.textSecondary }]}>{row.categoryName}</Text>
-            ) : (
-              <Host matchContents>
-                <Picker selectedValue={form.categoryId} onValueChange={(v) => set('categoryId', String(v))}>
-                  {categoryOptions.map((c) => (
-                    <Picker.Item key={c.id} label={c.name} value={c.id} />
-                  ))}
-                </Picker>
-              </Host>
-            )}
-          </FormField>
-          <FormField label="Account" note={accountLock}>
-            {accountLock ? (
-              <Text style={[formStyles.value, { color: theme.textSecondary }]}>{row.accountName ?? 'None'}</Text>
-            ) : (
-              <Host matchContents>
-                <Picker
-                  selectedValue={form.accountId ?? NO_ACCOUNT}
-                  onValueChange={(v) => set('accountId', v === NO_ACCOUNT ? null : String(v))}>
-                  <Picker.Item label="None" value={NO_ACCOUNT} />
-                  {accountOptions.map((a) => (
-                    <Picker.Item key={a.id} label={a.name} value={a.id} />
-                  ))}
-                </Picker>
-              </Host>
-            )}
-          </FormField>
-        </Section>
+        {row.type === 'transfer' ? (
+          <Section footer={accountLock ? null : 'Picking them the other way round reverses the transfer.'}>
+            <FormField label="From">
+              {accountLock ? (
+                <Text style={[formStyles.value, { color: theme.textSecondary }]}>{savedName(sides.from)}</Text>
+              ) : (
+                accountPicker(form[sides.from], (id) => set(sides.from, id), 'Not set')
+              )}
+            </FormField>
+            <FormField label="To" note={accountLock}>
+              {accountLock ? (
+                <Text style={[formStyles.value, { color: theme.textSecondary }]}>{savedName(sides.to)}</Text>
+              ) : (
+                accountPicker(form[sides.to], (id) => set(sides.to, id), 'Not set')
+              )}
+            </FormField>
+          </Section>
+        ) : (
+          <Section>
+            <FormField label="Category" note={categoryLock}>
+              {categoryLock ? (
+                <Text style={[formStyles.value, { color: theme.textSecondary }]}>{row.categoryName}</Text>
+              ) : (
+                <Host matchContents>
+                  <Picker selectedValue={form.categoryId} onValueChange={(v) => set('categoryId', String(v))}>
+                    {categoryOptions.map((c) => (
+                      <Picker.Item key={c.id} label={c.name} value={c.id} />
+                    ))}
+                  </Picker>
+                </Host>
+              )}
+            </FormField>
+            <FormField label="Account" note={accountLock}>
+              {accountLock ? (
+                <Text style={[formStyles.value, { color: theme.textSecondary }]}>{row.accountName ?? 'None'}</Text>
+              ) : (
+                accountPicker(form.accountId, (id) => set('accountId', id), 'None')
+              )}
+            </FormField>
+          </Section>
+        )}
 
         <Section footer="Separate tags with commas.">
           <FormField label="Tags">
@@ -256,6 +284,7 @@ function Details({ row, currency }: { row: TransactionDetail; currency: string }
     row.owedToYouCents > 0 ? `${formatCents(row.owedToYouCents, currency)} owed back to you` : null,
     row.creditCents ? `${formatCents(row.creditCents, currency)} in credits taken off` : null,
     row.verified ? 'Matched to a bank transaction' : null,
+    row.transferPeerId ? 'Paired with the other side of the transfer in your log' : null,
     // A server from before receipts reached the phone only counts them.
     !row.attachments && row.attachmentCount
       ? `${row.attachmentCount} receipt${row.attachmentCount === 1 ? '' : 's'} (open on the website)`

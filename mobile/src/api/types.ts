@@ -104,6 +104,11 @@ export type Transaction = {
   needsReview?: boolean;
   creditCents?: number | null;
   attachmentCount?: number;
+  /**
+   * The other leg of a paired transfer. Sent by servers that let the phone change a transfer's
+   * accounts; absent from older ones, which refuse it.
+   */
+  transferPeerId?: string | null;
 };
 
 /** A receipt kept with an entry, as `GET /api/v1/transactions/:id` lists it. */

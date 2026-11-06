@@ -13,6 +13,7 @@ import {
   parseTagsInput,
   transactionName,
   transactionSubtitle,
+  transferSides,
 } from './transactions';
 
 function tx(overrides: Partial<Transaction> = {}): Transaction {
@@ -129,10 +130,46 @@ describe('changedFields', () => {
   });
 });
 
+describe('a transfer’s accounts', () => {
+  const transfer = (overrides: Partial<Transaction> = {}) =>
+    tx({ type: 'transfer', accountId: 'chequing', transferAccountId: 'visa', amountCents: 50_000, transferPeerId: null, ...overrides });
+
+  it('reads From and To from the sign: a positive amount left the entry’s own account', () => {
+    expect(transferSides(transfer())).toEqual({ from: 'accountId', to: 'transferAccountId' });
+    expect(transferSides(transfer({ amountCents: -50_000 }))).toEqual({ from: 'transferAccountId', to: 'accountId' });
+  });
+
+  it('sends the side that changed, and both when the transfer is reversed', () => {
+    const row = transfer();
+    expect(changedFields(row, { ...formFromTransaction(row), transferAccountId: 'savings' })).toEqual({
+      body: { transferAccountId: 'savings' },
+    });
+    expect(changedFields(row, { ...formFromTransaction(row), accountId: 'visa', transferAccountId: 'chequing' })).toEqual({
+      body: { accountId: 'visa', transferAccountId: 'chequing' },
+    });
+    expect(changedFields(row, { ...formFromTransaction(row), transferAccountId: null })).toEqual({ body: { transferAccountId: null } });
+  });
+
+  it('refuses one account on both sides, and never sends another side for an expense', () => {
+    const row = transfer();
+    expect(changedFields(row, { ...formFromTransaction(row), transferAccountId: 'chequing' })).toEqual({
+      error: 'Choose two different accounts.',
+    });
+    const expense = tx();
+    expect(changedFields(expense, { ...formFromTransaction(expense), transferAccountId: 'savings' })).toEqual({ body: {} });
+  });
+
+  it('can be changed unless the transfer is paired or the server is too old', () => {
+    expect(lockedReason(transfer(), 'account')).toBeNull();
+    expect(lockedReason(transfer({ transferPeerId: 'other-leg' }), 'account')).toMatch(/Unpair it on the website/);
+    expect(lockedReason(transfer({ transferPeerId: undefined }), 'account')).toMatch(/too old/);
+    expect(lockedReason(transfer(), 'amount')).toMatch(/amount can't be changed/);
+  });
+});
+
 describe('lockedReason', () => {
   it('locks what the server refuses to change from the phone', () => {
     expect(lockedReason(tx(), 'amount')).toBeNull();
-    expect(lockedReason(tx({ type: 'transfer' }), 'account')).toMatch(/transfer/);
     expect(lockedReason(tx({ splits: [{ categoryId: 'a', amountCents: 1 }] }), 'category')).toMatch(/split/);
     expect(lockedReason(tx({ owedToYouCents: 500 }), 'amount')).toMatch(/owes you/);
     expect(lockedReason(tx({ owedToYouCents: 500 }), 'category')).toBeNull();
