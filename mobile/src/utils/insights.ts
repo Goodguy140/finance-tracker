@@ -24,6 +24,23 @@ export function groupInsights(insights: readonly Insight[]): InsightGroup[] {
   );
 }
 
+const SEVERITY_ORDER: Record<Insight['severity'], number> = { high: 0, medium: 1, low: 2 };
+
+/**
+ * The few Home's Insights card shows: the most pressing across every section, as the website's
+ * dashboard card picks them (`compareBySeverity`): severity, then the bigger amount a year.
+ */
+export function pressingInsights(insights: readonly Insight[], count = 3): Insight[] {
+  return [...insights]
+    .sort(
+      (a, b) =>
+        SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] ||
+        (b.annualCents ?? 0) - (a.annualCents ?? 0) ||
+        a.key.localeCompare(b.key),
+    )
+    .slice(0, count);
+}
+
 /** What the ideas would save in a year between them; the server already leaves out double counting. */
 export function potentialSavingCents(insights: readonly Insight[]): number {
   return insights.reduce((sum, insight) => sum + (insight.savingCents ?? 0), 0);
