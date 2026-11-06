@@ -1,5 +1,6 @@
 import {
   focusManager,
+  keepPreviousData,
   MutationCache,
   QueryCache,
   QueryClient,
@@ -55,13 +56,17 @@ export function QueryProvider({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }
 
-/** GET a `/api/v1` path as this phone, cached under the path. `null` waits. */
-export function useApiQuery<T>(path: string | null) {
+/**
+ * GET a `/api/v1` path as this phone, cached under the path. `null` waits. With `keepPrevious`, a
+ * change of path keeps showing the last answer until the new one arrives, as a chart should.
+ */
+export function useApiQuery<T>(path: string | null, options: { keepPrevious?: boolean } = {}) {
   const { session } = useSession();
   return useQuery({
     queryKey: ['api', path],
     queryFn: () => apiGet<T>(session!, path!),
     enabled: Boolean(session && path),
+    placeholderData: options.keepPrevious ? keepPreviousData : undefined,
   });
 }
 

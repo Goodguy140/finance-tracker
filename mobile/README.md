@@ -4,8 +4,8 @@ An Expo (React Native) app that signs in to your own Finance Tracker server and 
 finances on the phone. It lives beside the server in this repository but is its own project, with
 its own `package.json`, lockfile, lint and tests. The server's tools ignore this folder.
 
-What it does so far: sign in (with Face ID if you want it); see safe to spend, budgets and what is
-due; post or skip recurring bills and pay; see your financial score and insights, your accounts,
+What it does so far: sign in (with Face ID if you want it); see safe to spend, spending so far and
+by category, budgets and what is due; post or skip recurring bills and pay; see your financial score and insights, your accounts,
 net worth and each account's register; browse, search, add (with no connection too) and edit
 transactions with receipts; share a receipt to it from Photos, Mail or Files; say "Log an expense
 in Finances" to Siri; put safe to spend and the week's bills on the Home Screen; review what your
