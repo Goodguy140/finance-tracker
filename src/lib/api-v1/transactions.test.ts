@@ -379,6 +379,78 @@ describe("updating, deleting and undoing from the phone", () => {
     });
   });
 
+  it("splits an expense, changes its lines, and books it whole again from one line", async () => {
+    const row = await expense();
+    const other = await db.category.findFirstOrThrow({ where: { userId: user.id, name: "Other" } });
+    const lines = (a: number, b: number) => [
+      { categoryId: other.id, amountCents: a },
+      { categoryId: foodId, amountCents: b },
+    ];
+    expect(await api.updateTransactionFromApi(db, user.id, row.id, { splits: lines(1_000, 1_000) })).toMatchObject({
+      ok: false,
+      error: "The split lines add up to 20.00, but the expense is 25.00. Make them match.",
+    });
+    expect(await api.updateTransactionFromApi(db, user.id, row.id, { splits: lines(1_000, 1_500) })).toMatchObject({
+      ok: true,
+      transaction: { categoryId: other.id, amountCents: 2_500, splits: [{ amountCents: 1_000 }, { amountCents: 1_500 }] },
+    });
+    // A split's amount moves only with its lines.
+    expect(await api.updateTransactionFromApi(db, user.id, row.id, { amountCents: 3_000 })).toMatchObject({ ok: false, status: 400 });
+    expect(await api.updateTransactionFromApi(db, user.id, row.id, { amountCents: 3_000, splits: lines(1_000, 2_000) })).toMatchObject({
+      ok: true,
+      transaction: { amountCents: 3_000 },
+    });
+    expect(await api.updateTransactionFromApi(db, user.id, row.id, { splits: [{ categoryId: foodId, amountCents: 3_000 }] })).toMatchObject({
+      ok: true,
+      transaction: { categoryId: foodId, amountCents: 3_000, splits: [] },
+    });
+    const salary = await db.category.findFirstOrThrow({ where: { userId: user.id, kind: "INCOME" } });
+    expect(
+      await api.updateTransactionFromApi(db, user.id, row.id, { splits: [{ categoryId: salary.id, amountCents: 1_000 }, { categoryId: foodId, amountCents: 2_000 }] }),
+    ).toMatchObject({ ok: false, status: 404 });
+  });
+
+  it("takes what others owe out of what was paid, keeps who paid back, and removes shares", async () => {
+    const row = await expense({ amountCents: 9_000 });
+    const added = await api.updateTransactionFromApi(db, user.id, row.id, {
+      owedShares: [
+        { name: "Sam", amountCents: 3_000 },
+        { name: "Alex", amountCents: 3_000 },
+      ],
+    });
+    expect(added).toMatchObject({ ok: true, transaction: { amountCents: 3_000, owedToYouCents: 6_000 } });
+    const shares = await db.owedShare.findMany({ where: { transactionId: row.id }, orderBy: { createdAt: "asc" } });
+    await db.owedShare.update({ where: { id: shares[0].id }, data: { paidAt: new Date() } });
+
+    // What was paid changes with the shares; an edited share keeps being paid back.
+    const edited = await api.updateTransactionFromApi(db, user.id, row.id, {
+      paidCents: 12_000,
+      owedShares: [{ id: shares[0].id, name: "Sam", amountCents: 4_000 }],
+    });
+    expect(edited).toMatchObject({ ok: true, transaction: { amountCents: 8_000, owedToYouCents: 4_000 } });
+    expect(await db.owedShare.findMany({ where: { transactionId: row.id } })).toMatchObject([{ name: "Sam", amountCents: 4_000, paidAt: expect.any(Date) }]);
+
+    expect(await api.updateTransactionFromApi(db, user.id, row.id, { owedShares: [{ name: "Sam", amountCents: 20_000 }] })).toMatchObject({
+      ok: false,
+      error: "What others owe adds up to more than you paid.",
+    });
+    expect(await api.updateTransactionFromApi(db, user.id, row.id, { amountCents: 100 })).toMatchObject({ ok: false, status: 400 });
+    expect(await api.updateTransactionFromApi(db, user.id, row.id, { owedShares: [{ id: "not-a-share", name: "X", amountCents: 1 }] })).toMatchObject({
+      ok: false,
+      status: 400,
+    });
+    // A split and shares never sit on one entry.
+    expect(
+      await api.updateTransactionFromApi(db, user.id, row.id, { splits: [{ categoryId: foodId, amountCents: 4_000 }, { categoryId: foodId, amountCents: 4_000 }] }),
+    ).toMatchObject({ ok: false, error: "A split expense cannot have amounts owed back. Remove the split first." });
+
+    expect(await api.updateTransactionFromApi(db, user.id, row.id, { owedShares: [] })).toMatchObject({
+      ok: true,
+      transaction: { amountCents: 12_000, owedToYouCents: 0 },
+    });
+    expect(await db.owedShare.count({ where: { transactionId: row.id } })).toBe(0);
+  });
+
   it("deletes an entry and puts it back once", async () => {
     const row = await expense();
     const deleted = await api.deleteTransactionFromApi(db, user.id, row.id);

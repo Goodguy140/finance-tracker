@@ -509,10 +509,18 @@ build).
   dates, category, account, tags and note, plus Mark reviewed and Delete with an Undo bar. A
   transfer shows From and To in place of category and account, and either can be changed (picked
   the other way round, the transfer is reversed); a paired transfer keeps the accounts of its two
-  bank rows until it is unpaired on the website. Splits, amounts owed back and credits show but
-  are changed on the website; a transfer's amount is not changed anywhere. `GET
-  /api/v1/transactions` (now `q`, `tagId`, `needsReview`), `GET`/`PATCH`/`DELETE
-  /api/v1/transactions/:id` (`PATCH` takes a transfer's `transferAccountId`), `POST /api/v1/undo/:undoId`, `GET /api/v1/tags`
+  bank rows until it is unpaired on the website. An expense can be **split across categories**
+  (lines with a category and an amount each, adding up to the amount; Remove the split books it in
+  one category again) or carry **who owes part of it back** (a name and an amount each; the amount
+  becomes "You paid" and only the person's own part counts as spending), never both, checked as
+  the website's edit dialog checks them (which edits a split but cannot start one). Credits show but are changed on the website; a transfer's amount is
+  not changed anywhere. **Owed to you** (a line above the log while anyone owes something): every
+  share outstanding and those paid back in the last 30 days, each with Mark Paid or Undo, opening its
+  expense. `GET /api/v1/transactions` (now `q`, `tagId`, `needsReview`), `GET`/`PATCH`/`DELETE
+  /api/v1/transactions/:id` (`PATCH` takes a transfer's `transferAccountId`, an expense's `splits`
+  and `owedShares` with `paidCents`; `GET` lists `owedShares`), `GET /api/v1/owed`,
+  `POST /api/v1/owed/:id` (`src/lib/api-v1/owed.ts`, `src/lib/owed-to-you.ts`, shared with the
+  Expense Log), `POST /api/v1/undo/:undoId`, `GET /api/v1/tags`
   (`src/lib/api-v1/transactions.ts`). `src/screens/transactions/`
 - Add (the + on Home and Transactions, a sheet): expense, income or transfer with amount, title, date,
   category and account (Automatic uses the user's rules and past titles, as the website's Add card

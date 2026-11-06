@@ -3,7 +3,7 @@ import { Host, Picker } from '@expo/ui';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useState } from 'react';
-import { Alert, ScrollView, Switch, Text, TextInput } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput } from 'react-native';
 
 import { useApiMutation } from '@/api/mutations';
 import { errorText, useApiQuery } from '@/api/query';
@@ -16,11 +16,14 @@ import { useTheme } from '@/hooks/use-theme';
 import { offerUndo } from '@/state/undo-offer';
 import { dateFromYmd, ymdFromDate } from '@/utils/dates';
 import { formatCents } from '@/utils/money';
+import { lineKey } from '@/utils/split-owed';
 import {
   amountInputText,
+  canEditSplitsAndShares,
   changedFields,
   formFromTransaction,
   lockedReason,
+  parseAmountInput,
   transactionName,
   transactionSubtitle,
   transferSides,
@@ -28,6 +31,7 @@ import {
 } from '@/utils/transactions';
 
 import { Receipts } from './receipts';
+import { OwedSection, SplitSection } from './split-owed';
 
 const NO_ACCOUNT = '';
 
@@ -85,6 +89,25 @@ function Editor({ row, categories, accounts }: { row: TransactionDetail; categor
   // A locked side is shown as saved.
   const savedName = (side: 'accountId' | 'transferAccountId') =>
     (side === 'accountId' ? row.accountName : row.transferAccountName) ?? 'Not set';
+  // An expense's split lines and who owes part of it, on a server that takes them from the phone.
+  const sharing = canEditSplitsAndShares(row);
+  const isSplit = sharing && form.splits.length > 0;
+  const hasOwed = sharing && form.owed.length > 0;
+  const paidCents = parseAmountInput(form.amount);
+
+  function startSplit() {
+    setForm((f) => ({
+      ...f,
+      splits: [
+        { key: lineKey(), categoryId: f.categoryId, amount: f.amount },
+        { key: lineKey(), categoryId: '', amount: '' },
+      ],
+    }));
+  }
+
+  function removeSplit() {
+    setForm((f) => ({ ...f, categoryId: f.splits.find((l) => l.categoryId)?.categoryId ?? f.categoryId, splits: [] }));
+  }
 
   const accountPicker = (value: string | null, onChange: (id: string | null) => void, emptyLabel: string) => (
     <Host matchContents>
@@ -151,7 +174,9 @@ function Editor({ row, categories, accounts }: { row: TransactionDetail; categor
               maxLength={200}
             />
           </FormField>
-          <FormField label="Amount" note={amountLock}>
+          <FormField
+            label={hasOwed ? 'You paid' : 'Amount'}
+            note={amountLock ?? (isSplit ? 'The split lines add up to this.' : hasOwed ? 'All of it, the shares owed to you included.' : null)}>
             <TextInput
               // A transfer's sign is which way it went, which From and To already say.
               value={row.type === 'transfer' ? amountInputText(Math.abs(row.amountCents)) : form.amount}
@@ -213,19 +238,26 @@ function Editor({ row, categories, accounts }: { row: TransactionDetail; categor
           </Section>
         ) : (
           <Section>
-            <FormField label="Category" note={categoryLock}>
-              {categoryLock ? (
-                <Text style={[formStyles.value, { color: theme.textSecondary }]}>{row.categoryName}</Text>
-              ) : (
-                <Host matchContents>
-                  <Picker selectedValue={form.categoryId} onValueChange={(v) => set('categoryId', String(v))}>
-                    {categoryOptions.map((c) => (
-                      <Picker.Item key={c.id} label={c.name} value={c.id} />
-                    ))}
-                  </Picker>
-                </Host>
-              )}
-            </FormField>
+            {isSplit ? null : (
+              <FormField label="Category" note={categoryLock}>
+                {categoryLock ? (
+                  <Text style={[formStyles.value, { color: theme.textSecondary }]}>{row.categoryName}</Text>
+                ) : (
+                  <Host matchContents>
+                    <Picker selectedValue={form.categoryId} onValueChange={(v) => set('categoryId', String(v))}>
+                      {categoryOptions.map((c) => (
+                        <Picker.Item key={c.id} label={c.name} value={c.id} />
+                      ))}
+                    </Picker>
+                  </Host>
+                )}
+              </FormField>
+            )}
+            {sharing && !isSplit && !hasOwed ? (
+              <Pressable onPress={startSplit} accessibilityRole="button" hitSlop={8}>
+                <Text style={[formStyles.value, styles.link, { color: theme.tint }]}>Split across categories</Text>
+              </Pressable>
+            ) : null}
             <FormField label="Account" note={accountLock}>
               {accountLock ? (
                 <Text style={[formStyles.value, { color: theme.textSecondary }]}>{row.accountName ?? 'None'}</Text>
@@ -235,6 +267,20 @@ function Editor({ row, categories, accounts }: { row: TransactionDetail; categor
             </FormField>
           </Section>
         )}
+
+        {isSplit ? (
+          <SplitSection
+            lines={form.splits}
+            onChange={(lines) => set('splits', lines)}
+            categories={categories.filter((c) => c.kind === 'expense')}
+            totalCents={paidCents}
+            currency={currency}
+            onRemoveSplit={removeSplit}
+          />
+        ) : null}
+        {sharing && !isSplit ? (
+          <OwedSection lines={form.owed} onChange={(lines) => set('owed', lines)} paidCents={paidCents} currency={currency} />
+        ) : null}
 
         <Section footer="Separate tags with commas.">
           <FormField label="Tags">
@@ -276,12 +322,13 @@ function Editor({ row, categories, accounts }: { row: TransactionDetail; categor
   );
 }
 
-/** What the phone shows but does not change: split lines, amounts owed back, credits, the bank match. */
+/** What the phone shows but does not change: credits, the bank match, and on an older server splits and shares. */
 function Details({ row, currency }: { row: TransactionDetail; currency: string }) {
   const theme = useTheme();
+  const sharing = canEditSplitsAndShares(row);
   const lines = [
-    row.splits.length > 0 ? `Split across ${row.splits.length} categories` : null,
-    row.owedToYouCents > 0 ? `${formatCents(row.owedToYouCents, currency)} owed back to you` : null,
+    row.splits.length > 0 && !sharing ? `Split across ${row.splits.length} categories` : null,
+    row.owedToYouCents > 0 && !sharing ? `${formatCents(row.owedToYouCents, currency)} owed back to you` : null,
     row.creditCents ? `${formatCents(row.creditCents, currency)} in credits taken off` : null,
     row.verified ? 'Matched to a bank transaction' : null,
     row.transferPeerId ? 'Paired with the other side of the transfer in your log' : null,
@@ -302,3 +349,6 @@ function Details({ row, currency }: { row: TransactionDetail; currency: string }
   );
 }
 
+const styles = StyleSheet.create({
+  link: { fontWeight: '600' },
+});
