@@ -44,7 +44,7 @@ export function signedCents(cents: number, currency: string): string {
 
 /** The website's line above the register. */
 export function registerNote(page: Pick<AccountPage, 'balance' | 'liability'>): string {
-  if (!page.balance) return 'Add a balance on the website to see the running balance beside each entry.';
+  if (!page.balance) return 'Add a balance to see the running balance beside each entry.';
   return `Running ${page.liability ? 'amount owed' : 'balance'}, worked back from the ${formatDay(page.balance.date)} balance. Entries after it are marked with *: no balance has confirmed them yet.`;
 }
 

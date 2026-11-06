@@ -1,9 +1,11 @@
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
+import { loadManualBalances } from "@/lib/api-v1/balances";
 import { loadAccountPage, REGISTER_MONTH_OPTIONS, type AccountPage } from "@/lib/account-page-data";
 import { cardUtilization, dueDayLabel, HIGH_UTILIZATION_PCT } from "@/lib/credit-cards";
 import { ymdFromDateUtc } from "@/lib/date-only";
 import type { BalanceReadingSource, NetWorth } from "@/lib/net-worth";
 import { loadNetWorth } from "@/lib/net-worth-data";
+import { prisma } from "@/lib/prisma";
 
 /**
  * Accounts as the phone app shows them: `/api/v1/net-worth` lists every open account with its
@@ -120,7 +122,10 @@ export function serializeAccountPage(page: AccountPage) {
   };
 }
 
-export type AppAccountPage = ReturnType<typeof serializeAccountPage>;
+export type AppAccountPage = ReturnType<typeof serializeAccountPage> & {
+  /** Balances the person typed in, newest first: the ones they can delete. */
+  manualBalances: Awaited<ReturnType<typeof loadManualBalances>>;
+};
 
 /** `?months=` as the website's register takes it: 3 or 12, otherwise 3. */
 export function registerMonths(value: string | null): number {
@@ -130,5 +135,6 @@ export function registerMonths(value: string | null): number {
 
 export async function loadAppAccountPage(user: User, accountId: string, months: number): Promise<AppAccountPage | null> {
   const page = await loadAccountPage(user, accountId, months);
-  return page ? serializeAccountPage(page) : null;
+  if (!page) return null;
+  return { ...serializeAccountPage(page), manualBalances: await loadManualBalances(prisma, user.id, accountId) };
 }

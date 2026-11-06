@@ -1,8 +1,9 @@
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { useApiMutation } from '@/api/mutations';
 import { errorText, useApiQuery } from '@/api/query';
 import type { AccountPage, RegisterRow } from '@/api/types';
 import { LoadState } from '@/components/load-state';
@@ -12,6 +13,7 @@ import { Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { accountPath, balanceSource, cardTerms, REGISTER_MONTHS, registerNote, signedCents } from '@/utils/accounts';
+import { balancesPath, canRecordBalance } from '@/utils/balances';
 import { formatDay } from '@/utils/dates';
 import { formatCents } from '@/utils/money';
 
@@ -66,6 +68,7 @@ export function Account({ id }: { id: string }) {
                 ))
               )}
             </Section>
+            {data.manualBalances && data.manualBalances.length > 0 ? <ManualBalances data={data} /> : null}
             {data.rules.length > 0 ? <Rules data={data} /> : null}
             {data.goals.length > 0 ? (
               <Section title="Savings goals">
@@ -94,16 +97,39 @@ export function Account({ id }: { id: string }) {
 
 function Summary({ data }: { data: AccountPage }) {
   const theme = useTheme();
+  const router = useRouter();
   const { account, liability, balance } = data;
   const money = (cents: number) => formatCents(cents, account.currency);
+  const canRecord = canRecordBalance(data);
+  const recordBalance = () =>
+    router.push({
+      pathname: '/balance',
+      params: {
+        accountId: account.id,
+        name: account.name,
+        currency: account.currency,
+        liability: liability ? '1' : '0',
+        linked: data.bank ? '1' : '0',
+        cents: balance ? String(balance.cents) : '',
+      },
+    });
   return (
     <Section title={`${account.typeLabel} · ${account.currency}${account.archived ? ' · Archived' : ''}`}>
       <View style={styles.stack}>
         <Text style={[styles.small, { color: theme.textSecondary }]}>{liability ? 'Owed now' : 'Balance now'}</Text>
         <Text style={[styles.hero, { color: theme.text }]}>{balance ? money(balance.cents) : 'No balance yet'}</Text>
         <Text style={[styles.small, { color: theme.textSecondary }]}>
-          {balance ? balanceSource(balance) : 'Add one on the website, under Settings → Accounts.'}
+          {balance
+            ? balanceSource(balance)
+            : canRecord
+              ? 'Type in what it holds now and then, for net worth and the running balance.'
+              : 'Add one on the website, under Settings → Accounts.'}
         </Text>
+        {canRecord ? (
+          <Pressable onPress={recordBalance} accessibilityRole="button" hitSlop={8}>
+            <Text style={[styles.link, { color: theme.tint }]}>{balance ? 'Update balance' : 'Add a balance'}</Text>
+          </Pressable>
+        ) : null}
       </View>
       <View style={styles.line}>
         <Text style={[styles.label, { color: theme.textSecondary }]}>
@@ -183,6 +209,47 @@ function RegisterLine({ row, currency, onPress }: { row: RegisterRow; currency: 
         {balance ? <Text style={[styles.small, { color: theme.textSecondary }]}>{balance}</Text> : null}
       </View>
     </Pressable>
+  );
+}
+
+/** The balances the person typed in, each of which can be deleted, as on the website's account drawer. */
+function ManualBalances({ data }: { data: AccountPage }) {
+  const theme = useTheme();
+  const { account } = data;
+  const remove = useApiMutation<string, { ok: true }>('DELETE', (balanceId) => balancesPath(account.id, balanceId));
+
+  function confirmDelete(entry: NonNullable<AccountPage['manualBalances']>[number]) {
+    const amount = formatCents(entry.cents, account.currency);
+    Alert.alert('Delete this balance?', `The ${amount} you entered for ${formatDay(entry.date)} is removed, and net worth no longer counts it.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete Balance',
+        style: 'destructive',
+        onPress: () =>
+          remove.mutate(entry.id, {
+            onError: (err) => Alert.alert('The balance is still there', err instanceof Error ? err.message : 'Try again.'),
+          }),
+      },
+    ]);
+  }
+
+  return (
+    <Section title="Balances you entered">
+      {data.manualBalances?.map((entry) => (
+        <View key={entry.id} style={styles.line}>
+          <Text style={[styles.label, { color: theme.text }]}>{formatDay(entry.date)}</Text>
+          <Text style={[styles.amount, { color: theme.text }]}>{formatCents(entry.cents, account.currency)}</Text>
+          <Pressable
+            onPress={() => confirmDelete(entry)}
+            disabled={remove.isPending}
+            accessibilityRole="button"
+            accessibilityLabel={`Delete the balance from ${formatDay(entry.date)}`}
+            hitSlop={8}>
+            <Text style={[styles.link, { color: theme.danger }]}>Delete</Text>
+          </Pressable>
+        </View>
+      ))}
+    </Section>
   );
 }
 

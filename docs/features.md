@@ -587,8 +587,15 @@ build).
   and where it came from, money in and out this month, a card's limit, use and due day, the bank and
   what it needs, the register over the last 3 or 12 months with its running balance (entries after the
   latest balance marked *; an entry opens for editing), recurring rules and savings goals.
-  `GET /api/v1/net-worth`, `GET /api/v1/accounts/:id?months=` (`src/lib/api-v1/accounts.ts`, the
-  website's `loadNetWorth` and `loadAccountPage`). `src/screens/accounts/`, `src/utils/accounts.ts`
+  **Add a balance** / **Update balance** on an open account types in what it holds (or for a card or
+  loan what is owed) as of a day no later than today, as Settings → Accounts does; a second entry
+  that day replaces the first. The ones typed in are listed under "Balances you entered", each with
+  Delete; a bank's own readings can't be deleted.
+  `GET /api/v1/net-worth`, `GET /api/v1/accounts/:id?months=` (now with `manualBalances`),
+  `POST /api/v1/accounts/:id/balances`, `DELETE /api/v1/accounts/:id/balances/:balanceId`
+  (`src/lib/api-v1/accounts.ts`, `balances.ts`, the website's `loadNetWorth`, `loadAccountPage` and
+  `upsertBalanceSnapshot`). `src/screens/accounts/`, `src/app/balance.tsx`, `src/utils/accounts.ts`,
+  `src/utils/balances.ts`
 - Banks (Settings → Bank connections, and Review's "Your banks"): each bank connection with what
   it needs, when it was last checked, and its accounts, each with a picker for the app account its
   transactions go to (same currency only, or Not synced). On the home server, once the server sets
