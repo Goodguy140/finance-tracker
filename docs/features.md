@@ -484,6 +484,14 @@ build).
   waiting for review (open the Review tab and Transactions' Needs review), budgets at 80% or more with the month's total,
   and bills and pay due in the next 7 days, overdue ones flagged. One call, `GET /api/v1/summary`
   (`src/lib/api-v1/summary.ts`). `src/screens/home/`
+- Edit Home (Edit, top left of Home; a sheet): the cards on Home in order, each with a red minus to
+  take it off and a handle to drag it up or down (a native SwiftUI list in edit mode), and More
+  cards with a green plus to add one at the bottom; Reset Home goes back to the first layout.
+  Besides Home's own cards (spending charts included), two are off until added: Recent
+  transactions (the newest 5, each opening its editor) and Insights (the most pressing 3, as the
+  dashboard card picks them). Kept on the phone per sign-in; a card added in a later version
+  appears where it belongs. Cards taken off are not loaded. `src/screens/home/edit.tsx`,
+  `src/screens/home/more-cards.tsx`, `src/utils/home-layout.ts`, `src/state/home-layout.ts`
 - Home's spending charts, the dashboard's two cards for the month in one card that swipes between
   them (or pick one from the pills under it), as the website's phone carousel does: Spending by
   category (a Swift Charts donut with the dashboard's colours, groups added up and the tail rolled

@@ -1,6 +1,7 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { errorText, useApiQuery } from '@/api/query';
@@ -14,36 +15,85 @@ import { Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { useSession } from '@/session/session-provider';
+import { useHomeLayout } from '@/state/home-layout';
 import { useSpendingOptions } from '@/state/spending-options';
 import { NET_WORTH_PATH } from '@/utils/accounts';
 import { formatDay, relativeDay } from '@/utils/dates';
-import { bandTone, SCORE_PATH, scoreChangeText } from '@/utils/insights';
+import type { HomeSectionId } from '@/utils/home-layout';
+import { bandTone, INSIGHTS_PATH, SCORE_PATH, scoreChangeText } from '@/utils/insights';
 import { formatCents, formatPeriodMonth } from '@/utils/money';
 import { safeToSpendBreakdown, safeToSpendLine } from '@/utils/safe-to-spend';
 import { spendingPath } from '@/utils/spending';
 import { updateWidgets } from '@/widgets/update';
 
+import { InsightsPreview, RECENT_PATH, RecentTransactions } from './more-cards';
 import { SpendingCharts } from './spending';
+
+/** What the cards that load on their own ask for, so a pull down refreshes the ones on Home. */
+const CARD_PATHS: Partial<Record<HomeSectionId, string>> = {
+  score: SCORE_PATH,
+  'net-worth': NET_WORTH_PATH,
+  recent: RECENT_PATH,
+  insights: INSIGHTS_PATH,
+};
 
 /**
  * The month at a glance: safe to spend, what is waiting, spending so far and by category, budgets to
- * watch, the week's bills and pay.
+ * watch, the week's bills and pay, and whatever else the person put on Home. Edit (top left) opens
+ * Edit Home, where cards are moved, taken off and added.
  */
 export function Home() {
   const theme = useTheme();
   const router = useRouter();
+  const client = useQueryClient();
   const { session } = useSession();
+  const [layout] = useHomeLayout(session?.deviceId ?? null);
   const summary = useApiQuery<Summary>('/api/v1/summary');
   // The charts load on their own, so Home never waits for them; a server without the route leaves them out.
+  const showCharts = layout.includes('spending');
   const [spendingOptions, setSpendingOptions] = useSpendingOptions(session?.deviceId ?? null);
-  const spending = useApiQuery<Spending>(spendingPath(spendingOptions), { keepPrevious: true });
-  const { refreshing, onRefresh } = usePullToRefresh(() => Promise.all([summary.refetch(), spending.refetch()]));
+  const spending = useApiQuery<Spending>(showCharts ? spendingPath(spendingOptions) : null, { keepPrevious: true });
+  const { refreshing, onRefresh } = usePullToRefresh(() =>
+    Promise.all([
+      summary.refetch(),
+      showCharts ? spending.refetch() : null,
+      ...layout.map((id) => {
+        const path = CARD_PATHS[id];
+        return path ? client.refetchQueries({ queryKey: ['api', path] }) : null;
+      }),
+    ]),
+  );
   const data = summary.data;
   const charts = spending.data;
   // The home screen widgets show what Home last loaded.
   useEffect(() => {
     if (data) updateWidgets(data);
   }, [data]);
+
+  function card(id: HomeSectionId, summaryData: Summary): ReactNode {
+    switch (id) {
+      case 'safe-to-spend':
+        return <SafeToSpendCard data={summaryData} />;
+      case 'waiting':
+        return <Waiting data={summaryData} />;
+      case 'spending':
+        return charts ? (
+          <SpendingCharts data={charts} options={spendingOptions} onOptions={setSpendingOptions} updating={spending.isPlaceholderData} />
+        ) : null;
+      case 'budgets':
+        return <BudgetsCard data={summaryData} />;
+      case 'coming-up':
+        return <ComingUp data={summaryData} />;
+      case 'score':
+        return <ScoreRow />;
+      case 'net-worth':
+        return <NetWorthRow />;
+      case 'recent':
+        return <RecentTransactions currency={summaryData.currency} today={summaryData.today} />;
+      case 'insights':
+        return <InsightsPreview />;
+    }
+  }
 
   return (
     <>
@@ -54,27 +104,23 @@ export function Home() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
         <OutboxBanner />
         <LoadState loading={summary.isPending} error={summary.error && !data ? errorText(summary.error) : null} />
-        {data ? (
-          <>
-            <SafeToSpendCard data={data} />
-            <Waiting data={data} />
-            {charts ? (
-              <SpendingCharts
-                data={charts}
-                options={spendingOptions}
-                onOptions={setSpendingOptions}
-                updating={spending.isPlaceholderData}
-              />
-            ) : null}
-            <BudgetsCard data={data} />
-            <ComingUp data={data} />
-            <ScoreRow />
-            <NetWorthRow />
-          </>
+        {data ? layout.map((id) => <Fragment key={id}>{card(id, data)}</Fragment>) : null}
+        {data && layout.length === 0 ? (
+          <Section>
+            <Text style={[styles.muted, { color: theme.textSecondary }]}>Every card is off Home.</Text>
+            <Pressable onPress={() => router.push('/home-edit')} accessibilityRole="button" hitSlop={8}>
+              <Text style={[styles.link, { color: theme.tint }]}>Add cards</Text>
+            </Pressable>
+          </Section>
         ) : null}
       </ScrollView>
       <UndoBar />
       <Stack.Title large>Home</Stack.Title>
+      <Stack.Toolbar placement="left">
+        <Stack.Toolbar.Button accessibilityHint="Move, add or take off the cards on Home" onPress={() => router.push('/home-edit')}>
+          Edit
+        </Stack.Toolbar.Button>
+      </Stack.Toolbar>
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button icon="plus" accessibilityLabel="Add a transaction" onPress={() => router.push('/add')} />
       </Stack.Toolbar>

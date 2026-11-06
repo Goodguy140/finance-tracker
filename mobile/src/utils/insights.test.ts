@@ -2,7 +2,16 @@ import { describe, expect, it } from 'vitest';
 
 import type { FinancialScore, Insight } from '@/api/types';
 
-import { bandTone, groupInsights, hideOptions, hiddenText, potentialSavingCents, scoreChangeText, websiteUrl } from './insights';
+import {
+  bandTone,
+  groupInsights,
+  hideOptions,
+  hiddenText,
+  potentialSavingCents,
+  pressingInsights,
+  scoreChangeText,
+  websiteUrl,
+} from './insights';
 
 function insight(overrides: Partial<Insight> = {}): Insight {
   return {
@@ -105,5 +114,19 @@ describe('bandTone', () => {
       'danger',
       'textSecondary',
     ]);
+  });
+});
+
+describe('pressingInsights', () => {
+  it('puts the most severe first across sections, then the bigger amount a year, and keeps a few', () => {
+    const list = [
+      insight({ key: 'a', section: 'good', severity: 'low' }),
+      insight({ key: 'b', section: 'saving', severity: 'medium', annualCents: 1200 }),
+      insight({ key: 'c', section: 'gap', severity: 'high' }),
+      insight({ key: 'd', section: 'habit', severity: 'medium', annualCents: 9000 }),
+    ];
+    expect(pressingInsights(list).map((i) => i.key)).toEqual(['c', 'd', 'b']);
+    expect(pressingInsights(list, 5).map((i) => i.key)).toEqual(['c', 'd', 'b', 'a']);
+    expect(list.map((i) => i.key)).toEqual(['a', 'b', 'c', 'd']);
   });
 });
