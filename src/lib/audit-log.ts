@@ -48,6 +48,7 @@ export const AUDIT_ACTIONS = {
   api_recurring_skipped: "api_recurring_skipped",
   api_balance_recorded: "api_balance_recorded",
   api_balance_deleted: "api_balance_deleted",
+  api_plan_recorded: "api_plan_recorded",
   passkey_registered: "passkey_registered",
   passkey_renamed: "passkey_renamed",
   passkey_removed: "passkey_removed",

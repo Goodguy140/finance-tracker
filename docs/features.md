@@ -85,6 +85,8 @@ route settles it (`settlePlannedTransactions`, run before plans are read): same 
 recorded after the plan, dated a week before to two weeks after it, and the same amount, or the
 same category within 10%. Deleting that entry reopens the plan. A plan past its date asks "Did this
 happen?": **Yes, add it** records it on its date; **No, remove it** drops it. In JSON backups.
+Recording is `recordPlannedTransaction` in `src/lib/planned-transactions-record.ts`, shared with
+the phone.
 
 Cards (`src/components/dashboard-cards/`), with their gear settings:
 
@@ -580,7 +582,12 @@ build).
   within 15 days, as the website does without a pick. Rules are added and changed on the website.
   `GET /api/v1/recurring`, `POST /api/v1/recurring/:id/post` and `/skip` (`src/lib/api-v1/recurring.ts`,
   the website's `postRecurringOccurrence` and `skipRecurringOccurrence`). `src/screens/bills/`,
-  `src/utils/recurring.ts`
+  `src/utils/recurring.ts`. Planned one-offs sit on the same screen: a plan past its date first,
+  under "Did this happen?" (tap: Yes, add it to the log; No, remove the plan; or change it), the
+  rest under One-off plans after the bills (tap to change or remove). **+** adds one in a sheet
+  with the website's fields (Expense or Income, name, amount, day, account, category, note).
+  `GET`/`POST /api/v1/planned`, `PATCH`/`DELETE /api/v1/planned/:id`, `POST /api/v1/planned/:id/record`
+  (`src/lib/api-v1/planned.ts`). `src/app/plan.tsx`, `src/screens/plans/`, `src/utils/plans.ts`
 - Insights (Home's "See insights and where to improve", under the score): the financial score with
   its four pillars, where to improve and how it is worked out, then every insight under the
   website's sections, each with its transactions, its website page when it has one (tracking a

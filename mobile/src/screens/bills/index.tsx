@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -5,7 +6,7 @@ import { RefreshControl, ScrollView } from 'react-native-gesture-handler';
 
 import { useApiMutation } from '@/api/mutations';
 import { errorText, useApiQuery } from '@/api/query';
-import type { RecurringList, RecurringRule } from '@/api/types';
+import type { Plan, PlanList, RecurringList, RecurringRule } from '@/api/types';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
 import { SwipeListProvider, SwipeRow, useSwipeList } from '@/components/swipe-row';
@@ -14,6 +15,7 @@ import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDay, relativeDay } from '@/utils/dates';
 import { formatCents } from '@/utils/money';
+import { groupPlans, planPath, PLANS_PATH } from '@/utils/plans';
 import {
   groupRecurring,
   postRequest,
@@ -33,17 +35,59 @@ const DONE_TEXT: Record<Done['kind'], (name: string) => string> = {
 
 /**
  * Every recurring bill, pay and transfer that is on, soonest first, as the website's Recurring card
- * offers them: post the occurrence that is waiting, skip it, or say it was already logged.
+ * offers them: post the occurrence that is waiting, skip it, or say it was already logged. Below
+ * them, the one-off plans from the website's Plan tab, and first of all any whose day has passed.
  */
 export function Bills() {
   const theme = useTheme();
+  const router = useRouter();
   const query = useApiQuery<RecurringList>(RECURRING_PATH);
-  const { refreshing, onRefresh } = usePullToRefresh(query.refetch);
+  // An older server answers 404: the plans and the + stay away.
+  const plans = useApiQuery<PlanList>(PLANS_PATH);
+  const { refreshing, onRefresh } = usePullToRefresh(async () => {
+    await Promise.all([query.refetch(), plans.refetch()]);
+  });
   const swipe = useSwipeList();
   const act = useApiMutation<RecurringRequest, unknown>('POST', (r) => r.path, (r) => r.body);
+  const recordPlan = useApiMutation<Plan, { transactionId: string }>('POST', (p) => planPath(p.id, 'record'), () => ({}));
+  const removePlan = useApiMutation<Plan, unknown>('DELETE', (p) => planPath(p.id));
   const [working, setWorking] = useState<ReadonlySet<string>>(new Set());
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  async function settle(plan: Plan, happened: boolean) {
+    setError(null);
+    setNote(null);
+    setWorking((ids) => new Set(ids).add(plan.id));
+    try {
+      if (happened) await recordPlan.mutateAsync(plan);
+      else await removePlan.mutateAsync(plan);
+      setNote(happened ? `Added ${plan.name} to your log.` : `Removed the plan for ${plan.name}.`);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setWorking((ids) => {
+        const next = new Set(ids);
+        next.delete(plan.id);
+        return next;
+      });
+    }
+  }
+
+  function editPlan(plan: Plan) {
+    router.push({ pathname: '/plan', params: { id: plan.id } });
+  }
+
+  /** The website's "Did this happen?": add it to the log as planned, or drop it. */
+  function askPlan(plan: Plan) {
+    const amount = formatCents(plan.amountCents, plan.currency);
+    Alert.alert(`Did ${plan.name} happen?`, `${amount}, planned for ${formatDay(plan.date)} on ${plan.accountName}.`, [
+      { text: `Yes, add ${amount} to my log`, onPress: () => void settle(plan, true) },
+      { text: 'No, remove the plan', style: 'destructive', onPress: () => void settle(plan, false) },
+      { text: 'Change the plan', onPress: () => editPlan(plan) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }
 
   async function run(rule: RecurringRule, kind: Done['kind']) {
     setError(null);
@@ -75,6 +119,30 @@ export function Bills() {
 
   const data = query.data;
   const groups = data ? groupRecurring(data.rules, data.today) : [];
+  const planGroups = plans.data ? groupPlans(plans.data.plans) : [];
+  const pastDue = planGroups.find((g) => g.plans[0]?.pastDue);
+  const upcoming = planGroups.find((g) => !g.plans[0]?.pastDue);
+  const planSection = (group: { title: string; plans: Plan[] } | undefined) =>
+    group ? (
+      <View style={styles.group}>
+        <Text style={[styles.groupTitle, { color: theme.textSecondary }]} accessibilityRole="header">
+          {group.title}
+        </Text>
+        <View>
+          {group.plans.map((plan, index) => (
+            <PlanRow
+              key={plan.id}
+              plan={plan}
+              today={plans.data?.today ?? plan.date}
+              first={index === 0}
+              last={index === group.plans.length - 1}
+              working={working.has(plan.id)}
+              onPress={() => (plan.pastDue ? askPlan(plan) : editPlan(plan))}
+            />
+          ))}
+        </View>
+      </View>
+    ) : null;
 
   return (
     <>
@@ -96,6 +164,7 @@ export function Bills() {
             </Text>
           ) : null}
           <LoadState loading={query.isPending} error={query.error ? errorText(query.error) : null} />
+          {planSection(pastDue)}
           {data && groups.length === 0 ? (
             <Section>
               <Text style={[styles.muted, { color: theme.textSecondary }]}>
@@ -133,9 +202,21 @@ export function Bills() {
               added and changed on the website.
             </Text>
           ) : null}
+          {planSection(upcoming)}
+          {plans.data ? (
+            <Text style={[styles.footer, { color: theme.textSecondary }]}>
+              A plan is a one-off you expect, like a tax refund or a car repair. It counts in Safe to spend and your
+              forecasts until an entry like it lands in your log. Tap + to add one.
+            </Text>
+          ) : null}
         </SwipeListProvider>
       </ScrollView>
       <Stack.Title>Bills and pay</Stack.Title>
+      {plans.data ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button icon="plus" accessibilityLabel="Add a plan" onPress={() => router.push('/plan')} />
+        </Stack.Toolbar>
+      ) : null}
     </>
   );
 }
@@ -210,6 +291,55 @@ function BillRow(props: {
         </View>
       </Pressable>
     </SwipeRow>
+  );
+}
+
+function PlanRow(props: { plan: Plan; today: string; first: boolean; last: boolean; working: boolean; onPress: () => void }) {
+  const { plan, today, first, last, working } = props;
+  const theme = useTheme();
+  const income = plan.type === 'income';
+  const amount = `${income ? '+' : ''}${formatCents(plan.amountCents, plan.currency)}`;
+  const when = relativeDay(plan.date, today);
+  const corners = {
+    borderTopLeftRadius: first ? Radius : 0,
+    borderTopRightRadius: first ? Radius : 0,
+    borderBottomLeftRadius: last ? Radius : 0,
+    borderBottomRightRadius: last ? Radius : 0,
+  };
+  const subtitle = [plan.categoryName, plan.accountName].filter(Boolean).join(' · ');
+  return (
+    <Pressable
+      onPress={props.onPress}
+      disabled={working}
+      accessibilityRole="button"
+      accessibilityLabel={[plan.name, amount, when, subtitle].join(', ')}
+      accessibilityHint={plan.pastDue ? 'Asks whether it happened' : 'Opens the plan'}
+      accessibilityState={{ busy: working }}
+      style={({ pressed }) => [
+        styles.row,
+        corners,
+        {
+          backgroundColor: pressed ? theme.track : theme.backgroundElement,
+          borderColor: theme.border,
+          borderTopWidth: first ? StyleSheet.hairlineWidth : 0,
+          opacity: working ? 0.5 : 1,
+        },
+      ]}>
+      <View style={styles.rowText}>
+        <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
+          {plan.name}
+        </Text>
+        <Text style={[styles.subtitle, { color: theme.textSecondary }]} numberOfLines={1}>
+          {subtitle}
+        </Text>
+      </View>
+      <View style={styles.rowEnd}>
+        <Text style={[styles.amount, { color: income ? theme.positive : theme.text }]}>{amount}</Text>
+        <Text style={[styles.subtitle, { color: plan.pastDue ? theme.warning : theme.textSecondary }]} numberOfLines={1}>
+          {when}
+        </Text>
+      </View>
+    </Pressable>
   );
 }
 

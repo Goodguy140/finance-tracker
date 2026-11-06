@@ -423,3 +423,23 @@ export type Spending = {
     savings: { cents: number; accounts: number } | null;
   };
 };
+
+/** A one-off plan: a car repair in March, a tax refund in April. */
+export type Plan = {
+  id: string;
+  type: 'expense' | 'income';
+  name: string;
+  amountCents: number;
+  currency: string;
+  date: string;
+  accountId: string;
+  accountName: string;
+  categoryId: string;
+  categoryName: string;
+  note: string | null;
+  /** Its date has passed: the website asks "Did this happen?". */
+  pastDue: boolean;
+};
+
+/** `GET /api/v1/planned`. Added after build 17; an older server answers 404. */
+export type PlanList = { today: string; plans: Plan[] };
