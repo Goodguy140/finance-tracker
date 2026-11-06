@@ -319,7 +319,7 @@ function NetWorthRow() {
           {formatCents(worth.netCents, worth.currency)}
         </Text>
       ) : (
-        <Text style={[styles.muted, { color: theme.textSecondary }]}>No account balances yet. Add them on the website.</Text>
+        <Text style={[styles.muted, { color: theme.textSecondary }]}>No account balances yet. Open an account to add one.</Text>
       )}
       <Pressable onPress={() => router.push('/accounts')} accessibilityRole="button" hitSlop={8}>
         <Text style={[styles.link, { color: theme.tint }]}>See accounts and their registers</Text>

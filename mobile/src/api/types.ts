@@ -345,6 +345,11 @@ export type AccountPage = {
     transfer: { otherName: string; into: boolean } | null;
   }[];
   goals: { id: string; name: string; targetCents: number; currency: string; percent: number }[];
+  /**
+   * Balances the person typed in, newest first, which the phone can delete. Added after build 17;
+   * an older server leaves it out and cannot take a balance from the phone either.
+   */
+  manualBalances?: { id: string; date: string; cents: number }[];
 };
 
 export type RegisterRow = AccountPage['register'][number];
