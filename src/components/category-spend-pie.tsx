@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import type { TooltipProps } from "recharts";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { formatCurrency } from "@/lib/money";
-import { NEUTRAL_CATEGORY_COLOR } from "@/lib/category-colors";
+import { collapseToMaxSlices } from "@/lib/category-pie";
 
 export type CategorySpendSlice = {
   name: string;
@@ -28,24 +28,6 @@ function renderTooltip({ active, payload }: TooltipProps<number, string>) {
   );
 }
 
-/**
- * Keep the biggest categories and roll the tail into one wedge. A pie with twenty slivers
- * says less than one with eight and a remainder, and the card can be as narrow as a phone.
- */
-function collapseToMaxSlices(
-  slices: CategorySpendSlice[],
-  maxSlices: number | undefined,
-): CategorySpendSlice[] {
-  const pinned = slices.filter((slice) => slice.pinned);
-  const categories = slices.filter((slice) => !slice.pinned);
-  if (!maxSlices || categories.length <= maxSlices) return slices;
-  const ranked = [...categories].sort((a, b) => Math.abs(b.cents) - Math.abs(a.cents));
-  const kept = ranked.slice(0, maxSlices - 1);
-  const restCents = ranked.slice(maxSlices - 1).reduce((sum, slice) => sum + slice.cents, 0);
-  const collapsed = restCents === 0 ? kept : [...kept, { name: "Other categories", cents: restCents, color: NEUTRAL_CATEGORY_COLOR }];
-  return [...collapsed, ...pinned];
-}
-
 export function CategorySpendPieChart({
   data,
   height = 280,
@@ -61,7 +43,7 @@ export function CategorySpendPieChart({
     name: d.name,
     cents: d.cents,
     color: d.color,
-    href: d.href,
+    href: "href" in d ? d.href : undefined,
     /** Pie sector size; credits use absolute value so the chart stays readable. */
     value: Math.abs(d.cents),
   }));

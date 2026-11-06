@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { errorText, useApiQuery } from '@/api/query';
-import type { FinancialScore, NetWorth, Summary } from '@/api/types';
+import type { FinancialScore, NetWorth, Spending, Summary } from '@/api/types';
 import { BudgetLine } from '@/components/budget-line';
 import { LoadState } from '@/components/load-state';
 import { OutboxBanner } from '@/components/outbox-banner';
@@ -13,20 +13,33 @@ import { UndoBar } from '@/components/undo-bar';
 import { Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
+import { useSession } from '@/session/session-provider';
+import { useSpendingOptions } from '@/state/spending-options';
 import { NET_WORTH_PATH } from '@/utils/accounts';
 import { formatDay, relativeDay } from '@/utils/dates';
 import { bandTone, SCORE_PATH, scoreChangeText } from '@/utils/insights';
 import { formatCents, formatPeriodMonth } from '@/utils/money';
 import { safeToSpendBreakdown, safeToSpendLine } from '@/utils/safe-to-spend';
+import { spendingPath } from '@/utils/spending';
 import { updateWidgets } from '@/widgets/update';
 
-/** The month at a glance: safe to spend, budgets to watch, the week's bills and pay, and what is waiting. */
+import { CategorySpendingCard, CumulativeSpendingCard } from './spending';
+
+/**
+ * The month at a glance: safe to spend, what is waiting, spending so far and by category, budgets to
+ * watch, the week's bills and pay.
+ */
 export function Home() {
   const theme = useTheme();
   const router = useRouter();
+  const { session } = useSession();
   const summary = useApiQuery<Summary>('/api/v1/summary');
-  const { refreshing, onRefresh } = usePullToRefresh(summary.refetch);
+  // The charts load on their own, so Home never waits for them; a server without the route leaves them out.
+  const [spendingOptions, setSpendingOptions] = useSpendingOptions(session?.deviceId ?? null);
+  const spending = useApiQuery<Spending>(spendingPath(spendingOptions), { keepPrevious: true });
+  const { refreshing, onRefresh } = usePullToRefresh(() => Promise.all([summary.refetch(), spending.refetch()]));
   const data = summary.data;
+  const charts = spending.data;
   // The home screen widgets show what Home last loaded.
   useEffect(() => {
     if (data) updateWidgets(data);
@@ -45,7 +58,23 @@ export function Home() {
           <>
             <SafeToSpendCard data={data} />
             <Waiting data={data} />
+            {charts ? (
+              <CumulativeSpendingCard
+                data={charts}
+                compareWith={spendingOptions.compareWith ?? charts.compareWith}
+                onCompare={(compareWith) => setSpendingOptions({ compareWith })}
+                updating={spending.isPlaceholderData}
+              />
+            ) : null}
             <BudgetsCard data={data} />
+            {charts ? (
+              <CategorySpendingCard
+                data={charts}
+                showSavings={spendingOptions.showSavings ?? charts.showSavings}
+                onShowSavings={(showSavings) => setSpendingOptions({ showSavings })}
+                updating={spending.isPlaceholderData}
+              />
+            ) : null}
             <ComingUp data={data} />
             <ScoreRow />
             <NetWorthRow />

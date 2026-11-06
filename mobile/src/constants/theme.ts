@@ -12,6 +12,9 @@ export const Colors = {
     warning: '#b45309',
     positive: '#047857',
     track: '#e2e8f0',
+    // The spending chart's other lines, as the website draws them: an earlier month amber, the expected pace indigo.
+    chartComparison: '#d97706',
+    chartExpected: '#6366f1',
   },
   dark: {
     text: '#f1f5f9',
@@ -25,6 +28,8 @@ export const Colors = {
     warning: '#fbbf24',
     positive: '#34d399',
     track: '#1e293b',
+    chartComparison: '#fbbf24',
+    chartExpected: '#818cf8',
   },
 } as const;
 

@@ -142,7 +142,8 @@ otherwise). Audit: `mfa_verified` (`method: "passkey-signin"`, `via: "app"`) and
   first try whether or not the verifier matches.
 - A device token is 256 random bits, stored as a SHA-256 hash in `AppDevice`, and reaches every
   `/api/v1` route plus `app`, which personal access tokens cannot be given: `GET /api/v1/me`,
-  `GET /api/v1/summary`, `GET /api/v1/quick-add` (a preview, writes nothing), receipts (adding,
+  `GET /api/v1/summary`, `GET /api/v1/spending` (the dashboard's two spending charts, read only),
+  `GET /api/v1/quick-add` (a preview, writes nothing), receipts (adding,
   viewing and removing one at a time: `POST /api/v1/transactions/:id/attachments`,
   `GET`/`DELETE /api/v1/attachments/:id`, with the website's size, type and quota checks; personal
   access tokens never see receipts), and editing or deleting one entry at a time (`PATCH`/`DELETE

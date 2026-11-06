@@ -82,7 +82,8 @@ import { TransactionRulesProvider } from "@/components/transaction-rules-context
 import { CategoryColorsProvider } from "@/components/category-colors-context";
 import { hasGroups, mergeSlicesByGroup } from "@/lib/category-groups";
 import { loadYearlyBudgetRows } from "@/lib/yearly-budgets";
-import { assignCategoryColors, categoryColor, SAVINGS_SLICE_COLOR } from "@/lib/category-colors";
+import { assignCategoryColors, SAVINGS_SLICE_COLOR } from "@/lib/category-colors";
+import { buildCategoryPieSlices } from "@/lib/category-pie";
 import type { CategorySpendSlice } from "@/components/category-spend-pie";
 import { loadSavingsTransfers } from "@/lib/reports/load";
 import { savedByTransferBetween } from "@/lib/savings-transfers";
@@ -680,19 +681,15 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   );
 
   const categoryColors = assignCategoryColors(categories);
-  const categoryPieSlices = Array.from((tagFilter ? computeSpendByCategory(logExpenses.filter(inHomeCurrency)) : spendByCategory).entries())
-    .map(([categoryId, cents]) => {
-      const cat = categories.find((c) => c.id === categoryId);
-      return {
-        name: cat?.name ?? "Unknown",
-        cents,
-        color: categoryColor(categoryColors, categoryId),
-        groupName: cat?.groupName ?? null,
-        href: cat ? `/reports/category?id=${encodeURIComponent(categoryId)}` : undefined,
-      };
-    })
-    .filter((s) => s.cents !== 0)
-    .sort((a, b) => Math.abs(b.cents) - Math.abs(a.cents));
+  const knownCategoryIds = new Set(categories.map((c) => c.id));
+  const categoryPieSlices = buildCategoryPieSlices(
+    tagFilter ? computeSpendByCategory(logExpenses.filter(inHomeCurrency)) : spendByCategory,
+    categories,
+    categoryColors,
+  ).map((slice) => ({
+    ...slice,
+    href: knownCategoryIds.has(slice.categoryId) ? `/reports/category?id=${encodeURIComponent(slice.categoryId)}` : undefined,
+  }));
 
   // The queue's rows, as the phone app's queue builds them (`src/lib/plaid/review-queue-view.ts`).
   const [matchCandidates, revisionTargets] = await Promise.all([

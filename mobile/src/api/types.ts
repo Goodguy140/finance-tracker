@@ -343,3 +343,47 @@ export type AccountPage = {
 };
 
 export type RegisterRow = AccountPage['register'][number];
+
+/** Which earlier spending the cumulative chart draws beside this month's. */
+export type SpendingComparison = 'none' | 'last-month' | 'three-month-average';
+
+/**
+ * `GET /api/v1/spending`: the website's Cumulative spending and Spending by category cards for one
+ * month. Added after build 17; an older server answers 404 and Home leaves the charts out.
+ */
+export type Spending = {
+  month: string;
+  today: string;
+  currency: string;
+  /** The choices this answer was built with: the phone's own, or the website card's. */
+  compareWith: SpendingComparison;
+  showSavings: boolean;
+  cumulative: {
+    /** One per day of the month. */
+    days: {
+      day: number;
+      spentCents: number;
+      /** Running total; null for days still to come. */
+      totalCents: number | null;
+      /** Where the budgets (or the last 3 months) say the total would be by then; null with no expected line. */
+      expectedCents: number | null;
+      comparisonCents: number | null;
+    }[];
+    totalCents: number;
+    expectedBasis: 'budgets' | 'average' | null;
+    /** Total less expected, today: positive is over. */
+    expectedGapCents: number | null;
+    /** Total less the comparison, today: positive is more. Null with nothing to compare with. */
+    comparisonGapCents: number | null;
+  };
+  categories: {
+    /** Net spending in the month across every category (Savings not included). */
+    totalCents: number;
+    /** Slices are category groups (once the person has any) rather than categories. */
+    grouped: boolean;
+    /** Biggest first; "Other categories" and then Savings last. A negative slice is refunds outweighing spending. */
+    slices: { name: string; cents: number; color: string; kind: 'category' | 'other' | 'savings' }[];
+    /** Net moved into savings accounts, and how many accounts count as savings; null when the slice is off. */
+    savings: { cents: number; accounts: number } | null;
+  };
+};
