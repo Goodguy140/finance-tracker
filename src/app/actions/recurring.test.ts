@@ -50,6 +50,7 @@ describe("recurring transaction actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPrisma.account.findFirst.mockResolvedValue({ id: "account-1" });
+    mockPrisma.recurringTransaction.create.mockResolvedValue({ id: "rule-1" });
   });
 
   it("validates income recurring rules against income categories", async () => {

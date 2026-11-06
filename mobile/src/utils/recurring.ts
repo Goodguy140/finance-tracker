@@ -3,7 +3,7 @@ import { dateFromYmd, ymdFromDate } from '@/utils/dates';
 
 export const RECURRING_PATH = '/api/v1/recurring';
 
-const CADENCE: Record<RecurringRule['cadence'], string> = {
+export const CADENCE: Record<RecurringRule['cadence'], string> = {
   weekly: 'Weekly',
   biweekly: 'Every 2 weeks',
   semi_monthly: 'Twice a month',

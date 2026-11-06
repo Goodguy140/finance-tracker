@@ -51,30 +51,91 @@ export function serializeRecurringRule(rule: RuleRow, todayYmd: string) {
 
 export type AppRecurringRule = ReturnType<typeof serializeRecurringRule>;
 
+type EditRow = {
+  accountId: string;
+  transferAccountId: string | null;
+  categoryId: string;
+  cadence: RecurringCadence;
+  anchorDay: number | null;
+  secondAnchorDay: number | null;
+  beforeWeekend: boolean;
+  note: string | null;
+  cancelUrl: string | null;
+  decideBy: Date | null;
+  enabled: boolean;
+  cancelledAt: Date | null;
+};
+
+/** What the phone's rule sheet needs to change a rule, as the website's Edit form does. */
+export function ruleEditFields(rule: EditRow) {
+  const semiMonthly = rule.cadence === "SEMI_MONTHLY";
+  return {
+    accountId: rule.accountId,
+    transferAccountId: rule.transferAccountId,
+    categoryId: rule.categoryId,
+    /** A twice-a-month rule's two days of the month (31 is the last day); null on other cadences. */
+    firstDay: semiMonthly ? rule.anchorDay : null,
+    secondDay: semiMonthly ? rule.secondAnchorDay : null,
+    beforeWeekend: semiMonthly && rule.beforeWeekend,
+    note: rule.note,
+    /** The subscription cancel helper (bills only): where to cancel, and when to decide by. */
+    cancelUrl: rule.cancelUrl,
+    decideBy: rule.decideBy ? ymdFromDateUtc(rule.decideBy) : null,
+    enabled: rule.enabled,
+    /** When the person said they cancelled it with the provider. */
+    cancelledAt: rule.cancelledAt ? ymdFromDateUtc(rule.cancelledAt) : null,
+  };
+}
+
+const RULE_SELECT = {
+  id: true,
+  name: true,
+  type: true,
+  amountCents: true,
+  cadence: true,
+  nextExpectedDate: true,
+  endDate: true,
+  postMode: true,
+  account: { select: { name: true, currency: true } },
+  transferAccount: { select: { name: true } },
+  category: { select: { name: true } },
+  accountId: true,
+  transferAccountId: true,
+  categoryId: true,
+  anchorDay: true,
+  secondAnchorDay: true,
+  beforeWeekend: true,
+  note: true,
+  cancelUrl: true,
+  decideBy: true,
+  enabled: true,
+  cancelledAt: true,
+} as const;
+
+/**
+ * The rules that are on, soonest first, and (`paused`, added for the phone's rule editing) those
+ * turned off or cancelled, by name.
+ */
 export async function loadAppRecurring(
   user: { id: string; timezone: string | null },
   now: Date = new Date(),
   client: PrismaClient = prisma,
-): Promise<{ today: string; rules: AppRecurringRule[] }> {
+) {
   const today = currentYmdInTimeZone(user.timezone, now);
-  const rules = await client.recurringTransaction.findMany({
-    where: { userId: user.id, enabled: true },
+  const rows = await client.recurringTransaction.findMany({
+    where: { userId: user.id },
     orderBy: [{ nextExpectedDate: "asc" }, { name: "asc" }],
-    select: {
-      id: true,
-      name: true,
-      type: true,
-      amountCents: true,
-      cadence: true,
-      nextExpectedDate: true,
-      endDate: true,
-      postMode: true,
-      account: { select: { name: true, currency: true } },
-      transferAccount: { select: { name: true } },
-      category: { select: { name: true } },
-    },
+    select: RULE_SELECT,
   });
-  return { today, rules: rules.map((rule) => serializeRecurringRule(rule, today)) };
+  const serialize = (rule: (typeof rows)[number]) => ({ ...serializeRecurringRule(rule, today), ...ruleEditFields(rule) });
+  return {
+    today,
+    rules: rows.filter((rule) => rule.enabled).map(serialize),
+    paused: rows
+      .filter((rule) => !rule.enabled)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(serialize),
+  };
 }
 
 /** A calendar date, and a real one: 2026-02-30 is refused rather than rolled into March. */

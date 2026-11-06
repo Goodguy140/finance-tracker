@@ -586,10 +586,18 @@ build).
   bill, pay and transfer that is on, under Overdue, Today, Next 7 days and Later, each with the
   occurrence it waits on. Swiping right uncovers Post, left uncovers Skip (each done with a tap);
   tapping a row also offers "I already logged it", which links the entry with the rule's name
-  within 15 days, as the website does without a pick. Rules are added and changed on the website.
-  `GET /api/v1/recurring`, `POST /api/v1/recurring/:id/post` and `/skip` (`src/lib/api-v1/recurring.ts`,
-  the website's `postRecurringOccurrence` and `skipRecurringOccurrence`). `src/screens/bills/`,
-  `src/utils/recurring.ts`. Planned one-offs sit on the same screen: a plan past its date first,
+  within 15 days, as the website does without a pick. Tapping also offers **Change, pause or delete
+  the rule**: a sheet with the website's Recurring form (Bill, Income or Transfer; name, amount,
+  account, category or To account, repeats, twice-a-month days and Friday-before-a-weekend, next
+  date, end date, post by itself, a bill's where-to-cancel and decide-by, note) and **Pause Rule** /
+  **Turn Back On**, **I Cancelled This Subscription** (a bill) and **Delete Rule**. Paused and
+  cancelled rules are listed under Paused. **+** adds a rule or a one-off plan.
+  `GET /api/v1/recurring` (now also `paused` and each rule's form fields), `POST /api/v1/recurring`,
+  `PATCH`/`DELETE /api/v1/recurring/:id`, `POST /api/v1/recurring/:id/post`, `/skip`, `/enabled` and
+  `/cancel` (`src/lib/api-v1/recurring.ts`, `recurring-rules.ts`; the Recurring card's actions and
+  these share `src/lib/recurring-rules.ts`, and post and skip are the website's
+  `postRecurringOccurrence` and `skipRecurringOccurrence`). `src/screens/bills/`, `src/app/recurring-rule.tsx`,
+  `src/utils/recurring.ts`, `src/utils/recurring-rules.ts`. Planned one-offs sit on the same screen: a plan past its date first,
   under "Did this happen?" (tap: Yes, add it to the log; No, remove the plan; or change it), the
   rest under One-off plans after the bills (tap to change or remove). **+** adds one in a sheet
   with the website's fields (Expense or Income, name, amount, day, account, category, note).
