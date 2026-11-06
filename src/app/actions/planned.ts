@@ -8,6 +8,7 @@ import { dateFromYmd } from "@/lib/date-only";
 import { toCents } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { findOpenPlan, recordPlannedTransaction } from "@/lib/planned-transactions-record";
 import { plannedTransactionSchema } from "@/lib/validation";
 import { emitTransactionsCreated } from "@/lib/webhooks";
 import { assertUserOwnsActiveAccount, assertUserOwnsCategory, formAction, getFormValue } from "./_helpers";
@@ -38,13 +39,6 @@ async function parsePlanForm(userId: string, formData: FormData) {
   };
 }
 
-async function findOpenPlan(userId: string, planId: string) {
-  const plan = await prisma.plannedTransaction.findFirst({ where: { id: z.string().min(1).parse(planId), userId } });
-  if (!plan) throw new Error("Plan not found.");
-  if (plan.transactionId) throw new Error("This plan has already happened.");
-  return plan;
-}
-
 function revalidatePlans() {
   revalidatePath("/");
   revalidatePath("/reports");
@@ -60,7 +54,7 @@ export const createPlannedTransactionAction = formAction(async (formData: FormDa
 
 export const updatePlannedTransactionAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const existing = await findOpenPlan(user.id, getFormValue(formData, "planId"));
+  const existing = await findOpenPlan(prisma, user.id, z.string().min(1).parse(getFormValue(formData, "planId")));
   const plan = await parsePlanForm(user.id, formData);
   await prisma.plannedTransaction.update({ where: { id: existing.id }, data: plan });
   revalidatePlans();
@@ -83,34 +77,9 @@ export const deletePlannedTransactionAction = formAction(async (formData: FormDa
  */
 export const recordPlannedTransactionAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const plan = await findOpenPlan(user.id, getFormValue(formData, "planId"));
-  const dateRaw = getFormValue(formData, "date");
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(dateRaw) ? dateFromYmd(dateRaw) : plan.date;
-  const type = plan.type === TransactionType.INCOME ? TransactionType.INCOME : TransactionType.EXPENSE;
-  await assertUserOwnsActiveAccount(user.id, plan.accountId);
-
-  const created = await prisma.$transaction(async (tx) => {
-    const entry = await tx.transaction.create({
-      data: {
-        userId: user.id,
-        accountId: plan.accountId,
-        categoryId: plan.categoryId,
-        type,
-        amountCents: plan.amountCents,
-        date,
-        title: plan.name,
-        note: plan.note,
-      },
-      select: { id: true },
-    });
-    const { count } = await tx.plannedTransaction.updateMany({
-      where: { id: plan.id, userId: user.id, transactionId: null },
-      data: { transactionId: entry.id },
-    });
-    if (count === 0) throw new Error("This plan has already happened.");
-    return entry;
-  });
-  emitTransactionsCreated(user.id, [created.id], "manual");
+  const planId = z.string().min(1).parse(getFormValue(formData, "planId"));
+  const { transactionId, type } = await recordPlannedTransaction(prisma, user.id, planId, getFormValue(formData, "date"));
+  emitTransactionsCreated(user.id, [transactionId], "manual");
   if (type === TransactionType.EXPENSE) scheduleBudgetAlertEmails(user.id);
   revalidatePlans();
 });
