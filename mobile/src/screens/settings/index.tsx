@@ -13,6 +13,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAppLock } from '@/session/app-lock';
 import { useSession } from '@/session/session-provider';
 import { useOutbox } from '@/state/outbox';
+import { canSetAlertTiming } from '@/utils/alert-timing';
 import { RELOCK_AFTER_MS } from '@/utils/app-lock';
 import { canEditGoals } from '@/utils/goals';
 import { canMakeRules } from '@/utils/transaction-rules';
@@ -93,7 +94,17 @@ export function Settings() {
           </Section>
         ) : null}
 
-        <AlertsSection />
+        <AlertsSection timingHere={canSetAlertTiming(me.data)} />
+
+        {canSetAlertTiming(me.data) ? (
+          <Section
+            title="When alerts come"
+            footer="How long before a bill to remind you, which charges count as large or unusual, and the email digest.">
+            <Pressable onPress={() => router.push('/settings/alert-timing')} accessibilityRole="button" hitSlop={8}>
+              <Text style={[styles.link, { color: theme.tint }]}>When alerts come ›</Text>
+            </Pressable>
+          </Section>
+        ) : null}
 
         <LockSection />
 
