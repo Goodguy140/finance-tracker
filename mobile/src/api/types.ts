@@ -145,7 +145,12 @@ export type OwedToYou = {
   }[];
 };
 
-export type TransactionPage = { transactions: Transaction[]; nextCursor: string | null };
+export type TransactionPage = {
+  transactions: Transaction[];
+  nextCursor: string | null;
+  /** The server takes `POST /api/v1/transactions/bulk`. Added after build 17. */
+  bulkEdit?: boolean;
+};
 
 export type Category = { id: string; name: string; kind: 'expense' | 'income' | 'transfer' };
 export type Account = { id: string; name: string; type: string; currency: string; archived: boolean };
