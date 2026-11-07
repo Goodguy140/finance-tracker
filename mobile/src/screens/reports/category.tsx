@@ -12,7 +12,7 @@ import { Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { categoryTrendPath, trendBars, trendTiles } from '@/utils/category-merchant';
-import { formatDay } from '@/utils/dates';
+import { formatDate } from '@/utils/dates';
 import { formatCents } from '@/utils/money';
 
 import { Tiles } from './tiles';
@@ -103,7 +103,7 @@ function Trend({ trend, onPayee }: { trend: CategoryTrend; onPayee: (key: string
                       {t.title}
                     </Text>
                     <Text style={[styles.small, { color: theme.textSecondary }]}>
-                      {formatDay(t.date)}
+                      {formatDate(t.date)}
                       {t.split ? ' · part of a split' : ''}
                     </Text>
                   </View>

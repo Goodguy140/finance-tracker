@@ -11,7 +11,7 @@ import { Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { merchantBars, merchantListNote, merchantPath, merchantTiles } from '@/utils/category-merchant';
-import { formatDay } from '@/utils/dates';
+import { formatDate } from '@/utils/dates';
 import { formatCents } from '@/utils/money';
 
 import { Tiles } from './tiles';
@@ -47,7 +47,7 @@ function Merchant({ data }: { data: MerchantActivity }) {
   return (
     <>
       <Text style={[styles.intro, { color: theme.textSecondary }]}>
-        Everything from this payee, {formatDay(data.firstDate)} to {formatDay(data.lastDate)}.
+        Everything from this payee, {formatDate(data.firstDate)} to {formatDate(data.lastDate)}.
       </Text>
       <Tiles tiles={merchantTiles(data)} />
       {bars.length > 1 ? (
@@ -73,13 +73,13 @@ function Merchant({ data }: { data: MerchantActivity }) {
             key={t.id}
             style={styles.line}
             accessible
-            accessibilityLabel={`${t.title}, ${formatDay(t.date)}, ${t.split ? 'split' : t.categoryName}: ${t.type === 'income' ? 'received ' : ''}${money(t.amountCents)}`}>
+            accessibilityLabel={`${t.title}, ${formatDate(t.date)}, ${t.split ? 'split' : t.categoryName}: ${t.type === 'income' ? 'received ' : ''}${money(t.amountCents)}`}>
             <View style={styles.grow}>
               <Text style={[styles.body, { color: theme.text }]} numberOfLines={1}>
                 {t.title}
               </Text>
               <Text style={[styles.small, { color: theme.textSecondary }]}>
-                {formatDay(t.date)} · {t.split ? 'Split' : t.categoryName}
+                {formatDate(t.date)} · {t.split ? 'Split' : t.categoryName}
               </Text>
             </View>
             <Text style={[styles.amount, { color: t.type === 'income' ? theme.positive : theme.text }]}>
