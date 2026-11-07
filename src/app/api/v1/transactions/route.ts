@@ -43,7 +43,11 @@ export async function GET(request: Request) {
       headers: await headers(),
     });
   }
-  return NextResponse.json({ transactions: result.transactions, nextCursor: result.nextCursor }, { headers: NO_STORE });
+  return NextResponse.json(
+    // `bulkEdit`: this server takes `POST /api/v1/transactions/bulk`, so the phone offers Select.
+    { transactions: result.transactions, nextCursor: result.nextCursor, bulkEdit: true },
+    { headers: NO_STORE },
+  );
 }
 
 /**

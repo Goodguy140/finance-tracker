@@ -518,7 +518,12 @@ build).
   the website's edit dialog checks them (which edits a split but cannot start one). Credits show but are changed on the website; a transfer's amount is
   not changed anywhere. **Owed to you** (a line above the log while anyone owes something): every
   share outstanding and those paid back in the last 30 days, each with Mark Paid or Undo, opening its
-  expense. `GET /api/v1/transactions` (now `q`, `tagId`, `needsReview`), `GET`/`PATCH`/`DELETE
+  expense. **Select expenses** (in the filter menu) is the Expense Log's Select mode: tap expenses
+  (income and transfers are dimmed), or Select All Shown, then Set Category (split expenses keep
+  theirs), Set Account, Add Tag, Mark Reviewed or Delete (one Undo puts them all back), up to 500
+  at a time. `GET /api/v1/transactions` (now `q`, `tagId`, `needsReview`, and `bulkEdit`), `POST
+  /api/v1/transactions/bulk` (`src/lib/api-v1/bulk-edit.ts`; the Expense Log's action and it share
+  `src/lib/bulk-edit-expenses.ts`), `GET`/`PATCH`/`DELETE
   /api/v1/transactions/:id` (`PATCH` takes a transfer's `transferAccountId`, an expense's `splits`
   and `owedShares` with `paidCents`; `GET` lists `owedShares`), `GET /api/v1/owed`,
   `POST /api/v1/owed/:id` (`src/lib/api-v1/owed.ts`, `src/lib/owed-to-you.ts`, shared with the

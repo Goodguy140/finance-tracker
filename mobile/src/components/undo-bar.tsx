@@ -22,12 +22,21 @@ export function UndoBar() {
   // Tied to the offer it is about, so a newer offer never shows an older failure.
   const [error, setError] = useState<{ id: string; message: string } | null>(null);
   const undo = useMutation({
-    mutationFn: (o: UndoOffer) => {
+    mutationFn: async (o: UndoOffer) => {
       if (!session) throw new Error('Not signed in.');
       // A delete is put back from its undo record; an add is simply deleted again.
-      return o.kind === 'deleted'
-        ? apiRequest(session, 'POST', `/api/v1/undo/${encodeURIComponent(o.undoId)}`)
-        : apiRequest(session, 'DELETE', `/api/v1/transactions/${encodeURIComponent(o.transactionId)}`);
+      if (o.kind === 'added') return apiRequest(session, 'DELETE', `/api/v1/transactions/${encodeURIComponent(o.transactionId)}`);
+      const undoIds = o.kind === 'deleted' ? [o.undoId] : o.undoIds;
+      // One at a time, so a refusal (one already put back) still leaves the rest put back first.
+      let failure: unknown = null;
+      for (const undoId of undoIds) {
+        try {
+          await apiRequest(session, 'POST', `/api/v1/undo/${encodeURIComponent(undoId)}`);
+        } catch (err) {
+          failure ??= err;
+        }
+      }
+      if (failure) throw failure;
     },
     onSuccess: () => client.invalidateQueries({ queryKey: ['api'] }),
   });
@@ -52,7 +61,7 @@ export function UndoBar() {
       style={[styles.bar, { bottom: insets.bottom + 64, backgroundColor: theme.text }]}
       accessibilityLiveRegion="polite">
       <Text style={[styles.text, { color: theme.background }]} numberOfLines={2}>
-        {error?.id === id ? error.message : `${offer.kind === 'deleted' ? 'Deleted' : 'Added'} ${offer.label}`}
+        {error?.id === id ? error.message : `${offer.kind === 'added' ? 'Added' : 'Deleted'} ${offer.label}`}
       </Text>
       <Pressable onPress={run} disabled={undo.isPending} accessibilityRole="button" hitSlop={8}>
         <Text style={[styles.action, { color: theme.background, opacity: undo.isPending ? 0.5 : 1 }]}>Undo</Text>

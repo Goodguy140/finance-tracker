@@ -1,3 +1,4 @@
+import { SymbolView } from 'expo-symbols';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { Transaction } from '@/api/types';
@@ -5,9 +6,21 @@ import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { amountDisplay, transactionName, transactionSubtitle } from '@/utils/transactions';
 
-/** One entry in the list: name, category and account, the amount, and a dot while it needs review. */
-export function TransactionRow(props: { row: Transaction; currency: string; first: boolean; last: boolean; onPress: () => void }) {
-  const { row, currency, first, last, onPress } = props;
+/**
+ * One entry in the list: name, category and account, the amount, and a dot while it needs review.
+ * While picking rows (`selected` given), a check circle leads, and a row that can't be picked
+ * (`selected` null) is dimmed.
+ */
+export function TransactionRow(props: {
+  row: Transaction;
+  currency: string;
+  first: boolean;
+  last: boolean;
+  onPress: () => void;
+  selected?: boolean | null;
+}) {
+  const { row, currency, first, last, onPress, selected } = props;
+  const picking = selected !== undefined;
   const theme = useTheme();
   const amount = amountDisplay(row, currency);
   const name = transactionName(row);
@@ -16,11 +29,14 @@ export function TransactionRow(props: { row: Transaction; currency: string; firs
   return (
     <Pressable
       onPress={onPress}
-      accessibilityRole="button"
+      disabled={selected === null}
+      accessibilityRole={picking ? 'checkbox' : 'button'}
+      accessibilityState={picking ? { checked: selected === true, disabled: selected === null } : undefined}
       accessibilityLabel={`${name}, ${amount.text}, ${subtitle}${row.needsReview ? ', needs review' : ''}`}
       style={({ pressed }) => [
         styles.row,
         {
+          opacity: selected === null ? 0.4 : 1,
           backgroundColor: pressed ? theme.track : theme.backgroundElement,
           borderColor: theme.border,
           borderTopWidth: first ? StyleSheet.hairlineWidth : 0,
@@ -30,6 +46,13 @@ export function TransactionRow(props: { row: Transaction; currency: string; firs
           borderBottomRightRadius: last ? Radius : 0,
         },
       ]}>
+      {picking ? (
+        <SymbolView
+          name={selected ? 'checkmark.circle.fill' : 'circle'}
+          size={22}
+          tintColor={selected ? theme.tint : theme.textSecondary}
+        />
+      ) : null}
       <View style={styles.text}>
         <View style={styles.nameLine}>
           {row.needsReview ? <View style={[styles.dot, { backgroundColor: theme.tint }]} /> : null}

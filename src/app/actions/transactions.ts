@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { CategoryKind, Prisma, TransactionType } from "@prisma/client";
 import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
+import { BULK_EDIT_LIMIT, bulkEditExpenses } from "@/lib/bulk-edit-expenses";
 import { MAX_AMOUNT, parseStatementAmount, toCents } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { dateFromYmd } from "@/lib/date-only";
@@ -18,7 +19,6 @@ import { appendRuleNote, resolveRuleOutcome, ruleSplitLines, usableRuleSplit } f
 import { loadRuleContext, RULE_SPLITS_INCLUDE } from "@/lib/transaction-rules-server";
 import { addTagsToTransaction, replaceTransactionTags, resolveTagIds } from "@/lib/tags-server";
 import { ensureFallbackCategoryFor } from "@/lib/fallback-categories";
-import { parseTagNames } from "@/lib/tags";
 import { CATEGORY_NAME_MAX, clipText, TRANSACTION_NOTE_MAX, TRANSACTION_TITLE_MAX } from "@/lib/text-limits";
 import { deleteTransactionWithUndo, undoDeletedTransaction, UNDO_REFUSAL_MESSAGES, type UndoRefusal } from "@/lib/transaction-undo";
 import {
@@ -701,12 +701,9 @@ export const undoDeleteTransactionAction = formAction(async (formData: FormData)
 
 export type BulkEditResult = { ok: true; changed: number; skipped: number; undoIds: string[] };
 
-const BULK_EDIT_LIMIT = 500;
-
 /**
  * One change to several expenses picked in the Expense Log: a category, an account, a tag, or
- * delete (with Undo). Rows that are not the user's expenses are ignored. A split expense keeps
- * its categories, which live on its lines, and is counted as skipped.
+ * delete (with Undo). Shared with the phone (`bulkEditExpenses`).
  */
 export const bulkEditExpensesAction = formActionWithResult(async (formData: FormData): Promise<BulkEditResult> => {
   const user = await requireUser();
@@ -718,54 +715,10 @@ export const bulkEditExpensesAction = formActionWithResult(async (formData: Form
   if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
     throw new Error("The selected expenses could not be read. Reload and try again.");
   }
-  if (ids.length > BULK_EDIT_LIMIT) throw new Error(`Pick at most ${BULK_EDIT_LIMIT} expenses at a time.`);
-  const op = getFormValue(formData, "op");
-  const value = getFormValue(formData, "value").trim();
-
-  const rows = await prisma.transaction.findMany({
-    where: { id: { in: ids as string[] }, userId: user.id, type: TransactionType.EXPENSE },
-    select: { id: true, _count: { select: { splitParts: true } } },
-  });
-  const rowIds = rows.map((row) => row.id);
-  let changed = 0;
-  let skipped = 0;
-  const undoIds: string[] = [];
-
-  if (op === "category") {
-    if (!value) throw new Error("Choose a category.");
-    await assertUserOwnsCategory(user.id, value, CategoryKind.EXPENSE);
-    const plain = rows.filter((row) => row._count.splitParts === 0).map((row) => row.id);
-    skipped = rows.length - plain.length;
-    changed = (await prisma.transaction.updateMany({ where: { id: { in: plain }, userId: user.id }, data: { categoryId: value } })).count;
-  } else if (op === "account") {
-    if (!value) throw new Error("Choose an account.");
-    await assertUserOwnsAccount(user.id, value);
-    changed = (await prisma.transaction.updateMany({ where: { id: { in: rowIds }, userId: user.id }, data: { accountId: value } })).count;
-  } else if (op === "tag") {
-    const names = parseTagNames([value]);
-    if (names.length === 0) throw new Error("Type a tag to add.");
-    await prisma.$transaction(async (tx) => {
-      const tagIds = await resolveTagIds(tx, user.id, names);
-      for (const id of rowIds) await addTagsToTransaction(tx, id, tagIds);
-    }, LONG_TRANSACTION_OPTIONS);
-    changed = rowIds.length;
-  } else if (op === "reviewed") {
-    changed = (
-      await prisma.transaction.updateMany({ where: { id: { in: rowIds }, userId: user.id }, data: { needsReview: false } })
-    ).count;
-  } else if (op === "delete") {
-    for (const id of rowIds) {
-      const undoId = await deleteTransactionWithUndo(prisma, user.id, id, TransactionType.EXPENSE);
-      if (undoId) undoIds.push(undoId);
-    }
-    changed = undoIds.length;
-  } else {
-    throw new Error("Choose what to change.");
-  }
-
+  const outcome = await bulkEditExpenses(prisma, user.id, ids as string[], getFormValue(formData, "op"), getFormValue(formData, "value"));
   scheduleBudgetAlertEmails(user.id);
   revalidatePath("/");
-  return { ok: true, changed, skipped, undoIds };
+  return { ok: true, ...outcome };
 });
 
 /**
