@@ -677,3 +677,67 @@ export type AlertTiming = {
   digest: 'off' | 'weekly' | 'monthly';
   budgetAlertEmail: boolean;
 };
+
+export type RegisteredAccountType = 'TFSA' | 'RRSP' | 'FHSA';
+
+/** This year's room for one registered account type, as the Investments card works it out. */
+export type RoomYear = {
+  accountType: RegisteredAccountType;
+  /** The room year: an RRSP's runs to day 60 of the next calendar year. */
+  year: number;
+  startingRoomCents: number | null;
+  /** Entered from CRA, estimated by rolling an earlier figure forward, or unknown. */
+  source: 'entered' | 'estimated' | 'unknown';
+  estimatedFromYear: number | null;
+  contributedCents: number;
+  withdrawnCents: number;
+  remainingCents: number | null;
+  overCents: number;
+  penaltyExcessCents: number;
+  /** What going over costs, when it is over. */
+  overText: string | null;
+  /** Figures entered from CRA, newest year first. */
+  entries: { id: string; year: number; roomCents: number }[];
+};
+
+/** A money-weighted return: annualized from a year up, the window's own below. Null when it can't be worked out. */
+export type ReturnRate = { rate: number; annualized: boolean } | null;
+
+export type InvestmentReturn = {
+  /** Null for the All together row. */
+  accountId: string | null;
+  name: string;
+  currency: string;
+  valueCents: number;
+  thisYear: ReturnRate;
+  twelveMonths: ReturnRate;
+};
+
+export type InvestmentActivity = {
+  /** `transfer`: a deposit into a TFSA, RRSP or FHSA that does not count toward room yet. */
+  kind: 'contribution' | 'withdrawal' | 'value' | 'transfer';
+  id: string;
+  /** Null on a transfer. */
+  accountId: string | null;
+  accountName: string;
+  currency: string;
+  /** Positive: what went in or out, the value, or what the transfer brought in. */
+  amountCents: number;
+  date: string;
+  /** The note, or a transfer's title. */
+  note: string | null;
+  /** A contribution recorded from a transfer with Count toward room. */
+  fromTransfer: boolean;
+};
+
+/** `GET /api/v1/investments`: the website's Investments card. */
+export type Investments = {
+  currency: string;
+  today: string;
+  /** Every open account, for the forms. */
+  accounts: { id: string; name: string; type: string; currency: string; registered: boolean }[];
+  room: RoomYear[];
+  returns: InvestmentReturn[];
+  /** Newest first. */
+  activity: InvestmentActivity[];
+};

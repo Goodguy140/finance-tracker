@@ -104,7 +104,7 @@ Cards (`src/components/dashboard-cards/`), with their gear settings:
 | Upcoming bills (`bills-forecast`) `bills-forecast-card.tsx`, `src/lib/bills-forecast.ts`, `bills-forecast-list.ts` (the list, shared with the phone) | bills and income due by day, running net; open one-off plans with a **Planned** chip, "Did this happen?" for plans past their date, **+ Plan** button (the phone's way to plan); recurring transfers (**Transfer**, from and to account) and each credit card's next payment by its due day (**Card payment**, balance owed and minimum; a card a recurring transfer pays is left to that transfer, `cardPaymentsDue` in `src/lib/credit-cards.ts`, shared with bill reminders), listed but kept out of the totals and running net; a subscription's **Decide by** date on its first charge | days ahead (30/60/90), show transfers and card payments |
 | Safe to spend (`safe-to-spend`, tab beside Budgets) `safe-to-spend-card.tsx`, `src/lib/safe-to-spend.ts`, `safe-to-spend-data.ts` | what is free to spend until month end, always for the month now running: income received − spent + recurring and planned income still due − recurring and planned bills still due (outside budgeted categories) − what is left in budgets (with rollover) − savings goals' monthly need; a-day figure for the days left; also a line in the email digest. Opt-in zero-based mode (checkbox on the card, `User.zeroBasedBudgeting`, `zero-based-card.tsx`, `src/lib/zero-based.ts`): shows "To assign" instead = this month's income received and still expected − budgets as set (rollover carries left out) − bills and spending outside budgets − savings goals, plus overspent budgets to cover from another budget | show breakdown |
 | Calendar (`calendar`, tab on Cumulative spending) `calendar-card.tsx`, `src/lib/spending-calendar.ts`, `calendarBillsFor` in `bills-forecast-list.ts` (shared with the phone) | the month on screen as a Sunday-first grid: each day's spending and income, dots for recurring bills and pay still due (red when unposted), ringed for one-off plans, violet dots for recurring transfers and card payments due, busiest day outlined; a day opens the dashboard on that one day (`?range=custom&from=&to=`); asks for a single month otherwise | show recurring due |
-| Investments (`investments`, tab on Insights) `investments-card.tsx` | contributions/withdrawals, count a transfer toward room, portfolio snapshots, room left (`src/lib/contribution-room.ts`), each account's value and return this year and over 12 months (from `loadInvestmentReturns`, as on Reports; loaded only while the card is placed); `actions/investments.ts` | room left, add forms, value and return, recent activity |
+| Investments (`investments`, tab on Insights) `investments-card.tsx` | contributions/withdrawals, count a transfer toward room, portfolio snapshots, room left (`src/lib/contribution-room.ts`), each account's value and return this year and over 12 months (from `loadInvestmentReturns`, as on Reports; loaded only while the card is placed); `actions/investments.ts`, saving through `src/lib/investment-edits.ts` (shared with the iPhone app's Investments) | room left, add forms, value and return, recent activity |
 
 ## Bank sync (Plaid)
 
@@ -709,6 +709,21 @@ build).
   (`src/lib/api-v1/accounts.ts`, `balances.ts`, the website's `loadNetWorth`, `loadAccountPage` and
   `upsertBalanceSnapshot`). `src/screens/accounts/`, `src/app/balance.tsx`, `src/utils/accounts.ts`,
   `src/utils/balances.ts`
+- Investments (Accounts → Investments ›, or an investment account's page, on servers that list
+  `investments` in `/api/v1/me`): the website's Investments card. **Room left** for each TFSA, RRSP
+  and FHSA type held, this room year (an RRSP's is its deduction limit's), with where the figure came
+  from and what went in and out; over the room shows what CRA charges. Tapping a row enters or changes
+  the year's figure from CRA, or removes it. **Value and return**: each account's value with its
+  money-weighted return this year and over 12 months, and All together. **Activity**: the newest
+  contributions, withdrawals and portfolio values (each opens its sheet: account, amount or value,
+  date, note; Save and Delete) and deposits into a registered account not yet counted toward room
+  (**Count Toward Room**, once). The + menu adds a contribution or withdrawal, or a portfolio value;
+  a contribution that would go over the year's room asks first (**Add Anyway**).
+  `GET /api/v1/investments`, `POST /api/v1/investments/contributions` (409 until `overRoom`),
+  `PATCH`/`DELETE /api/v1/investments/contributions/:id`, the same under `/values`,
+  `POST /api/v1/investments/transfers/:id/count`, `PUT /api/v1/investments/room`,
+  `DELETE /api/v1/investments/room/:id` (`src/lib/api-v1/investments.ts`, `src/lib/investment-edits.ts`).
+  `src/screens/investments/`, `src/app/investment.tsx`, `src/utils/investments.ts`
 - Banks (Settings → Bank connections, and Review's "Your banks"): each bank connection with what
   it needs, when it was last checked, and its accounts, each with a picker for the app account its
   transactions go to (same currency only, or Not synced). On the home server, once the server sets

@@ -5,8 +5,8 @@ import { ServerActionForm } from "@/components/server-action-form";
 import { deleteContributionRoomAction, upsertContributionRoomAction } from "@/app/actions";
 import {
   computeRoomYear,
+  overContributionMessage,
   REGISTERED_ACCOUNT_TYPES,
-  RRSP_OVERCONTRIBUTION_CUSHION_CENTS,
   roomFlowsFromData,
   roomYearFor,
   type ContributionRoomData,
@@ -35,18 +35,6 @@ const ROOM_SOURCE_HINT: Record<RegisteredAccountType, string> = {
 function todayUtcDate() {
   const now = new Date();
   return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-}
-
-export function overContributionMessage(accountType: RegisteredAccountType, overByCents: number, roomYear: number) {
-  const over = formatCurrency(overByCents);
-  if (accountType === "RRSP") {
-    if (overByCents <= RRSP_OVERCONTRIBUTION_CUSHION_CENTS) {
-      return `${over} over your ${roomYear} RRSP limit. That is inside CRA's $2,000 cushion, so no penalty yet.`;
-    }
-    const taxed = formatCurrency(overByCents - RRSP_OVERCONTRIBUTION_CUSHION_CENTS);
-    return `${over} over your ${roomYear} RRSP limit. CRA charges 1% a month on the ${taxed} above the $2,000 cushion.`;
-  }
-  return `${over} over your ${roomYear} ${accountType} room. CRA charges 1% a month on the excess until it is withdrawn.`;
 }
 
 export function RoomCard({ room }: { room: RoomYear }) {

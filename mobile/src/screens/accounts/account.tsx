@@ -16,6 +16,7 @@ import { accountPath, balanceSource, cardTerms, REGISTER_MONTHS, registerNote, s
 import { balancesPath, canRecordBalance } from '@/utils/balances';
 import { formatDay } from '@/utils/dates';
 import { canEditGoals } from '@/utils/goals';
+import { canTrackInvestments, isInvestmentAccountType } from '@/utils/investments';
 import { formatCents } from '@/utils/money';
 
 /**
@@ -28,7 +29,9 @@ export function Account({ id }: { id: string }) {
   const router = useRouter();
   const [months, setMonths] = useState<number>(REGISTER_MONTHS[0]);
   const query = useApiQuery<AccountPage>(accountPath(id, months));
-  const goals = canEditGoals(useApiQuery<Me>('/api/v1/me').data);
+  const me = useApiQuery<Me>('/api/v1/me').data;
+  const goals = canEditGoals(me);
+  const investments = canTrackInvestments(me);
   const { refreshing, onRefresh } = usePullToRefresh(query.refetch);
   const data = query.data;
 
@@ -93,6 +96,13 @@ export function Account({ id }: { id: string }) {
                     <ProgressBar share={goal.percent / 100} color={theme.positive} />
                   </Pressable>
                 ))}
+              </Section>
+            ) : null}
+            {investments && isInvestmentAccountType(data.account.type) ? (
+              <Section title="Investments" footer="Contributions, withdrawals and portfolio values, room left and the return.">
+                <Pressable onPress={() => router.push('/investments')} accessibilityRole="button" hitSlop={8}>
+                  <Text style={[styles.link, { color: theme.tint }]}>Investments ›</Text>
+                </Pressable>
               </Section>
             ) : null}
           </>
