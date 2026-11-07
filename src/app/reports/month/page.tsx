@@ -1,17 +1,11 @@
 import Link from "next/link";
 import { AppNav, APP_TAB_BAR_PAD_CLASS } from "@/components/app-nav";
 import { MonthCloseButton } from "@/components/reports/month-close-button";
-import { buildMonthlyBudgetProgress } from "@/lib/budget-progress";
-import { endExclusiveOfMonthYm, formatYmLongLabel, shiftYm, startOfMonthYm } from "@/lib/dashboard-period";
+import { formatYmLongLabel, shiftYm } from "@/lib/dashboard-period";
 import { dateFromYmd, formatDateOnlyUtc } from "@/lib/date-only";
-import { homeCurrencyOf } from "@/lib/home-currency";
 import { formatCurrency } from "@/lib/money";
-import { currentYmdInTimeZone, isValidYm } from "@/lib/period-month";
-import { prisma } from "@/lib/prisma";
-import { loadReportTxs } from "@/lib/reports/load";
-import { buildMonthRecap, defaultRecapYm } from "@/lib/reports/month-recap";
+import { loadMonthReview } from "@/lib/reports/month-review-data";
 import { requireUser } from "@/lib/session";
-import { PlaidStagedStatus } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -32,46 +26,13 @@ function pctChange(current: number, previous: number): string | null {
 export default async function MonthReviewPage({ searchParams }: { searchParams: SearchParams }) {
   const user = await requireUser();
   const sp = await searchParams;
-  const todayYmd = currentYmdInTimeZone(user.timezone);
-  const currentYm = todayYmd.slice(0, 7);
   const raw = Array.isArray(sp.month) ? sp.month[0] : sp.month;
-  const ym = raw && isValidYm(raw) && raw <= currentYm ? raw : defaultRecapYm(todayYmd);
-  const currency = homeCurrencyOf(user.countryCode);
+  const review = await loadMonthReview(user, raw);
+  const { ym, currentYm, currency, recap, rolloverByName, scoreNow, scoreBefore } = review;
+  const needsReview = review.bankRowsWaiting;
+  const unreviewedPosted = review.entriesNeedingReview;
+  const closed = review.closedAt ? { closedAt: review.closedAt } : null;
   const fmt = (cents: number) => formatCurrency(cents, currency);
-  const range = { gte: startOfMonthYm(ym), lt: endExclusiveOfMonthYm(ym) };
-
-  const [txs, progress, categories, needsReview, closed, unreviewedPosted, scores] = await Promise.all([
-    loadReportTxs(user.id, startOfMonthYm(shiftYm(ym, -1)), currency),
-    buildMonthlyBudgetProgress(user.id, ym),
-    prisma.category.findMany({ where: { userId: user.id }, select: { id: true, rolloverSinceMonth: true } }),
-    prisma.plaidStagedTransaction.count({
-      where: { userId: user.id, status: PlaidStagedStatus.NEEDS_REVIEW, date: range },
-    }),
-    prisma.monthClose.findUnique({ where: { userId_ym: { userId: user.id, ym } } }),
-    // Imported, auto-posted or API rows nobody has looked at (the log's Needs review filter).
-    prisma.transaction.count({ where: { userId: user.id, needsReview: true, date: range } }),
-    // The financial score as saved for this month and the one before (`FinancialScoreSnapshot`).
-    prisma.financialScoreSnapshot.findMany({
-      where: { userId: user.id, month: { in: [ym, shiftYm(ym, -1)] } },
-      select: { month: true, score: true },
-    }),
-  ]);
-  const scoreNow = scores.find((s) => s.month === ym) ?? null;
-  const scoreBefore = scores.find((s) => s.month === shiftYm(ym, -1)) ?? null;
-  const rolloverOn = new Set(
-    categories.filter((c) => c.rolloverSinceMonth !== null && c.rolloverSinceMonth <= ym).map((c) => c.id),
-  );
-  const rolloverByName = new Map(progress.budgets.map((b) => [b.categoryName, rolloverOn.has(b.categoryId)]));
-  const recap = buildMonthRecap({
-    ym,
-    txs,
-    budgets: progress.budgets.map((b) => ({
-      categoryName: b.categoryName,
-      spentCents: b.spentCents,
-      limitCents: b.limitCents,
-      carryCents: b.carryCents,
-    })),
-  });
   const label = formatYmLongLabel(ym);
   const nextYm = shiftYm(ym, 1);
   const spendingChange = pctChange(recap.spendingCents, recap.previousSpendingCents);
@@ -91,12 +52,12 @@ export default async function MonthReviewPage({ searchParams }: { searchParams: 
           <p className="mt-1 text-sm text-slate-400">
             {running ? "This month is still running; the totals are to today." : "How the month went, and what to tidy before closing it."}
           </p>
-          {scoreNow ? (
+          {scoreNow !== null ? (
             <p className="mt-1 text-sm text-slate-300" data-testid="month-score">
               <Link href="/insights" className="hover:text-slate-100">
-                Financial score {scoreNow.score}
-                {scoreBefore && scoreBefore.score !== scoreNow.score
-                  ? `, ${scoreNow.score > scoreBefore.score ? "up" : "down"} ${Math.abs(scoreNow.score - scoreBefore.score)} on ${formatYmLongLabel(shiftYm(ym, -1))}`
+                Financial score {scoreNow}
+                {scoreBefore !== null && scoreBefore !== scoreNow
+                  ? `, ${scoreNow > scoreBefore ? "up" : "down"} ${Math.abs(scoreNow - scoreBefore)} on ${formatYmLongLabel(shiftYm(ym, -1))}`
                   : ""}
               </Link>
             </p>

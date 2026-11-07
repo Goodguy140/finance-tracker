@@ -16,6 +16,7 @@ import { canEditBudgets } from '@/utils/budget-edits';
 import { fundNote, rolloverNote, sectionByGroup } from '@/utils/budgets';
 import { shiftMonth } from '@/utils/dates';
 import { formatCents, formatPeriodMonth } from '@/utils/money';
+import { reviewMonthFrom } from '@/utils/month-review';
 
 /**
  * Every budget for a month, by category group, with rollover; then the yearly budgets as sinking
@@ -23,6 +24,7 @@ import { formatCents, formatPeriodMonth } from '@/utils/money';
  */
 export function Budgets() {
   const theme = useTheme();
+  const router = useRouter();
   // Null is the server's "this month", in the person's own time zone.
   const [month, setMonth] = useState<string | null>(null);
   const query = useApiQuery<BudgetsData>(`/api/v1/budgets${month ? `?month=${month}` : ''}`);
@@ -45,6 +47,18 @@ export function Budgets() {
         {data && !query.error ? <BudgetList data={data} /> : null}
       </ScrollView>
       <Stack.Title large>Budgets</Stack.Title>
+      {data?.currentMonth && shown ? (
+        // Only with a server that says which month is current; one without the review gets a note there.
+        <Stack.Toolbar placement="left">
+          <Stack.Toolbar.Button
+            icon="checklist"
+            accessibilityLabel="Monthly review"
+            onPress={() =>
+              router.push({ pathname: '/budgets/review', params: { month: reviewMonthFrom(shown, data.currentMonth ?? shown) } })
+            }
+          />
+        </Stack.Toolbar>
+      ) : null}
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button icon="chevron.left" accessibilityLabel="Previous month" disabled={!shown} onPress={() => step(-1)} />
         <Stack.Toolbar.Button icon="chevron.right" accessibilityLabel="Next month" disabled={!shown} onPress={() => step(1)} />

@@ -467,3 +467,27 @@ export type Plan = {
 
 /** `GET /api/v1/planned`. Added after build 17; an older server answers 404. */
 export type PlanList = { today: string; plans: Plan[] };
+
+/** `GET /api/v1/month-review`: the website's monthly review. Added after build 17; an older server answers 404. */
+export type MonthReview = {
+  month: string;
+  currentMonth: string;
+  running: boolean;
+  currency: string;
+  incomeCents: number;
+  spendingCents: number;
+  netCents: number;
+  previousIncomeCents: number;
+  previousSpendingCents: number;
+  transactionCount: number;
+  categories: { categoryName: string; cents: number; previousCents: number }[];
+  changes: { categoryName: string; cents: number; previousCents: number }[];
+  biggest: { date: string; title: string; cents: number }[];
+  budgets: { categoryName: string; spentCents: number; limitCents: number; rollsOver: boolean }[];
+  budgetsKept: number;
+  bankRowsWaiting: number;
+  entriesNeedingReview: number;
+  score: number | null;
+  previousScore: number | null;
+  closedOn: string | null;
+};

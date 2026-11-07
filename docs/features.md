@@ -231,7 +231,8 @@ Page: `src/app/reports/page.tsx`; data `src/lib/reports/*`; charts
   with whether each leftover or overspend rolls into next month, bank rows still waiting for
   review, the month's saved financial score against the month before, and "Mark month closed" /
   Reopen (`MonthClose`, a record only: nothing is locked).
-  `src/app/reports/month/page.tsx`, `src/lib/reports/month-recap.ts`, `actions/month-close.ts`,
+  `src/app/reports/month/page.tsx`, `src/lib/reports/month-recap.ts`,
+  `src/lib/reports/month-review-data.ts` (shared with the iPhone app), `actions/month-close.ts`,
   `src/components/reports/month-close-button.tsx`
 - **Debt payoff** `/reports/debt` (linked from Net worth when there is a card or loan): each
   card's, loan's and mortgage's balance, interest rate and minimum (`Account.interestRateBps`,
@@ -587,6 +588,14 @@ build).
   changeable. `PATCH /api/v1/budgets/:categoryId`, `POST /api/v1/budgets/:categoryId/cover`
   (`src/lib/api-v1/budget-edits.ts`; the website's actions and these share `src/lib/budget-edits.ts`).
   `src/screens/budgets/`, `src/app/budget.tsx`, `src/app/budget-cover.tsx`, `src/utils/budget-edits.ts`
+- Monthly review (the checklist button on Budgets; the month shown there, or the month just
+  finished when that is this month): the website's Monthly review, ‹ › for another month up to this
+  one. Totals against the month before, what changed, where it went, biggest purchases, budgets kept
+  with whether each leftover or overspend rolls on, then what still wants a look (bank rows
+  waiting, linking the Review tab, and entries needing review, linking Transactions' Needs review)
+  and **Mark Month Closed** / **Reopen Month**. `GET /api/v1/month-review?month=`,
+  `POST /api/v1/month-review/close` (`src/lib/api-v1/month-review.ts`; the page and these share
+  `src/lib/reports/month-review-data.ts`). `src/screens/budgets/review.tsx`, `src/utils/month-review.ts`
 - Bills and pay (Home's "Post or skip bills and pay", and a tapped bill reminder): every recurring
   bill, pay and transfer that is on, under Overdue, Today, Next 7 days and Later, each with the
   occurrence it waits on. Swiping right uncovers Post, left uncovers Skip (each done with a tap);
