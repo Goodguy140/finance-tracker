@@ -597,3 +597,35 @@ export type SavedSearch = SearchTotals & {
 };
 
 export type SavedSearches = { currency: string; searches: SavedSearch[] };
+
+/** One line of `GET /api/v1/bills/forecast`: a rule's or a plan's occurrence, or a card's payment. */
+export type ForecastEntry = {
+  key: string;
+  /** The recurring rule, the plan (`planned`), or the card's account. */
+  sourceId: string;
+  name: string;
+  type: TransactionType;
+  /** Null for a card payment with neither a balance nor a minimum on record. */
+  amountCents: number | null;
+  overdue: boolean;
+  missedSince: string | null;
+  planned: boolean;
+  /** The category, or "Chequing to Savings" for a transfer; empty for a card payment. */
+  label: string;
+  card: { owedCents: number | null; minimumCents: number | null } | null;
+  decideBy: string | null;
+};
+
+/** `GET /api/v1/bills/forecast`, the website's Upcoming bills card. Added after build 17. */
+export type BillsForecast = {
+  today: string;
+  currency: string;
+  days: number;
+  includeTransfers: boolean;
+  /** Rules on, open plans and card payments; zero means there is nothing to forecast from. */
+  sources: number;
+  incomeCents: number;
+  expenseCents: number;
+  netCents: number;
+  groups: { date: string; runningNetCents: number; entries: ForecastEntry[] }[];
+};

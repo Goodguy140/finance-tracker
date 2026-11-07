@@ -26,7 +26,7 @@ export async function GET(request: Request) {
       device: { id: token.id },
       // What this server takes from the phone beyond the first API, so the app can offer it: each
       // later addition that has no other sign names itself here.
-      features: ["rules", "goals", "search"],
+      features: ["rules", "goals", "search", "forecast"],
     },
     { headers: NO_STORE },
   );
