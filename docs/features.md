@@ -288,7 +288,8 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     (`src/lib/apple-app-site.ts`), `POST /api/v1/app/passkey/options` and `/token`
     (`src/lib/app-passkey-sign-in.ts`), advertised as `passkeySignIn` in `GET /api/v1/server`
   - Notifications (budget alert emails): `budget-alert-preferences.tsx`,
-    `src/lib/budget-alert-dispatch.ts`
+    `src/lib/budget-alert-dispatch.ts`. The digest, bill reminder, charge alert and budget email
+    settings are saved through `src/lib/alert-timing.ts`, shared with the iPhone app's When alerts come
   - Email digest (off / weekly on Mondays / monthly on the 1st, after 7am local; spent and
     received, top categories, biggest purchases, budgets over 80%, bills coming up, review
     queue count, safe to spend for the month; skipped when empty; "Send me one now"): `email-digest-preferences.tsx`,
@@ -733,10 +734,18 @@ build).
   `src/screens/settings/index.tsx`, `src/session/app-lock.tsx`, `src/screens/locked.tsx`
 - Alerts (Settings → Alerts): bill reminders, large or unusual charges and budget alerts by Apple
   push, once the server's admin has saved Apple's key. **Turn on alerts** asks iOS, then a switch
-  per kind and **Hide amounts in alerts** (the alert says only what kind it is). When each alert is
-  due stays on the website's Settings → Notifications. Tapping an alert opens Bills and pay (bill reminders),
+  per kind and **Hide amounts in alerts** (the alert says only what kind it is). Tapping an alert opens Bills and pay (bill reminders),
   Transactions (charges) or Budgets, after Face ID if the lock is on. The phone registers again at
   each launch, since Apple can change its token; signing out ends its alerts.
   `GET`/`PUT /api/v1/app/device/push`. `src/screens/settings/alerts.tsx`,
   `src/notifications/alerts.ts`, `src/utils/alerts.ts`
+- When alerts come (Settings → When alerts come ›, on servers that list `alert-timing` in
+  `/api/v1/me`): the website's Settings → Notifications timing, for email and phones alike. Bill
+  reminders Off / Day before / 3 days / A week; charge alerts at or over an amount (empty for off,
+  saved on leaving the field) and **Unusual for the merchant**; the email digest Off / Weekly /
+  Monthly with **Send Me One Now**; and **Email budget alerts**. Each change saves at once and
+  moves back with the server's reason under it if refused (a reminder or charge alert needs email
+  or a phone taking it; the digest and budget emails need email, and stay off without it).
+  `GET`/`PATCH /api/v1/alert-timing`, `POST /api/v1/alert-timing/digest-preview`
+  (`src/lib/api-v1/alert-timing.ts`). `src/screens/settings/alert-timing.tsx`, `src/utils/alert-timing.ts`
 - A token the server no longer accepts signs the phone out with a note on the sign-in screen

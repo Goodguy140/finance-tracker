@@ -2,25 +2,19 @@
 
 import { revalidatePath } from "next/cache";
 import { DigestFrequency } from "@prisma/client";
+import { setBillReminderDays, setBudgetAlertEmail, setChargeAlerts, setEmailDigest } from "@/lib/alert-timing";
 import { parseBillReminderDays } from "@/lib/bill-reminders";
-import { isBudgetAlertEmailConfigured } from "@/lib/budget-alert-email";
 import { parseChargeAlertThreshold } from "@/lib/charge-alerts";
-import { latestDigestPeriod, sendDigestPreview } from "@/lib/email-digest";
-import { currentYmdInTimeZone } from "@/lib/period-month";
+import { sendDigestPreview } from "@/lib/email-digest";
 import { MIN_BUDGET_NAME_VISIBLE_PCT, MIN_TEXT_VISIBLE_PCT, parseVisiblePct } from "@/lib/dashboard-readability";
 import { prisma } from "@/lib/prisma";
-import { hasPushDeviceFor } from "@/lib/push-notifications";
 import { requireUser } from "@/lib/session";
 import { formAction, getFormValue } from "./_helpers";
 
 /** Opt in or out of budget alert emails; the preference lives on the user row. */
 export const setBudgetAlertEmailAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const enabled = getFormValue(formData, "enabled") === "true";
-  if (enabled && !isBudgetAlertEmailConfigured()) {
-    throw new Error("Email alerts need SMTP configured on the server first.");
-  }
-  await prisma.user.update({ where: { id: user.id }, data: { budgetAlertEmailEnabled: enabled } });
+  await setBudgetAlertEmail(prisma, user.id, getFormValue(formData, "enabled") === "true");
   revalidatePath("/settings", "layout");
 });
 
@@ -78,13 +72,7 @@ export const setEmailDigestAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const raw = getFormValue(formData, "frequency");
   if (raw !== "OFF" && raw !== "WEEKLY" && raw !== "MONTHLY") throw new Error("Choose how often to get the digest.");
-  const frequency = raw as DigestFrequency;
-  if (frequency !== "OFF" && !isBudgetAlertEmailConfigured()) {
-    throw new Error("The email digest needs SMTP configured on the server first.");
-  }
-  const digestLastPeriodKey =
-    frequency === "OFF" ? null : latestDigestPeriod(frequency, currentYmdInTimeZone(user.timezone)).key;
-  await prisma.user.update({ where: { id: user.id }, data: { digestFrequency: frequency, digestLastPeriodKey } });
+  await setEmailDigest(prisma, user, raw as DigestFrequency);
   revalidatePath("/settings", "layout");
 });
 
@@ -98,11 +86,7 @@ export const sendEmailDigestPreviewAction = formAction(async () => {
 /** How many days before a recurring bill is due to email a reminder, or off. */
 export const setBillRemindersAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const billReminderDays = parseBillReminderDays(getFormValue(formData, "days"));
-  if (billReminderDays !== null && !isBudgetAlertEmailConfigured() && !(await hasPushDeviceFor(user.id, "billReminders"))) {
-    throw new Error("Bill reminders need SMTP on the server, or a phone with bill reminders on under Phone notifications.");
-  }
-  await prisma.user.update({ where: { id: user.id }, data: { billReminderDays } });
+  await setBillReminderDays(prisma, user.id, parseBillReminderDays(getFormValue(formData, "days")));
   revalidatePath("/settings", "layout");
 });
 
@@ -112,19 +96,9 @@ export const setBillRemindersAction = formAction(async (formData: FormData) => {
  */
 export const setChargeAlertsAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const thresholdCents = parseChargeAlertThreshold(getFormValue(formData, "threshold"));
-  const unusual = getFormValue(formData, "unusual") === "true";
-  const on = thresholdCents !== null || unusual;
-  if (on && !isBudgetAlertEmailConfigured() && !(await hasPushDeviceFor(user.id, "chargeAlerts"))) {
-    throw new Error("Charge alerts need SMTP on the server, or a phone with charge alerts on under Phone notifications.");
-  }
-  const existing = await prisma.chargeAlertSetting.findUnique({ where: { userId: user.id } });
-  const wasOn = existing !== null && (existing.thresholdCents !== null || existing.unusual);
-  const checkedThrough = wasOn ? existing.checkedThrough : new Date();
-  await prisma.chargeAlertSetting.upsert({
-    where: { userId: user.id },
-    create: { userId: user.id, thresholdCents, unusual, checkedThrough },
-    update: { thresholdCents, unusual, checkedThrough },
+  await setChargeAlerts(prisma, user.id, {
+    thresholdCents: parseChargeAlertThreshold(getFormValue(formData, "threshold")),
+    unusual: getFormValue(formData, "unusual") === "true",
   });
   revalidatePath("/settings", "layout");
 });

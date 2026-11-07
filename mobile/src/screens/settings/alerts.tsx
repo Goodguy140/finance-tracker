@@ -13,10 +13,15 @@ import { ALERT_KINDS, ALERT_LABELS, ALERTS_PATH } from '@/utils/alerts';
 
 type Change = { alerts?: Partial<Record<AlertKind, boolean>>; hideAmounts?: boolean };
 
-const FOOTER = 'When bills are due and which charges count as large are set on the website, under Settings → Notifications.';
+const FOOTER_WEBSITE = 'When bills are reminded and which charges count as large are set on the website, under Settings → Notifications.';
+const FOOTER_HERE = 'When bills are reminded and which charges count as large are set under When alerts come, below.';
 
-/** Alerts on this phone: iOS's permission first, then a switch per kind and the amounts switch. */
-export function AlertsSection() {
+/**
+ * Alerts on this phone: iOS's permission first, then a switch per kind and the amounts switch.
+ * `timingHere` says the server lets the phone set when they come, so the note points there.
+ */
+export function AlertsSection({ timingHere = false }: { timingHere?: boolean }) {
+  const FOOTER = timingHere ? FOOTER_HERE : FOOTER_WEBSITE;
   const theme = useTheme();
   const { session } = useSession();
   const client = useQueryClient();

@@ -663,3 +663,17 @@ export type CalendarMonth = {
   /** Sunday first. */
   weeks: CalendarDay[][];
 };
+
+/** `GET /api/v1/alert-timing`: when the alerts come, as the website's Settings → Notifications has it. */
+export type AlertTiming = {
+  /** The server can send email; without it only phones get alerts, and the digest stays off. */
+  emailAvailable: boolean;
+  /** Days before a bill to remind; null is off. */
+  billReminderDays: number | null;
+  billReminderOptions: number[];
+  /** A charge at or over this alerts; null leaves that check off. */
+  chargeThresholdCents: number | null;
+  chargeUnusual: boolean;
+  digest: 'off' | 'weekly' | 'monthly';
+  budgetAlertEmail: boolean;
+};
