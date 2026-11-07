@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { isValidYm } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
+import { closeMonth, reopenMonth } from "@/lib/reports/month-review-data";
 import { requireUser } from "@/lib/session";
 import { formAction, getFormValue } from "./_helpers";
 
@@ -16,17 +17,13 @@ function monthOf(formData: FormData): string {
 export const closeMonthAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const ym = monthOf(formData);
-  await prisma.monthClose.upsert({
-    where: { userId_ym: { userId: user.id, ym } },
-    create: { userId: user.id, ym },
-    update: {},
-  });
+  await closeMonth(prisma, user.id, ym);
   revalidatePath("/reports/month");
 });
 
 export const reopenMonthAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const ym = monthOf(formData);
-  await prisma.monthClose.deleteMany({ where: { userId: user.id, ym } });
+  await reopenMonth(prisma, user.id, ym);
   revalidatePath("/reports/month");
 });
