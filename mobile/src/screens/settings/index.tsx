@@ -14,6 +14,7 @@ import { useAppLock } from '@/session/app-lock';
 import { useSession } from '@/session/session-provider';
 import { useOutbox } from '@/state/outbox';
 import { RELOCK_AFTER_MS } from '@/utils/app-lock';
+import { canMakeRules } from '@/utils/transaction-rules';
 
 import { AlertsSection } from './alerts';
 
@@ -74,6 +75,14 @@ export function Settings() {
             <Text style={[styles.link, { color: theme.tint }]}>Bank connections ›</Text>
           </Pressable>
         </Section>
+
+        {canMakeRules(me.data) ? (
+          <Section title="Rules" footer="Make a rule from an entry or a bank row with Make a Rule…, or from a title you use often here.">
+            <Pressable onPress={() => router.push('/settings/rules')} accessibilityRole="button" hitSlop={8}>
+              <Text style={[styles.link, { color: theme.tint }]}>Suggested rules ›</Text>
+            </Pressable>
+          </Section>
+        ) : null}
 
         <AlertsSection />
 

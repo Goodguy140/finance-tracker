@@ -7,7 +7,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput } fro
 
 import { useApiMutation } from '@/api/mutations';
 import { errorText, useApiQuery } from '@/api/query';
-import type { Account, Category, TransactionDetail } from '@/api/types';
+import type { Account, Category, Me, TransactionDetail } from '@/api/types';
 import { FormButton, FormField, formStyles } from '@/components/form';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
@@ -17,6 +17,7 @@ import { offerUndo } from '@/state/undo-offer';
 import { dateFromYmd, ymdFromDate } from '@/utils/dates';
 import { formatCents } from '@/utils/money';
 import { lineKey } from '@/utils/split-owed';
+import { canMakeRules } from '@/utils/transaction-rules';
 import {
   amountInputText,
   canEditSplitsAndShares,
@@ -62,6 +63,7 @@ function Editor({ row, categories, accounts }: { row: TransactionDetail; categor
   const theme = useTheme();
   const scheme = useColorScheme();
   const router = useRouter();
+  const rules = canMakeRules(useApiQuery<Me>('/api/v1/me').data);
   const [form, setForm] = useState<EditForm>(() => formFromTransaction(row));
   const [error, setError] = useState<string | null>(null);
   const save = useApiMutation<Record<string, unknown>, { transaction: TransactionDetail }>(
@@ -309,6 +311,23 @@ function Editor({ row, categories, accounts }: { row: TransactionDetail; categor
 
         {row.needsReview && !dirty ? (
           <FormButton label="Mark reviewed" onPress={markReviewed} disabled={busy} />
+        ) : null}
+        {rules && row.type !== 'transfer' && row.title?.trim() ? (
+          <FormButton
+            label="Make a Rule…"
+            onPress={() =>
+              router.push({
+                pathname: '/transaction-rule',
+                params: {
+                  title: row.title ?? '',
+                  type: row.type,
+                  categoryId: row.splits.length > 0 ? '' : row.categoryId,
+                  accountId: row.accountId ?? '',
+                  accountName: row.accountName ?? '',
+                },
+              })
+            }
+          />
         ) : null}
         <FormButton label="Delete" destructive onPress={confirmDelete} disabled={busy} />
       </ScrollView>

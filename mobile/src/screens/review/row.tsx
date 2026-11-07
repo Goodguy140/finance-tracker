@@ -26,6 +26,7 @@ import {
   transferDirection,
   type QueueDecision,
 } from '@/utils/review-queue';
+import { canMakeRules } from '@/utils/transaction-rules';
 
 /** One bank row from the queue, opened to decide what it is. */
 export function QueueRowDetail({ id }: { id: string }) {
@@ -60,13 +61,15 @@ export function QueueRowDetail({ id }: { id: string }) {
       row={row}
       categories={query.data.categories[row.type]}
       currency={me.data?.user.currency ?? 'CAD'}
+      rules={canMakeRules(me.data)}
     />
   );
 }
 
 const DECISION_LABELS: Record<QueueDecision, string> = { link: 'Link', pair: 'Pair', add: 'Add' };
 
-function Decider({ row, categories, currency }: { row: QueueRow; categories: { id: string; name: string }[]; currency: string }) {
+function Decider(props: { row: QueueRow; categories: { id: string; name: string }[]; currency: string; rules: boolean }) {
+  const { row, categories, currency, rules } = props;
   const theme = useTheme();
   const router = useRouter();
   const choices: QueueDecision[] = [row.match ? 'link' : null, row.transferPair ? 'pair' : null, 'add'].filter(
@@ -191,6 +194,18 @@ function Decider({ row, categories, currency }: { row: QueueRow; categories: { i
           onPress={submit}
           disabled={busy || (decision === 'add' && !asTransfer && !categoryId)}
         />
+        {rules && decision === 'add' && !asTransfer ? (
+          <FormButton
+            label="Make a Rule…"
+            onPress={() =>
+              router.push({
+                pathname: '/transaction-rule',
+                params: { title: row.heading, type: row.type, categoryId: categoryId ?? '' },
+              })
+            }
+            disabled={busy}
+          />
+        ) : null}
         <FormButton label="Ignore" onPress={ignore} disabled={busy} destructive />
       </ScrollView>
       <Stack.Title>{shown.title}</Stack.Title>

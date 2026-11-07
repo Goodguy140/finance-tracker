@@ -52,6 +52,7 @@ function RootStack() {
           <Stack.Screen name="recurring-rule" options={{ presentation: 'modal', headerShadowVisible: false }} />
           <Stack.Screen name="budget" options={{ presentation: 'modal', headerShadowVisible: false }} />
           <Stack.Screen name="budget-cover" options={{ presentation: 'modal', headerShadowVisible: false }} />
+          <Stack.Screen name="transaction-rule" options={{ presentation: 'modal', headerShadowVisible: false }} />
           <Stack.Screen name="share" options={{ presentation: 'modal', headerShadowVisible: false }} />
         </Stack.Protected>
         <Stack.Protected guard={!signedIn}>

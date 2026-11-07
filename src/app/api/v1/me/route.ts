@@ -24,6 +24,9 @@ export async function GET(request: Request) {
         currency: homeCurrencyOf(user.countryCode),
       },
       device: { id: token.id },
+      // What this server takes from the phone beyond the first API, so the app can offer it: each
+      // later addition that has no other sign names itself here.
+      features: ["rules"],
     },
     { headers: NO_STORE },
   );
