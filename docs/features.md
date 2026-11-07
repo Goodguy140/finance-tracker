@@ -213,13 +213,15 @@ Page: `src/app/reports/page.tsx`; data `src/lib/reports/*`; charts
   `src/lib/forecast-scenarios.ts` (on `projectBalances`, which takes other horizons via `days`)
 - Income vs spending by month from the first month with data (table toggle), cash-flow Sankey, year over
   year (says so instead of zeros when there is no earlier year), payees, and "Who paid you" for income
-- **Merchant page** `/reports/merchant`: `src/app/reports/merchant/page.tsx`
+- **Merchant page** `/reports/merchant`: `src/app/reports/merchant/page.tsx`,
+  `src/lib/reports/category-merchant-data.ts` (shared with the iPhone app)
 - **Category trend page** `/reports/category?id=`: one category's last 24 months by month
   against its monthly budget (stepped line), this month, its pace to month end, the average of
   up to 12 full months, top payees (linking to the merchant page), biggest purchases (split
   parts count), and a link to its transactions in `/search`. Income categories show income.
   Opened from category names in Reports' year over year, the Budgets card and the pie's
-  slices. `src/app/reports/category/page.tsx`, `src/lib/reports/category-trend.ts`
+  slices. `src/app/reports/category/page.tsx`, `src/lib/reports/category-trend.ts`,
+  `src/lib/reports/category-merchant-data.ts` (shared with the iPhone app)
 - **Year-end summary** `/reports/year` ("Year-end summary" on Reports; last year by default):
   year totals and comparison with the year before, biggest month, top categories and payees;
   totals per tag with tax-looking names (donation, medical, deductible…) first and marked "Tax
@@ -501,7 +503,7 @@ build).
   into Other categories as the card does, and Show savings) and Cumulative spending (running total
   by day, the expected pace from budgets or the last 3 months, and Compare with: None / Last month /
   3-month avg; a finger on it shows a day, and resting it first reads along the days without turning
-  the page). Both start from the website card's settings; a pick on the phone, and the chart last
+  the page). A category's row under the pie opens its category page (below). Both start from the website card's settings; a pick on the phone, and the chart last
   shown, are kept on the phone. `GET /api/v1/spending` (`src/lib/api-v1/spending.ts`, built with the
   dashboard's own functions; the pie's slices from `src/lib/category-pie.ts`, shared with the card).
   `src/screens/home/spending.tsx`, `src/components/swipe-pages.tsx`, `src/components/line-chart.tsx`
@@ -580,7 +582,8 @@ build).
   (`src/lib/api-v1/review-queue.ts`). `src/screens/review/`, `src/utils/review-queue.ts`
 - Budgets: any month's budgets by category group, with rollover carries, and the yearly budgets as
   sinking funds; ‹ › switch month. `GET /api/v1/budgets` (now also `groupName`, `rollover`,
-  `yearly` and `currentMonth`). On this month's page a budget opens a sheet with what Settings →
+  `yearly`, `currentMonth` and `trends`). A budget opens its category page (below); on this month's
+  page, that page's Edit (or, with a server without category pages, the budget itself) opens a sheet with what Settings →
   Categories sets: the monthly budget from this month on (cleared, it is removed every month, after
   a confirm), rollover, and the yearly budget; **Add a Budget** does the same for a category without
   one. A budget that is over offers **Cover the $X over from other budgets**, the Budgets card's
@@ -596,6 +599,16 @@ build).
   and **Mark Month Closed** / **Reopen Month**. `GET /api/v1/month-review?month=`,
   `POST /api/v1/month-review/close` (`src/lib/api-v1/month-review.ts`; the page and these share
   `src/lib/reports/month-review-data.ts`). `src/screens/budgets/review.tsx`, `src/utils/month-review.ts`
+- Category and payee pages (a budget row on Budgets, or a category's row under Home's pie): the
+  website's category trend page, with up to 24 months as bars (tap one for its month; the line
+  across a bar is that month's budget), this month, its pace, its usual month and its budget, top
+  payees and the biggest entries. A payee opens the website's payee page: everything from it, by
+  month and by category, and its entries (the newest 200). Opened from a budget on this month's page,
+  **Edit** opens the budget's sheet. `GET /api/v1/categories/:id/trend`, `GET /api/v1/merchants?key=`
+  (`src/lib/api-v1/category-merchant.ts`; the website's pages and these share
+  `src/lib/reports/category-merchant-data.ts`); Budgets says `trends` and the pie's slices carry
+  `categoryId` when the server has them. `src/screens/reports/`, `src/components/month-bars.tsx`
+  (plain views), `src/utils/category-merchant.ts`
 - Bills and pay (Home's "Post or skip bills and pay", and a tapped bill reminder): every recurring
   bill, pay and transfer that is on, under Overdue, Today, Next 7 days and Later, each with the
   occurrence it waits on. Swiping right uncovers Post, left uncovers Skip (each done with a tap);

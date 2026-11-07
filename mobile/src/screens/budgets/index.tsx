@@ -67,15 +67,23 @@ export function Budgets() {
   );
 }
 
-/** A budget row that opens its sheet when budgets can be changed from here. */
-function Tappable({ categoryId, label, editable, children }: { categoryId: string; label: string; editable: boolean; children: ReactNode }) {
+/**
+ * A budget row. With a server that has category pages it opens the category's page, which can open
+ * the budget's sheet when budgets can be changed from here; with an older one, the sheet itself.
+ */
+function Tappable(props: { categoryId: string; label: string; editable: boolean; trends: boolean; children: ReactNode }) {
   const router = useRouter();
-  if (!editable) return children;
+  const { categoryId, label, editable, trends, children } = props;
+  if (!editable && !trends) return children;
+  const open = () =>
+    trends
+      ? router.push({ pathname: '/budgets/category', params: { id: categoryId, ...(editable ? { budget: '1' } : {}) } })
+      : router.push({ pathname: '/budget', params: { categoryId } });
   return (
     <Pressable
-      onPress={() => router.push({ pathname: '/budget', params: { categoryId } })}
+      onPress={open}
       accessibilityRole="button"
-      accessibilityHint={`Changes the ${label} budget`}
+      accessibilityHint={trends ? `Shows ${label} by month and who it went to` : `Changes the ${label} budget`}
       style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
       {children}
     </Pressable>
@@ -87,6 +95,7 @@ function BudgetList({ data }: { data: BudgetsData }) {
   const router = useRouter();
   const yearly = data.yearly ?? [];
   const editable = canEditBudgets(data);
+  const trends = data.trends === true;
   const add = editable ? <FormButton label="Add a Budget" onPress={() => router.push('/budget')} /> : null;
   if (data.budgets.length === 0 && yearly.length === 0) {
     return (
@@ -121,7 +130,7 @@ function BudgetList({ data }: { data: BudgetsData }) {
       {sections.map((section) => (
         <Section key={section.title ?? '-'} title={section.title}>
           {section.items.map((row) => (
-            <Tappable key={row.categoryId} categoryId={row.categoryId} label={row.categoryName} editable={editable}>
+            <Tappable key={row.categoryId} categoryId={row.categoryId} label={row.categoryName} editable={editable} trends={trends}>
               <BudgetLine
                 name={row.categoryName}
                 spentCents={row.spentCents}
@@ -138,7 +147,7 @@ function BudgetList({ data }: { data: BudgetsData }) {
           title={`Yearly budgets · ${data.periodMonth.slice(0, 4)}`}
           footer="A twelfth of each is set aside every month; spending in the category draws it down.">
           {yearly.map((row) => (
-            <Tappable key={row.categoryId} categoryId={row.categoryId} label={row.categoryName} editable={editable}>
+            <Tappable key={row.categoryId} categoryId={row.categoryId} label={row.categoryName} editable={editable} trends={trends}>
               <BudgetLine
                 name={row.categoryName}
                 spentCents={row.spentCents}
@@ -151,7 +160,13 @@ function BudgetList({ data }: { data: BudgetsData }) {
         </Section>
       ) : null}
       {add}
-      {editable ? (
+      {trends ? (
+        <Text style={[styles.footer, { color: theme.textSecondary }]}>
+          {editable
+            ? 'Tap a budget for its months and payees, and Edit there to change it, turn rollover on or off, or cover an overspend.'
+            : 'Tap a budget for its months and payees. Budgets are changed from this month’s page.'}
+        </Text>
+      ) : editable ? (
         <Text style={[styles.footer, { color: theme.textSecondary }]}>
           Tap a budget to change it, turn rollover on or off, or cover an overspend from another budget.
         </Text>

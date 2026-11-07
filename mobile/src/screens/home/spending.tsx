@@ -1,7 +1,8 @@
 import { Chart, Host } from '@expo/ui/swift-ui';
 import { SegmentedControl } from '@expo/ui/community/segmented-control';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Platform, StyleSheet, Switch, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import type { Spending, SpendingComparison } from '@/api/types';
 import { LineChart, type ChartSeries } from '@/components/line-chart';
@@ -210,6 +211,7 @@ function CategorySpending(props: {
 }) {
   const { data } = props;
   const theme = useTheme();
+  const router = useRouter();
   const { slices } = data.categories;
   const shares = sliceShares(slices);
   const money = (cents: number) => formatCents(cents, data.currency);
@@ -252,20 +254,36 @@ function CategorySpending(props: {
             )}
           </View>
           <View style={styles.rows}>
-            {slices.map((slice, i) => (
-              <View
-                key={`${slice.name}-${i}`}
-                style={styles.row}
-                accessible
-                accessibilityLabel={`${slice.name}: ${money(slice.cents)}, ${shares[i]} percent${slice.kind === 'savings' ? ', moved into savings' : ''}`}>
-                <View style={[styles.swatch, { backgroundColor: slice.color }]} />
-                <Text style={[styles.rowName, { color: theme.text }]} numberOfLines={1}>
-                  {slice.name}
-                </Text>
-                <Text style={[styles.share, { color: theme.textSecondary }]}>{shares[i]}%</Text>
-                <Text style={[styles.amount, { color: slice.cents < 0 ? theme.positive : theme.text }]}>{money(slice.cents)}</Text>
-              </View>
-            ))}
+            {slices.map((slice, i) => {
+              const label = `${slice.name}: ${money(slice.cents)}, ${shares[i]} percent${slice.kind === 'savings' ? ', moved into savings' : ''}`;
+              const row = (
+                <>
+                  <View style={[styles.swatch, { backgroundColor: slice.color }]} />
+                  <Text style={[styles.rowName, { color: theme.text }]} numberOfLines={1}>
+                    {slice.name}
+                  </Text>
+                  <Text style={[styles.share, { color: theme.textSecondary }]}>{shares[i]}%</Text>
+                  <Text style={[styles.amount, { color: slice.cents < 0 ? theme.positive : theme.text }]}>{money(slice.cents)}</Text>
+                </>
+              );
+              const { categoryId } = slice;
+              // A category's own slice opens its page; a group's, the rest and Savings stay put.
+              return categoryId ? (
+                <Pressable
+                  key={`${slice.name}-${i}`}
+                  onPress={() => router.push({ pathname: '/category', params: { id: categoryId } })}
+                  accessibilityRole="button"
+                  accessibilityLabel={label}
+                  accessibilityHint="Shows the category by month and who it went to"
+                  style={({ pressed }) => [styles.row, { opacity: pressed ? 0.6 : 1 }]}>
+                  {row}
+                </Pressable>
+              ) : (
+                <View key={`${slice.name}-${i}`} style={styles.row} accessible accessibilityLabel={label}>
+                  {row}
+                </View>
+              );
+            })}
           </View>
         </View>
       )}
