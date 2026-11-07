@@ -261,9 +261,26 @@ export type RecurringRule = {
   category: string | null;
   autoPost: boolean;
   endDate: string | null;
+  /** What the rule sheet needs to change it. Added after build 17, with `paused` on the list. */
+  accountId?: string;
+  transferAccountId?: string | null;
+  categoryId?: string;
+  firstDay?: number | null;
+  secondDay?: number | null;
+  beforeWeekend?: boolean;
+  note?: string | null;
+  cancelUrl?: string | null;
+  decideBy?: string | null;
+  enabled?: boolean;
+  cancelledAt?: string | null;
 };
 
-export type RecurringList = { today: string; rules: RecurringRule[] };
+export type RecurringList = {
+  today: string;
+  rules: RecurringRule[];
+  /** Rules turned off or cancelled, by name. Absent from a server that takes no rule changes. */
+  paused?: RecurringRule[];
+};
 
 export type InsightSection = 'ahead' | 'gap' | 'recurring' | 'habit' | 'saving' | 'improvement' | 'good';
 

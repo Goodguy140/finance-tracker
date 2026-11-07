@@ -16,6 +16,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { formatDay, relativeDay } from '@/utils/dates';
 import { formatCents } from '@/utils/money';
 import { groupPlans, planPath, PLANS_PATH } from '@/utils/plans';
+import { canEditRules } from '@/utils/recurring-rules';
 import {
   groupRecurring,
   postRequest,
@@ -107,18 +108,25 @@ export function Bills() {
     }
   }
 
+  function editRule(rule: RecurringRule) {
+    router.push({ pathname: '/recurring-rule', params: { id: rule.id } });
+  }
+
   function choose(rule: RecurringRule) {
     const amount = formatCents(rule.amountCents, rule.currency);
     Alert.alert(rule.name, `${amount}, ${dueText(rule, query.data?.today ?? rule.date).toLowerCase()}`, [
       { text: `Post ${amount} now`, onPress: () => void run(rule, 'post') },
       { text: 'Skip this one', onPress: () => void run(rule, 'skip') },
       { text: 'I already logged it', onPress: () => void run(rule, 'logged') },
-      { text: 'Cancel', style: 'cancel' },
+      ...(editable ? [{ text: 'Change, pause or delete the rule', onPress: () => editRule(rule) }] : []),
+      { text: 'Cancel', style: 'cancel' as const },
     ]);
   }
 
   const data = query.data;
+  const editable = data ? canEditRules(data) : false;
   const groups = data ? groupRecurring(data.rules, data.today) : [];
+  const paused = data?.paused ?? [];
   const planGroups = plans.data ? groupPlans(plans.data.plans) : [];
   const pastDue = planGroups.find((g) => g.plans[0]?.pastDue);
   const upcoming = planGroups.find((g) => !g.plans[0]?.pastDue);
@@ -168,7 +176,9 @@ export function Bills() {
           {data && groups.length === 0 ? (
             <Section>
               <Text style={[styles.muted, { color: theme.textSecondary }]}>
-                No recurring bills, pay or transfers are on. They are set up on the website, from the Recurring card.
+                {editable
+                  ? 'No recurring bills, pay or transfers are on. Tap + to add your rent, pay or a subscription.'
+                  : 'No recurring bills, pay or transfers are on. They are set up on the website, from the Recurring card.'}
               </Text>
             </Section>
           ) : null}
@@ -198,9 +208,27 @@ export function Bills() {
             : null}
           {groups.length > 0 ? (
             <Text style={[styles.footer, { color: theme.textSecondary }]}>
-              Swipe a row right to post it, or left to skip this one. Tap it to say you already logged it. Rules are
-              added and changed on the website.
+              Swipe a row right to post it, or left to skip this one. Tap it to say you already logged it
+              {editable ? ', or to change, pause or delete the rule.' : '. Rules are added and changed on the website.'}
             </Text>
+          ) : null}
+          {paused.length > 0 ? (
+            <View style={styles.group}>
+              <Text style={[styles.groupTitle, { color: theme.textSecondary }]} accessibilityRole="header">
+                Paused
+              </Text>
+              <View>
+                {paused.map((rule, index) => (
+                  <PausedRow
+                    key={rule.id}
+                    rule={rule}
+                    first={index === 0}
+                    last={index === paused.length - 1}
+                    onPress={() => editRule(rule)}
+                  />
+                ))}
+              </View>
+            </View>
           ) : null}
           {planSection(upcoming)}
           {plans.data ? (
@@ -212,7 +240,18 @@ export function Bills() {
         </SwipeListProvider>
       </ScrollView>
       <Stack.Title>Bills and pay</Stack.Title>
-      {plans.data ? (
+      {editable ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Menu icon="plus" accessibilityLabel="Add">
+            <Stack.Toolbar.MenuAction icon="repeat" onPress={() => router.push('/recurring-rule')}>
+              Recurring bill, pay or transfer
+            </Stack.Toolbar.MenuAction>
+            <Stack.Toolbar.MenuAction icon="calendar.badge.plus" hidden={!plans.data} onPress={() => router.push('/plan')}>
+              One-off plan
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>
+        </Stack.Toolbar>
+      ) : plans.data ? (
         <Stack.Toolbar placement="right">
           <Stack.Toolbar.Button icon="plus" accessibilityLabel="Add a plan" onPress={() => router.push('/plan')} />
         </Stack.Toolbar>
@@ -337,6 +376,51 @@ function PlanRow(props: { plan: Plan; today: string; first: boolean; last: boole
         <Text style={[styles.amount, { color: income ? theme.positive : theme.text }]}>{amount}</Text>
         <Text style={[styles.subtitle, { color: plan.pastDue ? theme.warning : theme.textSecondary }]} numberOfLines={1}>
           {when}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+/** A rule that is turned off: tapped, it opens to be turned back on, changed or deleted. */
+function PausedRow(props: { rule: RecurringRule; first: boolean; last: boolean; onPress: () => void }) {
+  const { rule, first, last } = props;
+  const theme = useTheme();
+  const amount = `${rule.type === 'income' ? '+' : ''}${formatCents(rule.amountCents, rule.currency)}`;
+  const state = rule.cancelledAt ? `Cancelled ${formatDay(rule.cancelledAt)}` : 'Paused';
+  const corners = {
+    borderTopLeftRadius: first ? Radius : 0,
+    borderTopRightRadius: first ? Radius : 0,
+    borderBottomLeftRadius: last ? Radius : 0,
+    borderBottomRightRadius: last ? Radius : 0,
+  };
+  return (
+    <Pressable
+      onPress={props.onPress}
+      accessibilityRole="button"
+      accessibilityLabel={[rule.name, amount, state, recurringSubtitle(rule)].join(', ')}
+      accessibilityHint="Opens the rule"
+      style={({ pressed }) => [
+        styles.row,
+        corners,
+        {
+          backgroundColor: pressed ? theme.track : theme.backgroundElement,
+          borderColor: theme.border,
+          borderTopWidth: first ? StyleSheet.hairlineWidth : 0,
+        },
+      ]}>
+      <View style={styles.rowText}>
+        <Text style={[styles.name, { color: theme.textSecondary }]} numberOfLines={1}>
+          {rule.name}
+        </Text>
+        <Text style={[styles.subtitle, { color: theme.textSecondary }]} numberOfLines={1}>
+          {recurringSubtitle(rule)}
+        </Text>
+      </View>
+      <View style={styles.rowEnd}>
+        <Text style={[styles.amount, { color: theme.textSecondary }]}>{amount}</Text>
+        <Text style={[styles.subtitle, { color: theme.textSecondary }]} numberOfLines={1}>
+          {state}
         </Text>
       </View>
     </Pressable>
