@@ -8,6 +8,7 @@ import { toCents } from "@/lib/money";
 import { currentYmInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { setBudgetRollover, setMonthlyBudget, setYearlyBudget } from "@/lib/budget-edits";
 import { positiveAmount } from "@/lib/validation";
 import { isMappablePlaidCategory, plaidCategoryGroupOf } from "@/lib/plaid/category-taxonomy";
 import { resuggestStagedCategories } from "@/lib/plaid/category-suggestions";
@@ -227,23 +228,9 @@ function parseLimit(raw: string, period: "monthly" | "yearly" = "monthly"): numb
  */
 export const setCategoryBudgetAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const category = await findManagedCategory(prisma, user.id, getFormValue(formData, "categoryId"));
-  if (category.kind !== CategoryKind.EXPENSE) throw new Error("Budgets apply to expense categories only.");
-  if (getFormValue(formData, "intent") === "remove") {
-    // Rollover goes with the budget: one added later starts with nothing carried.
-    await prisma.$transaction([
-      prisma.budget.deleteMany({ where: { userId: user.id, categoryId: category.id } }),
-      prisma.category.update({ where: { id: category.id }, data: { rolloverSinceMonth: null } }),
-    ]);
-  } else {
-    const limitCents = parseLimit(getFormValue(formData, "limit").trim());
-    const periodMonth = currentYmInTimeZone(user.timezone);
-    await prisma.budget.upsert({
-      where: { userId_categoryId_periodMonth: { userId: user.id, categoryId: category.id, periodMonth } },
-      update: { limitCents },
-      create: { userId: user.id, categoryId: category.id, periodMonth, limitCents },
-    });
-  }
+  const categoryId = idSchema.parse(getFormValue(formData, "categoryId"));
+  const limitCents = getFormValue(formData, "intent") === "remove" ? null : parseLimit(getFormValue(formData, "limit").trim());
+  await setMonthlyBudget(prisma, user, categoryId, limitCents);
   revalidatePath("/");
   revalidatePath("/settings", "layout");
 });
@@ -258,19 +245,8 @@ export const setCategoryBudgetAction = formAction(async (formData: FormData) => 
  */
 export const setCategoryRolloverAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const category = await findManagedCategory(prisma, user.id, getFormValue(formData, "categoryId"));
-  if (category.kind !== CategoryKind.EXPENSE) throw new Error("Budgets apply to expense categories only.");
-  const enabled = getFormValue(formData, "enabled") === "true";
-  if (enabled) {
-    const hasBudget = await prisma.budget.count({ where: { userId: user.id, categoryId: category.id } });
-    if (hasBudget === 0) throw new Error("Set a monthly budget before turning on rollover.");
-    await prisma.category.updateMany({
-      where: { id: category.id, rolloverSinceMonth: null },
-      data: { rolloverSinceMonth: currentYmInTimeZone(user.timezone) },
-    });
-  } else {
-    await prisma.category.update({ where: { id: category.id }, data: { rolloverSinceMonth: null } });
-  }
+  const categoryId = idSchema.parse(getFormValue(formData, "categoryId"));
+  await setBudgetRollover(prisma, user, categoryId, getFormValue(formData, "enabled") === "true");
   revalidatePath("/");
   revalidatePath("/settings", "layout");
 });
@@ -285,19 +261,9 @@ export const setCategoryRolloverAction = formAction(async (formData: FormData) =
  */
 export const setCategoryYearlyBudgetAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const category = await findManagedCategory(prisma, user.id, getFormValue(formData, "categoryId"));
-  if (category.kind !== CategoryKind.EXPENSE) throw new Error("Budgets apply to expense categories only.");
-  if (getFormValue(formData, "intent") === "remove") {
-    await prisma.yearlyBudget.deleteMany({ where: { userId: user.id, categoryId: category.id } });
-  } else {
-    const limitCents = parseLimit(getFormValue(formData, "limit").trim(), "yearly");
-    const year = Number(currentYmInTimeZone(user.timezone).slice(0, 4));
-    await prisma.yearlyBudget.upsert({
-      where: { userId_categoryId_year: { userId: user.id, categoryId: category.id, year } },
-      update: { limitCents },
-      create: { userId: user.id, categoryId: category.id, year, limitCents },
-    });
-  }
+  const categoryId = idSchema.parse(getFormValue(formData, "categoryId"));
+  const limitCents = getFormValue(formData, "intent") === "remove" ? null : parseLimit(getFormValue(formData, "limit").trim(), "yearly");
+  await setYearlyBudget(prisma, user, categoryId, limitCents);
   revalidatePath("/");
   revalidatePath("/settings", "layout");
 });
