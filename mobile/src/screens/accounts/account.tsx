@@ -12,6 +12,7 @@ import { Section } from '@/components/section';
 import { Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
+import { canEditAccounts } from '@/utils/account-settings';
 import { accountPath, balanceSource, cardTerms, REGISTER_MONTHS, registerNote, signedCents } from '@/utils/accounts';
 import { balancesPath, canRecordBalance } from '@/utils/balances';
 import { formatDay } from '@/utils/dates';
@@ -32,6 +33,7 @@ export function Account({ id }: { id: string }) {
   const me = useApiQuery<Me>('/api/v1/me').data;
   const goals = canEditGoals(me);
   const investments = canTrackInvestments(me);
+  const editable = canEditAccounts(me);
   const { refreshing, onRefresh } = usePullToRefresh(query.refetch);
   const data = query.data;
 
@@ -109,6 +111,11 @@ export function Account({ id }: { id: string }) {
         ) : null}
       </ScrollView>
       <Stack.Title>{data?.account.name ?? 'Account'}</Stack.Title>
+      {editable && data?.settings ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button onPress={() => router.push({ pathname: '/account-edit', params: { id } })}>Edit</Stack.Toolbar.Button>
+        </Stack.Toolbar>
+      ) : null}
     </>
   );
 }

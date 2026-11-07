@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { AccountType } from "@prisma/client";
+import { setCardTerms } from "@/lib/account-edits";
 import { parseDueDayInput } from "@/lib/credit-cards";
 import { parseAprInput } from "@/lib/debt-payoff";
 import { isLiabilityType } from "@/lib/net-worth";
@@ -34,12 +34,6 @@ export const setDebtTermsAction = formAction(async (formData: FormData) => {
 /** A credit card's limit and payment due day. Blank clears one. */
 export const setCardTermsAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const account = await prisma.account.findFirst({
-    where: { id: getFormValue(formData, "accountId"), userId: user.id },
-    select: { id: true, type: true, paymentDueDay: true },
-  });
-  if (!account || account.type !== AccountType.CREDIT_CARD) throw new Error("Only credit cards have a limit and due day.");
-
   const limitRaw = getFormValue(formData, "creditLimit").trim();
   const creditLimitCents = limitRaw ? parseCentsInput(limitRaw) : null;
   if (limitRaw && (creditLimitCents === null || creditLimitCents <= 0)) {
@@ -47,15 +41,7 @@ export const setCardTermsAction = formAction(async (formData: FormData) => {
   }
   const paymentDueDay = parseDueDayInput(getFormValue(formData, "dueDay"));
   if (paymentDueDay === "invalid") throw new Error("Enter the due day as a day of the month, 1 to 31.");
-  await prisma.account.update({
-    where: { id: account.id },
-    data: {
-      creditLimitCents,
-      paymentDueDay,
-      // A new due day is a new schedule: its first date has not been reminded.
-      ...(paymentDueDay !== account.paymentDueDay ? { paymentRemindedFor: null } : {}),
-    },
-  });
+  await setCardTerms(prisma, user.id, getFormValue(formData, "accountId"), { creditLimitCents, paymentDueDay });
   revalidatePath("/reports", "layout");
   revalidatePath("/settings/accounts");
   revalidatePath("/insights");

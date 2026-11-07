@@ -55,6 +55,7 @@ function RootStack() {
           <Stack.Screen name="transaction-rule" options={{ presentation: 'modal', headerShadowVisible: false }} />
           <Stack.Screen name="goal" options={{ presentation: 'modal', headerShadowVisible: false }} />
           <Stack.Screen name="investment" options={{ presentation: 'modal', headerShadowVisible: false }} />
+          <Stack.Screen name="account-edit" options={{ presentation: 'modal', headerShadowVisible: false }} />
           <Stack.Screen name="share" options={{ presentation: 'modal', headerShadowVisible: false }} />
         </Stack.Protected>
         <Stack.Protected guard={!signedIn}>

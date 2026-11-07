@@ -7,11 +7,11 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { formatAccountDetachedLabel } from "@/lib/account-type-labels";
-import { defaultCountsAsSavings } from "@/lib/savings-transfers";
 import { BALANCE_SOURCE, upsertBalanceSnapshot } from "@/lib/account-balances";
 import { dateFromYmd } from "@/lib/date-only";
 import { toCents } from "@/lib/money";
-import { currencyChangeRefusal, foreignAccountDeleteRefusal, loadAccountUsage } from "@/lib/account-currency-guard";
+import { foreignAccountDeleteRefusal } from "@/lib/account-currency-guard";
+import { createAccount, setAccountArchived, updateAccount } from "@/lib/account-edits";
 import { homeCurrencyOf } from "@/lib/home-currency";
 import { mergeAccountDescriptionOnDetach } from "@/lib/transaction-account-detach";
 import {
@@ -32,29 +32,7 @@ export const createFinancialAccountAction = formAction(async (formData: FormData
     name: getFormValue(formData, "name"),
     type: getFormValue(formData, "type"),
   });
-
-  const created = await prisma.account.create({
-    data: {
-      userId: user.id,
-      name: payload.name,
-      type: payload.type as AccountType,
-      countsAsSavings: defaultCountsAsSavings(payload.type),
-      countryCode: user.countryCode,
-      // Not the schema default: that is CAD whatever the user's country, which would move a
-      // US or Japanese user's new account out of their home-currency totals.
-      currency: homeCurrencyOf(user.countryCode),
-      archived: false,
-    },
-    select: { id: true },
-  });
-  const h = await headers();
-  await recordAuditLog(prisma, {
-    userId: user.id,
-    action: AUDIT_ACTIONS.financial_account_created,
-    targetType: "Account",
-    targetId: created.id,
-    headers: h,
-  });
+  await createAccount(prisma, user, { name: payload.name, type: payload.type as AccountType }, await headers());
   revalidatePath("/");
   revalidatePath("/settings", "layout");
 });
@@ -68,32 +46,12 @@ export const updateFinancialAccountAction = formAction(async (formData: FormData
     currency: getFormValue(formData, "currency"),
     countsAsSavings: formData.get("countsAsSavings") === "on",
   });
-
-  const existing = await prisma.account.findFirst({
-    where: { id: payload.accountId, userId: user.id },
-    select: { name: true, currency: true },
+  await updateAccount(prisma, user.id, payload.accountId, {
+    name: payload.name,
+    type: payload.type as AccountType,
+    currency: payload.currency,
+    countsAsSavings: payload.countsAsSavings,
   });
-  if (!existing) throw new Error("Account not found.");
-  if (existing.currency !== payload.currency) {
-    const refusal = currencyChangeRefusal(
-      existing,
-      payload.currency,
-      await loadAccountUsage(prisma, user.id, payload.accountId),
-    );
-    if (refusal) throw new Error(refusal);
-  }
-
-  const result = await prisma.account.updateMany({
-    where: { id: payload.accountId, userId: user.id },
-    data: {
-      name: payload.name,
-      type: payload.type as AccountType,
-      currency: payload.currency,
-      countsAsSavings: payload.countsAsSavings,
-    },
-  });
-  if (result.count === 0) throw new Error("Account not found.");
-
   revalidatePath("/");
   revalidatePath("/settings", "layout");
 });
@@ -199,44 +157,7 @@ export const setFinancialAccountArchivedAction = formAction(async (formData: For
     accountId: getFormValue(formData, "accountId"),
     archived: getFormValue(formData, "archived"),
   });
-  const archived = payload.archived === "true";
-
-  if (archived) {
-    const [recurringTransactionCount, investmentFlowCount, snapshotCount] = await Promise.all([
-      prisma.recurringTransaction.count({ where: { userId: user.id, accountId: payload.accountId } }),
-      prisma.investmentFlow.count({ where: { userId: user.id, accountId: payload.accountId } }),
-      prisma.portfolioSnapshot.count({ where: { userId: user.id, accountId: payload.accountId } }),
-    ]);
-    if (recurringTransactionCount + investmentFlowCount + snapshotCount > 0) {
-      throw new Error(
-        "Cannot archive while this account is used by a recurring transaction, investment flow, or portfolio snapshot. Reassign or remove those first.",
-      );
-    }
-  }
-
-  const result = await prisma.account.updateMany({
-    where: { id: payload.accountId, userId: user.id },
-    data: { archived },
-  });
-  if (result.count === 0) throw new Error("Account not found.");
-
-  if (archived) {
-    await prisma.user.updateMany({
-      where: { id: user.id, defaultExpenseAccountId: payload.accountId },
-      data: { defaultExpenseAccountId: null },
-    });
-  }
-
-  const h = await headers();
-  await recordAuditLog(prisma, {
-    userId: user.id,
-    action: archived ? AUDIT_ACTIONS.financial_account_archived : AUDIT_ACTIONS.financial_account_unarchived,
-    targetType: "Account",
-    targetId: payload.accountId,
-    metadata: { archived },
-    headers: h,
-  });
-
+  await setAccountArchived(prisma, user.id, payload.accountId, payload.archived === "true", await headers());
   revalidatePath("/");
   revalidatePath("/settings", "layout");
 });

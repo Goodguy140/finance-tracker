@@ -66,6 +66,12 @@ export function serializeAccountPage(page: AccountPage) {
       currency: account.currency,
       archived: account.archived,
     },
+    /** What the phone's Edit sheet starts from: Settings → Accounts' fields. */
+    settings: {
+      countsAsSavings: account.countsAsSavings,
+      creditLimitCents: account.creditLimitCents,
+      paymentDueDay: account.paymentDueDay,
+    },
     liability,
     balance: balance(latest),
     /** Month-end balances over the last year (what is owed, for a card or loan), oldest first. */

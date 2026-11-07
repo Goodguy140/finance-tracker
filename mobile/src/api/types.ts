@@ -367,6 +367,8 @@ export type NetWorthAccount = NetWorth['accounts'][number];
 /** `GET /api/v1/accounts/:id`: the website's account page. */
 export type AccountPage = {
   account: { id: string; name: string; type: string; typeLabel: string; currency: string; archived: boolean };
+  /** Settings → Accounts' fields, for the Edit sheet. Absent from older servers. */
+  settings?: { countsAsSavings: boolean; creditLimitCents: number | null; paymentDueDay: number | null };
   liability: boolean;
   balance: AccountBalance | null;
   history: { ym: string; label: string; cents: number }[];
