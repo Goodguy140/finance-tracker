@@ -14,6 +14,7 @@ import { useAppLock } from '@/session/app-lock';
 import { useSession } from '@/session/session-provider';
 import { useOutbox } from '@/state/outbox';
 import { RELOCK_AFTER_MS } from '@/utils/app-lock';
+import { canEditGoals } from '@/utils/goals';
 import { canMakeRules } from '@/utils/transaction-rules';
 
 import { AlertsSection } from './alerts';
@@ -80,6 +81,14 @@ export function Settings() {
           <Section title="Rules" footer="Make a rule from an entry or a bank row with Make a Rule…, or from a title you use often here.">
             <Pressable onPress={() => router.push('/settings/rules')} accessibilityRole="button" hitSlop={8}>
               <Text style={[styles.link, { color: theme.tint }]}>Suggested rules ›</Text>
+            </Pressable>
+          </Section>
+        ) : null}
+
+        {canEditGoals(me.data) ? (
+          <Section title="Savings goals" footer="Add a goal, change one, or put money toward one tracked by hand.">
+            <Pressable onPress={() => router.push('/settings/goals')} accessibilityRole="button" hitSlop={8}>
+              <Text style={[styles.link, { color: theme.tint }]}>Savings goals ›</Text>
             </Pressable>
           </Section>
         ) : null}

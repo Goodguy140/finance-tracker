@@ -544,3 +544,35 @@ export type MadeRule = { id: string; matches: number };
 
 /** `GET /api/v1/rules/suggestions`: learned Title → Category combos no rule decides yet, newest first. */
 export type RuleSuggestions = { total: number; suggestions: { title: string; categoryId: string; categoryName: string }[] };
+
+export type GoalStatus = 'reached' | 'overdue' | 'on-track' | 'behind' | 'needs' | 'open' | 'no-balance';
+
+/** One goal from `GET /api/v1/goals`, with the Savings goals card's figures. */
+export type SavingsGoal = {
+  id: string;
+  name: string;
+  targetCents: number;
+  targetDate: string | null;
+  /** The account whose balance it follows; null when it is tracked by hand. */
+  account: { id: string; name: string; archived: boolean } | null;
+  currency: string;
+  manualSavedCents: number;
+  /** Null with a linked account that has no balance yet. */
+  savedCents: number | null;
+  remainingCents: number;
+  percent: number;
+  status: GoalStatus;
+  monthsLeft: number | null;
+  monthlyNeededCents: number | null;
+  monthlyPaceCents: number | null;
+  monthlyTransferCents: number | null;
+  projectedDate: string | null;
+  paceSource: 'balance' | 'transfers' | null;
+};
+
+/** `GET /api/v1/goals`. Added after build 17; an older server answers 404. */
+export type SavingsGoals = {
+  today: string;
+  accounts: { id: string; name: string; type: string }[];
+  goals: SavingsGoal[];
+};

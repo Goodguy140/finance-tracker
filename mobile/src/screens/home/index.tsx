@@ -16,8 +16,10 @@ import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { useSession } from '@/session/session-provider';
 import { useHomeLayout } from '@/state/home-layout';
+import { GoalsCard } from '@/screens/goals/card';
 import { useSpendingOptions } from '@/state/spending-options';
 import { NET_WORTH_PATH } from '@/utils/accounts';
+import { GOALS_PATH } from '@/utils/goals';
 import { formatDay, relativeDay } from '@/utils/dates';
 import type { HomeSectionId } from '@/utils/home-layout';
 import { bandTone, INSIGHTS_PATH, SCORE_PATH, scoreChangeText } from '@/utils/insights';
@@ -33,6 +35,7 @@ import { SpendingCharts } from './spending';
 const CARD_PATHS: Partial<Record<HomeSectionId, string>> = {
   score: SCORE_PATH,
   'net-worth': NET_WORTH_PATH,
+  goals: GOALS_PATH,
   recent: RECENT_PATH,
   insights: INSIGHTS_PATH,
 };
@@ -88,6 +91,8 @@ export function Home() {
         return <ScoreRow />;
       case 'net-worth':
         return <NetWorthRow />;
+      case 'goals':
+        return <GoalsCard />;
       case 'recent':
         return <RecentTransactions currency={summaryData.currency} today={summaryData.today} />;
       case 'insights':
