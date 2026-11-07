@@ -5,7 +5,7 @@ import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } 
 
 import { useApiMutation } from '@/api/mutations';
 import { errorText, useApiQuery } from '@/api/query';
-import type { AccountPage, RegisterRow } from '@/api/types';
+import type { AccountPage, Me, RegisterRow } from '@/api/types';
 import { LoadState } from '@/components/load-state';
 import { ProgressBar } from '@/components/progress-bar';
 import { Section } from '@/components/section';
@@ -15,6 +15,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { accountPath, balanceSource, cardTerms, REGISTER_MONTHS, registerNote, signedCents } from '@/utils/accounts';
 import { balancesPath, canRecordBalance } from '@/utils/balances';
 import { formatDay } from '@/utils/dates';
+import { canEditGoals } from '@/utils/goals';
 import { formatCents } from '@/utils/money';
 
 /**
@@ -27,6 +28,7 @@ export function Account({ id }: { id: string }) {
   const router = useRouter();
   const [months, setMonths] = useState<number>(REGISTER_MONTHS[0]);
   const query = useApiQuery<AccountPage>(accountPath(id, months));
+  const goals = canEditGoals(useApiQuery<Me>('/api/v1/me').data);
   const { refreshing, onRefresh } = usePullToRefresh(query.refetch);
   const data = query.data;
 
@@ -73,7 +75,13 @@ export function Account({ id }: { id: string }) {
             {data.goals.length > 0 ? (
               <Section title="Savings goals">
                 {data.goals.map((goal) => (
-                  <View key={goal.id} style={styles.stack} accessible accessibilityLabel={`${goal.name}: ${goal.percent}% of ${formatCents(goal.targetCents, goal.currency)}`}>
+                  <Pressable
+                    key={goal.id}
+                    style={styles.stack}
+                    disabled={!goals}
+                    onPress={() => router.push({ pathname: '/goal', params: { id: goal.id } })}
+                    accessibilityRole={goals ? 'button' : undefined}
+                    accessibilityLabel={`${goal.name}: ${goal.percent}% of ${formatCents(goal.targetCents, goal.currency)}`}>
                     <View style={styles.line}>
                       <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
                         {goal.name}
@@ -83,7 +91,7 @@ export function Account({ id }: { id: string }) {
                       </Text>
                     </View>
                     <ProgressBar share={goal.percent / 100} color={theme.positive} />
-                  </View>
+                  </Pressable>
                 ))}
               </Section>
             ) : null}

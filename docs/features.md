@@ -337,7 +337,8 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     out (cards and loans as amounts owed); "Mark reconciled" keeps an `AccountReconciliation` and
     the closing balance as a manual balance unless the bank reported that day:
     `src/lib/reconciliation.ts`, `actions/reconciliation.ts`
-  - Savings goals: `settings/savings-goals-panel.tsx`, `actions/savings-goals.ts`
+  - Savings goals: `settings/savings-goals-panel.tsx`, `actions/savings-goals.ts` (add, edit, delete
+    and money in or out share `src/lib/savings-goal-edits.ts` with the iPhone app)
   - Connected banks: see Bank sync
   - Categories & budgets (add, rename, merge, delete with reassign, budget, rollover, earlier
     budgets, bank mapping, group, need or want for the score's 50/30/20 split):
@@ -612,6 +613,17 @@ build).
   (`src/lib/api-v1/transaction-rules.ts`; the website's actions and these share
   `src/lib/transaction-rule-edits.ts`); `GET /api/v1/me` names `rules` in `features`.
   `src/screens/rules/`, `src/app/transaction-rule.tsx`, `src/utils/transaction-rules.ts`
+- Savings goals (Home's Savings goals card, Settings → Savings goals, a goal on an account's page):
+  every goal's saved amount of its target, bar and status, what a dated goal needs a month and when
+  it would be reached at its pace, as the website's card says it. **Add a Goal** and tapping a goal
+  open the sheet with Settings → Savings goals' fields (name, target, an optional date, tracked by hand
+  or following an account's balance, saved so far); a hand-tracked goal also has **Add Money** /
+  **Take Money Out**, and **Delete Goal** leaves a followed account alone. The Home card shows the
+  first three and hides itself without goals. `GET /api/v1/goals`, `POST /api/v1/goals`,
+  `PATCH`/`DELETE /api/v1/goals/:id`, `POST /api/v1/goals/:id/contribute`
+  (`src/lib/api-v1/goals.ts`, figures from the website's `loadSavingsGoals`; edits shared through
+  `src/lib/savings-goal-edits.ts`); `GET /api/v1/me` names `goals` in `features`.
+  `src/screens/goals/`, `src/app/goal.tsx`, `src/utils/goals.ts`
 - Category and payee pages (a budget row on Budgets, or a category's row under Home's pie): the
   website's category trend page, with up to 24 months as bars (tap one for its month; the line
   across a bar is that month's budget), this month, its pace, its usual month and its budget, top
@@ -656,7 +668,8 @@ build).
   out of the totals), as Reports' Net worth. An account opens to the website's account page: balance
   and where it came from, money in and out this month, a card's limit, use and due day, the bank and
   what it needs, the register over the last 3 or 12 months with its running balance (entries after the
-  latest balance marked *; an entry opens for editing), recurring rules and savings goals.
+  latest balance marked *; an entry opens for editing), recurring rules and savings goals (each opens
+  its goal sheet).
   **Add a balance** / **Update balance** on an open account types in what it holds (or for a card or
   loan what is owed) as of a day no later than today, as Settings → Accounts does; a second entry
   that day replaces the first. The ones typed in are listed under "Balances you entered", each with

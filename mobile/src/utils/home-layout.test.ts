@@ -17,7 +17,7 @@ const ALL = HOME_SECTIONS.map((section) => section.id);
 
 describe('resolveHomeLayout', () => {
   it('is the default until something readable was kept', () => {
-    expect(DEFAULT_HOME_LAYOUT).toEqual(['safe-to-spend', 'waiting', 'spending', 'budgets', 'coming-up', 'score', 'net-worth']);
+    expect(DEFAULT_HOME_LAYOUT).toEqual(['safe-to-spend', 'waiting', 'spending', 'budgets', 'coming-up', 'score', 'net-worth', 'goals']);
     expect(resolveHomeLayout(null)).toEqual(DEFAULT_HOME_LAYOUT);
     expect(resolveHomeLayout('nonsense')).toEqual(DEFAULT_HOME_LAYOUT);
     expect(resolveHomeLayout({ shown: 'budgets' })).toEqual(DEFAULT_HOME_LAYOUT);

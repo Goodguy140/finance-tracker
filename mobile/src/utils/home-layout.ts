@@ -13,6 +13,7 @@ export const HOME_SECTIONS = [
   { id: 'coming-up', title: 'Bills and pay', description: 'What is due in the next few days', shown: true },
   { id: 'score', title: 'Financial score', description: 'Your score and how it moved', shown: true },
   { id: 'net-worth', title: 'Net worth', description: 'What you own less what you owe', shown: true },
+  { id: 'goals', title: 'Savings goals', description: 'Your first few goals and what each needs, when you have any', shown: true },
   { id: 'recent', title: 'Recent transactions', description: 'The last few entries, newest first', shown: false },
   { id: 'insights', title: 'Insights', description: 'The most pressing few', shown: false },
 ] as const;
