@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { dateFromYmd, formatDay, localMonth, localToday, relativeDay, shiftMonth, ymdFromDate } from './dates';
+import { dateFromYmd, formatDate, formatDay, localMonth, localToday, relativeDay, shiftMonth, ymdFromDate } from './dates';
+
+describe('formatDate', () => {
+  it('writes a day with its year, for one that may be long ago', () => {
+    expect(formatDate('2024-01-02', 'en-US')).toBe('Jan 2, 2024');
+    expect(formatDate('not a day', 'en-US')).toBe('not a day');
+  });
+});
 
 describe('formatDay', () => {
   it('writes the calendar day the server meant, whatever the phone’s time zone', () => {

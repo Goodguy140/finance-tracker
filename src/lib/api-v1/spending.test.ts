@@ -96,6 +96,8 @@ describe("buildAppSpending: spending by category", () => {
       { name: "Savings", cents: 20_000, kind: "savings" },
     ]);
     expect(pie.slices[3].color).toBe(SAVINGS_SLICE_COLOR);
+    // Group slices stand for several categories, so none opens a category page.
+    expect(pie.slices.some((slice) => "categoryId" in slice)).toBe(false);
   });
 
   it("keeps categories apart when the card says not to add groups up, and draws no Savings slice for nothing saved", () => {
@@ -108,6 +110,7 @@ describe("buildAppSpending: spending by category", () => {
     );
     expect(pie.grouped).toBe(false);
     expect(pie.slices.map((slice) => slice.name)).toEqual(["Dining", "Groceries", "Gas"]);
+    expect(pie.slices.map((slice) => ("categoryId" in slice ? slice.categoryId : null))).toEqual(["dining", "groceries", "gas"]);
     expect(pie.savings).toEqual({ cents: 0, accounts: 1 });
   });
 });

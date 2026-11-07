@@ -90,6 +90,8 @@ export async function GET(request: Request) {
       periodMonth: progress.periodMonth,
       // The month budgets are changed from (the user's own this month); the phone edits only there.
       currentMonth: currentYmInTimeZone(auth.user.timezone),
+      // Each budget's category has a page at /api/v1/categories/:id/trend.
+      trends: true,
       currency: progress.currency,
       budgets: progress.budgets.map((row) => ({
         categoryId: row.categoryId,

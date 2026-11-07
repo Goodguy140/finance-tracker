@@ -12,6 +12,13 @@ export function formatDay(ymd: string, locale?: string): string {
   return date.toLocaleDateString(locale, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
+/** "2026-11-05" → "Nov 5, 2026": a day that may be in another year. */
+export function formatDate(ymd: string, locale?: string): string {
+  const date = utcDate(ymd);
+  if (!date) return ymd;
+  return date.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+}
+
 /** "Today", "Tomorrow", "Yesterday", or the day as `formatDay` writes it. */
 export function relativeDay(ymd: string, todayYmd: string, locale?: string): string {
   const day = utcDate(ymd);

@@ -112,7 +112,7 @@ export function buildAppSpending(input: AppSpendingInput) {
   // the tail rolled into "Other categories", Savings last and never rolled in.
   const slices = buildCategoryPieSlices(computeSpendByCategory([...input.expenses]), input.categories, assignCategoryColors(input.categories));
   const grouped = settings.groupCategories && hasGroups(slices, (slice) => slice.groupName);
-  const shown: { name: string; cents: number; color: string; pinned?: boolean; other?: true }[] = grouped
+  const shown: { name: string; cents: number; color: string; pinned?: boolean; other?: true; categoryId?: string }[] = grouped
     ? mergeSlicesByGroup(slices)
     : slices;
   const savingsCents = input.savings?.cents ?? 0;
@@ -149,6 +149,8 @@ export function buildAppSpending(input: AppSpendingInput) {
         cents: slice.cents,
         color: slice.color,
         kind: sliceKind(slice),
+        // A category's own slice opens its page on the phone; a group's, the rest and Savings have none.
+        ...(!grouped && "categoryId" in slice && slice.categoryId ? { categoryId: slice.categoryId } : {}),
       })),
       savings: input.savings,
     },

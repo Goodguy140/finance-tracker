@@ -37,6 +37,8 @@ export type Budgets = {
   periodMonth: string;
   /** The person's own this month, which budgets are changed from. Absent from servers that take no changes. */
   currentMonth?: string;
+  /** Each budget's category has a page (`GET /api/v1/categories/:id/trend`). Absent from older servers. */
+  trends?: boolean;
   currency: string;
   budgets: BudgetRow[];
   totalLimitCents: number;
@@ -442,7 +444,8 @@ export type Spending = {
     /** Slices are category groups (once the person has any) rather than categories. */
     grouped: boolean;
     /** Biggest first; "Other categories" and then Savings last. A negative slice is refunds outweighing spending. */
-    slices: { name: string; cents: number; color: string; kind: 'category' | 'other' | 'savings' }[];
+    /** `categoryId` is on a single category's slice, from servers that have its page. */
+    slices: { name: string; cents: number; color: string; kind: 'category' | 'other' | 'savings'; categoryId?: string }[];
     /** Net moved into savings accounts, and how many accounts count as savings; null when the slice is off. */
     savings: { cents: number; accounts: number } | null;
   };
@@ -490,4 +493,46 @@ export type MonthReview = {
   score: number | null;
   previousScore: number | null;
   closedOn: string | null;
+};
+
+/** `GET /api/v1/categories/:id/trend`: the website's category page. Added after build 17; an older server answers 404. */
+export type CategoryTrend = {
+  categoryId: string;
+  name: string;
+  kind: 'expense' | 'income';
+  groupName: string | null;
+  currency: string;
+  /** Oldest first, up to 24 months, this one last. Empty when nothing was filed in that time. */
+  months: { month: string; label: string; cents: number; budgetCents: number | null }[];
+  averageCents: number | null;
+  averageMonths: number;
+  thisMonth: { cents: number; paceCents: number | null; budgetCents: number | null } | null;
+  payees: { key: string; label: string; cents: number; count: number }[];
+  biggest: { id: string; date: string; title: string; cents: number; split: boolean }[];
+};
+
+/** `GET /api/v1/merchants?key=`: the website's payee page. Added after build 17; an older server answers 404. */
+export type MerchantActivity = {
+  key: string;
+  label: string;
+  currency: string;
+  firstDate: string;
+  lastDate: string;
+  spentCents: number;
+  receivedCents: number;
+  count: number;
+  averageCents: number | null;
+  months: { month: string; label: string; spentCents: number; receivedCents: number }[];
+  categories: { categoryName: string; spentCents: number }[];
+  /** Newest first; at most 200, while `count` counts them all. */
+  transactions: {
+    id: string;
+    date: string;
+    title: string;
+    type: 'expense' | 'income';
+    amountCents: number;
+    /** Null for a split entry. */
+    categoryName: string | null;
+    split: boolean;
+  }[];
 };

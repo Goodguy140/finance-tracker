@@ -3,15 +3,11 @@ import { notFound } from "next/navigation";
 import { CategoryKind } from "@prisma/client";
 import { AppNav, APP_TAB_BAR_PAD_CLASS } from "@/components/app-nav";
 import { CategoryTrendChart } from "@/components/reports/report-charts";
-import { getCountryConfig } from "@/lib/country-config";
-import { shiftYm, startOfMonthYm } from "@/lib/dashboard-period";
 import { formatDateOnlyUtc } from "@/lib/date-only";
 import { parseCustomRangeKey } from "@/lib/date-range";
 import { formatCurrency } from "@/lib/money";
-import { currentYmdInTimeZone } from "@/lib/period-month";
-import { prisma } from "@/lib/prisma";
-import { categoryTrend, TREND_MONTHS } from "@/lib/reports/category-trend";
-import { loadReportTxs } from "@/lib/reports/load";
+import { loadCategoryTrend } from "@/lib/reports/category-merchant-data";
+import { TREND_MONTHS } from "@/lib/reports/category-trend";
 import { requireUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -32,25 +28,15 @@ export default async function CategoryReportPage({ searchParams }: { searchParam
   const sp = await searchParams;
   const id = firstParam(sp.id)?.trim();
   if (!id) notFound();
-  const category = await prisma.category.findFirst({
-    where: { id, userId: user.id, kind: { in: [CategoryKind.EXPENSE, CategoryKind.INCOME] } },
-    select: { id: true, name: true, kind: true, groupName: true },
-  });
-  if (!category) notFound();
+  const loaded = await loadCategoryTrend(user, id);
+  if (!loaded) notFound();
+  const { category, currency, trend } = loaded;
   const period = firstParam(sp.period);
   const periodQuery = period && (/^\d{4}$/.test(period) || parseCustomRangeKey(period)) ? `&period=${period}` : "";
   const backHref = periodQuery ? `/reports?${periodQuery.slice(1)}` : "/reports";
 
-  const currency = getCountryConfig(user.countryCode).defaultCurrency;
   const fmt = (cents: number) => formatCurrency(cents, currency);
-  const todayYmd = currentYmdInTimeZone(user.timezone);
-  const since = startOfMonthYm(shiftYm(todayYmd.slice(0, 7), -(TREND_MONTHS - 1)));
-  const [txs, budgets] = await Promise.all([
-    loadReportTxs(user.id, since, currency),
-    prisma.budget.findMany({ where: { userId: user.id, categoryId: category.id }, select: { periodMonth: true, limitCents: true } }),
-  ]);
   const income = category.kind === CategoryKind.INCOME;
-  const trend = categoryTrend({ txs, categoryId: category.id, kind: income ? "INCOME" : "EXPENSE", budgets, todayYmd });
   const searchHref = `/search?category=${encodeURIComponent(category.id)}`;
 
   const tiles = trend

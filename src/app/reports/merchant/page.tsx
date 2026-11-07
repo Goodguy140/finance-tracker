@@ -2,12 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppNav, APP_TAB_BAR_PAD_CLASS } from "@/components/app-nav";
 import { MerchantMonthChart } from "@/components/reports/report-charts";
-import { getCountryConfig } from "@/lib/country-config";
 import { formatDateOnlyUtc } from "@/lib/date-only";
 import { parseCustomRangeKey } from "@/lib/date-range";
 import { formatCurrency } from "@/lib/money";
-import { merchantActivity } from "@/lib/reports";
-import { loadReportTxs } from "@/lib/reports/load";
+import { loadMerchantActivity } from "@/lib/reports/category-merchant-data";
 import { requireUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -32,10 +30,10 @@ export default async function MerchantReportPage({ searchParams }: { searchParam
   const backHref =
     period && (/^\d{4}$/.test(period) || parseCustomRangeKey(period)) ? `/reports?period=${period}` : "/reports";
 
-  const currency = getCountryConfig(user.countryCode).defaultCurrency;
+  const loaded = await loadMerchantActivity(user, key);
+  if (!loaded) notFound();
+  const { currency, activity } = loaded;
   const fmt = (cents: number) => formatCurrency(cents, currency);
-  const activity = merchantActivity(await loadReportTxs(user.id, null, currency), key);
-  if (!activity) notFound();
 
   const expenseCount = activity.transactions.filter((t) => t.type === "EXPENSE").length;
   const tiles = [
