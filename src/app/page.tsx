@@ -128,13 +128,9 @@ import {
   inCurrencyWhere,
   sumOtherCurrencies,
 } from "@/lib/home-currency";
-import {
-  DEFAULT_BILLS_FORECAST_DAYS,
-  forecastRecurringOccurrences,
-  groupForecastByDay,
-  type BillsForecastOccurrence,
-} from "@/lib/bills-forecast";
-import { cardPaymentsDue, type CardDue } from "@/lib/credit-cards";
+import { DEFAULT_BILLS_FORECAST_DAYS, forecastRecurringOccurrences } from "@/lib/bills-forecast";
+import { buildBillsForecastList, type BillsForecastEntry } from "@/lib/bills-forecast-list";
+import { cardPaymentsDue } from "@/lib/credit-cards";
 import { loadCardTerms } from "@/lib/credit-cards-data";
 import type { BillsForecastItem } from "@/components/dashboard-cards/bills-forecast-card";
 import { requireUser } from "@/lib/session";
@@ -993,89 +989,38 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   // outside the totals: the forecast counts only income and bills, and the running net skips them.
   const billsShowTransfers = cardSettings["bills-forecast"]?.showTransfers ?? true;
   const cardTerms = await cardTermsPromise;
-  const billsForecast = forecastRecurringOccurrences(forecastRules, {
+  const billsForecast = buildBillsForecastList({
+    rules: forecastRules,
+    cardRules: homeRecurringRules,
+    cardTerms,
     todayYmd,
     currentYm: anchorYm,
     days: billsForecastDays,
     includeTransfers: billsShowTransfers,
   });
-  const billsCardPayments = billsShowTransfers ? cardPaymentsDue(cardTerms, homeRecurringRules, todayYmd, billsForecastDays) : [];
-  // A subscription's "Decide by" date goes on its first charge in the list, while still ahead.
-  const decideByShown = new Set<string>();
-  type ForecastRow = BillsForecastOccurrence<{ type: TransactionType; amountCents: number; item: BillsForecastItem }>;
-  const forecastRuleRow = ({ rule, date, overdue, missedSince }: (typeof billsForecast.occurrences)[number]): ForecastRow => {
-    const decideBy =
-      "decideBy" in rule && rule.decideBy && ymdFromDateUtc(rule.decideBy) >= todayYmd && !decideByShown.has(rule.id)
-        ? rule.decideBy
-        : null;
-    if (decideBy) decideByShown.add(rule.id);
-    const transferTo = "transferAccount" in rule ? rule.transferAccount : null;
-    return {
-      rule: {
-        type: rule.type,
-        amountCents: rule.amountCents,
-        item: {
-          key: `${rule.id}:${ymdFromDateUtc(date)}`,
-          name: rule.name,
-          type: rule.type,
-          amountCents: rule.amountCents,
-          categoryLabel:
-            rule.type === TransactionType.TRANSFER
-              ? `${rule.account.name} to ${transferTo?.name ?? "another account"}`
-              : rule.category.name,
-          overdue,
-          missedSinceDisplay: missedSince ? formatDateOnlyUtc(missedSince) : null,
-          planned: "planned" in rule,
-          decideByDisplay: decideBy ? formatDateOnlyUtc(decideBy) : null,
-        },
-      },
-      date,
-      overdue,
-      missedSince,
-    };
-  };
-  const cardPaymentRow = (due: CardDue): ForecastRow => {
-    // The latest balance reading when there is one, else the minimum on record.
-    const amountCents = due.owedCents ?? due.minimumCents;
-    return {
-      rule: {
-        type: TransactionType.TRANSFER,
-        amountCents: amountCents ?? 0,
-        item: {
-          key: `card:${due.accountId}:${ymdFromDateUtc(due.date)}`,
-          name: `${due.name} payment`,
-          type: "TRANSFER",
-          amountCents,
-          categoryLabel:
-            due.owedCents !== null
-              ? `Balance owed${due.minimumCents ? `, minimum ${formatCurrency(due.minimumCents)}` : ""}`
-              : due.minimumCents
-                ? "Minimum payment"
-                : "No balance recorded",
-          overdue: false,
-          missedSinceDisplay: null,
-          planned: false,
-          cardPayment: true,
-        },
-      },
-      date: due.date,
-      overdue: false,
-      missedSince: null,
-    };
-  };
-  const billsForecastRows = [...billsForecast.occurrences.map(forecastRuleRow), ...billsCardPayments.map(cardPaymentRow)].sort(
-    (a, b) => a.date.getTime() - b.date.getTime(),
-  );
-  const billsForecastDayGroups = groupForecastByDay(billsForecastRows).map((day) => ({
+  const billsForecastItem = (entry: BillsForecastEntry): BillsForecastItem => ({
+    key: entry.key,
+    name: entry.name,
+    type: entry.type,
+    amountCents: entry.amountCents,
+    categoryLabel: entry.card
+      ? entry.card.owedCents !== null
+        ? `Balance owed${entry.card.minimumCents ? `, minimum ${formatCurrency(entry.card.minimumCents)}` : ""}`
+        : entry.card.minimumCents
+          ? "Minimum payment"
+          : "No balance recorded"
+      : entry.label,
+    overdue: entry.overdue,
+    missedSinceDisplay: entry.missedSince ? formatDateOnlyUtc(entry.missedSince) : null,
+    planned: entry.planned,
+    ...(entry.card ? { cardPayment: true } : {}),
+    ...(entry.card ? {} : { decideByDisplay: entry.decideBy ? formatDateOnlyUtc(entry.decideBy) : null }),
+  });
+  const billsForecastDayGroups = billsForecast.days.map((day) => ({
     dateYmd: day.dateYmd,
-    label:
-      day.dateYmd === todayYmd
-        ? "Today"
-        : day.dateYmd === tomorrowYmd
-          ? "Tomorrow"
-          : formatDateOnlyUtc(day.occurrences[0].date),
+    label: day.dateYmd === todayYmd ? "Today" : day.dateYmd === tomorrowYmd ? "Tomorrow" : formatDateOnlyUtc(day.entries[0].date),
     runningNetCents: day.runningNetCents,
-    items: day.occurrences.map(({ rule }) => rule.item),
+    items: day.entries.map(billsForecastItem),
   }));
 
   // The Calendar card: the month on screen as a grid, with recurring still due from today on.
@@ -1327,7 +1272,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           incomeCents={billsForecast.incomeCents}
           expenseCents={billsForecast.expenseCents}
           netCents={billsForecast.netCents}
-          ruleCount={recurringTransactions.filter((rule) => rule.enabled).length + plannedItems.length + billsCardPayments.length}
+          ruleCount={recurringTransactions.filter((rule) => rule.enabled).length + plannedItems.length + billsForecast.cardPaymentCount}
           pastDuePlans={plannedItems.filter((plan) => plan.pastDue)}
         />
       ),

@@ -6,13 +6,14 @@ import { RefreshControl, ScrollView } from 'react-native-gesture-handler';
 
 import { useApiMutation } from '@/api/mutations';
 import { errorText, useApiQuery } from '@/api/query';
-import type { Plan, PlanList, RecurringList, RecurringRule } from '@/api/types';
+import type { Me, Plan, PlanList, RecurringList, RecurringRule } from '@/api/types';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
 import { SwipeListProvider, SwipeRow, useSwipeList } from '@/components/swipe-row';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
+import { canForecast } from '@/utils/bills-forecast';
 import { formatDay, relativeDay } from '@/utils/dates';
 import { formatCents } from '@/utils/money';
 import { groupPlans, planPath, PLANS_PATH } from '@/utils/plans';
@@ -45,6 +46,7 @@ export function Bills() {
   const query = useApiQuery<RecurringList>(RECURRING_PATH);
   // An older server answers 404: the plans and the + stay away.
   const plans = useApiQuery<PlanList>(PLANS_PATH);
+  const forecast = canForecast(useApiQuery<Me>('/api/v1/me').data);
   const { refreshing, onRefresh } = usePullToRefresh(async () => {
     await Promise.all([query.refetch(), plans.refetch()]);
   });
@@ -240,6 +242,11 @@ export function Bills() {
         </SwipeListProvider>
       </ScrollView>
       <Stack.Title>Bills and pay</Stack.Title>
+      {forecast ? (
+        <Stack.Toolbar placement="left">
+          <Stack.Toolbar.Button icon="calendar.day.timeline.left" accessibilityLabel="Upcoming bills" onPress={() => router.push('/upcoming')} />
+        </Stack.Toolbar>
+      ) : null}
       {editable ? (
         <Stack.Toolbar placement="right">
           <Stack.Toolbar.Menu icon="plus" accessibilityLabel="Add">

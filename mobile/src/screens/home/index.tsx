@@ -5,7 +5,7 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { errorText, useApiQuery } from '@/api/query';
-import type { FinancialScore, NetWorth, Spending, Summary } from '@/api/types';
+import type { FinancialScore, Me, NetWorth, Spending, Summary } from '@/api/types';
 import { BudgetLine } from '@/components/budget-line';
 import { LoadState } from '@/components/load-state';
 import { OutboxBanner } from '@/components/outbox-banner';
@@ -19,6 +19,7 @@ import { useHomeLayout } from '@/state/home-layout';
 import { GoalsCard } from '@/screens/goals/card';
 import { useSpendingOptions } from '@/state/spending-options';
 import { NET_WORTH_PATH } from '@/utils/accounts';
+import { canForecast } from '@/utils/bills-forecast';
 import { GOALS_PATH } from '@/utils/goals';
 import { formatDay, relativeDay } from '@/utils/dates';
 import type { HomeSectionId } from '@/utils/home-layout';
@@ -247,6 +248,7 @@ function ComingUp({ data }: { data: Summary }) {
   const theme = useTheme();
   const router = useRouter();
   const { upcoming } = data;
+  const forecast = canForecast(useApiQuery<Me>('/api/v1/me').data);
   const money = (cents: number) => formatCents(cents, data.currency);
   const totals = [
     upcoming.billsCents > 0 ? `Bills ${money(upcoming.billsCents)}` : null,
@@ -280,6 +282,11 @@ function ComingUp({ data }: { data: Summary }) {
       <Pressable onPress={() => router.push('/bills')} accessibilityRole="button" hitSlop={8}>
         <Text style={[styles.link, { color: theme.tint }]}>Post or skip bills and pay</Text>
       </Pressable>
+      {forecast ? (
+        <Pressable onPress={() => router.push('/upcoming')} accessibilityRole="button" hitSlop={8}>
+          <Text style={[styles.link, { color: theme.tint }]}>See the next 30, 60 or 90 days</Text>
+        </Pressable>
+      ) : null}
     </Section>
   );
 }
