@@ -110,22 +110,33 @@ export async function listTransactionsForApi(db: PrismaClient, userId: string, q
     ...(query.needsReview ? { needsReview: query.needsReview === "true" } : {}),
     ...(query.q ? { AND: [transactionSearchWhere(userId, { query: query.q })] } : {}),
   };
+  return transactionPageForApi(db, userId, where, query.limit, query.cursor);
+}
+
+/** One page of the transactions `where` finds, newest first, as `GET /api/v1/transactions` lists them. */
+export async function transactionPageForApi(
+  db: PrismaClient,
+  userId: string,
+  where: Prisma.TransactionWhereInput,
+  limit: number,
+  cursor: string | undefined,
+) {
   // A cursor from someone else's data, or a deleted row, starts nothing: it is checked here
   // rather than handed to Prisma, which would throw on an id it cannot find.
-  const cursorOk = query.cursor ? (await db.transaction.count({ where: { id: query.cursor, userId } })) > 0 : false;
-  if (query.cursor && !cursorOk) return { ok: false as const, error: "Unknown 'cursor'." };
+  const cursorOk = cursor ? (await db.transaction.count({ where: { id: cursor, userId } })) > 0 : false;
+  if (cursor && !cursorOk) return { ok: false as const, error: "Unknown 'cursor'." };
   const rows = await db.transaction.findMany({
     where,
     include: transactionInclude,
     orderBy: [{ date: "desc" }, { id: "desc" }],
-    take: query.limit + 1,
-    ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+    take: limit + 1,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
   });
-  const page = rows.slice(0, query.limit);
+  const page = rows.slice(0, limit);
   return {
     ok: true as const,
     transactions: page.map(serializeTransaction),
-    nextCursor: rows.length > query.limit ? page[page.length - 1].id : null,
+    nextCursor: rows.length > limit ? page[page.length - 1].id : null,
   };
 }
 

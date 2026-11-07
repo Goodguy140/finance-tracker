@@ -33,7 +33,8 @@ same PR.
     50); they are listed on `/search` and in the master search (all when the box is empty, by name
     otherwise), each with how many transactions it finds and their spent/received total, worked
     out each time. Deleting an account, category or tag a search uses deletes it; merging moves it.
-    `src/lib/search/saved-searches.ts`, `src/app/actions/saved-searches.ts`; in backups
+    `src/lib/search/saved-searches.ts` (also saves and deletes them, for the phone too),
+    `src/app/actions/saved-searches.ts`; in backups
 - **Account pages** (`/accounts/[id]`): balance now and month-end balances over the year (the
   readings net worth uses), money in and out this month, card limit/utilization/due day, the
   register for 3 or 12 months with a running balance worked back (and forward, marked) from the
@@ -512,7 +513,12 @@ build).
   (plain views, no native drawing library), `src/utils/spending.ts`, `src/state/spending-options.ts`
 - Transactions: the log a month at a time (‹ ›), grouped by day; search across every month
   (title, note, bank text or amount, as the website's search matches); filter by Needs review
-  (every month) and spending, income or transfers. A row opens an editor for title, amount,
+  (every month) and spending, income or transfers. As the website's Search transactions page, the
+  filter menu also narrows by **account** (either side of a transfer), **category** and **tag**, any of
+  which searches every month; a search shows how many it found and what they spent and received, and
+  **Save This Search…** keeps it with the website's saved searches, listed under **Saved Searches** in
+  the filter menu with their running totals (one on screen can be deleted there; Needs review is
+  never saved). A row opens an editor for title, amount,
   dates, category, account, tags and note, plus Mark reviewed and Delete with an Undo bar. A
   transfer shows From and To in place of category and account, and either can be changed (picked
   the other way round, the transfer is reversed); a paired transfer keeps the accounts of its two
@@ -533,7 +539,11 @@ build).
   and `owedShares` with `paidCents`; `GET` lists `owedShares`), `GET /api/v1/owed`,
   `POST /api/v1/owed/:id` (`src/lib/api-v1/owed.ts`, `src/lib/owed-to-you.ts`, shared with the
   Expense Log), `POST /api/v1/undo/:undoId`, `GET /api/v1/tags`
-  (`src/lib/api-v1/transactions.ts`). `src/screens/transactions/`
+  (`src/lib/api-v1/transactions.ts`), `GET /api/v1/search` (`/search`'s `transactionSearchWhere` and
+  totals), `GET`/`POST /api/v1/saved-searches`, `DELETE /api/v1/saved-searches/:id`
+  (`src/lib/api-v1/search.ts`; saving and deleting shared with `/search` through
+  `src/lib/search/saved-searches.ts`); `GET /api/v1/me` names `search` in `features`.
+  `src/screens/transactions/`, `src/utils/search.ts`
 - Add (the + on Home and Transactions, a sheet): expense, income or transfer with amount, title, date,
   category and account (Automatic uses the user's rules and past titles, as the website's Add card
   does), a transfer's From and To, tags and note; an Undo bar afterwards. The Transactions search also
