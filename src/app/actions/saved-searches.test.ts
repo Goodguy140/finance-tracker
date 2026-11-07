@@ -26,6 +26,7 @@ describe("saveSearchAction", () => {
     mockPrisma.category.count.mockResolvedValue(1);
     mockPrisma.tag.count.mockResolvedValue(1);
     mockPrisma.savedSearch.count.mockResolvedValue(0);
+    mockPrisma.savedSearch.create.mockResolvedValue({ id: "saved-1" });
   });
 
   it("saves the filters on screen under the name given", async () => {
@@ -34,6 +35,7 @@ describe("saveSearchAction", () => {
     ).toBeUndefined();
     expect(mockPrisma.savedSearch.create).toHaveBeenCalledWith({
       data: { userId: "user-1", name: "Coffee", query: "coffee", type: "EXPENSE", accountId: null, categoryId: "cat-1", tagId: null },
+      select: { id: true },
     });
     expect(mockPrisma.category.count).toHaveBeenCalledWith({ where: { id: "cat-1", userId: "user-1" } });
   });

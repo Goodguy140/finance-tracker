@@ -119,7 +119,15 @@ export async function transactionSearchTotals(
   filter: TransactionSearchFilter,
   homeCurrency: string,
 ): Promise<TransactionSearchTotals> {
-  const where = transactionSearchWhere(userId, filter);
+  return transactionTotalsWhere(db, transactionSearchWhere(userId, filter), homeCurrency);
+}
+
+/** `transactionSearchTotals` for a `where` already built, such as a search narrowed further. */
+export async function transactionTotalsWhere(
+  db: PrismaClient,
+  where: Prisma.TransactionWhereInput,
+  homeCurrency: string,
+): Promise<TransactionSearchTotals> {
   const [count, sums] = await Promise.all([
     db.transaction.count({ where }),
     db.transaction.groupBy({

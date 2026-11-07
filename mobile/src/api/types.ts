@@ -576,3 +576,24 @@ export type SavingsGoals = {
   accounts: { id: string; name: string; type: string }[];
   goals: SavingsGoal[];
 };
+
+/** What a search finds, from `GET /api/v1/search`'s first page. */
+export type SearchTotals = { count: number; spentCents: number; receivedCents: number };
+
+/** `GET /api/v1/search`: the list's page, plus the totals on the first one. Added after build 17. */
+export type SearchPage = TransactionPage & { currency: string; totals: SearchTotals | null };
+
+/** One saved search from `GET /api/v1/saved-searches`, with its filters and what it finds now. */
+export type SavedSearch = SearchTotals & {
+  id: string;
+  name: string;
+  q: string | null;
+  type: TransactionType | null;
+  accountId: string | null;
+  categoryId: string | null;
+  tagId: string | null;
+  /** "12 transactions · Spent $340.00", the website's line under the name. */
+  summary: string;
+};
+
+export type SavedSearches = { currency: string; searches: SavedSearch[] };

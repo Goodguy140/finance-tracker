@@ -1,13 +1,14 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
+import type { SearchBarCommands } from 'react-native-screens';
 
 import { apiGet } from '@/api/client';
 import { useApiMutation } from '@/api/mutations';
 import { errorText, useApiQuery, useRememberedQuery } from '@/api/query';
-import type { Account, Category, Me, OwedToYou, Transaction, TransactionPage } from '@/api/types';
+import type { Account, Category, Me, OwedToYou, SavedSearch, SavedSearches, SearchPage, Tag, Transaction, TransactionPage } from '@/api/types';
 import { LoadState } from '@/components/load-state';
 import { OutboxBanner } from '@/components/outbox-banner';
 import { UndoBar } from '@/components/undo-bar';
@@ -21,6 +22,20 @@ import { BULK_PATH, bulkNote, selectAll, selectable, toggled, type BulkOp, type 
 import { localMonth, localToday, relativeDay, shiftMonth } from '@/utils/dates';
 import { formatPeriodMonth } from '@/utils/money';
 import { OWED_PATH, owedSummary } from '@/utils/owed';
+import {
+  applySavedSearch,
+  canSearch,
+  filtersLine,
+  isSearching,
+  NO_SEARCH_FILTERS,
+  SAVED_SEARCHES_PATH,
+  savedSearchBody,
+  savedSearchPath,
+  savedSearchShown,
+  searchPath,
+  totalsLine,
+  type SearchFilters,
+} from '@/utils/search';
 import { groupByDay, listPath, type ListFilters, type TransactionType } from '@/utils/transactions';
 
 import { QuickAddCard } from './quick-add-card';
@@ -43,10 +58,19 @@ export function Transactions({ initialNeedsReview = false }: { initialNeedsRevie
   const [searchText, setSearchText] = useState('');
   const search = useDebouncedValue(searchText.trim(), 300);
   const [filters, setFilters] = useState<ListFilters>({ type: null, needsReview: initialNeedsReview });
+  // Account, category and tag, with totals and saved searches, on a server that has the website's search.
+  const searchable = canSearch(me.data);
+  const [more, setMore] = useState<SearchFilters>(NO_SEARCH_FILTERS);
+  const searchBar = useRef<SearchBarCommands>(null);
+  const searching = searchable && isSearching(search, more);
 
   const query = useInfiniteQuery({
-    queryKey: ['api', 'transactions', month, search, filters],
-    queryFn: ({ pageParam }) => apiGet<TransactionPage>(session!, listPath(month, search, filters, pageParam)),
+    queryKey: ['api', 'transactions', month, search, filters, searching ? more : null],
+    queryFn: ({ pageParam }) =>
+      apiGet<TransactionPage & Partial<SearchPage>>(
+        session!,
+        searching ? searchPath(search, filters, more, pageParam) : listPath(month, search, filters, pageParam),
+      ),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
     enabled: Boolean(session),
@@ -57,8 +81,10 @@ export function Transactions({ initialNeedsReview = false }: { initialNeedsRevie
   const currency = me.data?.user.currency ?? 'CAD';
   const today = localToday();
   // Searching and Needs review look across every month.
-  const allMonths = Boolean(search) || filters.needsReview;
-  const filtered = filters.type !== null || filters.needsReview;
+  const allMonths = Boolean(search) || searching || filters.needsReview;
+  const moreFiltered = searchable && (more.accountId !== null || more.categoryId !== null || more.tagId !== null);
+  const filtered = filters.type !== null || filters.needsReview || moreFiltered;
+  const totals = searching ? query.data?.pages[0]?.totals : null;
 
   // Select: one change to several expenses, on a server that takes it.
   const canPick = query.data?.pages[0]?.bulkEdit === true;
@@ -67,6 +93,11 @@ export function Transactions({ initialNeedsReview = false }: { initialNeedsRevie
   const [note, setNote] = useState<{ text: string; error: boolean } | null>(null);
   const categories = useRememberedQuery<{ categories: Category[] }>('/api/v1/categories');
   const accounts = useRememberedQuery<{ accounts: Account[] }>('/api/v1/accounts');
+  const tags = useApiQuery<{ tags: Tag[] }>(searchable ? '/api/v1/tags' : null);
+  const saved = useApiQuery<SavedSearches>(searchable ? SAVED_SEARCHES_PATH : null);
+  const shownSaved = searching ? savedSearchShown(saved.data?.searches ?? [], search, filters, more) : null;
+  const saveSearch = useApiMutation<ReturnType<typeof savedSearchBody>, { id: string }>('POST', () => SAVED_SEARCHES_PATH, (b) => b);
+  const removeSaved = useApiMutation<string, { ok: true }>('DELETE', (id) => savedSearchPath(id));
   const bulk = useApiMutation<{ ids: string[]; op: BulkOp; value?: string }, BulkResult>('POST', () => BULK_PATH, (v) => v);
   const count = picked.size;
   const pickedLabel = count === 1 ? '1 expense' : `${count} expenses`;
@@ -118,13 +149,66 @@ export function Transactions({ initialNeedsReview = false }: { initialNeedsRevie
     );
   }
 
+  function clearFilters() {
+    setFilters({ type: null, needsReview: false });
+    setMore(NO_SEARCH_FILTERS);
+  }
+
+  function applySaved(entry: SavedSearch) {
+    const next = applySavedSearch(entry);
+    searchBar.current?.setText(next.text);
+    setSearchText(next.text);
+    setFilters({ type: next.type, needsReview: false });
+    setMore(next.more);
+  }
+
+  function askSaveSearch() {
+    Alert.prompt(
+      'Save this search',
+      'It is kept with the website’s saved searches, with what it finds each time.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Save',
+          onPress: (name?: string) => {
+            if (!name?.trim()) return;
+            setNote(null);
+            saveSearch.mutate(savedSearchBody(name, search, filters.type, more), {
+              onSuccess: () => setNote({ text: `Saved as “${name.trim()}”.`, error: false }),
+              onError: (err) => setNote({ text: errorText(err), error: true }),
+            });
+          },
+        },
+      ],
+      'plain-text',
+      search,
+    );
+  }
+
+  function confirmRemoveSaved(entry: SavedSearch) {
+    Alert.alert(`Delete the saved search “${entry.name}”?`, 'The transactions it finds are not touched.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => removeSaved.mutate(entry.id, { onError: (err) => setNote({ text: errorText(err), error: true }) }),
+      },
+    ]);
+  }
+
   function pressRow(item: Transaction) {
     if (!picking) return router.push({ pathname: '/transactions/[id]', params: { id: item.id } });
     if (selectable(item)) setPicked((p) => toggled(p, item.id));
   }
 
-  const heading = search ? `Every month matching “${search}”` : allMonths ? 'Every month' : formatPeriodMonth(month);
-  const empty = search
+  const heading = shownSaved
+    ? `Saved search: ${shownSaved.name}`
+    : search
+      ? `Every month matching “${search}”`
+      : allMonths
+        ? 'Every month'
+        : formatPeriodMonth(month);
+  const empty = search || searching
     ? 'Nothing matches that search.'
     : filters.needsReview
       ? 'Nothing is waiting for review.'
@@ -162,14 +246,37 @@ export function Transactions({ initialNeedsReview = false }: { initialNeedsRevie
             {search ? <QuickAddCard text={search} currency={currency} /> : <OwedLine />}
             <Text style={[styles.heading, { color: theme.textSecondary }]}>{heading}</Text>
             {filtered ? (
-              <Pressable onPress={() => setFilters({ type: null, needsReview: false })} accessibilityRole="button" hitSlop={8}>
+              <Pressable onPress={clearFilters} accessibilityRole="button" accessibilityHint="Clears the filters" hitSlop={8}>
                 <Text style={[styles.link, { color: theme.tint }]}>
-                  {[filters.needsReview ? 'Needs review' : null, TYPE_LABELS.find((t) => t.value === filters.type && t.value)?.label]
-                    .filter(Boolean)
-                    .join(' · ')}{' '}
+                  {filtersLine(
+                    filters,
+                    searchable ? more : NO_SEARCH_FILTERS,
+                    {
+                      account: accounts.data?.accounts.find((a) => a.id === more.accountId)?.name,
+                      category: categories.data?.categories.find((c) => c.id === more.categoryId)?.name,
+                      tag: tags.data?.tags.find((t) => t.id === more.tagId)?.name,
+                    },
+                    TYPE_LABELS.find((t) => t.value === filters.type)?.label,
+                  )}{' '}
                   · Clear
                 </Text>
               </Pressable>
+            ) : null}
+            {totals ? (
+              <Text style={[styles.note, { color: theme.text }]} accessibilityLiveRegion="polite">
+                {totalsLine(totals, query.data?.pages[0]?.currency ?? currency)}
+              </Text>
+            ) : null}
+            {searching && !picking ? (
+              shownSaved ? (
+                <Pressable onPress={() => confirmRemoveSaved(shownSaved)} accessibilityRole="button" hitSlop={8} disabled={removeSaved.isPending}>
+                  <Text style={[styles.link, { color: theme.danger }]}>Delete Saved Search</Text>
+                </Pressable>
+              ) : !filters.needsReview ? (
+                <Pressable onPress={askSaveSearch} accessibilityRole="button" hitSlop={8} disabled={saveSearch.isPending}>
+                  <Text style={[styles.link, { color: theme.tint }]}>Save This Search…</Text>
+                </Pressable>
+              ) : null
             ) : null}
             <LoadState loading={query.isPending} error={query.error ? errorText(query.error) : null} />
           </View>
@@ -200,6 +307,7 @@ export function Transactions({ initialNeedsReview = false }: { initialNeedsRevie
       <UndoBar />
       <Stack.Title large>Transactions</Stack.Title>
       <Stack.SearchBar
+        ref={searchBar}
         placeholder="Search, or 12.50 coffee to add"
         onChangeText={(event) => setSearchText(event.nativeEvent.text)}
         onCancelButtonPress={() => setSearchText('')}
@@ -273,6 +381,53 @@ export function Transactions({ initialNeedsReview = false }: { initialNeedsRevie
                   isOn={filters.type === option.value}
                   onPress={() => setFilters((f) => ({ ...f, type: option.value }))}>
                   {option.label}
+                </Stack.Toolbar.MenuAction>
+              ))}
+            </Stack.Toolbar.Menu>
+            <Stack.Toolbar.Menu title="Account" icon="creditcard" hidden={!searchable}>
+              <Stack.Toolbar.MenuAction isOn={more.accountId === null} onPress={() => setMore((m) => ({ ...m, accountId: null }))}>
+                Any account
+              </Stack.Toolbar.MenuAction>
+              {(accounts.data?.accounts ?? []).map((a) => (
+                <Stack.Toolbar.MenuAction
+                  key={a.id}
+                  isOn={more.accountId === a.id}
+                  onPress={() => setMore((m) => ({ ...m, accountId: a.id }))}>
+                  {a.archived ? `${a.name} (archived)` : a.name}
+                </Stack.Toolbar.MenuAction>
+              ))}
+            </Stack.Toolbar.Menu>
+            <Stack.Toolbar.Menu title="Category" icon="folder" hidden={!searchable}>
+              <Stack.Toolbar.MenuAction isOn={more.categoryId === null} onPress={() => setMore((m) => ({ ...m, categoryId: null }))}>
+                Any category
+              </Stack.Toolbar.MenuAction>
+              {(categories.data?.categories ?? []).map((c) => (
+                <Stack.Toolbar.MenuAction
+                  key={c.id}
+                  isOn={more.categoryId === c.id}
+                  onPress={() => setMore((m) => ({ ...m, categoryId: c.id }))}>
+                  {c.name}
+                </Stack.Toolbar.MenuAction>
+              ))}
+            </Stack.Toolbar.Menu>
+            <Stack.Toolbar.Menu title="Tag" icon="tag" hidden={!searchable || (tags.data?.tags.length ?? 0) === 0}>
+              <Stack.Toolbar.MenuAction isOn={more.tagId === null} onPress={() => setMore((m) => ({ ...m, tagId: null }))}>
+                Any tag
+              </Stack.Toolbar.MenuAction>
+              {(tags.data?.tags ?? []).map((t) => (
+                <Stack.Toolbar.MenuAction key={t.id} isOn={more.tagId === t.id} onPress={() => setMore((m) => ({ ...m, tagId: t.id }))}>
+                  {`#${t.name}`}
+                </Stack.Toolbar.MenuAction>
+              ))}
+            </Stack.Toolbar.Menu>
+            <Stack.Toolbar.Menu title="Saved Searches" icon="bookmark" hidden={(saved.data?.searches.length ?? 0) === 0}>
+              {(saved.data?.searches ?? []).map((entry) => (
+                <Stack.Toolbar.MenuAction
+                  key={entry.id}
+                  isOn={shownSaved?.id === entry.id}
+                  subtitle={entry.summary}
+                  onPress={() => applySaved(entry)}>
+                  {entry.name}
                 </Stack.Toolbar.MenuAction>
               ))}
             </Stack.Toolbar.Menu>
