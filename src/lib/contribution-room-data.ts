@@ -1,3 +1,4 @@
+import type { PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ymdFromDateUtc } from "@/lib/date-only";
 import {
@@ -12,18 +13,18 @@ import {
  * current type, so retyping an account moves its history with it, and archived accounts
  * still count: their contributions used room all the same.
  */
-export async function loadContributionRoomData(userId: string): Promise<ContributionRoomData> {
+export async function loadContributionRoomData(userId: string, db: PrismaClient = prisma): Promise<ContributionRoomData> {
   const registered = [...REGISTERED_ACCOUNT_TYPES];
   const [entries, flows, accounts] = await Promise.all([
-    prisma.contributionRoom.findMany({
+    db.contributionRoom.findMany({
       where: { userId, accountType: { in: registered } },
       orderBy: [{ accountType: "asc" }, { year: "desc" }],
     }),
-    prisma.investmentFlow.findMany({
+    db.investmentFlow.findMany({
       where: { userId, account: { type: { in: registered } } },
       select: { date: true, direction: true, amountCents: true, account: { select: { type: true } } },
     }),
-    prisma.account.findMany({
+    db.account.findMany({
       where: { userId, type: { in: registered } },
       select: { id: true, type: true },
     }),

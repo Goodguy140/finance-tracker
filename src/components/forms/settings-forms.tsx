@@ -2,7 +2,6 @@
 
 import { useId, useMemo, useState } from "react";
 import { ServerActionForm } from "@/components/server-action-form";
-import { formatCurrency } from "@/lib/money";
 import {
   selectClass,
   textAreaClass,
@@ -16,8 +15,12 @@ import {
   getTodayIsoDate,
 } from "./shared";
 import { createInvestmentFlowAction, createPortfolioSnapshotAction } from "@/app/actions";
-import { overContributionMessage } from "@/components/contribution-room-panel";
-import { previewContribution, roomFlowsFromData, type ContributionRoomData } from "@/lib/contribution-room";
+import {
+  contributionWarningText,
+  previewContribution,
+  roomFlowsFromData,
+  type ContributionRoomData,
+} from "@/lib/contribution-room";
 import { dateFromYmd } from "@/lib/date-only";
 
 export function InvestmentForms({
@@ -105,10 +108,7 @@ export function InvestmentForms({
             role="alert"
             className={`${spanFullSm} rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-200`}
           >
-            {roomWarning.remainingBeforeCents > 0
-              ? `Only ${formatCurrency(roomWarning.remainingBeforeCents)} of ${roomWarning.roomYear} ${roomWarning.accountType} room left. `
-              : ""}
-            {overContributionMessage(roomWarning.accountType, roomWarning.overByCents, roomWarning.roomYear)}
+            {contributionWarningText(roomWarning.accountType, roomWarning)}
           </p>
         ) : null}
         <LabeledField label="Note" hint="Optional (max 250 characters)." className={spanFullSm}>

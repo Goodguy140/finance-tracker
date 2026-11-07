@@ -11,6 +11,8 @@
  * Pure: no Prisma, no clock. Callers pass the entries, the flows and the year.
  */
 
+import { formatCurrency } from "@/lib/money";
+
 export const REGISTERED_ACCOUNT_TYPES = ["TFSA", "RRSP", "FHSA"] as const;
 export type RegisteredAccountType = (typeof REGISTERED_ACCOUNT_TYPES)[number];
 
@@ -228,4 +230,26 @@ export type ContributionRoomData = {
 
 export function roomFlowsFromData(data: ContributionRoomData): RoomFlow[] {
   return data.flows.map((flow) => ({ ...flow, date: new Date(`${flow.date}T00:00:00.000Z`) }));
+}
+
+/** What going over CRA's room costs, in the words the add form and the room list use. */
+export function overContributionMessage(accountType: RegisteredAccountType, overByCents: number, roomYear: number): string {
+  const over = formatCurrency(overByCents);
+  if (accountType === "RRSP") {
+    if (overByCents <= RRSP_OVERCONTRIBUTION_CUSHION_CENTS) {
+      return `${over} over your ${roomYear} RRSP limit. That is inside CRA's $2,000 cushion, so no penalty yet.`;
+    }
+    const taxed = formatCurrency(overByCents - RRSP_OVERCONTRIBUTION_CUSHION_CENTS);
+    return `${over} over your ${roomYear} RRSP limit. CRA charges 1% a month on the ${taxed} above the $2,000 cushion.`;
+  }
+  return `${over} over your ${roomYear} ${accountType} room. CRA charges 1% a month on the excess until it is withdrawn.`;
+}
+
+/** The add form's warning in full: what is left, then what going over costs. */
+export function contributionWarningText(accountType: RegisteredAccountType, warning: ContributionWarning): string {
+  const left =
+    warning.remainingBeforeCents > 0
+      ? `Only ${formatCurrency(warning.remainingBeforeCents)} of ${warning.roomYear} ${accountType} room left. `
+      : "";
+  return left + overContributionMessage(accountType, warning.overByCents, warning.roomYear);
 }

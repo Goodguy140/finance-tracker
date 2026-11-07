@@ -3,19 +3,22 @@ import { Stack } from 'expo-router/stack';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { errorText, useApiQuery } from '@/api/query';
-import type { NetWorth, NetWorthAccount } from '@/api/types';
+import type { Me, NetWorth, NetWorthAccount } from '@/api/types';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
 import { Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { groupAccounts, NET_WORTH_PATH } from '@/utils/accounts';
+import { canTrackInvestments } from '@/utils/investments';
 import { formatCents } from '@/utils/money';
 
 /** Every open account with its latest balance, and the net worth they add up to, as Reports shows it. */
 export function Accounts() {
   const theme = useTheme();
+  const router = useRouter();
   const query = useApiQuery<NetWorth>(NET_WORTH_PATH);
+  const investments = canTrackInvestments(useApiQuery<Me>('/api/v1/me').data);
   const { refreshing, onRefresh } = usePullToRefresh(query.refetch);
   const data = query.data;
   const money = (cents: number) => formatCents(cents, data?.currency ?? 'CAD');
@@ -44,6 +47,13 @@ export function Accounts() {
               <Text style={[styles.label, { color: theme.textSecondary }]}>What you owe</Text>
               <Text style={[styles.amount, { color: theme.text }]}>{money(data.liabilitiesCents)}</Text>
             </View>
+          </Section>
+        ) : null}
+        {data && investments ? (
+          <Section footer="TFSA, RRSP and FHSA room left, contributions and withdrawals, and each account's value and return.">
+            <Pressable onPress={() => router.push('/investments')} accessibilityRole="button" hitSlop={8}>
+              <Text style={[styles.link, { color: theme.tint }]}>Investments ›</Text>
+            </Pressable>
           </Section>
         ) : null}
         {data && data.accounts.length === 0 ? (
@@ -105,4 +115,5 @@ const styles = StyleSheet.create({
   amount: { fontSize: 17, fontVariant: ['tabular-nums'] },
   chevron: { fontSize: 22 },
   footer: { fontSize: 13, lineHeight: 18, marginHorizontal: Spacing.one },
+  link: { fontSize: 15, fontWeight: '600' },
 });
