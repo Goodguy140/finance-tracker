@@ -3,21 +3,23 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { unstable_rethrow } from "next/navigation";
-import { TransactionRuleTextOperator, TransactionType, type Prisma } from "@prisma/client";
 import { describeActionError } from "@/lib/action-errors";
+import { normalizeExpenseTitleKey } from "@/lib/expense-title-suggestions";
 import type { ActionFailure } from "@/lib/action-result";
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { scheduleBudgetAlertEmails } from "@/lib/budget-alert-dispatch";
-import { normalizeExpenseTitleKey } from "@/lib/expense-title-suggestions";
-import { toCents } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { planRuleApplication, type RuleChange, type RuleTransactionType } from "@/lib/transaction-rules";
-import { RULE_SPLITS_INCLUDE, toTransactionRuleInput } from "@/lib/transaction-rules-server";
-import { normalizeTagName } from "@/lib/tags";
-import { saveSplitLines } from "@/lib/split-lines";
-import { addTagsToTransaction, resolveTagIds } from "@/lib/tags-server";
-import { markAsTransfer } from "@/lib/transfer-marking";
+import {
+  applyTransactionRule,
+  createTransactionRule,
+  findOwnedRule as findRule,
+  hideLearnedTitle,
+  planRuleChanges,
+  prepareTransactionRule,
+  splitRows,
+} from "@/lib/transaction-rule-edits";
+import type { RuleChange } from "@/lib/transaction-rules";
 import {
   learnedTitleSchema,
   moveTransactionRuleSchema,
@@ -25,15 +27,8 @@ import {
   transactionRuleSchema,
   updateTransactionRuleSchema,
 } from "@/lib/validation";
-import {
-  assertUserOwnsAccount,
-  assertUserOwnsActiveAccount,
-  formAction,
-  getFormValue,
-  LONG_TRANSACTION_OPTIONS,
-} from "./_helpers";
+import { formAction, getFormValue } from "./_helpers";
 
-const MAX_TRANSACTION_RULES = 200;
 const PREVIEW_SAMPLE_SIZE = 50;
 
 function optional(formData: FormData, key: string) {
@@ -50,9 +45,9 @@ function readSplitLines(formData: FormData) {
     .filter((line) => line.categoryId !== "" || line.basisPoints !== "");
 }
 
-/** Parses and ownership-checks the rule form into the columns both create and update write. */
-async function readRuleForm(userId: string, formData: FormData) {
-  const payload = transactionRuleSchema.parse({
+/** Parses the rule form; `prepareTransactionRule` checks it against the user. */
+function parseRuleForm(formData: FormData) {
+  return transactionRuleSchema.parse({
     titleOperator: getFormValue(formData, "titleOperator") || "CONTAINS",
     titlePatterns: formData.getAll("titlePattern").map(String),
     transactionType: optional(formData, "transactionType"),
@@ -69,64 +64,6 @@ async function readRuleForm(userId: string, formData: FormData) {
     setTransferAccountId: optional(formData, "setTransferAccountId"),
     split: readSplitLines(formData),
   });
-
-  let transactionType = (payload.transactionType as TransactionType | undefined) ?? null;
-  if (payload.setCategoryId) {
-    const category = await prisma.category.findFirst({
-      where: { id: payload.setCategoryId, userId },
-      select: { kind: true },
-    });
-    if (!category) throw new Error("Selected category was not found.");
-    // Transfers have one category of their own and are left alone by rules.
-    if (category.kind === "TRANSFER") throw new Error("Rules cannot set the transfer category.");
-    // A category belongs to one side of the ledger, so the rule does too. Left on "any",
-    // an expense category would silently do nothing for income and confuse the preview.
-    const kind = category.kind as unknown as TransactionType;
-    if (transactionType && transactionType !== kind) {
-      throw new Error(
-        `That category is for ${kind === TransactionType.EXPENSE ? "expenses" : "income"}; change the type or the category.`,
-      );
-    }
-    transactionType = kind;
-  }
-  if (payload.split.length > 0) {
-    const owned = await prisma.category.count({
-      where: { userId, kind: "EXPENSE", id: { in: payload.split.map((line) => line.categoryId) } },
-    });
-    if (owned !== payload.split.length) throw new Error("A split category was not found. Reload and try again.");
-    transactionType = TransactionType.EXPENSE;
-  }
-  await Promise.all([
-    payload.matchAccountId ? assertUserOwnsAccount(userId, payload.matchAccountId) : undefined,
-    payload.setAccountId ? assertUserOwnsActiveAccount(userId, payload.setAccountId) : undefined,
-    payload.setTransferAccountId ? assertUserOwnsAccount(userId, payload.setTransferAccountId) : undefined,
-  ]);
-  const tagName = payload.addTag ? normalizeTagName(payload.addTag) : "";
-  if (payload.addTag && !tagName) throw new Error("Enter a tag name for the rule to add.");
-  const [addTagId] = tagName ? await resolveTagIds(prisma, userId, [tagName]) : [null];
-
-  const rule = {
-    titleOperator: payload.titleOperator as TransactionRuleTextOperator,
-    titlePattern: payload.titlePatterns,
-    transactionType,
-    matchAccountId: payload.matchAccountId ?? null,
-    minAmountCents: payload.minAmount !== undefined ? toCents(payload.minAmount) : null,
-    maxAmountCents: payload.maxAmount !== undefined ? toCents(payload.maxAmount) : null,
-    setCategoryId: payload.setCategoryId ?? null,
-    setTitle: payload.setTitle || null,
-    setAmountCents: payload.setAmount !== undefined ? toCents(payload.setAmount) : null,
-    setAccountId: payload.setAccountId ?? null,
-    appendNote: payload.appendNote || null,
-    addTagId,
-    markAsTransfer: payload.markAsTransfer ?? false,
-    setTransferAccountId: payload.setTransferAccountId ?? null,
-  } satisfies Omit<Prisma.TransactionRuleUncheckedCreateInput, "userId" | "priority">;
-  return { rule, split: payload.split };
-}
-
-/** The rule's split lines as the editor listed them, replacing any it had. */
-function splitRows(split: { categoryId: string; basisPoints: number }[]) {
-  return split.map((line, position) => ({ position, categoryId: line.categoryId, basisPoints: line.basisPoints }));
 }
 
 function revalidateRules() {
@@ -134,34 +71,13 @@ function revalidateRules() {
   revalidatePath("/settings", "layout");
 }
 
-async function findOwnedRule(userId: string, ruleId: string) {
-  const rule = await prisma.transactionRule.findFirst({ where: { id: ruleId, userId }, include: RULE_SPLITS_INCLUDE });
-  if (!rule) throw new Error("Rule not found.");
-  return rule;
+function findOwnedRule(userId: string, ruleId: string) {
+  return findRule(prisma, userId, ruleId);
 }
 
 export const createTransactionRuleAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const { rule: data, split } = await readRuleForm(user.id, formData);
-  const [count, last] = await Promise.all([
-    prisma.transactionRule.count({ where: { userId: user.id } }),
-    prisma.transactionRule.findFirst({
-      where: { userId: user.id },
-      orderBy: { priority: "desc" },
-      select: { priority: true },
-    }),
-  ]);
-  if (count >= MAX_TRANSACTION_RULES) {
-    throw new Error(`You can have up to ${MAX_TRANSACTION_RULES} rules. Delete one you no longer need first.`);
-  }
-  await prisma.transactionRule.create({
-    data: {
-      ...data,
-      userId: user.id,
-      priority: (last?.priority ?? -1) + 1,
-      splits: { create: splitRows(split) },
-    },
-  });
+  await createTransactionRule(prisma, user.id, parseRuleForm(formData));
   revalidateRules();
 });
 
@@ -169,7 +85,7 @@ export const updateTransactionRuleAction = formAction(async (formData: FormData)
   const user = await requireUser();
   const { ruleId } = updateTransactionRuleSchema.parse({ ruleId: getFormValue(formData, "ruleId") });
   const rule = await findOwnedRule(user.id, ruleId);
-  const { rule: data, split } = await readRuleForm(user.id, formData);
+  const { rule: data, split } = await prepareTransactionRule(prisma, user.id, parseRuleForm(formData));
   await prisma.transactionRule.update({
     where: { id: rule.id },
     data: { ...data, splits: { deleteMany: {}, create: splitRows(split) } },
@@ -227,12 +143,7 @@ export const moveTransactionRuleAction = formAction(async (formData: FormData) =
 export const hideLearnedTitleAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const { title } = learnedTitleSchema.parse({ title: getFormValue(formData, "title") });
-  const titleKey = normalizeExpenseTitleKey(title);
-  await prisma.hiddenTitleSuggestion.upsert({
-    where: { userId_titleKey: { userId: user.id, titleKey } },
-    create: { userId: user.id, titleKey },
-    update: {},
-  });
+  await hideLearnedTitle(prisma, user.id, title);
   revalidateRules();
 });
 
@@ -245,51 +156,12 @@ export const unhideLearnedTitleAction = formAction(async (formData: FormData) =>
   revalidateRules();
 });
 
-/** Plans one rule against every non-split transaction the user owns. */
-async function planForRule(userId: string, ruleId: string) {
-  const rule = toTransactionRuleInput(await findOwnedRule(userId, ruleId));
-  const [rows, categories] = await Promise.all([
-    prisma.transaction.findMany({
-      where: {
-        userId,
-        splitParts: { none: {} },
-        // A rule is about expenses and income; transfers are left alone.
-        type: rule.transactionType ?? { not: TransactionType.TRANSFER },
-        ...(rule.matchAccountId ? { accountId: rule.matchAccountId } : {}),
-      },
-      select: {
-        id: true,
-        title: true,
-        type: true,
-        amountCents: true,
-        accountId: true,
-        categoryId: true,
-        note: true,
-        tags: { select: { tagId: true } },
-        _count: { select: { owedShares: true } },
-      },
-      orderBy: { date: "desc" },
-    }),
-    prisma.category.findMany({ where: { userId }, select: { id: true, kind: true } }),
-  ]);
-  const kinds = new Map(categories.map((c) => [c.id, c.kind as RuleTransactionType]));
-  return planRuleApplication(
-    rule,
-    rows.map(({ tags, _count, ...row }) => ({
-      ...row,
-      tagIds: tags.map((t) => t.tagId),
-      hasOwedShares: _count.owedShares > 0,
-    })),
-    kinds,
-  );
-}
-
 export type RulePreviewResult = { ok: true; total: number; sample: RuleChange[] } | ActionFailure;
 
 export async function previewTransactionRuleAction(ruleId: string): Promise<RulePreviewResult> {
   try {
     const user = await requireUser();
-    const changes = await planForRule(user.id, ruleId);
+    const changes = await planRuleChanges(prisma, user.id, ruleId);
     return { ok: true, total: changes.length, sample: changes.slice(0, PREVIEW_SAMPLE_SIZE) };
   } catch (err) {
     unstable_rethrow(err);
@@ -308,47 +180,20 @@ export type RuleApplyResult = { ok: true; updated: number } | ActionFailure;
 export async function applyTransactionRuleAction(ruleId: string): Promise<RuleApplyResult> {
   try {
     const user = await requireUser();
-    const changes = await planForRule(user.id, ruleId);
-    if (changes.length > 0) {
-      await prisma.$transaction(async (tx) => {
-        for (const change of changes) {
-          await tx.transaction.update({
-            where: { id: change.id },
-            data: {
-              title: change.after.title,
-              categoryId: change.after.categoryId,
-              accountId: change.after.accountId,
-              note: change.after.note,
-            },
-          });
-          if (change.splitLines) {
-            await saveSplitLines(tx, { userId: user.id, transactionId: change.id, lines: change.splitLines });
-          }
-          if (change.addTagId) await addTagsToTransaction(tx, change.id, [change.addTagId]);
-          if (change.markAsTransfer) {
-            const marked = await markAsTransfer(tx, { userId: user.id, transactionId: change.id });
-            if (!marked.ok) throw new Error("A transaction changed while the rule was applied. Try again.");
-            if (change.transferAccountId) {
-              await tx.transaction.update({
-                where: { id: change.id },
-                data: { transferAccountId: change.transferAccountId },
-              });
-            }
-          }
-        }
-      }, LONG_TRANSACTION_OPTIONS);
+    const updated = await applyTransactionRule(prisma, user.id, ruleId);
+    if (updated > 0) {
       await recordAuditLog(prisma, {
         userId: user.id,
         action: AUDIT_ACTIONS.transaction_rule_applied,
         targetType: "TransactionRule",
         targetId: ruleId,
-        metadata: { updated: changes.length },
+        metadata: { updated },
         headers: await headers(),
       });
       scheduleBudgetAlertEmails(user.id);
       revalidateRules();
     }
-    return { ok: true, updated: changes.length };
+    return { ok: true, updated };
   } catch (err) {
     unstable_rethrow(err);
     return { ok: false, error: describeActionError(err) };

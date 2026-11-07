@@ -3,6 +3,8 @@
 export type Me = {
   user: { id: string; email: string; displayName: string; timezone: string; countryCode: string; currency: string };
   device: { id: string };
+  /** What the server takes beyond the first API (`rules`: `/api/v1/rules`). Absent from older servers. */
+  features?: string[];
 };
 
 export type BudgetRow = {
@@ -536,3 +538,9 @@ export type MerchantActivity = {
     split: boolean;
   }[];
 };
+
+/** `POST /api/v1/rules`: the rule made, and how many past entries applying it would change. */
+export type MadeRule = { id: string; matches: number };
+
+/** `GET /api/v1/rules/suggestions`: learned Title → Category combos no rule decides yet, newest first. */
+export type RuleSuggestions = { total: number; suggestions: { title: string; categoryId: string; categoryName: string }[] };

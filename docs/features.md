@@ -362,7 +362,8 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     "contains Bell Aliant Pap or Internet", stored one per line in `titlePattern`; set category, title, amount, account, note,
     tag, mark as transfer; priority, enable, preview and apply, learned suggestions):
     `transaction-rules-panel.tsx`, `src/lib/transaction-rules.ts`,
-    `transaction-rules-server.ts`
+    `transaction-rules-server.ts`, `transaction-rule-edits.ts` (adding and applying a rule, shared
+    with the iPhone app)
   - **Split by percentage** (rule action, expenses only, e.g. Costco 70% Groceries / 30% Household;
     `TransactionRuleSplit` table): the Add form offers it ("Book whole" declines), CSV import and the
     API split unless the row names a category, the bank queue splits while the row keeps the
@@ -599,6 +600,18 @@ build).
   and **Mark Month Closed** / **Reopen Month**. `GET /api/v1/month-review?month=`,
   `POST /api/v1/month-review/close` (`src/lib/api-v1/month-review.ts`; the page and these share
   `src/lib/reports/month-review-data.ts`). `src/screens/budgets/review.tsx`, `src/utils/month-review.ts`
+- Make a rule ("Make a Rule…" in an entry's editor and on a bank row being added; Settings →
+  Suggested rules): the main fields of Settings → Rules' editor, filled in from where it was opened
+  (the title as Contains, Is exactly or Starts with, "Only on" the entry's account, then a category,
+  a new title and a tag to set), read back as a sentence. Saved after the person's other rules; when
+  it fits entries already logged it asks "Change N past entries too?", which is Settings → Rules'
+  Apply. Suggested rules lists the learned Title → Category combos no rule decides yet, each opening
+  the sheet as "Is exactly"; Hide is the website's Hide. The list itself, ordering and editing stay
+  on the website. `POST /api/v1/rules`, `POST /api/v1/rules/:id/apply`,
+  `GET /api/v1/rules/suggestions`, `POST /api/v1/rules/suggestions/hide`
+  (`src/lib/api-v1/transaction-rules.ts`; the website's actions and these share
+  `src/lib/transaction-rule-edits.ts`); `GET /api/v1/me` names `rules` in `features`.
+  `src/screens/rules/`, `src/app/transaction-rule.tsx`, `src/utils/transaction-rules.ts`
 - Category and payee pages (a budget row on Budgets, or a category's row under Home's pie): the
   website's category trend page, with up to 24 months as bars (tap one for its month; the line
   across a bar is that month's budget), this month, its pace, its usual month and its budget, top

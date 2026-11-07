@@ -20,7 +20,7 @@ const mockPrisma = vi.hoisted(() => ({
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/headers", () => ({ headers: vi.fn(async () => new Headers()) }));
 vi.mock("@/lib/session", () => ({ requireUser: vi.fn(async () => ({ id: "user-1" })) }));
-vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
+vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma, LONG_TRANSACTION_OPTIONS: {} }));
 vi.mock("@/lib/budget-alert-dispatch", () => ({ scheduleBudgetAlertEmails: vi.fn() }));
 vi.mock("@/lib/audit-log", () => ({
   AUDIT_ACTIONS: { transaction_rule_applied: "transaction_rule_applied" },
@@ -75,6 +75,7 @@ describe("transaction rule actions", () => {
     mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<void>) => fn(mockPrisma));
     mockPrisma.transactionRule.count.mockResolvedValue(0);
     mockPrisma.transactionRule.findFirst.mockResolvedValue(null);
+    mockPrisma.transactionRule.create.mockResolvedValue({ id: "rule-new" });
   });
 
   describe("createTransactionRuleAction", () => {
