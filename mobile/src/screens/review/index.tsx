@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
+import { SymbolView } from 'expo-symbols';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useCallback, useState } from 'react';
@@ -18,6 +19,7 @@ import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { useSession } from '@/session/session-provider';
 import { formatCents } from '@/utils/money';
+import { allRows, pickedRows, reviewBulkNote, rowsLabel, sharedCategories, toggledRow } from '@/utils/review-bulk';
 import {
   acceptRequest,
   banksNeedingAttention,
@@ -35,7 +37,8 @@ import {
 } from '@/utils/review-queue';
 
 type BulkBody =
-  | { action: 'add'; ids: string[] }
+  | { action: 'add'; ids: string[]; categoryId?: string }
+  | { action: 'ignore'; ids: string[] }
   | { action: 'link'; links: { id: string; transactionId: string }[] };
 
 /**
@@ -100,6 +103,33 @@ export function ReviewQueue() {
   const unmatched = unmatchedIds(rows);
   const strong = strongLinks(rows);
 
+  // Select: tick rows, then add them as shown, add them in one category, or ignore them.
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const chosen = pickedRows(rows, picked);
+  const shared = data ? sharedCategories(chosen, data.categories) : [];
+  const [done, setDone] = useState<string | null>(null);
+
+  function stopPicking() {
+    setPicking(false);
+    setPicked(new Set());
+  }
+
+  function runBulk(action: 'add' | 'ignore', category?: { id: string; name: string }) {
+    const ids = chosen.map((row) => row.id);
+    if (ids.length === 0) return;
+    setError(null);
+    setDone(null);
+    const body: BulkBody = action === 'ignore' ? { action, ids } : { action, ids, ...(category ? { categoryId: category.id } : {}) };
+    bulk.mutate(body, {
+      onSuccess: (result) => {
+        setDone(reviewBulkNote(action, action === 'add' ? (result.added ?? ids.length) : ids.length, category?.name));
+        stopPicking();
+      },
+      onError: fail,
+    });
+  }
+
   function addAll() {
     Alert.alert(`Add ${unmatched.length} transactions?`, 'Each is added with the category shown, as your rules fill it in.', [
       { text: 'Cancel', style: 'cancel' },
@@ -147,6 +177,17 @@ export function ReviewQueue() {
               {error}
             </Text>
           ) : null}
+          {done ? (
+            <Text accessibilityLiveRegion="polite" style={[styles.note, { color: theme.positive }]}>
+              {done}
+            </Text>
+          ) : null}
+          {picking ? (
+            <Text style={[styles.note, { color: theme.textSecondary }]}>
+              {chosen.length === 0 ? 'Tap the rows to pick them.' : `${rowsLabel(chosen.length)} picked.`} Then choose what to do
+              from the menu at the top.
+            </Text>
+          ) : null}
           <LoadState loading={query.isPending} error={query.error ? errorText(query.error) : null} />
           {data && !query.error ? (
             <>
@@ -159,7 +200,7 @@ export function ReviewQueue() {
                   </Text>
                 </Section>
               ) : null}
-              {unmatched.length > 1 || strong.length > 1 ? (
+              {!picking && (unmatched.length > 1 || strong.length > 1) ? (
                 <View style={styles.bulk}>
                   {strong.length > 1 ? <FormButton label={`Link all ${strong.length} strong matches`} onPress={linkAll} disabled={busy} /> : null}
                   {unmatched.length > 1 ? <FormButton label={`Add all ${unmatched.length} unmatched`} onPress={addAll} disabled={busy} /> : null}
@@ -181,9 +222,13 @@ export function ReviewQueue() {
                   currency={currency}
                   working={working}
                   onDecide={(row, request) => void decideFromList(row, request)}
+                  picked={picking ? picked : null}
+                  onPick={(row) => setPicked((p) => toggledRow(p, row.id))}
                   title={`${data.total} to review`}
                   footer={[
-                    'Swipe a row right to add it as shown, or left to ignore it. Tap it to change anything first.',
+                    picking
+                      ? 'Add puts each picked row in your log as a new entry, in the category shown or the one you pick. If one of them cannot be added, none are.'
+                      : 'Swipe a row right to add it as shown, or left to ignore it. Tap it to change anything first. Select in the menu at the top ticks several.',
                     data.total > rows.length ? `Showing the newest ${rows.length}. The rest appear as you review these.` : null,
                   ]
                     .filter(Boolean)
@@ -195,6 +240,45 @@ export function ReviewQueue() {
         </SwipeListProvider>
       </ScrollView>
       <Stack.Title large>Review</Stack.Title>
+      {picking ? (
+        <>
+          <Stack.Toolbar placement="left">
+            <Stack.Toolbar.Button onPress={stopPicking}>Done</Stack.Toolbar.Button>
+          </Stack.Toolbar>
+          <Stack.Toolbar placement="right">
+            <Stack.Toolbar.Menu icon="ellipsis.circle" accessibilityLabel="Do something with the picked rows" disabled={bulk.isPending}>
+              <Stack.Toolbar.MenuAction icon="checkmark.circle" onPress={() => setPicked(allRows(rows))}>
+                {`Select All ${rows.length}`}
+              </Stack.Toolbar.MenuAction>
+              <Stack.Toolbar.MenuAction icon="plus.circle" disabled={chosen.length === 0} onPress={() => runBulk('add')}>
+                {chosen.length > 0 ? `Add ${rowsLabel(chosen.length)}` : 'Add'}
+              </Stack.Toolbar.MenuAction>
+              <Stack.Toolbar.Menu title="Add in a Category" icon="folder" disabled={chosen.length === 0} hidden={shared.length === 0 && chosen.length > 0}>
+                {shared.map((c) => (
+                  <Stack.Toolbar.MenuAction key={c.id} onPress={() => runBulk('add', c)}>
+                    {c.name}
+                  </Stack.Toolbar.MenuAction>
+                ))}
+              </Stack.Toolbar.Menu>
+              <Stack.Toolbar.MenuAction icon="eye.slash" destructive disabled={chosen.length === 0} onPress={() => runBulk('ignore')}>
+                {chosen.length > 0 ? `Ignore ${rowsLabel(chosen.length)}` : 'Ignore'}
+              </Stack.Toolbar.MenuAction>
+            </Stack.Toolbar.Menu>
+          </Stack.Toolbar>
+        </>
+      ) : rows.length > 1 ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button
+            icon="checkmark.circle"
+            accessibilityLabel="Select rows"
+            disabled={busy}
+            onPress={() => {
+              setDone(null);
+              setPicking(true);
+            }}
+          />
+        </Stack.Toolbar>
+      ) : null}
     </>
   );
 }
@@ -275,12 +359,15 @@ function RowList(props: {
   currency: string;
   working: ReadonlySet<string>;
   onDecide: (row: QueueRow, request: QueueRequest) => void;
+  /** The ticked rows while picking; null otherwise. */
+  picked: ReadonlySet<string> | null;
+  onPick: (row: QueueRow) => void;
   title: string;
   footer: string;
 }) {
   const theme = useTheme();
   const router = useRouter();
-  const { rows, categories, currency, working, onDecide, title, footer } = props;
+  const { rows, categories, currency, working, onDecide, picked, onPick, title, footer } = props;
   return (
     <View style={styles.listWrap}>
       <Text style={[styles.listTitle, { color: theme.textSecondary }]} accessibilityRole="header">
@@ -297,7 +384,8 @@ function RowList(props: {
             last={index === rows.length - 1}
             working={working.has(row.id)}
             onDecide={(request) => onDecide(row, request)}
-            onPress={() => router.push({ pathname: '/review/[id]', params: { id: row.id } })}
+            selected={picked ? picked.has(row.id) : undefined}
+            onPress={() => (picked ? onPick(row) : router.push({ pathname: '/review/[id]', params: { id: row.id } }))}
           />
         ))}
       </View>
@@ -327,6 +415,8 @@ type RowProps = {
   working: boolean;
   onDecide: (request: QueueRequest) => void;
   onPress: () => void;
+  /** Set while picking rows: a check circle leads, and a tap ticks the row. */
+  selected?: boolean;
 };
 
 /**
@@ -340,7 +430,7 @@ function SwipeableQueueRow(props: RowProps) {
   const ignore = ignoreRequest(row);
   return (
     <SwipeRow
-      enabled={!working}
+      enabled={!working && props.selected === undefined}
       style={{
         borderTopLeftRadius: first ? Radius : 0,
         borderTopRightRadius: first ? Radius : 0,
@@ -367,7 +457,8 @@ function QueueRowItem(
     onAccessibilityAction: (name: string) => void;
   },
 ) {
-  const { row, category, currency, first, last, working, onPress } = props;
+  const { row, category, currency, first, last, working, onPress, selected } = props;
+  const picking = selected !== undefined;
   const theme = useTheme();
   const amount = queueAmount(row, currency);
   const name = (proposalFor(row, defaultDecision(row), row.isTransfer) ?? row.asNonTransfer).title;
@@ -377,10 +468,10 @@ function QueueRowItem(
     <Pressable
       onPress={onPress}
       disabled={working}
-      accessibilityRole="button"
+      accessibilityRole={picking ? 'checkbox' : 'button'}
       accessibilityLabel={[name, amount.text, category, subtitle, proposal].filter(Boolean).join(', ')}
-      accessibilityState={{ busy: working }}
-      accessibilityActions={props.accessibilityActions}
+      accessibilityState={picking ? { checked: selected, busy: working } : { busy: working }}
+      accessibilityActions={picking ? undefined : props.accessibilityActions}
       onAccessibilityAction={(event) => props.onAccessibilityAction(event.nativeEvent.actionName)}
       style={({ pressed }) => [
         styles.row,
@@ -395,6 +486,9 @@ function QueueRowItem(
           opacity: working ? 0.5 : 1,
         },
       ]}>
+      {picking ? (
+        <SymbolView name={selected ? 'checkmark.circle.fill' : 'circle'} size={22} tintColor={selected ? theme.tint : theme.textSecondary} />
+      ) : null}
       <View style={styles.rowText}>
         <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
           {name}
