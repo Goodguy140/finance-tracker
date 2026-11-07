@@ -11,6 +11,7 @@ function page(overrides: Partial<AccountPage> = {}, account: Partial<AccountPage
       type: "CREDIT_CARD",
       currency: "CAD",
       archived: false,
+      countsAsSavings: false,
       creditLimitCents: 500_000,
       paymentDueDay: 15,
       ...account,

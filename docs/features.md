@@ -328,7 +328,9 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     savings, contribution room; types include Loan and Mortgage, kept apart for the score): `settings/accounts-manager.tsx`, `account-balances-panel.tsx`,
     `contribution-room-panel.tsx`, `actions/accounts.ts`. Currency is fixed once an account has
     transactions, recurring rules, balances or a bank mapping, and a non-home-currency account
-    with transactions can only be archived, not deleted (`src/lib/account-currency-guard.ts`)
+    with transactions can only be archived, not deleted (`src/lib/account-currency-guard.ts`).
+    Adding, editing, archiving and the card's limit and due day save through
+    `src/lib/account-edits.ts`, shared with the iPhone app
   - **Credit card limit and due day** (a credit card's drawer, "Card": `Account.creditLimitCents`,
     `.paymentDueDay`, `setCardTermsAction` in `actions/debt.ts`). Utilization (owed ÷ limit,
     flagged over 30%) on the drawer, Reports Net worth (per card and in total) and Debt payoff;
@@ -709,6 +711,16 @@ build).
   (`src/lib/api-v1/accounts.ts`, `balances.ts`, the website's `loadNetWorth`, `loadAccountPage` and
   `upsertBalanceSnapshot`). `src/screens/accounts/`, `src/app/balance.tsx`, `src/utils/accounts.ts`,
   `src/utils/balances.ts`
+- Account settings (on servers that list `account-settings` in `/api/v1/me`): **+** on Accounts adds
+  an account by name and type (in the home currency, Counts as savings from its type, as Settings →
+  Accounts does). **Edit** on an account's page changes its name, type, currency (kept once it holds
+  money in it) and **Counts as savings**, and a credit card's limit and payment due day (empty clears
+  either); **Archive Account** asks first and is refused while a recurring rule, contribution or
+  portfolio value uses it; **Restore Account** brings it back. Archived accounts are listed under
+  Accounts → Archived. Deleting stays on the website. `POST /api/v1/accounts`,
+  `PATCH /api/v1/accounts/:id` (`src/lib/api-v1/account-edits.ts`, `src/lib/account-edits.ts`), the
+  account page's `settings`. `src/screens/accounts/edit.tsx`, `src/app/account-edit.tsx`,
+  `src/utils/account-settings.ts`
 - Investments (Accounts → Investments ›, or an investment account's page, on servers that list
   `investments` in `/api/v1/me`): the website's Investments card. **Room left** for each TFSA, RRSP
   and FHSA type held, this room year (an RRSP's is its deduction limit's), with where the figure came

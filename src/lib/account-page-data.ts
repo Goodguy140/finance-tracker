@@ -19,6 +19,7 @@ export type AccountPage = {
     type: AccountType;
     currency: string;
     archived: boolean;
+    countsAsSavings: boolean;
     creditLimitCents: number | null;
     paymentDueDay: number | null;
   };
@@ -64,6 +65,7 @@ export async function loadAccountPage(
       type: true,
       currency: true,
       archived: true,
+      countsAsSavings: true,
       creditLimitCents: true,
       paymentDueDay: true,
     },

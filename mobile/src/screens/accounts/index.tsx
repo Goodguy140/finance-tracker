@@ -3,12 +3,13 @@ import { Stack } from 'expo-router/stack';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { errorText, useApiQuery } from '@/api/query';
-import type { Me, NetWorth, NetWorthAccount } from '@/api/types';
+import type { Account, Me, NetWorth, NetWorthAccount } from '@/api/types';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
 import { Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
+import { ACCOUNTS_PATH, canEditAccounts } from '@/utils/account-settings';
 import { groupAccounts, NET_WORTH_PATH } from '@/utils/accounts';
 import { canTrackInvestments } from '@/utils/investments';
 import { formatCents } from '@/utils/money';
@@ -18,8 +19,13 @@ export function Accounts() {
   const theme = useTheme();
   const router = useRouter();
   const query = useApiQuery<NetWorth>(NET_WORTH_PATH);
-  const investments = canTrackInvestments(useApiQuery<Me>('/api/v1/me').data);
-  const { refreshing, onRefresh } = usePullToRefresh(query.refetch);
+  const me = useApiQuery<Me>('/api/v1/me').data;
+  const investments = canTrackInvestments(me);
+  const editable = canEditAccounts(me);
+  // Archived accounts are out of net worth's list; with account settings they can be opened and restored.
+  const all = useApiQuery<{ accounts: Account[] }>(editable ? ACCOUNTS_PATH : null);
+  const archived = all.data?.accounts.filter((a) => a.archived) ?? [];
+  const { refreshing, onRefresh } = usePullToRefresh(() => Promise.all([query.refetch(), editable ? all.refetch() : null]));
   const data = query.data;
   const money = (cents: number) => formatCents(cents, data?.currency ?? 'CAD');
   const groups = data ? groupAccounts(data.accounts) : [];
@@ -58,7 +64,9 @@ export function Accounts() {
         ) : null}
         {data && data.accounts.length === 0 ? (
           <Section>
-            <Text style={[styles.label, { color: theme.textSecondary }]}>No accounts yet. Add them on the website.</Text>
+            <Text style={[styles.label, { color: theme.textSecondary }]}>
+              {editable ? 'No accounts yet. Add one with +.' : 'No accounts yet. Add them on the website.'}
+            </Text>
           </Section>
         ) : null}
         {groups.map((group) => (
@@ -71,13 +79,34 @@ export function Accounts() {
             ))}
           </Section>
         ))}
+        {archived.length > 0 ? (
+          <Section title="Archived" footer="Out of the pickers and the totals above. Open one to restore it.">
+            {archived.map((account) => (
+              <Pressable
+                key={account.id}
+                onPress={() => router.push({ pathname: '/accounts/[id]', params: { id: account.id } })}
+                accessibilityRole="button"
+                style={styles.line}>
+                <Text style={[styles.label, { color: theme.text }]} numberOfLines={1}>
+                  {account.name}
+                </Text>
+                <Text style={[styles.chevron, { color: theme.textSecondary }]}>›</Text>
+              </Pressable>
+            ))}
+          </Section>
+        ) : null}
         {data ? (
           <Text style={[styles.footer, { color: theme.textSecondary }]}>
-            Balances are the latest from your bank, a portfolio snapshot or what you entered. Add or update one on the website.
+            Balances are the latest from your bank, a portfolio snapshot or one you entered.
           </Text>
         ) : null}
       </ScrollView>
       <Stack.Title>Accounts</Stack.Title>
+      {editable ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button icon="plus" accessibilityLabel="Add an account" onPress={() => router.push('/account-edit')} />
+        </Stack.Toolbar>
+      ) : null}
     </>
   );
 }
