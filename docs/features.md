@@ -591,7 +591,9 @@ build).
 - Review: the bank review queue, every month at once, newest first, as the website's queue offers
   each row: link to the entry it matches, pair two rows as one transfer, add (as a transfer or in a
   category, showing the title, note, tags and split the rules give it) or ignore; Link all strong
-  matches and Add all unmatched. Each row shows the category it would go in (Transfer for transfers);
+  matches and Add all unmatched. **Select** (top right) ticks rows, as the website's queue does, then
+  Add them as shown, Add in a Category (offered when they are all spending or all income) or
+  Ignore them, all or none, up to 200 at a time (`src/utils/review-bulk.ts`). Each row shows the category it would go in (Transfer for transfers);
   swiping it right uncovers Add (Link or Pair where adding would duplicate an entry or split a
   transfer) and left uncovers Ignore, each done with a tap (`src/components/swipe-row.tsx`: the list
   waits for a sideways drag before scrolling, one row open at a time). The bank's revisions to rows already added (use the bank's amount
