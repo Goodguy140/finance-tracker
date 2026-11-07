@@ -5,8 +5,9 @@ import {
   type BillsForecastOccurrence,
 } from "@/lib/bills-forecast";
 import { cardPaymentsDue, type CardTerms } from "@/lib/credit-cards";
-import { ymdFromDateUtc } from "@/lib/date-only";
+import { dateFromYmd, ymdFromDateUtc } from "@/lib/date-only";
 import type { RecurringForecastRule } from "@/lib/recurring-transactions";
+import type { CalendarBill } from "@/lib/spending-calendar";
 
 /**
  * The Upcoming bills card's list, day by day: the recurring rules' and open plans' occurrences
@@ -127,4 +128,47 @@ export function buildBillsForecastList(input: {
     })),
     cardPaymentCount: cardPayments.length,
   };
+}
+
+/**
+ * The Calendar card's dots for a month: the recurring rules' and plans' occurrences still to come
+ * in it (this month's overdue ones too), transfers among them, and the cards' payments due. None
+ * for a month already past, which the log alone describes.
+ */
+export function calendarBillsFor(input: {
+  rules: readonly ListedRule[];
+  cardRules: ReadonlyArray<{ type: string; enabled: boolean; transferAccountId?: string | null }>;
+  cardTerms: readonly CardTerms[];
+  todayYmd: string;
+  currentYm: string;
+  /** The month shown. */
+  ym: string;
+}): CalendarBill[] {
+  const { todayYmd, ym } = input;
+  const lastDay = new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0));
+  const daysAhead = Math.round((lastDay.getTime() - dateFromYmd(todayYmd).getTime()) / 86_400_000);
+  if (ym < input.currentYm || daysAhead < 0) return [];
+  const inMonth = (date: Date) => ymdFromDateUtc(date).slice(0, 7) === ym;
+  return [
+    ...forecastRecurringOccurrences(input.rules, { todayYmd, currentYm: input.currentYm, days: daysAhead, includeTransfers: true })
+      .occurrences.filter((o) => inMonth(o.date))
+      .map((o) => ({
+        dateYmd: ymdFromDateUtc(o.date),
+        name: o.rule.name,
+        type: o.rule.type,
+        cents: o.rule.amountCents,
+        overdue: o.overdue,
+        planned: o.rule.planned === true,
+      })),
+    ...cardPaymentsDue(input.cardTerms, input.cardRules, todayYmd, daysAhead)
+      .filter((due) => inMonth(due.date))
+      .map((due) => ({
+        dateYmd: ymdFromDateUtc(due.date),
+        name: `${due.name} payment`,
+        type: "TRANSFER" as const,
+        cents: due.owedCents ?? due.minimumCents ?? 0,
+        overdue: false,
+        cardPayment: true,
+      })),
+  ];
 }

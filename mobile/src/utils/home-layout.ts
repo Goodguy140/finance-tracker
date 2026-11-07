@@ -8,7 +8,7 @@
 export const HOME_SECTIONS = [
   { id: 'safe-to-spend', title: 'Safe to spend', description: 'What is free to spend until month end', shown: true },
   { id: 'waiting', title: 'Waiting for you', description: 'Bank rows and entries to review, when there are any', shown: true },
-  { id: 'spending', title: 'Spending charts', description: 'By category and cumulative, swiped between', shown: true },
+  { id: 'spending', title: 'Spending charts', description: 'By category, cumulative and the calendar, swiped between', shown: true },
   { id: 'budgets', title: 'Budgets', description: 'Budgets at 80% or more, and the month’s total', shown: true },
   { id: 'coming-up', title: 'Bills and pay', description: 'What is due in the next few days', shown: true },
   { id: 'score', title: 'Financial score', description: 'Your score and how it moved', shown: true },

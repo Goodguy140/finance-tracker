@@ -10,7 +10,7 @@ import { formatCents } from '@/utils/money';
 export const SPENDING_PATH = '/api/v1/spending';
 
 /** Home's two charts, in the order the website's phone carousel shows them. */
-export const SPENDING_CHARTS = ['categories', 'cumulative'] as const;
+export const SPENDING_CHARTS = ['categories', 'cumulative', 'calendar'] as const;
 
 /**
  * What the person picked on the phone: Compare with and Show savings (left out, they follow the

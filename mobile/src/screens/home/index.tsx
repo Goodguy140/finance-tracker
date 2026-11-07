@@ -20,6 +20,7 @@ import { GoalsCard } from '@/screens/goals/card';
 import { useSpendingOptions } from '@/state/spending-options';
 import { NET_WORTH_PATH } from '@/utils/accounts';
 import { canForecast } from '@/utils/bills-forecast';
+import { canShowCalendar } from '@/utils/calendar';
 import { GOALS_PATH } from '@/utils/goals';
 import { formatDay, relativeDay } from '@/utils/dates';
 import type { HomeSectionId } from '@/utils/home-layout';
@@ -57,10 +58,14 @@ export function Home() {
   const showCharts = layout.includes('spending');
   const [spendingOptions, setSpendingOptions] = useSpendingOptions(session?.deviceId ?? null);
   const spending = useApiQuery<Spending>(showCharts ? spendingPath(spendingOptions) : null, { keepPrevious: true });
+  const calendar = canShowCalendar(useApiQuery<Me>('/api/v1/me').data);
   const { refreshing, onRefresh } = usePullToRefresh(() =>
     Promise.all([
       summary.refetch(),
       showCharts ? spending.refetch() : null,
+      showCharts
+        ? client.refetchQueries({ predicate: (q) => String(q.queryKey[1] ?? '').startsWith('/api/v1/calendar') })
+        : null,
       ...layout.map((id) => {
         const path = CARD_PATHS[id];
         return path ? client.refetchQueries({ queryKey: ['api', path] }) : null;
@@ -82,7 +87,13 @@ export function Home() {
         return <Waiting data={summaryData} />;
       case 'spending':
         return charts ? (
-          <SpendingCharts data={charts} options={spendingOptions} onOptions={setSpendingOptions} updating={spending.isPlaceholderData} />
+          <SpendingCharts
+            data={charts}
+            options={spendingOptions}
+            onOptions={setSpendingOptions}
+            updating={spending.isPlaceholderData}
+            calendar={calendar}
+          />
         ) : null;
       case 'budgets':
         return <BudgetsCard data={summaryData} />;
