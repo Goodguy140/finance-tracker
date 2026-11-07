@@ -168,6 +168,11 @@ skips older builds rather than running code they cannot support. An update that 
 have got and did not usually means the two were made from different native code: compare the
 runtime version `eas update` prints with the build's on expo.dev.
 
+**Which update a phone runs.** Settings → About this app shows the build number, the update's
+publish time and ID (or None for the build's own code), the channel and the first 7 characters of
+the runtime version. A downloaded update starts the next time the app opens; **Restart Now** there
+starts it at once.
+
 **Channel.** Builds from the `production` profile in `eas.json` (the iOS TestFlight workflow and
 builds by hand) take updates published to the `production` channel.
 

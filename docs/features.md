@@ -759,6 +759,11 @@ build).
   opens to a lock screen and locks again after 5 minutes in the background; turning it on or off
   asks iOS first; the setting belongs to the sign-in, so a new sign-in starts with it off.
   `src/screens/settings/index.tsx`, `src/session/app-lock.tsx`, `src/screens/locked.tsx`
+- About this app (Settings, above Sign out): the installed version and build as TestFlight numbers
+  it, the EAS update running (when it was published and its ID, or None when the phone runs the
+  build's own code, with the reason after a failed update), the channel and the short runtime
+  version. When a newer update is downloaded and waiting, **Restart Now** starts it.
+  `src/screens/settings/about.tsx`, `src/utils/app-version.ts`
 - Alerts (Settings → Alerts): bill reminders, large or unusual charges and budget alerts by Apple
   push, once the server's admin has saved Apple's key. **Turn on alerts** asks iOS, then a switch
   per kind and **Hide amounts in alerts** (the alert says only what kind it is). Tapping an alert opens Bills and pay (bill reminders),

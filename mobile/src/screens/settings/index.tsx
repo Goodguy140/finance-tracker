@@ -1,4 +1,3 @@
-import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useState } from 'react';
@@ -18,9 +17,10 @@ import { RELOCK_AFTER_MS } from '@/utils/app-lock';
 import { canEditGoals } from '@/utils/goals';
 import { canMakeRules } from '@/utils/transaction-rules';
 
+import { AboutSection } from './about';
 import { AlertsSection } from './alerts';
 
-/** Who is signed in and where, the website one tap away, banks, alerts, the lock, and Sign out. */
+/** Who is signed in and where, the website one tap away, banks, alerts, the lock, which build and update this is, and Sign out. */
 export function Settings() {
   const theme = useTheme();
   const router = useRouter();
@@ -108,6 +108,8 @@ export function Settings() {
 
         <LockSection />
 
+        <AboutSection />
+
         <Pressable
           onPress={confirmSignOut}
           accessibilityRole="button"
@@ -117,8 +119,6 @@ export function Settings() {
           ]}>
           <Text style={[styles.signOutText, { color: theme.danger }]}>Sign out</Text>
         </Pressable>
-
-        <Text style={[styles.version, { color: theme.textSecondary }]}>Finances {Constants.expoConfig?.version ?? ''}</Text>
       </ScrollView>
       <Stack.Title large>Settings</Stack.Title>
     </>
@@ -162,5 +162,4 @@ const styles = StyleSheet.create({
   link: { fontSize: 15, fontWeight: '600' },
   signOut: { borderRadius: Radius, borderWidth: StyleSheet.hairlineWidth, paddingVertical: 14, alignItems: 'center' },
   signOutText: { fontSize: 17, fontWeight: '600' },
-  version: { fontSize: 13, textAlign: 'center' },
 });
