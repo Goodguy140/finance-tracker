@@ -17,7 +17,7 @@ import { AddEntryCardBody } from "@/components/dashboard-cards/add-entry-card";
 import { BillsForecastCardBody } from "@/components/dashboard-cards/bills-forecast-card";
 import { PlansDialogButton } from "@/components/planned-transactions";
 import { CalendarCardBody } from "@/components/dashboard-cards/calendar-card";
-import { buildCalendarMonth, type CalendarBill } from "@/lib/spending-calendar";
+import { buildCalendarMonth } from "@/lib/spending-calendar";
 import { SafeToSpendCardBody } from "@/components/dashboard-cards/safe-to-spend-card";
 import { loadSafeToSpendInput } from "@/lib/safe-to-spend-data";
 import { computeSafeToSpend } from "@/lib/safe-to-spend";
@@ -128,9 +128,8 @@ import {
   inCurrencyWhere,
   sumOtherCurrencies,
 } from "@/lib/home-currency";
-import { DEFAULT_BILLS_FORECAST_DAYS, forecastRecurringOccurrences } from "@/lib/bills-forecast";
-import { buildBillsForecastList, type BillsForecastEntry } from "@/lib/bills-forecast-list";
-import { cardPaymentsDue } from "@/lib/credit-cards";
+import { DEFAULT_BILLS_FORECAST_DAYS } from "@/lib/bills-forecast";
+import { buildBillsForecastList, calendarBillsFor, type BillsForecastEntry } from "@/lib/bills-forecast-list";
 import { loadCardTerms } from "@/lib/credit-cards-data";
 import type { BillsForecastItem } from "@/components/dashboard-cards/bills-forecast-card";
 import { requireUser } from "@/lib/session";
@@ -1027,39 +1026,14 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   let calendarMonth = null;
   if (period.range === "month") {
     const viewedYm = period.ym;
-    const lastDay = new Date(Date.UTC(Number(viewedYm.slice(0, 4)), Number(viewedYm.slice(5, 7)), 0));
-    const daysAhead = Math.round((lastDay.getTime() - dateFromYmd(todayYmd).getTime()) / 86_400_000);
-    const inViewedMonth = (date: Date) => ymdFromDateUtc(date).slice(0, 7) === viewedYm;
-    const calendarBills: CalendarBill[] =
-      viewedYm >= anchorYm && daysAhead >= 0
-        ? [
-            ...forecastRecurringOccurrences(forecastRules, {
-              todayYmd,
-              currentYm: anchorYm,
-              days: daysAhead,
-              includeTransfers: true,
-            })
-              .occurrences.filter((o) => inViewedMonth(o.date))
-              .map((o) => ({
-                dateYmd: ymdFromDateUtc(o.date),
-                name: o.rule.name,
-                type: o.rule.type,
-                cents: o.rule.amountCents,
-                overdue: o.overdue,
-                planned: "planned" in o.rule,
-              })),
-            ...cardPaymentsDue(cardTerms, homeRecurringRules, todayYmd, daysAhead)
-              .filter((due) => inViewedMonth(due.date))
-              .map((due) => ({
-                dateYmd: ymdFromDateUtc(due.date),
-                name: `${due.name} payment`,
-                type: "TRANSFER" as const,
-                cents: due.owedCents ?? due.minimumCents ?? 0,
-                overdue: false,
-                cardPayment: true,
-              })),
-          ]
-        : [];
+    const calendarBills = calendarBillsFor({
+      rules: forecastRules,
+      cardRules: homeRecurringRules,
+      cardTerms,
+      todayYmd,
+      currentYm: anchorYm,
+      ym: viewedYm,
+    });
     calendarMonth = buildCalendarMonth({
       ym: viewedYm,
       todayYmd,

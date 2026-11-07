@@ -629,3 +629,37 @@ export type BillsForecast = {
   netCents: number;
   groups: { date: string; runningNetCents: number; entries: ForecastEntry[] }[];
 };
+
+/** A bill, pay, plan, transfer or card payment still due on a calendar day. */
+export type CalendarBill = {
+  name: string;
+  type: TransactionType;
+  cents: number;
+  overdue: boolean;
+  planned: boolean;
+  cardPayment: boolean;
+};
+
+export type CalendarDay = {
+  date: string;
+  day: number;
+  /** False for the days that pad the first and last week. */
+  inMonth: boolean;
+  spentCents: number;
+  incomeCents: number;
+  count: number;
+  bills: CalendarBill[];
+};
+
+/** `GET /api/v1/calendar?month=`, the website's Calendar card. Added after build 17. */
+export type CalendarMonth = {
+  month: string;
+  today: string;
+  currency: string;
+  spentCents: number;
+  incomeCents: number;
+  /** The day with the most spending, or null in a month with none. */
+  busiest: string | null;
+  /** Sunday first. */
+  weeks: CalendarDay[][];
+};

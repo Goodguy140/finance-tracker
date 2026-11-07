@@ -27,6 +27,8 @@ import {
   type SpendingOptions,
 } from '@/utils/spending';
 
+import { SpendingCalendar } from './calendar';
+
 const CHART_HEIGHT = 170;
 const PIE_HEIGHT = 210;
 
@@ -43,8 +45,10 @@ export function SpendingCharts(props: {
   options: SpendingOptions;
   onOptions: (change: SpendingOptions) => void;
   updating: boolean;
+  /** The server has the Calendar card: a third page. */
+  calendar?: boolean;
 }) {
-  const { data, options, onOptions, updating } = props;
+  const { data, options, onOptions, updating, calendar } = props;
   // The chart being read along by a resting finger keeps the card from swiping underneath it.
   const [scrubbing, setScrubbing] = useState(false);
   const pages: SwipePage[] = [
@@ -73,6 +77,7 @@ export function SpendingCharts(props: {
         />
       ),
     },
+    ...(calendar ? [{ key: 'calendar', label: 'Calendar', content: <SpendingCalendar month={data.month} /> }] : []),
   ];
   const index = Math.max(0, pages.findIndex((page) => page.key === (options.chart ?? SPENDING_CHARTS[0])));
   return (
