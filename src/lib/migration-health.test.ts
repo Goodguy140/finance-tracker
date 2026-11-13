@@ -54,7 +54,8 @@ async function createMinimalSchema(prisma: PrismaClient) {
       "digestFrequency" TEXT NOT NULL DEFAULT 'OFF',
       "digestLastPeriodKey" TEXT,
       "billReminderDays" INTEGER,
-      "birthYear" INTEGER
+      "birthYear" INTEGER,
+      "safeToSpendBufferDays" INTEGER
     )
   `);
   await prisma.$executeRawUnsafe(`

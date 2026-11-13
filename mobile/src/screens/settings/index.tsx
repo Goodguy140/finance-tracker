@@ -15,6 +15,7 @@ import { useOutbox } from '@/state/outbox';
 import { canSetAlertTiming } from '@/utils/alert-timing';
 import { RELOCK_AFTER_MS } from '@/utils/app-lock';
 import { canEditGoals } from '@/utils/goals';
+import { canSetSafeToSpendBuffer } from '@/utils/safe-to-spend';
 import { canMakeRules } from '@/utils/transaction-rules';
 
 import { AboutSection } from './about';
@@ -90,6 +91,16 @@ export function Settings() {
           <Section title="Savings goals" footer="Add a goal, change one, or put money toward one tracked by hand.">
             <Pressable onPress={() => router.push('/settings/goals')} accessibilityRole="button" hitSlop={8}>
               <Text style={[styles.link, { color: theme.tint }]}>Savings goals ›</Text>
+            </Pressable>
+          </Section>
+        ) : null}
+
+        {canSetSafeToSpendBuffer(me.data) ? (
+          <Section
+            title="Safe to spend"
+            footer="How many days ahead Safe to spend also holds back bills that fall next month. The website's Safe to spend card sets the same buffer.">
+            <Pressable onPress={() => router.push('/settings/safe-to-spend')} accessibilityRole="button" hitSlop={8}>
+              <Text style={[styles.link, { color: theme.tint }]}>Bill buffer ›</Text>
             </Pressable>
           </Section>
         ) : null}

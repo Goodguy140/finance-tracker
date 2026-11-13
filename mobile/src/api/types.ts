@@ -58,6 +58,20 @@ export type SafeToSpend = {
   billsDueCents: number;
   budgetLeftCents: number;
   goalsCents: number;
+  /** The bill buffer in days, null when off. These three are absent from older servers. */
+  bufferDays?: number | null;
+  /** The last day of next month's bills the buffer holds back; null when it is off or ends this month. */
+  bufferUntilYmd?: string | null;
+  /** Next month's bills due through `bufferUntilYmd`, already taken off `safeCents`. */
+  bufferBillsCents?: number;
+};
+
+/** `GET`/`PATCH /api/v1/safe-to-spend`: the bill buffer, with Safe to spend as it now stands. */
+export type SafeToSpendSettings = {
+  bufferDays: number | null;
+  maxBufferDays: number;
+  currency: string;
+  safeToSpend: SafeToSpend;
 };
 
 export type UpcomingItem = {

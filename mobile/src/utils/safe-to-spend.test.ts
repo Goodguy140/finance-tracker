@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { SafeToSpend } from '@/api/types';
-import { safeToSpendBreakdown, safeToSpendLine } from './safe-to-spend';
+import { bufferDaysChange, safeToSpendBreakdown, safeToSpendBufferLine, safeToSpendLine } from './safe-to-spend';
 
 const base: SafeToSpend = {
   safeCents: 45_000,
@@ -28,9 +28,31 @@ describe('safeToSpendLine', () => {
   });
 });
 
+const sum = (data: SafeToSpend) =>
+  safeToSpendBreakdown(data).reduce((total, row) => total + (row.sign === '+' ? row.cents : -row.cents), 0);
+
 describe('safeToSpendBreakdown', () => {
   it('adds up to the number it explains', () => {
-    const total = safeToSpendBreakdown(base).reduce((sum, row) => sum + (row.sign === '+' ? row.cents : -row.cents), 0);
-    expect(total).toBe(base.safeCents);
+    expect(sum(base)).toBe(base.safeCents);
+  });
+
+  it("shows next month's bills in the buffer, and still adds up", () => {
+    const buffered: SafeToSpend = { ...base, safeCents: -105_000, bufferDays: 7, bufferUntilYmd: '2026-12-04', bufferBillsCents: 150_000 };
+    expect(safeToSpendBreakdown(buffered).map((row) => row.label)).toContain("Next month's bills to Dec 4");
+    expect(sum(buffered)).toBe(buffered.safeCents);
+    expect(safeToSpendBufferLine(buffered)).toBe("Also holding back next month's bills due by Dec 4 (7-day buffer).");
+    // A buffer that ends inside the month, or a server from before the buffer: no row, no line.
+    expect(safeToSpendBreakdown({ ...base, bufferDays: 3, bufferUntilYmd: null, bufferBillsCents: 0 })).toHaveLength(6);
+    expect(safeToSpendBufferLine(base)).toBeNull();
+  });
+});
+
+describe('bufferDaysChange', () => {
+  it('saves whole days in range, clears on empty, and skips what is already saved', () => {
+    expect(bufferDaysChange(' 7 ', null, 60)).toEqual({ days: 7 });
+    expect(bufferDaysChange('', 7, 60)).toEqual({ days: null });
+    expect(bufferDaysChange('', null, 60)).toBeNull();
+    expect(bufferDaysChange('7', 7, 60)).toBeNull();
+    for (const bad of ['0', '61', '2.5', '-3', 'soon']) expect(bufferDaysChange(bad, null, 60)).toHaveProperty('error');
   });
 });

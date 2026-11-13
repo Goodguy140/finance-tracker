@@ -8,6 +8,8 @@ import { parseChargeAlertThreshold } from "@/lib/charge-alerts";
 import { sendDigestPreview } from "@/lib/email-digest";
 import { MIN_BUDGET_NAME_VISIBLE_PCT, MIN_TEXT_VISIBLE_PCT, parseVisiblePct } from "@/lib/dashboard-readability";
 import { prisma } from "@/lib/prisma";
+import { parseSafeToSpendBufferDays } from "@/lib/safe-to-spend";
+import { setSafeToSpendBufferDays } from "@/lib/safe-to-spend-data";
 import { requireUser } from "@/lib/session";
 import { formAction, getFormValue } from "./_helpers";
 
@@ -54,6 +56,16 @@ export const setZeroBasedBudgetingAction = formAction(async (formData: FormData)
   const user = await requireUser();
   const enabled = getFormValue(formData, "enabled") === "true";
   await prisma.user.update({ where: { id: user.id }, data: { zeroBasedBudgeting: enabled } });
+  revalidatePath("/");
+});
+
+/**
+ * Safe to spend's buffer: how many days ahead it also holds back bills that fall next month.
+ * Empty turns it off (bills to month end only). The phone sets the same value through the API.
+ */
+export const setSafeToSpendBufferAction = formAction(async (formData: FormData) => {
+  const user = await requireUser();
+  await setSafeToSpendBufferDays(prisma, user.id, parseSafeToSpendBufferDays(getFormValue(formData, "days")));
   revalidatePath("/");
 });
 
