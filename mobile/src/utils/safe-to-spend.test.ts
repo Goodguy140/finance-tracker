@@ -48,9 +48,11 @@ describe('safeToSpendBreakdown', () => {
 });
 
 describe('bufferDaysChange', () => {
-  it('saves whole days in range, clears on empty, and skips what is already saved', () => {
-    expect(bufferDaysChange(' 7 ', null, 60)).toEqual({ days: 7 });
-    expect(bufferDaysChange('', 7, 60)).toEqual({ days: null });
+  it('gives the PATCH body the server takes, clears on empty, and skips what is already saved', () => {
+    // Exactly `{ bufferDays }`: the server refuses any other key.
+    expect(bufferDaysChange(' 7 ', null, 60)).toStrictEqual({ bufferDays: 7 });
+    expect(bufferDaysChange('13', 7, 60)).toStrictEqual({ bufferDays: 13 });
+    expect(bufferDaysChange('', 7, 60)).toStrictEqual({ bufferDays: null });
     expect(bufferDaysChange('', null, 60)).toBeNull();
     expect(bufferDaysChange('7', 7, 60)).toBeNull();
     for (const bad of ['0', '61', '2.5', '-3', 'soon']) expect(bufferDaysChange(bad, null, 60)).toHaveProperty('error');
