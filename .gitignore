@@ -29,6 +29,9 @@ prisma/backups/
 # misc
 .DS_Store
 *.pem
+# Apple keys (APNs, App Store Connect API) downloaded next to the checkout. mobile/.gitignore
+# already ignores them inside mobile/; this covers the rest of a public repo.
+*.p8
 
 # debug
 npm-debug.log*
