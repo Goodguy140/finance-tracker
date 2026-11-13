@@ -18,6 +18,7 @@ import { BillsForecastCardBody } from "@/components/dashboard-cards/bills-foreca
 import { PlansDialogButton } from "@/components/planned-transactions";
 import { CalendarCardBody } from "@/components/dashboard-cards/calendar-card";
 import { buildCalendarMonth } from "@/lib/spending-calendar";
+import { SafeToSpendBufferSetting } from "@/components/dashboard-cards/safe-to-spend-buffer";
 import { SafeToSpendCardBody } from "@/components/dashboard-cards/safe-to-spend-card";
 import { loadSafeToSpendInput } from "@/lib/safe-to-spend-data";
 import { computeSafeToSpend } from "@/lib/safe-to-spend";
@@ -1284,6 +1285,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
               showBreakdown={cardSettings["safe-to-spend"]?.showBreakdown}
             />
           )}
+          {zeroBased ? null : <SafeToSpendBufferSetting bufferDays={user.safeToSpendBufferDays} />}
           <ZeroBasedToggle enabled={zeroBased} />
         </>
       ),

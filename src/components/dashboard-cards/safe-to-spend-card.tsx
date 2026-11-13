@@ -1,5 +1,5 @@
 import { formatCurrency } from "@/lib/money";
-import type { SafeToSpend } from "@/lib/safe-to-spend";
+import { shortDateYmd, type SafeToSpend } from "@/lib/safe-to-spend";
 
 export type SafeToSpendCardBodyProps = {
   data: SafeToSpend | null;
@@ -15,6 +15,9 @@ export function SafeToSpendCardBody({ data, currency, showBreakdown = true }: Sa
     { label: "Spent so far", cents: data.spentCents, sign: "-" },
     { label: "Income still expected", cents: data.expectedIncomeCents, sign: "+" },
     { label: "Bills still due", cents: data.billsDueCents, sign: "-" },
+    ...(data.bufferUntilYmd
+      ? [{ label: `Next month's bills to ${shortDateYmd(data.bufferUntilYmd)}`, cents: data.bufferBillsCents, sign: "-" as const }]
+      : []),
     { label: "Left in budgets", cents: data.budgetLeftCents, sign: "-" },
     { label: "Savings goals this month", cents: data.goalsCents, sign: "-" },
   ];
@@ -33,6 +36,11 @@ export function SafeToSpendCardBody({ data, currency, showBreakdown = true }: Sa
           ? `Over-committed by ${money(-data.safeCents)} for the rest of the month.`
           : `About ${money(data.perDayCents)} a day for ${data.daysLeft} day${data.daysLeft === 1 ? "" : "s"}.`}
       </p>
+      {data.bufferUntilYmd ? (
+        <p data-testid="safe-to-spend-buffer-note" className="mt-0.5 text-xs text-slate-400">
+          Also holding back next month&apos;s bills due by {shortDateYmd(data.bufferUntilYmd)} ({data.bufferDays}-day buffer).
+        </p>
+      ) : null}
       {showBreakdown ? (
         <dl className="mt-3 space-y-1 border-t border-slate-800 pt-2 text-sm">
           {rows.map((row) => (

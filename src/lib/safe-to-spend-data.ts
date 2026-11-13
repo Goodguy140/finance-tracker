@@ -15,10 +15,16 @@ import { prisma } from "@/lib/prisma";
 import { loadSavingsGoals } from "@/lib/savings-goals-data";
 import { plannedAsForecastRules } from "@/lib/planned-transactions";
 import { loadOpenPlannedTransactions } from "@/lib/planned-transactions-data";
-import { computeSafeToSpend, daysLeftInMonth, type SafeToSpend } from "@/lib/safe-to-spend";
+import { computeSafeToSpend, safeToSpendForecastDays, type SafeToSpend } from "@/lib/safe-to-spend";
 import type { ZeroBasedInput } from "@/lib/zero-based";
 
-type SafeToSpendUser = { id: string; countryCode: string | null; timezone: string | null };
+type SafeToSpendUser = {
+  id: string;
+  countryCode: string | null;
+  timezone: string | null;
+  /** The user's buffer, when the caller already has the row; read from the database when absent. */
+  safeToSpendBufferDays?: number | null;
+};
 
 /** Safe to spend for the month now running, in the user's home currency. */
 export async function loadSafeToSpend(
@@ -39,6 +45,11 @@ export async function loadSafeToSpendInput(
   const todayYmd = currentYmdInTimeZone(user.timezone, now);
   const ym = todayYmd.slice(0, 7);
   const monthRange = { gte: startOfMonthYm(ym), lt: endExclusiveOfMonthYm(ym) };
+  const bufferDays =
+    user.safeToSpendBufferDays !== undefined
+      ? user.safeToSpendBufferDays
+      : ((await client.user.findUnique({ where: { id: user.id }, select: { safeToSpendBufferDays: true } }))
+          ?.safeToSpendBufferDays ?? null);
   const [expenses, income, budgets, rules, goals, plans] = await Promise.all([
     client.transaction.findMany({
       where: { userId: user.id, type: TransactionType.EXPENSE, date: monthRange, ...inCurrencyWhere(currency) },
@@ -72,11 +83,12 @@ export async function loadSafeToSpendInput(
   const active = Array.from(selectActiveBudgetsByCategory(budgets, ym).values());
   const carries = carriesForMonth(await loadRolloverCarries(client, user.id, currency, [ym], budgets), ym);
   const budgetRows = buildBudgetProgressRows(active, spendByCategory, carries);
-  // A plan dated this month counts as a bill or income still due, until the real entry arrives.
+  // A plan dated this month counts as a bill or income still due, until the real entry arrives;
+  // one dated next month, as a bill in the buffer when it falls inside it.
   const forecast = forecastRecurringOccurrences([...rules, ...plannedAsForecastRules(plans)], {
     todayYmd,
     currentYm: ym,
-    days: daysLeftInMonth(todayYmd),
+    days: safeToSpendForecastDays(todayYmd, bufferDays),
   });
 
   return {
@@ -93,5 +105,15 @@ export async function loadSafeToSpendInput(
     goalContributionsCents: goals.goals
       .filter((g) => g.currency === currency)
       .flatMap((g) => (g.progress.monthlyNeededCents ? [g.progress.monthlyNeededCents] : [])),
+    bufferDays,
   };
+}
+
+/** Sets or clears (null) the user's Safe to spend buffer, already checked by `parseSafeToSpendBufferDays`. */
+export async function setSafeToSpendBufferDays(
+  client: PrismaClient,
+  userId: string,
+  bufferDays: number | null,
+): Promise<void> {
+  await client.user.update({ where: { id: userId }, data: { safeToSpendBufferDays: bufferDays } });
 }

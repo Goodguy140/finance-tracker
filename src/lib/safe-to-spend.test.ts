@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeSafeToSpend, daysLeftInMonth } from "./safe-to-spend";
+import { computeSafeToSpend, daysLeftInMonth, parseSafeToSpendBufferDays, safeToSpendForecastDays } from "./safe-to-spend";
 
 const base = {
   todayYmd: "2026-10-20",
@@ -57,6 +57,51 @@ describe("computeSafeToSpend", () => {
     const result = computeSafeToSpend({ ...base, spentCents: 400_000 });
     expect(result.safeCents).toBe(-100_000);
     expect(result.perDayCents).toBe(0);
+  });
+});
+
+describe("the bill buffer", () => {
+  // The 28th: rent on the 1st and the phone bill on the 6th are next month's.
+  const lateInMonth = {
+    ...base,
+    todayYmd: "2026-10-28",
+    occurrences: [
+      { type: "EXPENSE" as const, amountCents: 20_000, categoryId: "phone", dateYmd: "2026-10-30" },
+      { type: "EXPENSE" as const, amountCents: 150_000, categoryId: "rent", dateYmd: "2026-11-01" },
+      { type: "EXPENSE" as const, amountCents: 8_000, categoryId: "phone", dateYmd: "2026-11-06" },
+      { type: "INCOME" as const, amountCents: 300_000, categoryId: "pay", dateYmd: "2026-11-02" },
+    ],
+    // Rent is budgeted; this month's remainder does not hold next month's rent.
+    budgets: [{ categoryId: "rent", limitCents: 150_000, spentCents: 150_000 }],
+  };
+
+  it("also holds back next month's bills due within the buffer, whatever their category, but not next month's pay", () => {
+    const result = computeSafeToSpend({ ...lateInMonth, bufferDays: 5 });
+    expect(result.bufferUntilYmd).toBe("2026-11-02");
+    expect(result.bufferBillsCents).toBe(150_000);
+    expect(result.billsDueCents).toBe(20_000);
+    expect(result.expectedIncomeCents).toBe(0);
+    expect(result.safeCents).toBe(180_000 - 20_000 - 150_000);
+    expect(computeSafeToSpend({ ...lateInMonth, bufferDays: 9 }).bufferBillsCents).toBe(158_000);
+  });
+
+  it("changes nothing without a buffer or when it ends inside the month", () => {
+    const off = computeSafeToSpend(lateInMonth);
+    expect(off).toMatchObject({ bufferDays: null, bufferUntilYmd: null, bufferBillsCents: 0, safeCents: 160_000 });
+    const inside = computeSafeToSpend({ ...lateInMonth, bufferDays: 3 });
+    expect(inside).toMatchObject({ bufferDays: 3, bufferUntilYmd: null, bufferBillsCents: 0, safeCents: 160_000 });
+  });
+
+  it("makes the forecast reach the buffer's last day", () => {
+    expect(safeToSpendForecastDays("2026-10-28", null)).toBe(4);
+    expect(safeToSpendForecastDays("2026-10-28", 9)).toBe(9);
+    expect(safeToSpendForecastDays("2026-10-02", 9)).toBe(30);
+  });
+
+  it("takes whole days from 1 to 60, or empty for none", () => {
+    expect(parseSafeToSpendBufferDays("")).toBeNull();
+    expect(parseSafeToSpendBufferDays(" 7 ")).toBe(7);
+    for (const bad of ["0", "61", "2.5", "-3", "soon"]) expect(() => parseSafeToSpendBufferDays(bad)).toThrow(/1 to 60/);
   });
 });
 

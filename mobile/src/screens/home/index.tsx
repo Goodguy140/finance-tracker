@@ -26,7 +26,7 @@ import { formatDay, relativeDay } from '@/utils/dates';
 import type { HomeSectionId } from '@/utils/home-layout';
 import { bandTone, INSIGHTS_PATH, SCORE_PATH, scoreChangeText } from '@/utils/insights';
 import { formatCents, formatPeriodMonth } from '@/utils/money';
-import { safeToSpendBreakdown, safeToSpendLine } from '@/utils/safe-to-spend';
+import { canSetSafeToSpendBuffer, safeToSpendBreakdown, safeToSpendBufferLine, safeToSpendLine } from '@/utils/safe-to-spend';
 import { spendingPath } from '@/utils/spending';
 import { updateWidgets } from '@/widgets/update';
 
@@ -58,7 +58,8 @@ export function Home() {
   const showCharts = layout.includes('spending');
   const [spendingOptions, setSpendingOptions] = useSpendingOptions(session?.deviceId ?? null);
   const spending = useApiQuery<Spending>(showCharts ? spendingPath(spendingOptions) : null, { keepPrevious: true });
-  const calendar = canShowCalendar(useApiQuery<Me>('/api/v1/me').data);
+  const me = useApiQuery<Me>('/api/v1/me').data;
+  const calendar = canShowCalendar(me);
   const { refreshing, onRefresh } = usePullToRefresh(() =>
     Promise.all([
       summary.refetch(),
@@ -82,7 +83,7 @@ export function Home() {
   function card(id: HomeSectionId, summaryData: Summary): ReactNode {
     switch (id) {
       case 'safe-to-spend':
-        return <SafeToSpendCard data={summaryData} />;
+        return <SafeToSpendCard data={summaryData} bufferHere={canSetSafeToSpendBuffer(me)} />;
       case 'waiting':
         return <Waiting data={summaryData} />;
       case 'spending':
@@ -145,11 +146,13 @@ export function Home() {
   );
 }
 
-function SafeToSpendCard({ data }: { data: Summary }) {
+function SafeToSpendCard({ data, bufferHere }: { data: Summary; bufferHere: boolean }) {
   const theme = useTheme();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const safe = data.safeToSpend;
   const money = (cents: number) => formatCents(cents, data.currency);
+  const bufferLine = safeToSpendBufferLine(safe);
   return (
     <Section title="Safe to spend">
       <View style={styles.hero}>
@@ -159,6 +162,7 @@ function SafeToSpendCard({ data }: { data: Summary }) {
           {money(safe.safeCents)}
         </Text>
         <Text style={[styles.muted, { color: theme.textSecondary }]}>{safeToSpendLine(safe, data.currency)}</Text>
+        {bufferLine ? <Text style={[styles.muted, { color: theme.textSecondary }]}>{bufferLine}</Text> : null}
       </View>
       <Pressable
         onPress={() => setOpen((v) => !v)}
@@ -178,6 +182,17 @@ function SafeToSpendCard({ data }: { data: Summary }) {
             </View>
           ))
         : null}
+      {open && bufferHere ? (
+        <Pressable
+          onPress={() => router.push('/settings/safe-to-spend')}
+          accessibilityRole="button"
+          accessibilityHint="Opens the bill buffer in Settings"
+          hitSlop={8}>
+          <Text style={[styles.link, { color: theme.tint }]}>
+            {safe.bufferDays ? `Bill buffer: ${safe.bufferDays} day${safe.bufferDays === 1 ? '' : 's'} ›` : 'Set a bill buffer ›'}
+          </Text>
+        </Pressable>
+      ) : null}
     </Section>
   );
 }

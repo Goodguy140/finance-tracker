@@ -1,5 +1,5 @@
 /** Keep in sync with SCHEMA_REPAIR_VERSION in src/lib/migration-health.ts */
-const SCHEMA_REPAIR_VERSION = "26";
+const SCHEMA_REPAIR_VERSION = "27";
 const OPS_LAST_SCHEMA_REPAIR_AT = "ops.lastSchemaRepairAt";
 const OPS_SCHEMA_REPAIR_VERSION = "ops.schemaRepairVersion";
 
@@ -249,6 +249,11 @@ const COLUMN_REPAIRS = [
     table: "Category",
     column: "spendingRole",
     ddl: 'ALTER TABLE "Category" ADD COLUMN "spendingRole" TEXT',
+  },
+  {
+    table: "User",
+    column: "safeToSpendBufferDays",
+    ddl: 'ALTER TABLE "User" ADD COLUMN "safeToSpendBufferDays" INTEGER',
   },
 ];
 

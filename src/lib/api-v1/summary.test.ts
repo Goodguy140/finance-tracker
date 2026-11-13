@@ -11,6 +11,9 @@ const safeToSpend: SafeToSpend = {
   spentCents: 150_000,
   expectedIncomeCents: 0,
   billsDueCents: 20_000,
+  bufferDays: null,
+  bufferUntilYmd: null,
+  bufferBillsCents: 0,
   budgetLeftCents: 185_000,
   goalsCents: 0,
 };
