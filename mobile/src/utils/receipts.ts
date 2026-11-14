@@ -24,7 +24,7 @@ export function receiptFromAsset(asset: {
   return { photo: { uri: asset.uri, fileName, mimeType, sizeBytes: asset.fileSize ?? null } };
 }
 
-/** Whether the phone can show a receipt itself; PDFs open on the website. */
+/** Whether a receipt opens in the app's photo viewer; anything else is a PDF, for Quick Look. */
 export function isImageReceipt(contentType: string): boolean {
   return contentType.startsWith('image/');
 }
@@ -33,4 +33,20 @@ export function isImageReceipt(contentType: string): boolean {
 export function receiptSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+/**
+ * The file a PDF receipt is downloaded to before Quick Look opens it. Quick Look goes by the
+ * extension, and only the id's plain characters are used, so no id can name a path outside the folder.
+ */
+export function pdfReceiptFileName(attachmentId: string): string {
+  return `${attachmentId.replace(/[^A-Za-z0-9_-]/g, '_') || 'receipt'}.pdf`;
+}
+
+/** What to say when a PDF receipt will not open. */
+export function receiptOpenError(err: unknown): string {
+  const message = err instanceof Error ? err.message : '';
+  if (/\b404\b/.test(message)) return 'This receipt is no longer on the entry. Close the entry and open it again.';
+  if (/\b(401|403)\b/.test(message)) return 'Your server would not send this receipt. Sign in again and try once more.';
+  return 'Couldn’t open this receipt. Check your connection and try again.';
 }

@@ -5,6 +5,7 @@ import { File } from 'expo-file-system';
 import { errorFromResponse, fetchWithTimeout } from '@/api/client';
 import { useSession } from '@/session/session-provider';
 import type { StoredSession } from '@/session/store';
+import { freshReceiptFile } from '@/state/opened-receipts';
 import { multipartFileBody } from '@/utils/multipart';
 import type { ReceiptPhoto } from '@/utils/receipts';
 
@@ -17,6 +18,16 @@ export function receiptSource(session: StoredSession, attachmentId: string) {
     uri: `${session.origin}/api/v1/attachments/${encodeURIComponent(attachmentId)}`,
     headers: { authorization: `Bearer ${session.token}` },
   };
+}
+
+/**
+ * Downloads a PDF receipt and opens it in Quick Look, iOS's own viewer: every page, pinch to zoom,
+ * search, and Share to print or save it. Throws when it cannot be fetched or shown.
+ */
+export async function openPdfReceipt(session: StoredSession, receipt: { id: string; fileName: string }): Promise<void> {
+  const { uri, headers } = receiptSource(session, receipt.id);
+  const file = await File.downloadFileAsync(uri, freshReceiptFile(receipt.id), { headers, idempotent: true });
+  await file.preview({ title: receipt.fileName, mimeType: 'application/pdf' });
 }
 
 /** Uploads a receipt photo to one entry. Throws as `apiRequest` does. */

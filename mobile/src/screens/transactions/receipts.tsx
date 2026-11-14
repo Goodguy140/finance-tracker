@@ -2,30 +2,44 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { receiptSource, useUploadReceipt } from '@/api/receipts';
+import { openPdfReceipt, receiptSource, useUploadReceipt } from '@/api/receipts';
 import type { Attachment } from '@/api/types';
 import { Section } from '@/components/section';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { pickReceipt } from '@/utils/pick-receipt';
 import { useSession } from '@/session/session-provider';
-import { isImageReceipt, MAX_RECEIPTS_PER_ENTRY, receiptSize } from '@/utils/receipts';
+import { isImageReceipt, MAX_RECEIPTS_PER_ENTRY, receiptOpenError, receiptSize } from '@/utils/receipts';
 
-/** An entry's receipts: photos open full screen, PDFs on the website; a photo can be added straight away. */
+/** An entry's receipts: photos open full screen, PDFs in Quick Look; a photo can be added straight away. */
 export function Receipts({ transactionId, attachments }: { transactionId: string; attachments: Attachment[] }) {
   const theme = useTheme();
   const router = useRouter();
   const { session } = useSession();
   const upload = useUploadReceipt();
   const [error, setError] = useState<string | null>(null);
+  const [opening, setOpening] = useState<string | null>(null);
 
   async function add() {
     setError(null);
     const photo = await pickReceipt();
     if (!photo) return;
     upload.mutate({ transactionId, photo }, { onError: (err) => setError(err instanceof Error ? err.message : 'The receipt did not upload.') });
+  }
+
+  async function openPdf(receipt: Attachment) {
+    if (!session || opening) return;
+    setError(null);
+    setOpening(receipt.id);
+    try {
+      await openPdfReceipt(session, { id: receipt.id, fileName: receipt.fileName });
+    } catch (err) {
+      setError(receiptOpenError(err));
+    } finally {
+      setOpening(null);
+    }
   }
 
   if (!session) return null;
@@ -48,17 +62,26 @@ export function Receipts({ transactionId, attachments }: { transactionId: string
             </View>
           </Pressable>
         ) : (
-          <View key={a.id} style={styles.row}>
+          <Pressable
+            key={a.id}
+            onPress={() => void openPdf(a)}
+            disabled={opening !== null}
+            accessibilityRole="button"
+            accessibilityLabel={`Receipt ${a.fileName}, PDF, open`}
+            accessibilityState={{ busy: opening === a.id }}
+            style={({ pressed }) => [styles.row, { opacity: pressed || (opening !== null && opening !== a.id) ? 0.6 : 1 }]}>
             <View style={[styles.thumb, styles.doc, { backgroundColor: theme.track }]}>
-              <SymbolView name="doc.richtext" size={24} tintColor={theme.textSecondary} />
+              {opening === a.id ? <ActivityIndicator /> : <SymbolView name="doc.richtext" size={24} tintColor={theme.textSecondary} />}
             </View>
             <View style={styles.text}>
               <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
                 {a.fileName}
               </Text>
-              <Text style={[styles.meta, { color: theme.textSecondary }]}>PDF, {receiptSize(a.sizeBytes)} · open it on the website</Text>
+              <Text style={[styles.meta, { color: theme.textSecondary }]}>
+                {opening === a.id ? 'Opening…' : `PDF, ${receiptSize(a.sizeBytes)}`}
+              </Text>
             </View>
-          </View>
+          </Pressable>
         ),
       )}
       {error ? (
