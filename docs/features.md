@@ -589,11 +589,13 @@ build).
   `src/state/remembered-lists.ts`
 - Receipts: a photo from the camera or library when adding (uploaded once the entry is in; a failed
   upload offers Try Again or Skip, never a second entry) or from an entry's editor; photos open full
-  screen with pinch to zoom and can be removed; PDFs are listed and open on the website.
+  screen with pinch to zoom and can be removed; PDFs open in Quick Look, iOS's own viewer (every
+  page, zoom, search, Share to print or save), downloaded to the cache first and deleted when the
+  next one opens or on sign-out (`File.preview()` from `expo-file-system`, already in every build).
   `POST /api/v1/transactions/:id/attachments` (multipart), `GET`/`DELETE /api/v1/attachments/:id`,
   receipts listed on `GET /api/v1/transactions/:id`; the website's limits and type checks
   (`src/lib/attachments.ts`). `src/screens/transactions/receipts.tsx`, `src/screens/receipt.tsx`,
-  `src/utils/pick-receipt.ts`, `src/api/receipts.ts`
+  `src/utils/pick-receipt.ts`, `src/api/receipts.ts`, `src/state/opened-receipts.ts`
 - Share a receipt (the share sheet in Photos, Mail, Files and other apps, for one photo or PDF):
   Finances opens on the receipt and offers **Add a New Entry With It** (the Add sheet, receipt
   attached, and so it works with no connection too) or one of the latest entries, or one a search
