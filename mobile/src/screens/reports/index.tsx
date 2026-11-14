@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { errorText, useApiQuery } from '@/api/query';
-import type { Reports, ReportMerchant, Tag } from '@/api/types';
+import type { Me, Reports, ReportMerchant, Tag } from '@/api/types';
 import { GroupBars } from '@/components/group-bars';
 import { LoadState } from '@/components/load-state';
 import { RangePicker } from '@/components/range-picker';
@@ -24,6 +24,7 @@ import {
   totalsTiles,
   type ReportsPeriod,
 } from '@/utils/reports';
+import { hasYearEnd } from '@/utils/year-end';
 
 import { Tiles } from './tiles';
 
@@ -34,13 +35,15 @@ const YOY_ROWS = 8;
  * The website's Reports page: the period's totals, income and spending by month, where the money
  * came from and went, year over year by category, payees and payers; then net worth by month and
  * the balances the recurring bills and pay lead to. The period and a tag are picked from the
- * toolbar menu, as the website's period pills, custom range and tag filter.
+ * toolbar menu, as the website's period pills, custom range and tag filter; the year-end summary
+ * opens it on one year and tag.
  */
-export function ReportsScreen() {
+export function ReportsScreen(props: { period?: string; tagId?: string }) {
   const theme = useTheme();
   const router = useRouter();
-  const [period, setPeriod] = useState<ReportsPeriod>({ kind: 'option', key: '12m' });
-  const [tagId, setTagId] = useState<string | null>(null);
+  const [period, setPeriod] = useState<ReportsPeriod>({ kind: 'option', key: props.period || '12m' });
+  const [tagId, setTagId] = useState<string | null>(props.tagId || null);
+  const yearEnd = hasYearEnd(useApiQuery<Me>('/api/v1/me').data);
   const [range, setRange] = useState<{ from: string; to: string } | null>(null);
   const query = useApiQuery<Reports>(reportsPath(period, tagId), { keepPrevious: true });
   const tags = useApiQuery<{ tags: Tag[] }>('/api/v1/tags').data?.tags ?? [];
@@ -77,6 +80,11 @@ export function ReportsScreen() {
               ? 'Income and spending only; transfers between your accounts are left out.'
               : 'Transfers between your accounts are left out, except money moved into accounts that count as savings.'}
           </Text>
+        ) : null}
+        {yearEnd ? (
+          <Pressable onPress={() => router.push('/year-end')} accessibilityRole="button" hitSlop={8}>
+            <Text style={[styles.link, { color: theme.tint }]}>Year-end summary and tax-time totals ›</Text>
+          </Pressable>
         ) : null}
         <LoadState loading={query.isPending} error={query.error && !data ? errorText(query.error) : null} />
         {data ? <Report data={data} onCategory={(id) => router.push({ pathname: '/category', params: { id } })} onPayee={(key) => router.push({ pathname: '/merchant', params: { key } })} /> : null}

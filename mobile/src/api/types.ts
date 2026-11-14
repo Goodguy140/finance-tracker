@@ -869,3 +869,25 @@ export type Reports = {
 };
 
 export type ReportMerchant = { key: string; name: string; count: number; spentCents: number; receivedCents: number; lastDate: string };
+
+/** `GET /api/v1/reports/year`: the website's year-end page. On servers that list `year-end` in `/api/v1/me`. */
+export type YearEnd = {
+  /** Years with activity, newest first. */
+  years: string[];
+  year: number;
+  currency: string;
+  /** True while the year is still running: everything is to today. */
+  toDate: boolean;
+  from: string;
+  to: string;
+  totals: { incomeCents: number; spendingCents: number; netCents: number; entries: number };
+  /** Spending against the same dates a year before, in percent; null when there was none then. */
+  spendingChangePercent: number | null;
+  biggestMonth: { month: string; label: string; spendingCents: number } | null;
+  months: { month: string; label: string; incomeCents: number; spendingCents: number }[];
+  topCategories: { name: string; cents: number; changeRatio: number | null }[];
+  topPayees: { key: string; name: string; spentCents: number }[];
+  /** Tax-looking tags first. */
+  tags: { tagId: string; name: string; taxRelated: boolean; count: number; spentCents: number; receivedCents: number }[];
+  registered: { accountId: string; name: string; typeLabel: string; contributedCents: number; withdrawnCents: number }[];
+};
