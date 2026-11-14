@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { InsightItemView } from "@/components/insights/insight-item";
 import type { FinancialScore } from "@/lib/financial-score";
-import { parseDismissBody, parseRestoreBody, serializeAppInsight, serializeAppScore } from "./insights";
+import { parseDismissBody, parseRestoreBody, parseTrackHabitBody, serializeAppInsight, serializeAppScore } from "./insights";
 
 function view(overrides: Partial<InsightItemView> = {}): InsightItemView {
   return {
@@ -44,6 +44,47 @@ describe("serializeAppInsight", () => {
     expect(serializeAppInsight(view()).website).toBeNull();
   });
 
+  it("hands the phone the Track it form as the website fills it in", () => {
+    const out = serializeAppInsight(
+      view({
+        section: "recurring",
+        action: {
+          kind: "track-recurring",
+          prefill: {
+            name: "Pay",
+            type: "INCOME",
+            amountCents: 210_000,
+            cadence: "SEMI_MONTHLY",
+            accountId: "chequing",
+            categoryId: "salary",
+            nextExpectedDate: "2026-11-28",
+            semiMonthly: { day: 15, secondDay: 31, beforeWeekend: true },
+          },
+        },
+      }),
+    );
+    expect(out.track).toEqual({
+      kind: "recurring",
+      prefill: {
+        name: "Pay",
+        type: "income",
+        amountCents: 210_000,
+        cadence: "semi_monthly",
+        accountId: "chequing",
+        categoryId: "salary",
+        nextExpectedDate: "2026-11-28",
+        semiMonthly: { firstDay: 15, secondDay: 31, beforeWeekend: true },
+      },
+    });
+    expect(serializeAppInsight(view()).track).toBeNull();
+  });
+
+  it("says whether a habit already has its own category, matching the name in any case", () => {
+    const habit = view({ key: "habit:ALCOHOL", section: "habit", action: { kind: "track-habit", habit: "ALCOHOL", merchants: ["LCBO"] } });
+    expect(serializeAppInsight(habit).track).toEqual({ kind: "habit", habit: "ALCOHOL", categoryName: "Alcohol", trackedCategoryId: null });
+    expect(serializeAppInsight(habit, new Map([["alcohol", "cat-1"]])).track).toMatchObject({ trackedCategoryId: "cat-1" });
+  });
+
   it("gives absent amounts as null, evidence types in lower case and an untitled row no title", () => {
     const out = serializeAppInsight(view());
     expect(out).toMatchObject({ monthlyCents: 2_099, annualCents: null, savingCents: null });
@@ -54,6 +95,14 @@ describe("serializeAppInsight", () => {
     expect(serializeAppInsight(view({ dismissedUntil: "2026-12-03" })).hiddenUntil).toBe("2026-12-03");
     expect(serializeAppInsight(view({ dismissedUntil: null })).hiddenUntil).toBeNull();
     expect(serializeAppInsight(view())).not.toHaveProperty("hiddenUntil");
+  });
+});
+
+describe("parseTrackHabitBody", () => {
+  it("takes one of the habits and nothing else", () => {
+    expect(parseTrackHabitBody({ habit: "GAMBLING" })).toEqual({ ok: true, value: { habit: "GAMBLING" } });
+    expect(parseTrackHabitBody({ habit: "COFFEE" }).ok).toBe(false);
+    expect(parseTrackHabitBody({ habit: "GAMBLING", merchants: ["x"] }).ok).toBe(false);
   });
 });
 

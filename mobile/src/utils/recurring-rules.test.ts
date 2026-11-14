@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { RecurringRule } from '@/api/types';
-import { canEditRules, dayLabel, emptyRuleForm, formFromRule, ruleBody, secondDayOptions } from './recurring-rules';
+import type { RecurringPrefill, RecurringRule } from '@/api/types';
+import { canEditRules, dayLabel, emptyRuleForm, formFromPrefill, formFromRule, parsePrefillParam, ruleBody, secondDayOptions } from './recurring-rules';
 
 const netflix: RecurringRule = {
   id: 'r1',
@@ -94,5 +94,44 @@ describe('twice-a-month days', () => {
     expect(secondDayOptions(15)).toEqual([22, 23, 24, 25, 26, 27, 28, 29, 30, 31]);
     expect(secondDayOptions(24)).toEqual([31]);
     expect([1, 2, 3, 11, 12, 13, 21, 22, 23, 31].map(dayLabel)).toEqual(['1st', '2nd', '3rd', '11th', '12th', '13th', '21st', '22nd', '23rd', 'Last day']);
+  });
+});
+
+describe('formFromPrefill', () => {
+  const pay: RecurringPrefill = {
+    name: 'Pay',
+    type: 'income',
+    amountCents: 210_000,
+    cadence: 'semi_monthly',
+    accountId: 'chq',
+    categoryId: 'salary',
+    nextExpectedDate: '2026-11-28',
+    semiMonthly: { firstDay: 14, secondDay: 30, beforeWeekend: true },
+  };
+  const accounts = [
+    { id: 'old', archived: true },
+    { id: 'chq', archived: false },
+  ];
+  const categories = [{ id: 'salary', kind: 'income' as const }];
+
+  it('opens the rule form as Insights noticed it, and saves as the website form would', () => {
+    const form = formFromPrefill(pay, '2026-11-14', accounts, categories);
+    expect(form).toMatchObject({ type: 'income', name: 'Pay', amount: '2100.00', accountId: 'chq', categoryId: 'salary', cadence: 'semi_monthly', nextDate: '2026-11-28', firstDay: 14, secondDay: 30, beforeWeekend: true });
+    expect(ruleBody(form)).toMatchObject({ body: { type: 'income', name: 'Pay', amountCents: 210_000, categoryId: 'salary', accountId: 'chq' } });
+  });
+
+  it('falls back to an open account, leaves a vanished category to pick, and never starts in the past', () => {
+    const form = formFromPrefill({ ...pay, accountId: 'old', categoryId: 'gone', nextExpectedDate: '2026-11-01' }, '2026-11-14', accounts, categories);
+    expect([form.accountId, form.categoryId, form.nextDate]).toEqual(['chq', '', '2026-11-14']);
+  });
+});
+
+describe('parsePrefillParam', () => {
+  it('reads back what Insights passed, and ignores anything else', () => {
+    const prefill: RecurringPrefill = { name: 'Gym', type: 'expense', amountCents: 4_000, cadence: 'monthly', accountId: null, categoryId: 'c', nextExpectedDate: '2026-12-01', semiMonthly: null };
+    expect(parsePrefillParam(JSON.stringify(prefill))).toEqual(prefill);
+    expect(parsePrefillParam(undefined)).toBeNull();
+    expect(parsePrefillParam('{not json')).toBeNull();
+    expect(parsePrefillParam(JSON.stringify({ ...prefill, cadence: 'hourly' }))).toBeNull();
   });
 });

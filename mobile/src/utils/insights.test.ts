@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { FinancialScore, Insight } from '@/api/types';
 
 import {
+  phoneRouteFor,
   bandTone,
   groupInsights,
   hideOptions,
@@ -128,5 +129,15 @@ describe('pressingInsights', () => {
     expect(pressingInsights(list).map((i) => i.key)).toEqual(['c', 'd', 'b']);
     expect(pressingInsights(list, 5).map((i) => i.key)).toEqual(['c', 'd', 'b', 'a']);
     expect(list.map((i) => i.key)).toEqual(['a', 'b', 'c', 'd']);
+  });
+});
+
+describe('phoneRouteFor', () => {
+  it('opens the phone screen for a page the phone covers, and the website otherwise', () => {
+    expect(phoneRouteFor('/settings/accounts')).toBe('/accounts');
+    expect(phoneRouteFor('/settings/categories')).toBe('/budgets');
+    expect(phoneRouteFor('/')).toBe('/transactions/owed');
+    expect(phoneRouteFor('/?month=2026-08')).toBeNull();
+    expect(phoneRouteFor('/settings/import')).toBeNull();
   });
 });

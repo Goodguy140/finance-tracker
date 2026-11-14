@@ -93,3 +93,21 @@ export function bandTone(band: ScoreBand | null): 'positive' | 'warning' | 'dang
   if (band === 'Fair') return 'warning';
   return 'danger';
 }
+
+/**
+ * A website page an insight links to that the phone has a screen for, as a phone route; null
+ * opens the website. Only pages the phone fully covers are listed.
+ */
+export function phoneRouteFor(path: string): string | null {
+  const [pathname] = path.split(/[?#]/);
+  if (pathname === '/settings/accounts') return '/accounts';
+  if (pathname === '/settings/categories') return '/budgets';
+  // The dashboard's "See who owes you" is the Expense Log's Owed to you.
+  if (path === '/') return '/transactions/owed';
+  return null;
+}
+
+/** The note under a habit insight once it is filed under its own category. */
+export function trackedHabitText(categoryName: string): string {
+  return `Tracked in ${categoryName}. New purchases go there; earlier ones stay where they are.`;
+}

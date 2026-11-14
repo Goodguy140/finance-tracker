@@ -1,4 +1,4 @@
-import type { RecurringList, RecurringRule } from '@/api/types';
+import type { Account, Category, RecurringList, RecurringPrefill, RecurringRule } from '@/api/types';
 import { CADENCE, RECURRING_PATH } from '@/utils/recurring';
 import { amountInputText, parseAmountInput } from '@/utils/transactions';
 
@@ -64,6 +64,46 @@ export function emptyRuleForm(today: string, accountId: string): RuleForm {
     decides: false,
     decideBy: today,
   };
+}
+
+/**
+ * The rule form as Insights' "Track it" opens it: what the server noticed, on an account and in a
+ * category that still exist (else the first open account, and a category to pick).
+ */
+export function formFromPrefill(
+  prefill: RecurringPrefill,
+  today: string,
+  accounts: readonly Pick<Account, 'id' | 'archived'>[],
+  categories: readonly Pick<Category, 'id' | 'kind'>[],
+): RuleForm {
+  const open = accounts.filter((a) => !a.archived);
+  const accountId = open.some((a) => a.id === prefill.accountId) ? prefill.accountId! : (open[0]?.id ?? '');
+  const categoryId = categories.some((c) => c.id === prefill.categoryId && c.kind === prefill.type) ? prefill.categoryId : '';
+  return {
+    ...emptyRuleForm(today, accountId),
+    type: prefill.type,
+    name: prefill.name,
+    amount: amountInputText(prefill.amountCents),
+    categoryId,
+    cadence: prefill.cadence,
+    nextDate: prefill.nextExpectedDate < today ? today : prefill.nextExpectedDate,
+    ...(prefill.semiMonthly
+      ? { firstDay: prefill.semiMonthly.firstDay, secondDay: prefill.semiMonthly.secondDay, beforeWeekend: prefill.semiMonthly.beforeWeekend }
+      : {}),
+  };
+}
+
+/** Insights hands the prefill to the rule sheet as a route parameter; anything else is ignored. */
+export function parsePrefillParam(param: string | undefined): RecurringPrefill | null {
+  if (!param) return null;
+  try {
+    const value = JSON.parse(param) as Partial<RecurringPrefill>;
+    if (typeof value.name !== 'string' || typeof value.amountCents !== 'number' || (value.type !== 'expense' && value.type !== 'income')) return null;
+    if (typeof value.cadence !== 'string' || !(value.cadence in CADENCE) || typeof value.nextExpectedDate !== 'string') return null;
+    return value as RecurringPrefill;
+  } catch {
+    return null;
+  }
 }
 
 export function formFromRule(rule: RecurringRule): RuleForm {

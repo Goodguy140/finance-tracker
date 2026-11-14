@@ -8,7 +8,7 @@ import { Alert, ScrollView, Switch, Text, TextInput } from 'react-native';
 
 import { useApiMutation } from '@/api/mutations';
 import { errorText, useApiQuery, useRememberedQuery } from '@/api/query';
-import type { Account, Category, RecurringList, RecurringRule } from '@/api/types';
+import type { Account, Category, RecurringList, RecurringPrefill, RecurringRule } from '@/api/types';
 import { FormButton, FormField, formStyles } from '@/components/form';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
@@ -21,6 +21,7 @@ import {
   canEditRules,
   dayLabel,
   emptyRuleForm,
+  formFromPrefill,
   formFromRule,
   ruleBody,
   rulePath,
@@ -41,7 +42,7 @@ const FIRST_DAYS = Array.from({ length: 31 - SEMI_MONTHLY_MIN_GAP_DAYS }, (_, i)
  * A recurring bill, pay or transfer, with the website's Recurring form fields; an existing one can
  * also be paused or turned back on, cancelled (a bill), or deleted.
  */
-export function EditRule({ id }: { id: string | null }) {
+export function EditRule({ id, prefill = null }: { id: string | null; prefill?: RecurringPrefill | null }) {
   const theme = useTheme();
   const list = useApiQuery<RecurringList>(RECURRING_PATH);
   const categories = useRememberedQuery<{ categories: Category[] }>('/api/v1/categories');
@@ -66,15 +67,37 @@ export function EditRule({ id }: { id: string | null }) {
       </>
     );
   }
-  return <RuleEditor rule={rule ?? null} today={list.data!.today} categories={categories.data!.categories} accounts={accounts.data!.accounts} />;
+  return (
+    <RuleEditor
+      rule={rule ?? null}
+      prefill={prefill}
+      today={list.data!.today}
+      categories={categories.data!.categories}
+      accounts={accounts.data!.accounts}
+    />
+  );
 }
 
-function RuleEditor({ rule, today, categories, accounts }: { rule: RecurringRule | null; today: string; categories: Category[]; accounts: Account[] }) {
+function RuleEditor({
+  rule,
+  prefill,
+  today,
+  categories,
+  accounts,
+}: {
+  rule: RecurringRule | null;
+  prefill: RecurringPrefill | null;
+  today: string;
+  categories: Category[];
+  accounts: Account[];
+}) {
   const theme = useTheme();
   const scheme = useColorScheme();
   const router = useRouter();
   const open = accounts.filter((a) => !a.archived);
-  const [form, setForm] = useState<RuleForm>(() => (rule ? formFromRule(rule) : emptyRuleForm(today, open[0]?.id ?? '')));
+  const [form, setForm] = useState<RuleForm>(() =>
+    rule ? formFromRule(rule) : prefill ? formFromPrefill(prefill, today, accounts, categories) : emptyRuleForm(today, open[0]?.id ?? ''),
+  );
   const [error, setError] = useState<string | null>(null);
   const save = useApiMutation<Record<string, unknown>, { id: string }>(rule ? 'PATCH' : 'POST', () => rulePath(rule?.id), (b) => b);
   const setEnabled = useApiMutation<boolean, { ok: true }>('POST', () => rulePath(rule!.id, 'enabled'), (enabled) => ({ enabled }));

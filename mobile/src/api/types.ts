@@ -320,9 +320,27 @@ export type Insight = {
   evidence: { id: string; date: string; title: string | null; amountCents: number; type: TransactionType }[];
   /** The page of the website its button leads to (a path on the server), when it has one. */
   website: { path: string; label: string } | null;
+  /** What the phone can do about it itself. Absent from servers before the phone could track one. */
+  track?: InsightTrack | null;
   /** Only on a hidden one: snoozed until this day, or null when dismissed for good. */
   hiddenUntil?: string | null;
 };
+
+/** The website's "Track it" form, filled in, for a recurring charge it noticed. */
+export type RecurringPrefill = {
+  name: string;
+  type: 'expense' | 'income';
+  amountCents: number;
+  cadence: RecurringRule['cadence'];
+  accountId: string | null;
+  categoryId: string;
+  nextExpectedDate: string;
+  semiMonthly: { firstDay: number; secondDay: number; beforeWeekend: boolean } | null;
+};
+
+export type InsightTrack =
+  | { kind: 'recurring'; prefill: RecurringPrefill }
+  | { kind: 'habit'; habit: string; categoryName: string; trackedCategoryId: string | null };
 
 export type InsightList = { currency: string; snoozeDays: number; insights: Insight[]; hidden: Insight[] };
 
