@@ -12,9 +12,9 @@ import { markAsTransfer } from "@/lib/transfer-marking";
 import type { transactionRuleSchema } from "@/lib/validation";
 
 /**
- * Adding a rule, and applying one to past entries, shared by Settings → Rules
- * (`src/app/actions/transaction-rules.ts`) and the phone (`/api/v1/rules`), so a rule saves with the
- * same checks from both and an apply rewrites the same rows.
+ * Adding, changing, turning off, reordering and deleting a rule, and applying one to past entries,
+ * shared by Settings → Rules (`src/app/actions/transaction-rules.ts`) and the phone
+ * (`/api/v1/rules`), so a rule saves with the same checks from both and an apply rewrites the same rows.
  */
 
 export class TransactionRuleError extends Error {
@@ -122,6 +122,65 @@ export async function findOwnedRule(db: PrismaClient, userId: string, ruleId: st
   const rule = await db.transactionRule.findFirst({ where: { id: ruleId, userId }, include: RULE_SPLITS_INCLUDE });
   if (!rule) throw new TransactionRuleError("Rule not found.", true);
   return rule;
+}
+
+/** Replaces a rule's conditions and actions, keeping its place and whether it is on. @throws TransactionRuleError */
+export async function updateTransactionRule(
+  db: PrismaClient,
+  userId: string,
+  ruleId: string,
+  payload: TransactionRulePayload,
+): Promise<void> {
+  const rule = await findOwnedRule(db, userId, ruleId);
+  const { rule: data, split } = await prepareTransactionRule(db, userId, payload);
+  await db.transactionRule.update({
+    where: { id: rule.id },
+    data: { ...data, splits: { deleteMany: {}, create: splitRows(split) } },
+  });
+}
+
+/** Deletes a rule; past transactions keep what it set. @throws TransactionRuleError */
+export async function deleteTransactionRule(db: PrismaClient, userId: string, ruleId: string): Promise<void> {
+  const rule = await findOwnedRule(db, userId, ruleId);
+  await db.transactionRule.delete({ where: { id: rule.id } });
+}
+
+/** Turns a rule on or off. @throws TransactionRuleError */
+export async function setTransactionRuleEnabled(db: PrismaClient, userId: string, ruleId: string, enabled: boolean): Promise<void> {
+  const rule = await findOwnedRule(db, userId, ruleId);
+  await db.transactionRule.update({ where: { id: rule.id }, data: { enabled } });
+}
+
+/**
+ * Swaps a rule with its neighbour, then renumbers every rule 0..n-1 so gaps never build up. The
+ * top rule moved up, or the bottom one down, stays where it is. Returns its place, from 0.
+ * @throws TransactionRuleError
+ */
+export async function moveTransactionRule(
+  db: PrismaClient,
+  userId: string,
+  ruleId: string,
+  direction: "up" | "down",
+): Promise<number> {
+  return db.$transaction(async (tx) => {
+    const rules = await tx.transactionRule.findMany({
+      where: { userId },
+      orderBy: [{ priority: "asc" }, { id: "asc" }],
+      select: { id: true, priority: true },
+    });
+    const index = rules.findIndex((r) => r.id === ruleId);
+    if (index === -1) throw new TransactionRuleError("Rule not found.", true);
+    const target = direction === "up" ? index - 1 : index + 1;
+    if (target < 0 || target >= rules.length) return index;
+    const ordered = [...rules];
+    [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
+    for (const [priority, rule] of ordered.entries()) {
+      if (rule.priority !== priority) {
+        await tx.transactionRule.update({ where: { id: rule.id }, data: { priority } });
+      }
+    }
+    return target;
+  });
 }
 
 /** What one rule would change across every non-split transaction the user owns. @throws TransactionRuleError */

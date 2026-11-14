@@ -6,12 +6,13 @@ import { useState } from 'react';
 import { Alert, ScrollView, Switch, Text, TextInput } from 'react-native';
 
 import { useApiMutation } from '@/api/mutations';
-import { errorText, useRememberedQuery } from '@/api/query';
-import type { Category, MadeRule } from '@/api/types';
+import { errorText, useApiQuery, useRememberedQuery } from '@/api/query';
+import type { Category, MadeRule, Me } from '@/api/types';
 import { FormField, formStyles } from '@/components/form';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
 import { useTheme } from '@/hooks/use-theme';
+import { canEditRules } from '@/utils/rule-edits';
 import {
   applyQuestion,
   makeRuleBody,
@@ -47,6 +48,7 @@ export function MakeRule({ params }: { params: Params }) {
 function RuleSheet({ params, categories }: { params: Params; categories: Category[] }) {
   const theme = useTheme();
   const router = useRouter();
+  const me = useApiQuery<Me>('/api/v1/me').data;
   const [form, setForm] = useState<MakeRuleForm>(() => makeRuleForm(params));
   const [error, setError] = useState<string | null>(null);
   const save = useApiMutation<Record<string, unknown>, MadeRule>('POST', () => RULES_PATH, (body) => body);
@@ -148,8 +150,9 @@ function RuleSheet({ params, categories }: { params: Params; categories: Categor
           </FormField>
         </Section>
         <Text style={[formStyles.error, { color: theme.textSecondary }]}>
-          New entries, bank rows and imports follow it from now on. Rules are listed, reordered and changed on the website under
-          Settings → Rules.
+          {canEditRules(me)
+            ? 'New entries, bank rows and imports follow it from now on. Change, reorder or turn it off later in Settings → Your Rules.'
+            : 'New entries, bank rows and imports follow it from now on. Rules are listed, reordered and changed on the website under Settings → Rules.'}
         </Text>
       </ScrollView>
       <Stack.Title>New Rule</Stack.Title>

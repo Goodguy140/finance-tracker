@@ -636,12 +636,20 @@ build).
   a new title and a tag to set), read back as a sentence. Saved after the person's other rules; when
   it fits entries already logged it asks "Change N past entries too?", which is Settings → Rules'
   Apply. Suggested rules lists the learned Title → Category combos no rule decides yet, each opening
-  the sheet as "Is exactly"; Hide is the website's Hide. The list itself, ordering and editing stay
-  on the website. `POST /api/v1/rules`, `POST /api/v1/rules/:id/apply`,
-  `GET /api/v1/rules/suggestions`, `POST /api/v1/rules/suggestions/hide`
+  the sheet as "Is exactly"; Hide is the website's Hide. `POST /api/v1/rules`,
+  `POST /api/v1/rules/:id/apply`, `GET /api/v1/rules/suggestions`, `POST /api/v1/rules/suggestions/hide`
   (`src/lib/api-v1/transaction-rules.ts`; the website's actions and these share
   `src/lib/transaction-rule-edits.ts`); `GET /api/v1/me` names `rules` in `features`.
   `src/screens/rules/`, `src/app/transaction-rule.tsx`, `src/utils/transaction-rules.ts`
+- Your rules (Settings → Your rules ›, on servers that list `rule-edits` in `/api/v1/me`): every
+  rule in the order they run, described as Settings → Rules describes it, Off ones dimmed; + makes
+  a new one. A rule's sheet has **On**, **Move Up** / **Move Down** (the website's arrows, "Runs 2nd
+  of 5"), what it matches (Contains / Is exactly / Starts with, one text per line; Expenses, Income
+  or Either; Only on an account) and sets (category, new title, tag), **Apply to N Past Entries…**
+  and **Delete Rule**. Only what changed is sent; what only the website edits (an amount range, a
+  split, a new amount or account, a note, a transfer) is named under Then and kept as it is.
+  `GET /api/v1/rules`, `GET`/`PATCH`/`DELETE /api/v1/rules/:id`, `POST /api/v1/rules/:id/move`.
+  `src/screens/rules/list.tsx`, `src/screens/rules/edit.tsx`, `src/utils/rule-edits.ts`
 - Savings goals (Home's Savings goals card, Settings → Savings goals, a goal on an account's page):
   every goal's saved amount of its target, bar and status, what a dated goal needs a month and when
   it would be reached at its pace, as the website's card says it. **Add a Goal** and tapping a goal

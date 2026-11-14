@@ -111,3 +111,86 @@ describe("rule suggestions", () => {
     expect((await api.loadRuleSuggestions(db, userId)).suggestions.map((s) => s.title)).toEqual(["Superstore"]);
   });
 });
+
+describe("changing a rule from the phone", () => {
+  it("changes only what it is sent, and keeps what only the website edits", async () => {
+    const tag = await db.tag.create({ data: { userId, name: "Treats", nameKey: "treats" } });
+    const rule = await db.transactionRule.create({
+      data: {
+        userId,
+        priority: 0,
+        titleOperator: "CONTAINS",
+        titlePattern: "tim",
+        transactionType: "EXPENSE",
+        minAmountCents: 300,
+        appendNote: "coffee run",
+        addTagId: tag.id,
+        splits: { create: [{ position: 0, categoryId: coffee, basisPoints: 7000 }, { position: 1, categoryId: food, basisPoints: 3000 }] },
+      },
+    });
+    const user = { id: userId, countryCode: "CA" };
+    const listed = (await api.loadAppRules(db, user)).rules[0];
+    expect(listed).toMatchObject({
+      id: rule.id,
+      position: 1,
+      enabled: true,
+      match: "contains",
+      texts: ["tim"],
+      type: "expense",
+      categoryId: null,
+      tag: "Treats",
+      alsoOnWebsite: ["an amount range", "a split", "a note"],
+    });
+    expect(listed.condition).toBe("Title contains “tim”, expenses only, amount ≥ $3.00");
+
+    const changed = await api.patchTransactionRuleFromApi(db, userId, rule.id, { match: "is", texts: ["Tim Hortons", "Tims"], rename: "Tim Hortons" });
+    expect(changed).toEqual({ ok: true, changedRule: true });
+    const saved = await db.transactionRule.findUniqueOrThrow({ where: { id: rule.id }, include: { splits: { orderBy: { position: "asc" } } } });
+    expect(saved).toMatchObject({
+      titleOperator: "EQUALS",
+      titlePattern: "Tim Hortons\nTims",
+      setTitle: "Tim Hortons",
+      transactionType: "EXPENSE",
+      minAmountCents: 300,
+      appendNote: "coffee run",
+      addTagId: tag.id,
+      priority: 0,
+    });
+    expect(saved.splits.map((s) => [s.categoryId, s.basisPoints])).toEqual([[coffee, 7000], [food, 3000]]);
+
+    // Clearing the tag from the phone clears only the tag.
+    expect(await api.patchTransactionRuleFromApi(db, userId, rule.id, { tag: null })).toMatchObject({ ok: true });
+    expect(await db.transactionRule.findUniqueOrThrow({ where: { id: rule.id } })).toMatchObject({ addTagId: null, appendNote: "coffee run" });
+  });
+
+  it("turns a rule off, refuses a change that does not fit, reorders, and deletes", async () => {
+    const make = (priority: number, titlePattern: string) =>
+      db.transactionRule.create({ data: { userId, priority, titleOperator: "CONTAINS", titlePattern, setCategoryId: coffee, transactionType: "EXPENSE" } });
+    const [a, b, c] = [await make(0, "a"), await make(1, "b"), await make(2, "c")];
+
+    expect(await api.patchTransactionRuleFromApi(db, userId, a.id, { enabled: false })).toEqual({ ok: true, changedRule: false });
+    expect((await db.transactionRule.findUniqueOrThrow({ where: { id: a.id } })).enabled).toBe(false);
+
+    // An income rule cannot file into an expense category; nothing is saved, not even `enabled`.
+    expect(await api.patchTransactionRuleFromApi(db, userId, a.id, { type: "income", enabled: true })).toMatchObject({ ok: false, status: 400 });
+    expect(await db.transactionRule.findUniqueOrThrow({ where: { id: a.id } })).toMatchObject({ transactionType: "EXPENSE", enabled: false });
+    expect(await api.patchTransactionRuleFromApi(db, userId, a.id, {})).toMatchObject({ ok: false, status: 400 });
+    expect(await api.patchTransactionRuleFromApi(db, userId, a.id, { colour: "red" })).toMatchObject({ ok: false, status: 400 });
+
+    const other = await db.user.create({ data: { email: `move${seq}@example.test`, displayName: "Other" } });
+    expect(await api.patchTransactionRuleFromApi(db, other.id, a.id, { enabled: true })).toEqual({ ok: false, status: 404, error: "Rule not found." });
+    expect(await api.deleteTransactionRuleFromApi(db, other.id, a.id)).toMatchObject({ ok: false, status: 404 });
+
+    expect(await api.moveTransactionRuleFromApi(db, userId, c.id, { direction: "up" })).toEqual({ ok: true, position: 2 });
+    expect(await api.moveTransactionRuleFromApi(db, userId, a.id, { direction: "up" })).toEqual({ ok: true, position: 1 });
+    expect(await api.moveTransactionRuleFromApi(db, userId, a.id, { direction: "sideways" })).toMatchObject({ ok: false, status: 400 });
+    const order = async () => (await api.loadAppRules(db, { id: userId, countryCode: "CA" })).rules.map((r) => r.texts[0]);
+    expect(await order()).toEqual(["a", "c", "b"]);
+
+    const kept = await entry(coffee, "c", "07");
+    expect(await api.deleteTransactionRuleFromApi(db, userId, c.id)).toEqual({ ok: true });
+    expect(await order()).toEqual(["a", "b"]);
+    expect(await db.transaction.findUniqueOrThrow({ where: { id: kept.id } })).toMatchObject({ categoryId: coffee });
+    expect(await api.loadAppRule(db, { id: userId, countryCode: "CA" }, b.id, true)).toMatchObject({ rule: { position: 2 }, count: 2, matches: 0 });
+  });
+});
