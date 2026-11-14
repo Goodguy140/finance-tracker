@@ -230,7 +230,8 @@ Page: `src/app/reports/page.tsx`; data `src/lib/reports/*` (the page's figures w
   year totals and comparison with the year before, biggest month, top categories and payees;
   totals per tag with tax-looking names (donation, medical, deductible…) first and marked "Tax
   time"; contributions and withdrawals per registered account from the Investments card; Print
-  and a CSV for the year. `src/app/reports/year/page.tsx`, `src/lib/reports/year-summary.ts`
+  and a CSV for the year. `src/app/reports/year/page.tsx`, `src/lib/reports/year-summary.ts`,
+  `src/lib/reports/year-summary-data.ts` (shared with the iPhone app)
 - **Monthly review** `/reports/month?month=YYYY-MM` ("Monthly review" on Reports; the month just
   finished by default; linked from the monthly email digest): month totals against the month
   before, categories that moved most, where it went, biggest purchases, budgets kept and missed
@@ -736,6 +737,14 @@ build).
   below zero. `GET /api/v1/reports?period=&from=&to=&tagId=` (`src/lib/api-v1/reports.ts`, from
   `loadReportsOverview`). `src/screens/reports/index.tsx`, `src/components/group-bars.tsx` (plain
   views), `src/utils/reports.ts`
+- Year-end summary (Reports, "Year-end summary and tax-time totals"): the website's `/reports/year`,
+  last year by default and any year with activity from the toolbar. Income, spending, left over and
+  entries; the year in review sentences; where it went and who was paid most (each payee opens its
+  page); totals by tag with tax-looking tags first and marked Tax time (each opens Reports on that
+  year and tag); registered accounts' contributions and withdrawals. Print and the year's CSV stay on
+  the website. `GET /api/v1/reports/year?year=` (`src/lib/api-v1/year-end.ts`, from
+  `loadYearEndReport` in `src/lib/reports/year-summary-data.ts`, shared with the website page).
+  `src/screens/reports/year.tsx`, `src/utils/year-end.ts`
 - Accounts (Home's Net worth card, "See accounts and their registers"): net worth with what you have
   and what you owe, then every open account with its latest balance (other currencies listed apart,
   out of the totals), as Reports' Net worth. An account opens to the website's account page: balance

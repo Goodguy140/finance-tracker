@@ -3,16 +3,10 @@ import { Download } from "lucide-react";
 import { AppNav, APP_TAB_BAR_PAD_CLASS } from "@/components/app-nav";
 import { PrintButton } from "@/components/reports/print-button";
 import { formatAccountTypeLabel } from "@/lib/account-type-labels";
-import { getCountryConfig } from "@/lib/country-config";
 import { formatYmLongLabel } from "@/lib/dashboard-period";
 import { formatCurrency } from "@/lib/money";
-import { currentYmdInTimeZone } from "@/lib/period-month";
-import { prisma } from "@/lib/prisma";
-import { yearsWithActivity } from "@/lib/reports";
-import { loadActivityBounds, loadReportTxs } from "@/lib/reports/load";
-import { buildYearSummary, yearWindow } from "@/lib/reports/year-summary";
+import { loadYearEndReport } from "@/lib/reports/year-summary-data";
 import { requireUser } from "@/lib/session";
-import { listTags } from "@/lib/tags-server";
 
 export const dynamic = "force-dynamic";
 
@@ -30,37 +24,13 @@ function firstParam(v: string | string[] | undefined): string | undefined {
 export default async function YearEndPage({ searchParams }: { searchParams: SearchParams }) {
   const user = await requireUser();
   const sp = await searchParams;
-  const todayYmd = currentYmdInTimeZone(user.timezone);
-  const [activityYears, tags] = await Promise.all([loadActivityBounds(user.id), listTags(prisma, user.id)]);
-  const years = yearsWithActivity(activityYears, todayYmd);
-  const raw = firstParam(sp.year);
-  // Last year by default once there is one: it is the one a tax return is for.
-  const year = Number(raw && years.includes(raw) ? raw : (years.find((y) => y < todayYmd.slice(0, 4)) ?? years[0]));
-  const currency = getCountryConfig(user.countryCode).defaultCurrency;
+  const { years, year, currency, summary, spendingChangePercent: spendingChange, lastDay } = await loadYearEndReport(
+    user,
+    firstParam(sp.year),
+  );
   const fmt = (cents: number) => formatCurrency(cents, currency);
-  const window = yearWindow(year, todayYmd);
-
-  const [txs, flows] = await Promise.all([
-    loadReportTxs(user.id, new Date(Date.UTC(year - 1, 0, 1)), currency),
-    prisma.investmentFlow.findMany({
-      where: { userId: user.id, date: { gte: window.start, lt: window.end } },
-      select: { accountId: true, date: true, direction: true, amountCents: true, account: { select: { name: true, type: true } } },
-    }),
-  ]);
-  const summary = buildYearSummary({
-    year,
-    todayYmd,
-    txs,
-    tags,
-    flows: flows.map((f) => ({ ...f, accountName: f.account.name, accountType: f.account.type })),
-  });
   const taxTags = summary.tags.filter((t) => t.taxRelated);
   const otherTags = summary.tags.filter((t) => !t.taxRelated);
-  const spendingChange =
-    summary.previousSpendingCents > 0
-      ? Math.round(((summary.spendingCents - summary.previousSpendingCents) / summary.previousSpendingCents) * 100)
-      : null;
-  const lastDay = new Date(window.end.getTime() - 86_400_000).toISOString().slice(0, 10);
 
   return (
     <>
