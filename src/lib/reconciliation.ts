@@ -1,5 +1,7 @@
 import { TransactionType, type AccountType, type PrismaClient } from "@prisma/client";
-import { dateFromYmd } from "@/lib/date-only";
+import { BALANCE_SOURCE } from "@/lib/account-balances";
+import { shiftYm } from "@/lib/dashboard-period";
+import { dateFromYmd, ymdFromDateUtc } from "@/lib/date-only";
 import { isLiabilityType } from "@/lib/net-worth";
 import { paidCentsOf } from "@/lib/owed-shares";
 
@@ -132,4 +134,91 @@ export function parseBalanceInput(raw: string | undefined | null): number | null
   const s = (raw ?? "").trim().replace(/[$,\s]/g, "").replace(/−/g, "-");
   if (!/^-?\d+(\.\d{1,2})?$/.test(s)) return null;
   return Math.round(Number(s) * 100);
+}
+
+export class ReconciliationError extends Error {
+  constructor(
+    message: string,
+    readonly notFound = false,
+  ) {
+    super(message);
+    this.name = "ReconciliationError";
+  }
+}
+
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+
+function dayAfter(date: Date): string {
+  const d = new Date(date);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return ymdFromDateUtc(d);
+}
+
+/** "2026-02" → "2026-02-28". */
+export function lastDayOfMonth(ym: string): string {
+  const d = new Date(`${shiftYm(ym, 1)}-01T00:00:00Z`);
+  d.setUTCDate(0);
+  return ymdFromDateUtc(d);
+}
+
+/**
+ * Where the next statement starts: the day after the last one reconciled, from its closing
+ * balance; otherwise last month, with no opening balance. It runs to the end of its first month.
+ */
+export function nextStatement(
+  last: { endDate: Date; closingCents: number } | undefined,
+  todayYmd: string,
+): { from: string; to: string; openingCents: number | null } {
+  const from = last ? dayAfter(last.endDate) : `${shiftYm(todayYmd.slice(0, 7), -1)}-01`;
+  return { from, to: lastDayOfMonth(from.slice(0, 7)), openingCents: last ? last.closingCents : null };
+}
+
+/**
+ * Records that a statement agreed with the log, shared by the website's Mark reconciled and the
+ * phone. Worked out again here rather than trusting the caller, and refused unless it balances
+ * to the cent. The closing balance is also kept as the account's balance on the statement's last
+ * day, unless the bank already reported one for it.
+ * @throws ReconciliationError
+ */
+export async function saveReconciliation(
+  db: PrismaClient,
+  userId: string,
+  input: { accountId: string; startYmd: string; endYmd: string; openingCents: number; closingCents: number },
+): Promise<string> {
+  const { accountId, startYmd, endYmd, openingCents, closingCents } = input;
+  if (!YMD.test(startYmd) || !YMD.test(endYmd) || startYmd > endYmd) throw new ReconciliationError("Choose the statement's dates.");
+  const account = await db.account.findFirst({
+    where: { id: accountId, userId },
+    select: { id: true, name: true, type: true, currency: true },
+  });
+  if (!account) throw new ReconciliationError("Account not found.", true);
+  const inputs = await loadReconcileInputs(db, userId, account, startYmd, endYmd);
+  const result = reconcile({ accountId, liability: inputs.liability, openingCents, closingCents, transactions: inputs.transactions });
+  if (result.differenceCents !== 0) throw new ReconciliationError("The log does not match this statement yet.");
+
+  const endDate = dateFromYmd(endYmd);
+  return db.$transaction(async (tx) => {
+    const saved = await tx.accountReconciliation.create({
+      data: { userId, accountId, startDate: dateFromYmd(startYmd), endDate, openingCents, closingCents },
+      select: { id: true },
+    });
+    const existing = await tx.accountBalanceSnapshot.findUnique({
+      where: { accountId_date: { accountId, date: endDate } },
+      select: { source: true },
+    });
+    if (existing?.source !== BALANCE_SOURCE.plaid) {
+      await tx.accountBalanceSnapshot.upsert({
+        where: { accountId_date: { accountId, date: endDate } },
+        create: { userId, accountId, date: endDate, balanceCents: closingCents, source: BALANCE_SOURCE.manual },
+        update: { balanceCents: closingCents, source: BALANCE_SOURCE.manual },
+      });
+    }
+    return saved.id;
+  });
+}
+
+/** Forgets a reconciled statement; the balance it kept stays. @throws ReconciliationError */
+export async function deleteReconciliation(db: PrismaClient, userId: string, reconciliationId: string): Promise<void> {
+  const removed = await db.accountReconciliation.deleteMany({ where: { id: reconciliationId, userId } });
+  if (removed.count === 0) throw new ReconciliationError("Reconciliation not found.", true);
 }

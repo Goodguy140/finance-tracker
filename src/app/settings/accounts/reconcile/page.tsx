@@ -3,12 +3,11 @@ import { deleteReconciliationAction, saveReconciliationAction } from "@/app/acti
 import { inputClass, primaryBtnClass, selectClass } from "@/components/forms/shared";
 import { ServerActionForm } from "@/components/server-action-form";
 import { SettingsCard, SettingsPage } from "@/components/settings/ui";
-import { shiftYm } from "@/lib/dashboard-period";
-import { formatDateOnlyUtc, ymdFromDateUtc } from "@/lib/date-only";
+import { formatDateOnlyUtc } from "@/lib/date-only";
 import { formatCurrency } from "@/lib/money";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
-import { loadReconcileInputs, parseBalanceInput, reconcile } from "@/lib/reconciliation";
+import { lastDayOfMonth, loadReconcileInputs, nextStatement, parseBalanceInput, reconcile } from "@/lib/reconciliation";
 import { requireLoadedUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -17,18 +16,6 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
-
-function dayAfter(date: Date): string {
-  const d = new Date(date);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return ymdFromDateUtc(d);
-}
-
-function lastDayOfMonth(ym: string): string {
-  const d = new Date(`${shiftYm(ym, 1)}-01T00:00:00Z`);
-  d.setUTCDate(0);
-  return ymdFromDateUtc(d);
-}
 
 export default async function ReconcilePage({ searchParams }: { searchParams: SearchParams }) {
   const { user } = await requireLoadedUser();
@@ -51,12 +38,11 @@ export default async function ReconcilePage({ searchParams }: { searchParams: Se
     where: { userId: user.id, accountId: account.id },
     orderBy: { endDate: "desc" },
   });
-  const last = history[0];
   // Picks up where the last statement ended; otherwise last month.
-  const lastMonth = shiftYm(currentYmdInTimeZone(user.timezone).slice(0, 7), -1);
-  const from = YMD.test(one(sp.from)) ? one(sp.from) : last ? dayAfter(last.endDate) : `${lastMonth}-01`;
+  const next = nextStatement(history[0], currentYmdInTimeZone(user.timezone));
+  const from = YMD.test(one(sp.from)) ? one(sp.from) : next.from;
   const to = YMD.test(one(sp.to)) ? one(sp.to) : lastDayOfMonth(from.slice(0, 7));
-  const openingRaw = one(sp.opening) || (last ? (last.closingCents / 100).toFixed(2) : "");
+  const openingRaw = one(sp.opening) || (next.openingCents !== null ? (next.openingCents / 100).toFixed(2) : "");
   const closingRaw = one(sp.closing);
   const opening = parseBalanceInput(openingRaw);
   const closing = parseBalanceInput(closingRaw);

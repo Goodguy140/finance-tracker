@@ -969,3 +969,26 @@ export type BudgetSuggestionSet = {
     currentLimitCents: number | null;
   }[];
 };
+
+/** `GET /api/v1/accounts/:id/reconcile`: the website's Reconcile with a statement. On servers that list `reconcile`. */
+export type Reconcile = {
+  account: { id: string; name: string; currency: string; liability: boolean };
+  from: string;
+  to: string;
+  openingCents: number | null;
+  closingCents: number | null;
+  /** Null until both balances are given. */
+  check: {
+    moneyInCents: number;
+    moneyOutCents: number;
+    expectedClosingCents: number;
+    /** Statement closing less what the log arrives at: zero when they agree. */
+    differenceCents: number;
+    statementShows: 'more' | 'less' | null;
+    waitingInQueue: number;
+    /** Oldest first. `inCents` is from the account's side. */
+    rows: { id: string; date: string; title: string; inCents: number; balanceCents: number }[];
+  } | null;
+  /** Newest first. */
+  history: { id: string; from: string; to: string; openingCents: number; closingCents: number }[];
+};
