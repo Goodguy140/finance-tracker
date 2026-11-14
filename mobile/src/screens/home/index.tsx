@@ -26,6 +26,7 @@ import { formatDay, relativeDay } from '@/utils/dates';
 import type { HomeSectionId } from '@/utils/home-layout';
 import { bandTone, INSIGHTS_PATH, SCORE_PATH, scoreChangeText } from '@/utils/insights';
 import { formatCents, formatPeriodMonth } from '@/utils/money';
+import { hasReports } from '@/utils/reports';
 import { canSetSafeToSpendBuffer, safeToSpendBreakdown, safeToSpendBufferLine, safeToSpendLine } from '@/utils/safe-to-spend';
 import { spendingPath } from '@/utils/spending';
 import { updateWidgets } from '@/widgets/update';
@@ -347,6 +348,7 @@ function NetWorthRow() {
   const theme = useTheme();
   const router = useRouter();
   const worth = useApiQuery<NetWorth>(NET_WORTH_PATH).data;
+  const reports = hasReports(useApiQuery<Me>('/api/v1/me').data);
   if (!worth) return null;
   return (
     <Section title="Net worth">
@@ -362,6 +364,11 @@ function NetWorthRow() {
       <Pressable onPress={() => router.push('/accounts')} accessibilityRole="button" hitSlop={8}>
         <Text style={[styles.link, { color: theme.tint }]}>See accounts and their registers</Text>
       </Pressable>
+      {reports ? (
+        <Pressable onPress={() => router.push('/reports')} accessibilityRole="button" hitSlop={8}>
+          <Text style={[styles.link, { color: theme.tint }]}>See reports: income, spending and where it’s heading</Text>
+        </Pressable>
+      ) : null}
     </Section>
   );
 }

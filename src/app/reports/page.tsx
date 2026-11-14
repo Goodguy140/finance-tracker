@@ -5,11 +5,11 @@ import { TagFilterSelect } from "@/components/expense-log";
 import { FinancialScoreChip } from "@/components/financial-score-card";
 import { CashFlowSankey, IncomeSpendingChart, NetWorthChart } from "@/components/reports/report-charts";
 import { ProjectionTransfersToggle } from "@/components/reports/projection-transfers-toggle";
-import { loadNetWorth, loadProjectionInputs } from "@/lib/net-worth-data";
+import type { loadNetWorth } from "@/lib/net-worth-data";
 import { WhatIfPanel } from "@/components/reports/what-if-panel";
 import { InvestmentReturnsSection } from "@/components/reports/investment-returns-section";
 import { loadInvestmentReturns } from "@/lib/investment-returns-data";
-import { PROJECTION_DAYS, projectBalances, type ProjectedBalances } from "@/lib/projected-balances";
+import { PROJECTION_DAYS, type ProjectedBalances } from "@/lib/projected-balances";
 import { getCountryConfig } from "@/lib/country-config";
 import { loadFinancialScore } from "@/lib/financial-score-data";
 import { loadInsights } from "@/lib/insights/load";
@@ -17,22 +17,9 @@ import { cardUtilization, HIGH_UTILIZATION_PCT, totalUtilization } from "@/lib/c
 import { ymdFromDateUtc } from "@/lib/date-only";
 import { formatCurrency } from "@/lib/money";
 import { currentYmdInTimeZone } from "@/lib/period-month";
-import {
-  cashFlow,
-  filterByTag,
-  incomeVsSpendingByMonth,
-  merchantSummaries,
-  previousYearWindow,
-  reportPeriodParam,
-  resolveReportPeriod,
-  withinWindow,
-  yearOverYearByCategory,
-  yearsWithActivity,
-} from "@/lib/reports";
-import { loadActivityBounds, loadOtherCurrencyTotals, loadReportTxs, loadSavingsTransfers } from "@/lib/reports/load";
+import { reportPeriodParam, type merchantSummaries } from "@/lib/reports";
+import { loadReportsOverview } from "@/lib/reports/overview";
 import { groupYearRows } from "@/lib/category-groups";
-import { describeOtherCurrencies } from "@/lib/home-currency";
-import { savedByTransferByMonth, totalSavedByTransfer } from "@/lib/savings-transfers";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { resolveTagFilter } from "@/lib/tags";
@@ -65,75 +52,25 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   const user = await requireUser();
   const sp = await searchParams;
   const todayYmd = currentYmdInTimeZone(user.timezone);
-  const period = resolveReportPeriod(
-    reportPeriodParam({ period: firstParam(sp.period), from: firstParam(sp.from), to: firstParam(sp.to) }),
-    todayYmd,
-  );
+  const periodKey = reportPeriodParam({ period: firstParam(sp.period), from: firstParam(sp.from), to: firstParam(sp.to) });
   const currency = getCountryConfig(user.countryCode).defaultCurrency;
   const fmt = (cents: number) => formatCurrency(cents, currency);
 
-  const [loaded, savings, activityYears, tags, financial, netWorth, projectionInputs, insights, categoryGroups, returns] = await Promise.all([
-    loadReportTxs(user.id, previousYearWindow(period).start, currency),
-    loadSavingsTransfers(user.id, period.start, currency),
-    loadActivityBounds(user.id),
-    listTags(prisma, user.id),
+  const tags = await listTags(prisma, user.id);
+  // `?tag=`, as on the dashboard: every view on this page narrows to rows carrying the tag.
+  const tagFilter = resolveTagFilter(sp.tag, tags);
+  const [overview, financial, insights, categoryGroups, returns] = await Promise.all([
+    loadReportsOverview(user, periodKey, tagFilter?.id ?? null),
     loadFinancialScore(user),
-    loadNetWorth(user),
-    loadProjectionInputs(user.id),
     // For the score card's count of possible gaps in the data, as Insights lists them.
     loadInsights(user.id, user.countryCode, user.timezone),
     prisma.category.findMany({ where: { userId: user.id, groupName: { not: null } }, select: { id: true, groupName: true } }),
     loadInvestmentReturns(user),
   ]);
-  const projection = projectBalances({
-    accounts: netWorth.accounts,
-    ...projectionInputs,
-    todayYmd,
-    currentYm: todayYmd.slice(0, 7),
-  });
-  // `?tag=`, as on the dashboard: every view on this page narrows to rows carrying the tag.
-  const tagFilter = resolveTagFilter(sp.tag, tags);
-  // Entries on accounts in another currency are in none of the figures below; say what they come to.
-  const otherCurrency = await loadOtherCurrencyTotals(user.id, currency, {
-    start: period.start,
-    end: period.end,
-    tagId: tagFilter?.id ?? null,
-  });
-  const otherCurrencyNote = [
-    ["income", describeOtherCurrencies(otherCurrency, "income")],
-    ["spending", describeOtherCurrencies(otherCurrency, "expense")],
-  ]
-    .filter(([, text]) => text)
-    .map(([label, text]) => `${label} ${text}`)
-    .join("; ");
-  const txs = filterByTag(loaded, tagFilter?.id ?? null);
+  const { period, netWorth, projectionInputs, projection, tracksSavings, toSavingsCents, months, flow, yoy, payees, payers, otherCurrencyNote, periodOptions } =
+    overview;
   const tagQuery = tagFilter ? `tag=${encodeURIComponent(tagFilter.id)}` : "";
-  const inPeriod = withinWindow(txs, period);
-  // With any account marked "Counts as savings", saved is what moved into those accounts.
-  const tracksSavings = savings.savingsAccountIds.size > 0;
-  const savingsTxs = savings.txs.filter(
-    (tx) => tx.date >= period.start && tx.date < period.end && (!tagFilter || tx.tagIds?.includes(tagFilter.id)),
-  );
-  const toSavingsCents = tracksSavings ? totalSavedByTransfer(savingsTxs, savings.savingsAccountIds) : null;
-  const allMonths = incomeVsSpendingByMonth(
-    inPeriod,
-    period.months,
-    tracksSavings ? savedByTransferByMonth(savingsTxs, savings.savingsAccountIds, period.months) : null,
-  );
-  // Start at the first month with anything in it, so a short history isn't a row of empty bars.
-  const firstActive = allMonths.findIndex((m) => m.incomeCents !== 0 || m.spendingCents !== 0 || (m.toSavingsCents ?? 0) !== 0);
-  const months = firstActive === -1 ? [] : allMonths.slice(firstActive);
-  const flow = cashFlow(inPeriod, { toSavingsCents });
-  const yoy = yearOverYearByCategory(txs, period);
   const groupRows = groupYearRows(yoy.rows, new Map(categoryGroups.map((c) => [c.id, c.groupName])));
-  const merchants = merchantSummaries(inPeriod);
-  // Who you paid and who paid you are listed apart: an employer is not a payee.
-  const payees = merchants.filter((m) => m.spentCents !== 0);
-  const payers = merchants.filter((m) => m.spentCents === 0 && m.receivedCents !== 0);
-  const periodOptions = [
-    { key: "12m", label: "Last 12 months" },
-    ...yearsWithActivity(activityYears, todayYmd).map((y) => ({ key: y, label: y })),
-  ];
   const netCents = flow.incomeCents - flow.spendingCents;
   const periodQuery = period.key === "12m" ? "" : `&period=${period.key}`;
   const maxYoyCents = Math.max(1, ...yoy.rows.flatMap((r) => [r.currentCents, r.previousCents]));
