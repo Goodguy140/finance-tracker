@@ -7,7 +7,7 @@ its own `package.json`, lockfile, lint and tests. The server's tools ignore this
 What it does so far: sign in (with Face ID if you want it); see safe to spend, spending so far and
 by category, budgets and what is due; post or skip recurring bills and pay; see your financial score and insights, your accounts,
 net worth and each account's register; browse, search, add (with no connection too) and edit
-transactions with receipts; share a receipt to it from Photos, Mail or Files; say "Log an expense
+transactions with receipts; share a receipt or a bank statement (CSV, OFX or QFX) to it from Photos, Mail or Files; say "Log an expense
 in Finances" to Siri; put safe to spend and the week's bills on the Home Screen; review what your
 banks sent (the Review tab); connect and fix banks (Settings → Bank connections); and get bill,
 charge and budget alerts (Settings → Alerts).
@@ -86,10 +86,11 @@ and `src/utils/banks.ts`.
 | `src/notifications/` | Alerts: asking iOS, registering the phone's Apple push token with the server, and opening the right screen when one is tapped |
 | `src/api/` | Calls to the server's `/api/v1` routes, their types (`types.ts`), and the TanStack Query cache every screen reads through (`query.tsx`) |
 | `src/widgets/` | The Home Screen widgets (`'widget'` components run by iOS, not the app) and `update.ts`, which writes Home's numbers to them |
-| `src/launch/` | What opens the app on a screen from outside it: a receipt shared from another app, Siri |
+| `src/launch/` | What opens the app on a screen from outside it: a receipt or statement shared from another app, Siri |
 | `app-intents/` | Swift for Siri and the Shortcuts app ("Log an expense"), compiled into the app (Expo inline modules) |
 | `passkeys/` | Swift for Face ID sign-in with a passkey and adding one (`ASAuthorizationController`), compiled into the app the same way |
 | `app.config.ts` | `app.json` plus the home server (`HOME_SERVER_DOMAIN`, see How sign-in works) |
+| `plugins/` | Local config plugins. `share-statements.js` lets the share extension pass a CSV, OFX or QFX statement on as a file; it is listed before `expo-sharing` in `app.json` so that it runs after expo-sharing writes the extension |
 | `src/utils/` | Plain functions with unit tests beside them |
 | `src/state/` | Small app-wide state outside the server cache (the Undo offer after a delete) |
 | `src/constants/theme.ts` | Colours and spacing, matching the web app |
@@ -165,11 +166,11 @@ phones through EAS Update, with no new build and no TestFlight upload. Build 16 
 before it and never receive updates; the first build made after it replaces them.
 
 **What still needs a build.** Anything compiled into the app: a package with native code, a change
-to `app.json`, `app.config.ts` or a config plugin's options, Swift in `app-intents/` or
-`passkeys/`, the widget layouts in `src/widgets/`, and an Expo SDK upgrade.
+to `app.json`, `app.config.ts` or a config plugin's options, a plugin in `plugins/`, Swift in
+`app-intents/` or `passkeys/`, the widget layouts in `src/widgets/`, and an Expo SDK upgrade.
 
 **Runtime version.** `runtimeVersion` in `app.json` uses the fingerprint policy: a hash of
-everything in that list (`fingerprint.config.js` adds the three folders Expo's hash leaves out).
+everything in that list (`fingerprint.config.js` adds the four folders Expo's hash leaves out).
 An update reaches only builds made from the same native code, so after a native change it simply
 skips older builds rather than running code they cannot support. An update that a build should
 have got and did not usually means the two were made from different native code: compare the

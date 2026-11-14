@@ -3,7 +3,7 @@
 import { useEffect, useId, useImperativeHandle, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { ServerActionForm } from "@/components/server-action-form";
 import { CsvImportSummaryDialog } from "./csv-import-summary-dialog";
-import { isCsvImportSummary, statementOutflow, type AmountSign, type CsvImportSummary, type MoneyInAs } from "@/lib/csv-import";
+import { guessColumnMapping, isCsvImportSummary, statementOutflow, type AmountSign, type CsvImportSummary, type MoneyInAs } from "@/lib/csv-import";
 import { looksLikeOfx, OFX_AMOUNT_SIGN, parseOfx } from "@/lib/ofx";
 import { ExpenseTitleAutocomplete } from "@/components/expense-title-autocomplete";
 import { parseImportedDate } from "@/lib/import-dates";
@@ -401,26 +401,7 @@ export function ExpenseCsvImportForm({
           setHeaders(parsed.headers);
           setRows(parsed.rows);
 
-          const autoMapping: Record<string, string> = {};
-          const usedFields = new Set<string>();
-          for (const header of parsed.headers) {
-            const normalized = header.toLowerCase().replace(/[\s_-]/g, "");
-            let field = "";
-            if (normalized.includes("amount") || normalized === "debit" || normalized === "withdrawals") field = "amount";
-            else if (normalized === "credit" || normalized === "deposits" || normalized === "moneyin") field = "amountIn";
-            else if (normalized === "memo" && ofx) field = "note";
-            else if (normalized === "type" || normalized === "id") field = "";
-            else if (normalized.includes("posted")) field = "postedDate";
-            else if (normalized === "date" || normalized.includes("transactiondate")) field = "date";
-            else if (normalized.includes("category")) field = "categoryName";
-            else if (normalized.includes("account")) field = "accountName";
-            else if (normalized.includes("memo") || normalized.includes("note")) field = "note";
-            else if (normalized.includes("title") || normalized.includes("description")) field = "title";
-            if (field && usedFields.has(field)) field = "";
-            else if (field) usedFields.add(field);
-            autoMapping[header] = field;
-          }
-          setMapping(autoMapping);
+          setMapping(guessColumnMapping(parsed.headers, ofx));
         }}
       />
 

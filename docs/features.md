@@ -399,6 +399,7 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     (`statementOutflow`); money coming in is a refund (negative expense) or, if chosen, income
     in a picked category. OFX/QFX is read into the same column table (`src/lib/ofx.ts`):
     `forms/expense-forms.tsx`, `forms/csv-import-summary-dialog.tsx`, `src/lib/csv-import.ts`
+    (`guessColumnMapping`), `src/lib/statement-import.ts` (the importer, shared with the iPhone app)
   - Backup & export (JSON export, transactions as CSV for all time or a date range
     (`src/lib/transactions-csv.ts`, `src/app/api/export/transactions`), restore up to 20 MB, clear data, delete account):
     `settings/data-forms.tsx`, `src/lib/backup*.ts`, `src/app/api/backup/export/me`. Clear and restore share one
@@ -612,6 +613,19 @@ build).
   finds, to keep it with. Shared while the app is locked or signed out, it opens after Face ID or
   signing in. Uses `expo-sharing`'s share extension. `src/screens/share.tsx`, `src/app/+native-intent.ts`,
   `src/launch/shared-receipts.ts`, `src/utils/shared-receipt.ts`
+- Import a bank statement (the share sheet in Files, Mail and other apps, for one CSV, OFX or QFX
+  file; only if the server lists `statement-import` in `/api/v1/me`): the website's Settings →
+  Import. The server reads the file with the website's readers and guesses its columns; the phone
+  shows how the first rows will be booked (spending, refund or income) while the account,
+  category, amount sign (CSV only), money in as refund or income, and each column are chosen; then
+  the server books it with the website's importer (`importStatement` in
+  `src/lib/statement-import.ts`): rules apply, rows already in the log are skipped, everything
+  lands in Needs review, and the result is worded as the website's summary, with **Review Them**.
+  Up to 5 MB and 5,000 rows. `POST /api/v1/imports/preview` and `POST /api/v1/imports`
+  (`src/lib/api-v1/imports.ts`). The share extension reads a CSV as text to paste, so a config
+  plugin (`mobile/plugins/share-statements.js`) has it keep a statement as a file, and `app.json`
+  declares the OFX and QFX types. `src/screens/statement-import.tsx`, `src/utils/statement-import.ts`,
+  `src/api/imports.ts`
 - Siri and Shortcuts: "Log an expense in Finances" (or "Add an expense", "Log a purchase") asks how
   much, then opens the Add sheet with the amount, and from the Shortcuts app what it was for, filled
   in; nothing is saved until Add is tapped. `app-intents/LogExpenseIntent.swift`,

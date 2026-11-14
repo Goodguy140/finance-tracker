@@ -132,3 +132,34 @@ export class DuplicateMatcher {
     return true;
   }
 }
+
+/** The fields a statement's columns can fill. */
+export type ImportField = "amount" | "amountIn" | "date" | "postedDate" | "title" | "note" | "accountName" | "categoryName";
+
+/**
+ * A first guess at which field each column fills, from its header, as the import form starts with:
+ * header → field, or "" to leave the column out. No field is guessed twice; the first column wins.
+ * An OFX statement's Memo is a note, and its Type and Id columns are left out.
+ */
+export function guessColumnMapping(headers: readonly string[], ofx: boolean): Record<string, ImportField | ""> {
+  const mapping: Record<string, ImportField | ""> = {};
+  const used = new Set<string>();
+  for (const header of headers) {
+    const normalized = header.toLowerCase().replace(/[\s_-]/g, "");
+    let field: ImportField | "" = "";
+    if (normalized.includes("amount") || normalized === "debit" || normalized === "withdrawals") field = "amount";
+    else if (normalized === "credit" || normalized === "deposits" || normalized === "moneyin") field = "amountIn";
+    else if (normalized === "memo" && ofx) field = "note";
+    else if (normalized === "type" || normalized === "id") field = "";
+    else if (normalized.includes("posted")) field = "postedDate";
+    else if (normalized === "date" || normalized.includes("transactiondate")) field = "date";
+    else if (normalized.includes("category")) field = "categoryName";
+    else if (normalized.includes("account")) field = "accountName";
+    else if (normalized.includes("memo") || normalized.includes("note")) field = "note";
+    else if (normalized.includes("title") || normalized.includes("description")) field = "title";
+    if (field && used.has(field)) field = "";
+    else if (field) used.add(field);
+    mapping[header] = field;
+  }
+  return mapping;
+}

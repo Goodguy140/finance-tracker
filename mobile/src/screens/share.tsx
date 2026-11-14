@@ -17,6 +17,9 @@ import { formatDay } from '@/utils/dates';
 import { formatCents } from '@/utils/money';
 import { isImageReceipt, receiptSize, type ReceiptPhoto } from '@/utils/receipts';
 import { receiptFromShares, receiptParams } from '@/utils/shared-receipt';
+import { statementFromShares } from '@/utils/statement-import';
+
+import { StatementImport } from './statement-import';
 
 /** Entries offered to keep a shared receipt with: the latest, or what a search finds. */
 function entriesPath(search: string): string {
@@ -27,18 +30,26 @@ function entriesPath(search: string): string {
 
 /**
  * A photo or PDF shared to Finances from another app (Photos, Mail, Files): keep it with a new entry
- * (the Add sheet opens with it), or with one already logged. Whatever happens, it is shown once:
- * leaving the screen lets it go.
+ * (the Add sheet opens with it), or with one already logged. A bank statement (CSV, OFX or QFX) is
+ * imported instead (`StatementImport`). Whatever happens, it is shown once: leaving the screen lets
+ * it go.
  */
 export function SharedReceipt() {
   const theme = useTheme();
   const router = useRouter();
   const share = useIncomingShare();
-  const result = share.isResolving ? null : receiptFromShares(share.resolvedSharedPayloads);
+  const statement = share.isResolving ? null : statementFromShares(share.resolvedSharedPayloads);
+  const result = share.isResolving || statement ? null : receiptFromShares(share.resolvedSharedPayloads);
 
   function close() {
     clearSharedPayloads();
     router.back();
+  }
+
+  function finishImport(then?: 'review') {
+    clearSharedPayloads();
+    router.back();
+    if (then === 'review') router.navigate({ pathname: '/transactions', params: { review: '1' } });
   }
 
   return (
@@ -49,15 +60,19 @@ export function SharedReceipt() {
         style={{ backgroundColor: theme.background }}
         contentContainerStyle={formStyles.content}>
         {share.isResolving ? <LoadState loading error={null} /> : null}
-        {!share.isResolving && (share.error || !result) ? (
+        {!share.isResolving && (share.error || (!result && !statement)) ? (
           <Text style={[styles.body, { color: theme.textSecondary }]}>
-            {share.error ? 'Couldn’t open what was shared. Share it again.' : 'Nothing was shared. Share a photo or PDF of a receipt from another app.'}
+            {share.error
+              ? 'Couldn’t open what was shared. Share it again.'
+              : 'Nothing was shared. Share a photo or PDF of a receipt, or a bank statement (CSV, OFX or QFX), from another app.'}
           </Text>
         ) : null}
+        {statement && 'error' in statement ? <Text style={[styles.body, { color: theme.danger }]}>{statement.error}</Text> : null}
+        {statement && 'statement' in statement ? <StatementImport statement={statement.statement} onFinish={finishImport} /> : null}
         {result && 'error' in result ? <Text style={[styles.body, { color: theme.danger }]}>{result.error}</Text> : null}
         {result && 'photo' in result ? <Choices photo={result.photo} /> : null}
       </ScrollView>
-      <Stack.Title>Receipt</Stack.Title>
+      <Stack.Title>{statement ? 'Import Statement' : 'Receipt'}</Stack.Title>
       <Stack.Toolbar placement="left">
         <Stack.Toolbar.Button onPress={close}>Cancel</Stack.Toolbar.Button>
       </Stack.Toolbar>
