@@ -16,6 +16,7 @@ import { canSetAlertTiming } from '@/utils/alert-timing';
 import { RELOCK_AFTER_MS } from '@/utils/app-lock';
 import { canEditGoals } from '@/utils/goals';
 import { canSetSafeToSpendBuffer } from '@/utils/safe-to-spend';
+import { canUseZeroBased } from '@/utils/zero-based';
 import { canMakeRules } from '@/utils/transaction-rules';
 
 import { AboutSection } from './about';
@@ -98,9 +99,15 @@ export function Settings() {
         {canSetSafeToSpendBuffer(me.data) ? (
           <Section
             title="Safe to spend"
-            footer="How many days ahead Safe to spend also holds back bills that fall next month. The website's Safe to spend card sets the same buffer.">
+            footer={
+              canUseZeroBased(me.data)
+                ? "How many days ahead Safe to spend also holds back bills that fall next month, and whether Home shows zero-based budgeting's To assign instead. The website's Safe to spend card sets the same."
+                : "How many days ahead Safe to spend also holds back bills that fall next month. The website's Safe to spend card sets the same buffer."
+            }>
             <Pressable onPress={() => router.push('/settings/safe-to-spend')} accessibilityRole="button" hitSlop={8}>
-              <Text style={[styles.link, { color: theme.tint }]}>Bill buffer ›</Text>
+              <Text style={[styles.link, { color: theme.tint }]}>
+                {canUseZeroBased(me.data) ? 'Bill buffer and zero-based budgeting ›' : 'Bill buffer ›'}
+              </Text>
             </Pressable>
           </Section>
         ) : null}

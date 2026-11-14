@@ -7,8 +7,9 @@ import { currentYmdInTimeZone } from "@/lib/period-month";
 import { plannedAsForecastRules } from "@/lib/planned-transactions";
 import { loadOpenPlannedTransactions } from "@/lib/planned-transactions-data";
 import { prisma } from "@/lib/prisma";
-import type { SafeToSpend } from "@/lib/safe-to-spend";
-import { loadSafeToSpend } from "@/lib/safe-to-spend-data";
+import { computeSafeToSpend, type SafeToSpend } from "@/lib/safe-to-spend";
+import { loadSafeToSpendInput } from "@/lib/safe-to-spend-data";
+import { computeZeroBased, type ZeroBasedSummary } from "@/lib/zero-based";
 
 /**
  * The phone app's Home screen in one call (`GET /api/v1/summary`): safe to spend for the month
@@ -33,6 +34,8 @@ export type AppSummaryInput = {
   todayYmd: string;
   currency: string;
   safeToSpend: SafeToSpend;
+  /** Set when the person budgets zero-based: the website's card then shows "To assign" instead. */
+  zeroBased?: ZeroBasedSummary | null;
   progress: MonthlyBudgetProgress;
   occurrences: readonly BillsForecastOccurrence<ForecastRow>[];
   bankQueueCount: number;
@@ -60,6 +63,8 @@ export function buildAppSummary(input: AppSummaryInput) {
     today: input.todayYmd,
     currency: input.currency,
     safeToSpend: input.safeToSpend,
+    /** Zero-based budgeting's "To assign" for the month, when it is on; null otherwise. */
+    zeroBased: input.zeroBased ?? null,
     budgets: {
       count: progress.budgets.length,
       totalLimitCents: progress.totalLimitCents,
@@ -94,8 +99,13 @@ export async function loadAppSummary(user: SummaryUser, now: Date = new Date(), 
   const currency = homeCurrencyOf(user.countryCode);
   const todayYmd = currentYmdInTimeZone(user.timezone, now);
   const ym = todayYmd.slice(0, 7);
-  const [safeToSpend, progress, rules, plans, bankQueueCount, needsReviewCount] = await Promise.all([
-    loadSafeToSpend(user, now, client),
+  const prefs = await client.user.findUnique({
+    where: { id: user.id },
+    select: { zeroBasedBudgeting: true, safeToSpendBufferDays: true },
+  });
+  const [safeInput, progress, rules, plans, bankQueueCount, needsReviewCount] = await Promise.all([
+    // One input for both numbers, as the dashboard works them out.
+    loadSafeToSpendInput({ ...user, safeToSpendBufferDays: prefs?.safeToSpendBufferDays ?? null }, now, client),
     buildMonthlyBudgetProgress(user.id, ym, client),
     // The home currency's rules, as safe to spend and the Upcoming bills card count them.
     client.recurringTransaction.findMany({
@@ -125,7 +135,8 @@ export async function loadAppSummary(user: SummaryUser, now: Date = new Date(), 
   return buildAppSummary({
     todayYmd,
     currency,
-    safeToSpend,
+    safeToSpend: computeSafeToSpend(safeInput),
+    zeroBased: prefs?.zeroBasedBudgeting ? computeZeroBased(safeInput) : null,
     progress,
     occurrences: forecast.occurrences,
     bankQueueCount,

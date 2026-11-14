@@ -70,4 +70,14 @@ describe("GET/PATCH /api/v1/safe-to-spend", () => {
     expect(await api.patchSafeToSpendSettingsFromApi(db, user.id, { bufferDays: null })).toEqual({ ok: true });
     expect((await api.serializeSafeToSpendSettings(db, user, now)).safeToSpend).toMatchObject({ bufferDays: null, safeCents: 0 });
   });
+
+  it("turns zero-based budgeting on and off, leaving the buffer as it was", async () => {
+    const user = await db.user.create({ data: { email: "zero@example.test", displayName: "Test", safeToSpendBufferDays: 4 } });
+    expect((await api.serializeSafeToSpendSettings(db, user, now)).zeroBased).toBe(false);
+    expect(await api.patchSafeToSpendSettingsFromApi(db, user.id, { zeroBased: true })).toEqual({ ok: true });
+    expect(await api.serializeSafeToSpendSettings(db, user, now)).toMatchObject({ zeroBased: true, bufferDays: 4 });
+    expect(await api.patchSafeToSpendSettingsFromApi(db, user.id, { zeroBased: "yes" })).toMatchObject({ ok: false });
+    expect(await api.patchSafeToSpendSettingsFromApi(db, user.id, { zeroBased: false, bufferDays: null })).toEqual({ ok: true });
+    expect(await api.serializeSafeToSpendSettings(db, user, now)).toMatchObject({ zeroBased: false, bufferDays: null });
+  });
 });

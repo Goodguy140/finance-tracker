@@ -72,6 +72,20 @@ export type SafeToSpendSettings = {
   maxBufferDays: number;
   currency: string;
   safeToSpend: SafeToSpend;
+  /** Whether Home shows zero-based budgeting's "To assign"; absent from older servers. */
+  zeroBased?: boolean;
+};
+
+/** Zero-based budgeting for the month: income less every dollar already given a job. */
+export type ZeroBased = {
+  toAssignCents: number;
+  incomeCents: number;
+  assignedCents: number;
+  billsOutsideBudgetsCents: number;
+  spentOutsideBudgetsCents: number;
+  goalsCents: number;
+  overspent: { categoryId: string; categoryName: string; overCents: number }[];
+  overspentCents: number;
 };
 
 export type UpcomingItem = {
@@ -88,6 +102,8 @@ export type Summary = {
   today: string;
   currency: string;
   safeToSpend: SafeToSpend;
+  /** Set when zero-based budgeting is on; null when off, absent from older servers. */
+  zeroBased?: ZeroBased | null;
   budgets: {
     count: number;
     totalLimitCents: number;

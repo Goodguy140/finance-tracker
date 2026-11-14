@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/v1/safe-to-spend — Safe to spend's buffer as the website's card has it: `bufferDays`
  * (bills due this many days ahead are held back when they fall next month; null for none) and
- * `maxBufferDays`, with `safeToSpend` worked out as the Home screen shows it. Scope `app`.
+ * `maxBufferDays`, and `zeroBased` (zero-based budgeting is on), with `safeToSpend` worked out as
+ * the Home screen shows it. Scope `app`.
  */
 export async function GET(request: Request) {
   const authorized = await authorizeApiRequest(request, API_SCOPES.app, "safe-to-spend");
@@ -18,8 +19,9 @@ export async function GET(request: Request) {
 }
 
 /**
- * PATCH /api/v1/safe-to-spend — `{ "bufferDays": 7 }`, or null to turn the buffer off. 400 with
- * the reason; 200 with the settings and the number as they now are. Scope `app`.
+ * PATCH /api/v1/safe-to-spend — `{ "bufferDays": 7 }` (null turns the buffer off) and/or
+ * `{ "zeroBased": true }` (Home shows "To assign" instead). 400 with the reason; 200 with the
+ * settings and the number as they now are. Scope `app`.
  */
 export async function PATCH(request: Request) {
   const authorized = await authorizeApiRequest(request, API_SCOPES.app, "safe-to-spend-write");

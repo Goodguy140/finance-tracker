@@ -801,6 +801,12 @@ build).
   with the Safe to spend it gives now. Home's breakdown shows next month's bills it holds back.
   `GET`/`PATCH /api/v1/safe-to-spend` (`src/lib/api-v1/safe-to-spend.ts`).
   `src/screens/settings/safe-to-spend.tsx`, `src/utils/safe-to-spend.ts`
+- Zero-based budgeting (on servers that list `zero-based` in `/api/v1/me`): the website card's
+  checkbox as a switch on the same Settings screen (`PATCH /api/v1/safe-to-spend` `{ zeroBased }`).
+  While it is on, Home's top card is **To assign this month** instead of Safe to spend, with the
+  website's wording, overspent budgets (each opens Cover the overage) and How this is worked out.
+  `zeroBased` in `GET /api/v1/summary` (`src/lib/api-v1/summary.ts`), null while it is off.
+  `src/screens/home/index.tsx`, `src/utils/zero-based.ts`
 - When alerts come (Settings → When alerts come ›, on servers that list `alert-timing` in
   `/api/v1/me`): the website's Settings → Notifications timing, for email and phones alike. Bill
   reminders Off / Day before / 3 days / A week; charge alerts at or over an amount (empty for off,
