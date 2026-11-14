@@ -14,6 +14,7 @@ import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { canEditAccounts } from '@/utils/account-settings';
 import { hasDebtPayoff, termsLine } from '@/utils/debt';
+import { canReconcile } from '@/utils/reconcile';
 import { accountPath, balanceSource, cardTerms, REGISTER_MONTHS, registerNote, signedCents } from '@/utils/accounts';
 import { balancesPath, canRecordBalance } from '@/utils/balances';
 import { formatDay } from '@/utils/dates';
@@ -36,6 +37,7 @@ export function Account({ id }: { id: string }) {
   const investments = canTrackInvestments(me);
   const editable = canEditAccounts(me);
   const debtPlan = hasDebtPayoff(me);
+  const reconcile = canReconcile(me);
   const { refreshing, onRefresh } = usePullToRefresh(query.refetch);
   const data = query.data;
 
@@ -100,6 +102,13 @@ export function Account({ id }: { id: string }) {
                     <ProgressBar share={goal.percent / 100} color={theme.positive} />
                   </Pressable>
                 ))}
+              </Section>
+            ) : null}
+            {reconcile && !data.account.archived ? (
+              <Section title="Statements" footer="Check a bank or card statement against the entries logged here, and mark it reconciled.">
+                <Pressable onPress={() => router.push({ pathname: '/reconcile', params: { id } })} accessibilityRole="button" hitSlop={8}>
+                  <Text style={[styles.link, { color: theme.tint }]}>Reconcile with a statement ›</Text>
+                </Pressable>
               </Section>
             ) : null}
             {debtPlan && data.liability ? (

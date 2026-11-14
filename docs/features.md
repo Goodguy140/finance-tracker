@@ -345,7 +345,7 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     and opening/closing balances in, the log's entries with a running balance and the difference
     out (cards and loans as amounts owed); "Mark reconciled" keeps an `AccountReconciliation` and
     the closing balance as a manual balance unless the bank reported that day:
-    `src/lib/reconciliation.ts`, `actions/reconciliation.ts`
+    `src/lib/reconciliation.ts` (shared with the iPhone app), `actions/reconciliation.ts`
   - Savings goals: `settings/savings-goals-panel.tsx`, `actions/savings-goals.ts` (add, edit, delete
     and money in or out share `src/lib/savings-goal-edits.ts` with the iPhone app)
   - Connected banks: see Bank sync
@@ -804,6 +804,18 @@ build).
   minimum through `PATCH /api/v1/accounts/:id` (`interestRateBps`, `minimumPaymentCents`, saved by
   `setDebtTerms` in `src/lib/account-edits.ts`, shared with the website's form).
   `src/screens/debt/index.tsx`, `src/utils/debt.ts`
+- Reconcile with a statement (an open account's page, "Reconcile with a statement ›", on servers that
+  list `reconcile` in `/api/v1/me`): the website's `/settings/accounts/reconcile` for that account.
+  The dates and opening balance start where the last reconciled statement ended (last month when
+  none); **Check** runs the log's entries over those days from the opening balance (what is owed,
+  for a card or loan): money in and out, where the log arrives, and either "It matches" with **Mark
+  Reconciled** (which also keeps the closing balance as that day's balance unless the bank reported
+  one) or how far off and which way, with any bank rows still waiting; then each entry with its
+  running balance. Reconciled statements are listed with **Forget**.
+  `GET`/`POST /api/v1/accounts/:id/reconcile`, `DELETE /api/v1/accounts/:id/reconcile/:reconciliationId`
+  (`src/lib/api-v1/reconcile.ts`, from `nextStatement`, `saveReconciliation` and
+  `deleteReconciliation` in `src/lib/reconciliation.ts`, shared with the website).
+  `src/screens/accounts/reconcile.tsx`, `src/utils/reconcile.ts`
 - Investments (Accounts → Investments ›, or an investment account's page, on servers that list
   `investments` in `/api/v1/me`): the website's Investments card. **Room left** for each TFSA, RRSP
   and FHSA type held, this room year (an RRSP's is its deduction limit's), with where the figure came
