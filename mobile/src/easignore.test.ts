@@ -19,6 +19,7 @@ describe('.easignore', () => {
       'mobile/eas.json',
       'mobile/app.config.ts',
       'mobile/passkeys/Passkeys.swift',
+      'mobile/plugins/share-statements.js',
       'mobile/src',
       'mobile/src/app/_layout.tsx',
       'mobile/assets',

@@ -11,7 +11,39 @@
       "bundleIdentifier": "com.goodguy140.financetracker",
       "supportsTablet": false,
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UTImportedTypeDeclarations": [
+          {
+            "UTTypeIdentifier": "com.intuit.ofx",
+            "UTTypeDescription": "OFX bank statement",
+            "UTTypeConformsTo": [
+              "public.data"
+            ],
+            "UTTypeTagSpecification": {
+              "public.filename-extension": [
+                "ofx"
+              ],
+              "public.mime-type": [
+                "application/x-ofx"
+              ]
+            }
+          },
+          {
+            "UTTypeIdentifier": "com.intuit.qfx",
+            "UTTypeDescription": "QFX bank statement",
+            "UTTypeConformsTo": [
+              "public.data"
+            ],
+            "UTTypeTagSpecification": {
+              "public.filename-extension": [
+                "qfx"
+              ],
+              "public.mime-type": [
+                "application/vnd.intu.qfx"
+              ]
+            }
+          }
+        ]
       }
     },
     "plugins": [
@@ -45,12 +77,13 @@
           "imageWidth": 120
         }
       ],
+      "./plugins/share-statements",
       [
         "expo-sharing",
         {
           "ios": {
             "enabled": true,
-            "activationRule": "SUBQUERY (extensionItems, $extensionItem, SUBQUERY ($extensionItem.attachments, $attachment, ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"public.image\" || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"com.adobe.pdf\").@count == 1).@count == 1"
+            "activationRule": "SUBQUERY (extensionItems, $extensionItem, SUBQUERY ($extensionItem.attachments, $attachment, ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"public.image\" || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"com.adobe.pdf\" || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"public.comma-separated-values-text\" || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"com.intuit.ofx\" || ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO \"com.intuit.qfx\").@count == 1).@count == 1"
           }
         }
       ],
