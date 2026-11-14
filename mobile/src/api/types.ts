@@ -934,3 +934,38 @@ export type DebtStrategy = {
   totalInterestCents: number;
   payoffOrder: { id: string; name: string; month: number; label: string }[];
 };
+
+/** `GET /api/v1/categories?details=1`: Settings → Categories. On servers that list `category-edits` in `/api/v1/me`. */
+export type CategoryDetail = Category & {
+  groupName: string | null;
+  /** Need or want for the score's 50/30/20 split; null while the score guesses from the name. */
+  spendingRole: 'need' | 'want' | null;
+  /** Entries, split parts, recurring rules and plans in it: deleting it moves them to another category. */
+  uses: number;
+};
+
+/** `GET /api/v1/budgets/suggestions`: the website's Suggest budgets. */
+export type BudgetSuggestions = {
+  currency: string;
+  /** Every expense category's budget this month. */
+  currentBudgets: { categoryId: string; limitCents: number }[];
+  sets: BudgetSuggestionSet[];
+};
+
+export type BudgetSuggestionSet = {
+  window: number;
+  months: { month: string; label: string }[];
+  /** "Jun 2026 to Oct 2026"; null with no full month yet. */
+  span: string | null;
+  averageIncomeCents: number;
+  rows: {
+    categoryId: string;
+    categoryName: string;
+    suggestedCents: number;
+    /** Spend in each of `months`, in order. */
+    monthlyCents: number[];
+    /** Months well above the typical one, which the suggestion passes over. */
+    spikeMonths: string[];
+    currentLimitCents: number | null;
+  }[];
+};

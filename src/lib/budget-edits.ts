@@ -157,3 +157,43 @@ export async function reallocateBudgets(
     ),
   );
 }
+
+/**
+ * Sets the budgets "Suggest budgets" proposed and the person ticked, from this month on (earlier
+ * months keep what they had). A category's label carries over as reallocation does.
+ * @throws BudgetEditError when a category is not the user's expense category.
+ */
+export async function applyBudgetSuggestions(
+  db: PrismaClient,
+  user: User,
+  rows: ReadonlyArray<{ categoryId: string; limitCents: number }>,
+): Promise<void> {
+  const limits = new Map(rows.map((row) => [row.categoryId, row.limitCents]));
+  if (limits.size === 0) throw new BudgetEditError("Tick at least one budget to set.");
+  const owned = await db.category.findMany({
+    where: { userId: user.id, kind: CategoryKind.EXPENSE, id: { in: [...limits.keys()] } },
+    select: { id: true },
+  });
+  if (owned.length !== limits.size) throw new BudgetEditError("A suggested category no longer exists. Reload and try again.");
+
+  const periodMonth = currentYmInTimeZone(user.timezone);
+  const priorBudgets = await db.budget.findMany({
+    where: { userId: user.id, categoryId: { in: [...limits.keys()] }, periodMonth: { lte: periodMonth } },
+    orderBy: { periodMonth: "desc" },
+    select: { categoryId: true, name: true },
+  });
+  const nameByCategory = new Map<string, string | null>();
+  for (const budget of priorBudgets) {
+    if (!nameByCategory.has(budget.categoryId)) nameByCategory.set(budget.categoryId, budget.name);
+  }
+
+  await db.$transaction(
+    [...limits].map(([categoryId, limitCents]) =>
+      db.budget.upsert({
+        where: { userId_categoryId_periodMonth: { userId: user.id, categoryId, periodMonth } },
+        update: { limitCents },
+        create: { userId: user.id, categoryId, periodMonth, limitCents, name: nameByCategory.get(categoryId) ?? null },
+      }),
+    ),
+  );
+}

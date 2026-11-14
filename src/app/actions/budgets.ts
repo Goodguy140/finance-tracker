@@ -5,7 +5,7 @@ import { CategoryKind } from "@prisma/client";
 import { toCents } from "@/lib/money";
 import { currentYmInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
-import { reallocateBudgets } from "@/lib/budget-edits";
+import { applyBudgetSuggestions, reallocateBudgets } from "@/lib/budget-edits";
 import { requireUser } from "@/lib/session";
 import {
   applyBudgetSuggestionsSchema,
@@ -170,34 +170,7 @@ export const applyBudgetSuggestionsAction = formAction(async (formData: FormData
     parseJsonField(getFormValue(formData, "budgets"), [], "Invalid budget suggestions."),
   );
   if (!parsed.success) throw new Error("Tick at least one budget to set.");
-  const rows = new Map(parsed.data.map((row) => [row.categoryId, row.limitCents]));
-
-  const owned = await prisma.category.findMany({
-    where: { userId: user.id, kind: CategoryKind.EXPENSE, id: { in: [...rows.keys()] } },
-    select: { id: true },
-  });
-  if (owned.length !== rows.size) throw new Error("A suggested category no longer exists. Reload and try again.");
-
-  const periodMonth = currentYmInTimeZone(user.timezone);
-  const priorBudgets = await prisma.budget.findMany({
-    where: { userId: user.id, categoryId: { in: [...rows.keys()] }, periodMonth: { lte: periodMonth } },
-    orderBy: { periodMonth: "desc" },
-    select: { categoryId: true, name: true },
-  });
-  const nameByCategory = new Map<string, string | null>();
-  for (const budget of priorBudgets) {
-    if (!nameByCategory.has(budget.categoryId)) nameByCategory.set(budget.categoryId, budget.name);
-  }
-
-  await prisma.$transaction(
-    [...rows].map(([categoryId, limitCents]) =>
-      prisma.budget.upsert({
-        where: { userId_categoryId_periodMonth: { userId: user.id, categoryId, periodMonth } },
-        update: { limitCents },
-        create: { userId: user.id, categoryId, periodMonth, limitCents, name: nameByCategory.get(categoryId) ?? null },
-      }),
-    ),
-  );
+  await applyBudgetSuggestions(prisma, user, parsed.data);
   revalidatePath("/");
   revalidatePath("/settings", "layout");
 });
