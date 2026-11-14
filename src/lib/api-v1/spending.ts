@@ -7,6 +7,7 @@ import { buildCategoryPieSlices, collapseToMaxSlices } from "@/lib/category-pie"
 import {
   buildComparisonPace,
   buildCumulativeSpendSeries,
+  customRangeIsDaily,
   resolveMonthlyExpected,
   summarizeCumulativeSpend,
   type CumulativeComparison,
@@ -15,7 +16,13 @@ import { ymdFromDateUtc } from "@/lib/date-only";
 import { reconcileDashboardLayout } from "@/lib/dashboard-layout/normalize";
 import { readDashboardLayoutJson } from "@/lib/dashboard-layout/read";
 import { CARD_IDS } from "@/lib/dashboard-layout/schema";
-import { endExclusiveOfMonthYm, startOfMonthYm } from "@/lib/dashboard-period";
+import { serializeAppPeriod } from "@/lib/api-v1/period";
+import {
+  endExclusiveOfMonthYm,
+  parseDashboardSearchParams,
+  startOfMonthYm,
+  type ParsedDashboardPeriod,
+} from "@/lib/dashboard-period";
 import { homeCurrencyOf, inCurrencyWhere } from "@/lib/home-currency";
 import { currentYmdInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
@@ -24,9 +31,10 @@ import { loadSavingsTransfers } from "@/lib/reports/load";
 import { savedByTransferBetween } from "@/lib/savings-transfers";
 
 /**
- * The dashboard's Cumulative spending and Spending by category cards for one month, for the
- * phone app (`GET /api/v1/spending`). Every number comes from the function the card draws it
- * with, so the phone and the website agree to the cent; the phone only draws them.
+ * The dashboard's Cumulative spending and Spending by category cards for one month, year to date
+ * or a custom range, for the phone app (`GET /api/v1/spending`). Every number comes from the
+ * function the card draws it with, so the phone and the website agree to the cent; the phone only
+ * draws them.
  */
 
 export const COMPARISONS: readonly CumulativeComparison[] = ["none", "last-month", "three-month-average"];
@@ -54,10 +62,13 @@ type MonthExpense = {
 };
 
 export type AppSpendingInput = {
+  /** The month shown, or the last month of a range. */
   ym: string;
+  /** Year to date or a custom range, as the dashboard's period filter has them; a month when left out. */
+  period?: ParsedDashboardPeriod;
   todayYmd: string;
   currency: string;
-  /** The month's expenses in the home currency, as the dashboard's chart and pie count them. */
+  /** The period's expenses in the home currency, as the dashboard's chart and pie count them. */
   expenses: readonly MonthExpense[];
   /** Home-currency expenses in the three months before `ym`: the expected pace and the comparison draw on them. */
   pastExpenses: readonly { date: Date; amountCents: number }[];
@@ -65,7 +76,7 @@ export type AppSpendingInput = {
   budgetedMonthlyCents: number;
   categories: readonly { id: string; name: string; groupName: string | null; createdAt: Date }[];
   settings: SpendingSettings;
-  /** Net moved into savings accounts in the month, and how many accounts count; null when the slice is off. */
+  /** Net moved into savings accounts in the period, and how many accounts count; null when the slice is off. */
   savings: { cents: number; accounts: number } | null;
 };
 
@@ -85,6 +96,8 @@ export function resolveSpendingSettings(layoutJson: string | null, choice: Spend
 
 export function buildAppSpending(input: AppSpendingInput) {
   const { ym, settings } = input;
+  const period = input.period ?? parseDashboardSearchParams({ month: ym });
+  const isMonth = period.range === "month";
 
   // Cumulative spending, as the dashboard builds it for a month (`src/app/page.tsx`).
   const spendByPastYm = new Map<string, number>();
@@ -98,14 +111,18 @@ export function buildAppSpending(input: AppSpendingInput) {
         getPastMonthYmsBefore(ym, 3).map((pastYm) => spendByPastYm.get(pastYm) ?? 0),
       )
     : null;
-  const comparisonPace = buildComparisonPace(input.pastExpenses, settings.compareWith, ym);
+  // An earlier month's pace is by day of the month, so only a month view compares.
+  const compareWith = isMonth ? settings.compareWith : "none";
+  const comparisonPace = buildComparisonPace(input.pastExpenses, compareWith, ym);
   const points = buildCumulativeSpendSeries([...input.expenses], {
-    range: "month",
+    range: period.range,
     ym,
+    custom: period.custom,
     todayYmd: input.todayYmd,
     monthlyExpected,
     comparisonPace,
   });
+  const granularity = isMonth || (period.custom && customRangeIsDaily(period.custom)) ? ("day" as const) : ("month" as const);
   const summary = summarizeCumulativeSpend(points);
 
   // Spending by category, as the dashboard's pie draws it: groups added up once there are any,
@@ -121,14 +138,21 @@ export function buildAppSpending(input: AppSpendingInput) {
 
   return {
     month: ym,
+    /** The month, year to date or custom range shown. */
+    period: serializeAppPeriod(period),
     today: input.todayYmd,
     currency: input.currency,
-    /** The settings this answer was built with, so the phone can show them. */
-    compareWith: settings.compareWith,
+    /** The settings this answer was built with, so the phone can show them; none outside a month view. */
+    compareWith,
     showSavings: settings.showSavings,
     cumulative: {
+      /** What each point is: a day (a month, or a custom range of up to 62 days) or a month. */
+      granularity,
       days: points.map((point, index) => ({
         day: index + 1,
+        /** The axis label ("6", "Nov 6", "Mar"), then the full one ("Nov 6", "Mar 2026"). */
+        label: point.label,
+        fullLabel: point.fullLabel,
         spentCents: point.bucketCents,
         // Null for days still to come.
         totalCents: point.cumulativeCents,
@@ -169,19 +193,22 @@ type SpendingUser = { id: string; countryCode: string | null; timezone: string |
 
 export async function loadAppSpending(
   user: SpendingUser,
-  ym: string,
+  period: ParsedDashboardPeriod,
   choice: SpendingChoice,
   now: Date = new Date(),
 ): Promise<AppSpending> {
+  const { ym } = period;
   const currency = homeCurrencyOf(user.countryCode);
   const monthStart = startOfMonthYm(ym);
+  const range = "date" in period.transactionDateFilter ? period.transactionDateFilter.date : { gte: monthStart, lt: endExclusiveOfMonthYm(ym) };
   const homeOnly = inCurrencyWhere(currency);
   const [layoutJson, expenses, pastExpenses, categories, budgets] = await Promise.all([
     readDashboardLayoutJson(user.id),
     prisma.transaction.findMany({
-      where: { userId: user.id, type: TransactionType.EXPENSE, date: { gte: monthStart, lt: endExclusiveOfMonthYm(ym) }, ...homeOnly },
+      where: { userId: user.id, type: TransactionType.EXPENSE, date: range, ...homeOnly },
       select: { date: true, amountCents: true, categoryId: true, splitParts: { select: { categoryId: true, amountCents: true } } },
     }),
+    // The three months before the last month shown: the expected pace and a month's comparison.
     prisma.transaction.findMany({
       where: {
         userId: user.id,
@@ -197,18 +224,17 @@ export async function loadAppSpending(
   const settings = resolveSpendingSettings(layoutJson, choice);
   let savings: AppSpendingInput["savings"] = null;
   if (settings.showSavings) {
-    const transfers = await loadSavingsTransfers(user.id, monthStart, currency);
-    savings = {
-      cents: savedByTransferBetween(transfers, { gte: monthStart, lt: endExclusiveOfMonthYm(ym) }),
-      accounts: transfers.savingsAccountIds.size,
-    };
+    const transfers = await loadSavingsTransfers(user.id, range.gte, currency);
+    savings = { cents: savedByTransferBetween(transfers, range), accounts: transfers.savingsAccountIds.size };
   }
   return buildAppSpending({
     ym,
+    period,
     todayYmd: currentYmdInTimeZone(user.timezone, now),
     currency,
     expenses,
     pastExpenses,
+    // One month of budget, whatever the range, as the dashboard's expected line takes it.
     budgetedMonthlyCents: Array.from(selectActiveBudgetsByCategory(budgets, ym).values()).reduce(
       (sum, budget) => sum + budget.limitCents,
       0,

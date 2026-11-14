@@ -35,8 +35,13 @@ export type YearlyBudgetRow = {
   leftForYearCents: number;
 };
 
+/** A month, year to date or custom range as the server shows it (`from`/`to` both included). */
+export type AppPeriod = { range: 'month' | 'ytd' | 'custom'; from: string; to: string; label: string };
+
 export type Budgets = {
   periodMonth: string;
+  /** The month, year to date or custom range shown; absent from older servers, which show only months. */
+  period?: AppPeriod;
   /** The person's own this month, which budgets are changed from. Absent from servers that take no changes. */
   currentMonth?: string;
   /** Each budget's category has a page (`GET /api/v1/categories/:id/trend`). Absent from older servers. */
@@ -467,15 +472,22 @@ export type SpendingComparison = 'none' | 'last-month' | 'three-month-average';
  */
 export type Spending = {
   month: string;
+  /** The month, year to date or custom range shown; absent from older servers, which show only months. */
+  period?: AppPeriod;
   today: string;
   currency: string;
   /** The choices this answer was built with: the phone's own, or the website card's. */
   compareWith: SpendingComparison;
   showSavings: boolean;
   cumulative: {
-    /** One per day of the month. */
+    /** What each point is; absent (days) from older servers. */
+    granularity?: 'day' | 'month';
+    /** One per day of the month, or per day or month of a range. */
     days: {
       day: number;
+      /** The axis label ("6", "Nov 6", "Mar") and the full one ("Nov 6", "Mar 2026"); absent from older servers. */
+      label?: string;
+      fullLabel?: string;
       spentCents: number;
       /** Running total; null for days still to come. */
       totalCents: number | null;

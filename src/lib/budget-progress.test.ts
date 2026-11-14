@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-const { computeSpendByCategory, selectActiveBudgetsByCategory, buildBudgetProgressRows } = await import(
+const { computeSpendByCategory, selectActiveBudgetsByCategory, buildBudgetProgressRows, buildRangeBudgetProgressRows } = await import(
   "./budget-progress"
 );
 
@@ -79,5 +79,30 @@ describe("buildBudgetProgressRows", () => {
     const noLimit = rows.find((r) => r.categoryId === "n")!;
     expect(noLimit.spentCents).toBe(0);
     expect(noLimit.progressPct).toBe(0); // limit 0 → 0, no divide-by-zero
+  });
+});
+
+describe("buildRangeBudgetProgressRows", () => {
+  it("adds up the budget in force each month, carrying one forward until it changes", () => {
+    const budgets = [
+      { categoryId: "food", periodMonth: "2026-01", limitCents: 50_000, category: { name: "Food" } },
+      // Raised from April: January's carries through March.
+      { categoryId: "food", periodMonth: "2026-04", limitCents: 60_000, category: { name: "Food" } },
+      // Set in March: nothing before it.
+      { categoryId: "fun", periodMonth: "2026-03", limitCents: 10_000, category: { name: "Fun" } },
+      // After the range: not counted.
+      { categoryId: "gas", periodMonth: "2026-06", limitCents: 20_000, category: { name: "Gas" } },
+    ];
+    const spend = new Map([
+      ["food", 230_000],
+      ["coffee", 4_000],
+    ]);
+    const rows = buildRangeBudgetProgressRows(budgets, spend, ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05"], () => "Coffee");
+    expect(rows.map((r) => [r.categoryName, r.limitCents, r.spentCents, r.carryCents])).toEqual([
+      ["Coffee", 0, 4_000, 0],
+      ["Food", 3 * 50_000 + 2 * 60_000, 230_000, 0],
+      ["Fun", 3 * 10_000, 0, 0],
+    ]);
+    expect(rows.find((r) => r.categoryId === "food")?.progressPct).toBeCloseTo((230_000 / 270_000) * 100);
   });
 });

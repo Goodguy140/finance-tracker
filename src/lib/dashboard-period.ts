@@ -86,13 +86,6 @@ export function formatYmShortLabel(ym: string, withYear = true): string {
   });
 }
 
-/** Whether a budget `periodMonth` counts toward YTD sums for anchor `ym` (same calendar year, Jan through `ym`). */
-export function budgetPeriodMonthInYtd(periodMonth: string, anchorYm: string): boolean {
-  const year = anchorYm.slice(0, 4);
-  const start = ytdFirstMonthYm(anchorYm);
-  return periodMonth.slice(0, 4) === year && periodMonth >= start && periodMonth <= anchorYm;
-}
-
 /**
  * `timeZone` (the user's IANA zone) decides which calendar month "now" falls in; without
  * it the host clock is used, as before.
@@ -175,6 +168,24 @@ export function parseDashboardSearchParams(
       },
     },
   };
+}
+
+/**
+ * Every month a month, year to date or custom range touches, oldest first: what its budgets are
+ * added up over. All of time has no first month of its own; pass the earliest month that matters.
+ */
+export function monthsOfPeriod(parsed: ParsedDashboardPeriod, lifetimeFromYm?: string): string[] {
+  const first =
+    parsed.range === "custom" && parsed.custom
+      ? parsed.custom.fromYmd.slice(0, 7)
+      : parsed.range === "ytd"
+        ? ytdFirstMonthYm(parsed.ym)
+        : parsed.range === "lifetime"
+          ? (lifetimeFromYm ?? parsed.ym)
+          : parsed.ym;
+  const months: string[] = [];
+  for (let ym = first; ym <= parsed.ym; ym = shiftYm(ym, 1)) months.push(ym);
+  return months;
 }
 
 export function describeDashboardPeriod(parsed: ParsedDashboardPeriod): string {

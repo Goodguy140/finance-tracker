@@ -1,5 +1,6 @@
 import type { Spending, SpendingComparison } from '@/api/types';
-import { formatCents } from '@/utils/money';
+import { formatCents, formatPeriodMonth } from '@/utils/money';
+import { periodQuery, storedPeriod, type PeriodChoice } from '@/utils/period';
 
 /**
  * The Home screen's two spending charts: what to ask the server for, what to say about the numbers,
@@ -20,10 +21,14 @@ export type SpendingOptions = {
   compareWith?: SpendingComparison;
   showSavings?: boolean;
   chart?: (typeof SPENDING_CHARTS)[number];
+  /** This month (the default), year to date or a custom range, on servers that have them. */
+  period?: PeriodChoice;
 };
 
-export function spendingPath(options: SpendingOptions): string {
-  const params: string[] = [];
+export function spendingPath(options: SpendingOptions, periods = false): string {
+  // Kept on the phone, so read back with care; a server without periods is never asked for one.
+  const period = periods ? storedPeriod(options.period) : undefined;
+  const params: string[] = period ? periodQuery(period) : [];
   if (options.compareWith) params.push(`compare=${options.compareWith}`);
   if (options.showSavings !== undefined) params.push(`savings=${options.showSavings ? '1' : '0'}`);
   return params.length ? `${SPENDING_PATH}?${params.join('&')}` : SPENDING_PATH;
@@ -81,12 +86,38 @@ export function dayDetail(data: Spending, index: number): { total: string; lines
   const day = data.cumulative.days[index];
   if (!day) return null;
   const money = (cents: number) => formatCents(cents, data.currency);
-  const lines = [dayLabel(data.month, day.day)];
-  if (day.spentCents !== 0) lines.push(`${day.spentCents > 0 ? '+' : '−'}${money(Math.abs(day.spentCents))} that day`);
+  const byMonth = data.cumulative.granularity === 'month';
+  const lines = [day.fullLabel && isRangeData(data) ? day.fullLabel : dayLabel(data.month, day.day)];
+  if (day.spentCents !== 0) lines.push(`${day.spentCents > 0 ? '+' : '−'}${money(Math.abs(day.spentCents))} that ${byMonth ? 'month' : 'day'}`);
   if (day.expectedCents !== null) lines.push(`${money(day.expectedCents)} expected`);
   const legend = comparisonLegend(data.compareWith);
   if (legend && day.comparisonCents !== null) lines.push(`${money(day.comparisonCents)} ${legend.toLowerCase()}`);
   return { total: day.totalCents === null ? 'Not yet' : money(day.totalCents), lines };
+}
+
+function isRangeData(data: Spending): boolean {
+  return data.period !== undefined && data.period.range !== 'month';
+}
+
+/** What the card heading names: the month, or the year to date or range shown. */
+export function periodTitle(data: Spending): string {
+  return isRangeData(data) && data.period ? data.period.label : formatPeriodMonth(data.month);
+}
+
+/** The points the date axis labels: by day as in a month (`dayTicks`), or for months about five of them. */
+export function chartTicks(data: Spending): number[] {
+  const count = data.cumulative.days.length;
+  if (data.cumulative.granularity !== 'month') return dayTicks(count);
+  const step = Math.max(1, Math.ceil(count / 5));
+  const ticks = [];
+  for (let i = 1; i <= count; i += step) ticks.push(i);
+  return ticks;
+}
+
+/** The label under a point on the date axis: the day of a month, or the server's label in a range. */
+export function tickLabel(data: Spending, position: number): string {
+  if (!isRangeData(data)) return String(position);
+  return data.cumulative.days[position - 1]?.label ?? String(position);
 }
 
 /** "Nov 6" for day 6 of 2026-11. */

@@ -18,6 +18,7 @@ import { useSession } from '@/session/session-provider';
 import { useHomeLayout } from '@/state/home-layout';
 import { GoalsCard } from '@/screens/goals/card';
 import { useSpendingOptions } from '@/state/spending-options';
+import { canPickPeriod } from '@/utils/period';
 import { NET_WORTH_PATH } from '@/utils/accounts';
 import { canForecast } from '@/utils/bills-forecast';
 import { canShowCalendar } from '@/utils/calendar';
@@ -59,8 +60,9 @@ export function Home() {
   // The charts load on their own, so Home never waits for them; a server without the route leaves them out.
   const showCharts = layout.includes('spending');
   const [spendingOptions, setSpendingOptions] = useSpendingOptions(session?.deviceId ?? null);
-  const spending = useApiQuery<Spending>(showCharts ? spendingPath(spendingOptions) : null, { keepPrevious: true });
   const me = useApiQuery<Me>('/api/v1/me').data;
+  const periods = canPickPeriod(me);
+  const spending = useApiQuery<Spending>(showCharts ? spendingPath(spendingOptions, periods) : null, { keepPrevious: true });
   const calendar = canShowCalendar(me);
   const { refreshing, onRefresh } = usePullToRefresh(() =>
     Promise.all([
@@ -101,6 +103,7 @@ export function Home() {
             onOptions={setSpendingOptions}
             updating={spending.isPlaceholderData}
             calendar={calendar}
+            periods={periods}
           />
         ) : null;
       case 'budgets':

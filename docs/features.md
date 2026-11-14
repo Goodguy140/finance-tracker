@@ -62,8 +62,10 @@ Card registry is `DASHBOARD_CARDS` in `src/lib/dashboard-layout/cards.ts`; per-c
 
 - **Period filter** (month / YTD / lifetime / custom range, prev/next, quick period):
   `dashboard-month-filter.tsx`, `src/lib/dashboard-period.ts`. Custom is `?range=custom&from=&to=`
-  (both days included, `src/lib/date-range.ts`); budgets sum the months it touches, the
-  cumulative chart goes by day up to 62 days and by month past that
+  (both days included, `src/lib/date-range.ts`). Outside a month view each budget is added up
+  over the months the period touches, counting the budget in force each month (one carries
+  forward until changed; `buildRangeBudgetProgressRows` in `src/lib/budget-progress.ts`, also the
+  iPhone app's); the cumulative chart goes by day up to 62 days and by month past that
 - **Tag filter** (`?tag=`): `src/lib/tags.ts` (`resolveTagFilter`)
 - **Budget alerts bell** (warnings, over-budget pace, month-over-month trends, dismiss):
   `budget-alerts-panel.tsx`, `src/lib/budget-alerts.ts`
@@ -517,8 +519,11 @@ build).
   is due (`GET /api/v1/calendar?month=`, `src/lib/api-v1/calendar.ts`, built with the card's
   `buildCalendarMonth` and the dots from `calendarBillsFor` in `src/lib/bills-forecast-list.ts`;
   `GET /api/v1/me` names `calendar` in `features`; `src/screens/home/calendar.tsx`,
-  `src/utils/calendar.ts`). The first two start from the website card's settings; a pick on the phone, and the chart last
-  shown, are kept on the phone. `GET /api/v1/spending` (`src/lib/api-v1/spending.ts`, built with the
+  `src/utils/calendar.ts`). **This Month / Year to Date / Custom** above them (on servers that
+  list `periods` in `/api/v1/me`) shows the first two for that period as the dashboard's period
+  filter does: by month, or by day for a range of up to 62 days, with no Compare with or Calendar
+  outside a month (`?range=ytd`, `?range=custom&from=&to=`). The first two start from the website
+  card's settings; a pick on the phone, the period and the chart last shown are kept on the phone. `GET /api/v1/spending` (`src/lib/api-v1/spending.ts`, built with the
   dashboard's own functions; the pie's slices from `src/lib/category-pie.ts`, shared with the card).
   `src/screens/home/spending.tsx`, `src/components/swipe-pages.tsx`, `src/components/line-chart.tsx`
   (plain views, no native drawing library), `src/utils/spending.ts`, `src/state/spending-options.ts`
@@ -612,7 +617,11 @@ build).
   `POST /api/v1/review-queue/:id`, `/pair`, `/bulk`, `/revisions/:id`, `POST /api/v1/banks/refresh`
   (`src/lib/api-v1/review-queue.ts`). `src/screens/review/`, `src/utils/review-queue.ts`
 - Budgets: any month's budgets by category group, with rollover carries, and the yearly budgets as
-  sinking funds; ‹ › switch month. `GET /api/v1/budgets` (now also `groupName`, `rollover`,
+  sinking funds; ‹ › switch month. The calendar menu (on servers that list `periods` in
+  `/api/v1/me`) shows **Year to Date** (‹ › move its last month) or a **Custom Range…** instead,
+  each budget added up over the months it was in force as the website's Budgets card does; budgets
+  are changed only from a month's page (`?range=ytd` or `?range=custom&from=&to=`, read by
+  `src/lib/api-v1/period.ts`). `GET /api/v1/budgets` (now also `groupName`, `rollover`,
   `yearly`, `currentMonth` and `trends`). A budget opens its category page (below); on this month's
   page, that page's Edit (or, with a server without category pages, the budget itself) opens a sheet with what Settings →
   Categories sets: the monthly budget from this month on (cleared, it is removed every month, after

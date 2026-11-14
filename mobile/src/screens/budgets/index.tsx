@@ -4,35 +4,48 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { errorText, useApiQuery } from '@/api/query';
-import type { Budgets as BudgetsData } from '@/api/types';
+import type { Budgets as BudgetsData, Me } from '@/api/types';
 import { BudgetLine } from '@/components/budget-line';
 import { FormButton } from '@/components/form';
 import { LoadState } from '@/components/load-state';
+import { RangePicker, type DayRange } from '@/components/range-picker';
 import { Section } from '@/components/section';
 import { Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { canEditBudgets } from '@/utils/budget-edits';
 import { fundNote, rolloverNote, sectionByGroup } from '@/utils/budgets';
-import { shiftMonth } from '@/utils/dates';
+import { localToday, shiftMonth } from '@/utils/dates';
 import { formatCents, formatPeriodMonth } from '@/utils/money';
 import { reviewMonthFrom } from '@/utils/month-review';
+import { canPickPeriod, initialRange, isRange, periodQuery, type PeriodChoice } from '@/utils/period';
 
 /**
  * Every budget for a month, by category group, with rollover; then the yearly budgets as sinking
- * funds. On this month's page each opens its budget sheet, and a budget can be added.
+ * funds. On this month's page each opens its budget sheet, and a budget can be added. With a
+ * server that has them, the calendar menu shows year to date or a custom range instead, each
+ * budget added up over the months it was in force, as the website's Budgets card does.
  */
 export function Budgets() {
   const theme = useTheme();
   const router = useRouter();
   // Null is the server's "this month", in the person's own time zone.
   const [month, setMonth] = useState<string | null>(null);
-  const query = useApiQuery<BudgetsData>(`/api/v1/budgets${month ? `?month=${month}` : ''}`);
+  const [choice, setChoice] = useState<PeriodChoice>({ kind: 'month' });
+  const [picking, setPicking] = useState<DayRange | null>(null);
+  const params = periodQuery(choice, month);
+  const query = useApiQuery<BudgetsData>(`/api/v1/budgets${params.length ? `?${params.join('&')}` : ''}`, { keepPrevious: true });
+  const me = useApiQuery<Me>('/api/v1/me').data;
   const { refreshing, onRefresh } = usePullToRefresh(query.refetch);
   const data = query.data;
   const shown = month ?? data?.periodMonth ?? null;
+  const ranged = isRange(data?.period);
   const step = (delta: number) => {
     if (shown) setMonth(shiftMonth(shown, delta));
+  };
+  const pick = (next: PeriodChoice) => {
+    setPicking(null);
+    setChoice(next);
   };
 
   return (
@@ -42,12 +55,17 @@ export function Budgets() {
         style={{ backgroundColor: theme.background }}
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-        {shown ? <Text style={[styles.month, { color: theme.textSecondary }]}>{formatPeriodMonth(shown)}</Text> : null}
+        {picking ? <RangePicker initial={picking} onShow={(range) => pick({ kind: 'custom', ...range })} /> : null}
+        {shown ? (
+          <Text style={[styles.month, { color: theme.textSecondary }]}>
+            {data?.period && choice.kind !== 'month' ? data.period.label : formatPeriodMonth(shown)}
+          </Text>
+        ) : null}
         <LoadState loading={query.isPending} error={query.error ? errorText(query.error) : null} />
         {data && !query.error ? <BudgetList data={data} /> : null}
       </ScrollView>
       <Stack.Title large>Budgets</Stack.Title>
-      {data?.currentMonth && shown ? (
+      {data?.currentMonth && shown && !ranged ? (
         // Only with a server that says which month is current; one without the review gets a note there.
         <Stack.Toolbar placement="left">
           <Stack.Toolbar.Button
@@ -60,8 +78,31 @@ export function Budgets() {
         </Stack.Toolbar>
       ) : null}
       <Stack.Toolbar placement="right">
-        <Stack.Toolbar.Button icon="chevron.left" accessibilityLabel="Previous month" disabled={!shown} onPress={() => step(-1)} />
-        <Stack.Toolbar.Button icon="chevron.right" accessibilityLabel="Next month" disabled={!shown} onPress={() => step(1)} />
+        {canPickPeriod(me) ? (
+          <Stack.Toolbar.Menu icon="calendar" accessibilityLabel="Pick the period">
+            <Stack.Toolbar.MenuAction onPress={() => pick({ kind: 'month' })}>Month</Stack.Toolbar.MenuAction>
+            <Stack.Toolbar.MenuAction onPress={() => pick({ kind: 'ytd' })}>Year to Date</Stack.Toolbar.MenuAction>
+            <Stack.Toolbar.MenuAction icon="calendar.badge.clock" onPress={() => setPicking(initialRange(choice, localToday()))}>
+              Custom Range…
+            </Stack.Toolbar.MenuAction>
+          </Stack.Toolbar.Menu>
+        ) : null}
+        {choice.kind !== 'custom' ? (
+          <>
+            <Stack.Toolbar.Button
+              icon="chevron.left"
+              accessibilityLabel={choice.kind === 'ytd' ? 'One month less' : 'Previous month'}
+              disabled={!shown}
+              onPress={() => step(-1)}
+            />
+            <Stack.Toolbar.Button
+              icon="chevron.right"
+              accessibilityLabel={choice.kind === 'ytd' ? 'One month more' : 'Next month'}
+              disabled={!shown}
+              onPress={() => step(1)}
+            />
+          </>
+        ) : null}
       </Stack.Toolbar>
     </>
   );
@@ -94,6 +135,7 @@ function BudgetList({ data }: { data: BudgetsData }) {
   const theme = useTheme();
   const router = useRouter();
   const yearly = data.yearly ?? [];
+  const ranged = isRange(data.period);
   const editable = canEditBudgets(data);
   const trends = data.trends === true;
   const add = editable ? <FormButton label="Add a Budget" onPress={() => router.push('/budget')} /> : null;
@@ -104,9 +146,11 @@ function BudgetList({ data }: { data: BudgetsData }) {
           <Text style={[styles.muted, { color: theme.textSecondary }]}>
             {editable
               ? 'No budgets yet. Add one for a category you want to keep an eye on.'
-              : data.currentMonth
-                ? 'No budgets for this month.'
-                : 'No budgets for this month. Set them on the website under Settings → Categories.'}
+              : ranged
+                ? 'No budgets in this period.'
+                : data.currentMonth
+                  ? 'No budgets for this month.'
+                  : 'No budgets for this month. Set them on the website under Settings → Categories.'}
           </Text>
         </Section>
         {add}
@@ -117,7 +161,10 @@ function BudgetList({ data }: { data: BudgetsData }) {
   return (
     <>
       {data.budgets.length > 0 ? (
-        <Section>
+        <Section
+          footer={
+            ranged ? 'Each budget is added up over the months it was in force in the period, against all its spending there.' : null
+          }>
           <BudgetLine
             name="All budgets"
             spentCents={data.totalSpentCents}
