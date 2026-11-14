@@ -11,6 +11,7 @@ import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { ACCOUNTS_PATH, canEditAccounts } from '@/utils/account-settings';
 import { groupAccounts, NET_WORTH_PATH } from '@/utils/accounts';
+import { hasDebtPayoff } from '@/utils/debt';
 import { canTrackInvestments } from '@/utils/investments';
 import { formatCents } from '@/utils/money';
 
@@ -22,6 +23,7 @@ export function Accounts() {
   const me = useApiQuery<Me>('/api/v1/me').data;
   const investments = canTrackInvestments(me);
   const editable = canEditAccounts(me);
+  const debts = hasDebtPayoff(me) && (query.data?.accounts.some((a) => a.liability) ?? false);
   // Archived accounts are out of net worth's list; with account settings they can be opened and restored.
   const all = useApiQuery<{ accounts: Account[] }>(editable ? ACCOUNTS_PATH : null);
   const archived = all.data?.accounts.filter((a) => a.archived) ?? [];
@@ -59,6 +61,13 @@ export function Accounts() {
           <Section footer="TFSA, RRSP and FHSA room left, contributions and withdrawals, and each account's value and return.">
             <Pressable onPress={() => router.push('/investments')} accessibilityRole="button" hitSlop={8}>
               <Text style={[styles.link, { color: theme.tint }]}>Investments ›</Text>
+            </Pressable>
+          </Section>
+        ) : null}
+        {data && debts ? (
+          <Section footer="What your cards and loans cost in interest, and the quickest way to pay them off.">
+            <Pressable onPress={() => router.push('/debt')} accessibilityRole="button" hitSlop={8}>
+              <Text style={[styles.link, { color: theme.tint }]}>Debt payoff plan ›</Text>
             </Pressable>
           </Section>
         ) : null}

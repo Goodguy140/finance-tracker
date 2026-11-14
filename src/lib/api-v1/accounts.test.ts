@@ -14,6 +14,8 @@ function page(overrides: Partial<AccountPage> = {}, account: Partial<AccountPage
       countsAsSavings: false,
       creditLimitCents: 500_000,
       paymentDueDay: 15,
+      interestRateBps: 1_999,
+      minimumPaymentCents: 2_500,
       ...account,
     },
     liability: true,

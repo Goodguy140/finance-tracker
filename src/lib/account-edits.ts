@@ -3,10 +3,12 @@ import { currencyChangeRefusal, loadAccountUsage } from "@/lib/account-currency-
 import { AUDIT_ACTIONS, recordAuditLog } from "@/lib/audit-log";
 import { homeCurrencyOf } from "@/lib/home-currency";
 import { MAX_AMOUNT_CENTS } from "@/lib/money";
+import { isLiabilityType } from "@/lib/net-worth";
 import { defaultCountsAsSavings } from "@/lib/savings-transfers";
 
 /**
- * Adding, changing and archiving an account, and a card's limit and due day, shared by
+ * Adding, changing and archiving an account, a card's limit and due day, and a card's or loan's
+ * interest rate and minimum for the payoff plan, shared by
  * Settings → Accounts (`src/app/actions/accounts.ts`, `debt.ts`) and the phone
  * (`/api/v1/accounts`), so an account saves with the same checks from both.
  */
@@ -130,4 +132,27 @@ export async function setCardTerms(
       ...(paymentDueDay !== account.paymentDueDay ? { paymentRemindedFor: null } : {}),
     },
   });
+}
+
+/**
+ * A card's, loan's or mortgage's yearly interest rate (basis points: 19.99% is 1999) and minimum
+ * payment a month, which the debt payoff plan runs on. Null clears either.
+ */
+export async function setDebtTerms(
+  db: Db,
+  userId: string,
+  accountId: string,
+  terms: { interestRateBps: number | null; minimumPaymentCents: number | null },
+): Promise<void> {
+  const account = await db.account.findFirst({ where: { id: accountId, userId }, select: { id: true, type: true } });
+  if (!account) throw new AccountEditError("Account not found.", true);
+  if (!isLiabilityType(account.type)) throw new AccountEditError("Only credit cards and loans have a payoff plan.");
+  const { interestRateBps, minimumPaymentCents } = terms;
+  if (interestRateBps !== null && (!Number.isInteger(interestRateBps) || interestRateBps < 0 || interestRateBps > 10_000)) {
+    throw new AccountEditError("Enter the interest rate as a yearly percentage, like 19.99.");
+  }
+  if (minimumPaymentCents !== null && (!Number.isInteger(minimumPaymentCents) || minimumPaymentCents < 0 || minimumPaymentCents > MAX_AMOUNT_CENTS)) {
+    throw new AccountEditError("Enter the minimum payment as an amount, like 25.00.");
+  }
+  await db.account.update({ where: { id: account.id }, data: { interestRateBps, minimumPaymentCents } });
 }

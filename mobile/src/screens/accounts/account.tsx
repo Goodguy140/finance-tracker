@@ -13,6 +13,7 @@ import { Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { canEditAccounts } from '@/utils/account-settings';
+import { hasDebtPayoff, termsLine } from '@/utils/debt';
 import { accountPath, balanceSource, cardTerms, REGISTER_MONTHS, registerNote, signedCents } from '@/utils/accounts';
 import { balancesPath, canRecordBalance } from '@/utils/balances';
 import { formatDay } from '@/utils/dates';
@@ -34,6 +35,7 @@ export function Account({ id }: { id: string }) {
   const goals = canEditGoals(me);
   const investments = canTrackInvestments(me);
   const editable = canEditAccounts(me);
+  const debtPlan = hasDebtPayoff(me);
   const { refreshing, onRefresh } = usePullToRefresh(query.refetch);
   const data = query.data;
 
@@ -98,6 +100,27 @@ export function Account({ id }: { id: string }) {
                     <ProgressBar share={goal.percent / 100} color={theme.positive} />
                   </Pressable>
                 ))}
+              </Section>
+            ) : null}
+            {debtPlan && data.liability ? (
+              <Section
+                title="Debt payoff"
+                footer={
+                  data.settings?.interestRateBps == null || data.settings.minimumPaymentCents == null
+                    ? 'Set its interest rate and minimum with Edit, and the plan works out the interest and when it is paid off.'
+                    : null
+                }>
+                {data.settings?.interestRateBps != null || data.settings?.minimumPaymentCents != null ? (
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>
+                    {termsLine(
+                      { interestRateBps: data.settings.interestRateBps ?? null, minimumPaymentCents: data.settings.minimumPaymentCents ?? null },
+                      data.account.currency,
+                    )}
+                  </Text>
+                ) : null}
+                <Pressable onPress={() => router.push('/debt')} accessibilityRole="button" hitSlop={8}>
+                  <Text style={[styles.link, { color: theme.tint }]}>Payoff plan ›</Text>
+                </Pressable>
               </Section>
             ) : null}
             {investments && isInvestmentAccountType(data.account.type) ? (

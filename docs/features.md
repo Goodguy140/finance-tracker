@@ -245,7 +245,8 @@ Page: `src/app/reports/page.tsx`; data `src/lib/reports/*` (the page's figures w
   card's, loan's and mortgage's balance, interest rate and minimum (`Account.interestRateBps`,
   `.minimumPaymentCents`, set on the page), and a plan for a monthly amount comparing highest
   rate first, smallest balance first and minimums only (debt-free month, interest, payoff order):
-  `src/app/reports/debt/page.tsx`, `src/lib/debt-payoff.ts`, `actions/debt.ts`
+  `src/app/reports/debt/page.tsx`, `src/lib/debt-payoff.ts`, `src/lib/debt-payoff-data.ts` (shared
+  with the iPhone app), `actions/debt.ts`
 - **Investment returns** (Reports, under Net worth, once an investment account has two value
   readings): per TFSA/RRSP/FHSA/non-registered account (or any account with portfolio snapshots)
   and all together: value, put in, growth, and the money-weighted return (XIRR) this year, over 12
@@ -771,6 +772,18 @@ build).
   `PATCH /api/v1/accounts/:id` (`src/lib/api-v1/account-edits.ts`, `src/lib/account-edits.ts`), the
   account page's `settings`. `src/screens/accounts/edit.tsx`, `src/app/account-edit.tsx`,
   `src/utils/account-settings.ts`
+- Debt payoff (Accounts → "Debt payoff plan ›" when there is a card or loan, or "Payoff plan ›" on
+  a card's, loan's or mortgage's page, on servers that list `debt-payoff` in `/api/v1/me`): the
+  website's `/reports/debt`. Each one with what is owed, the share of a card's limit in use, and its
+  rate and minimum; tapping one opens its Edit sheet, whose "Interest and minimum" section sets them
+  (empty clears either, as on the website). The plan for an amount a month (the minimums when left
+  empty, never less): highest rate first, smallest balance first and minimums only, each with its
+  debt-free month and interest, the order the chosen one pays them off in, and the interest saved
+  against minimums only. `GET /api/v1/debt-payoff?monthlyCents=` (`src/lib/api-v1/debt-payoff.ts`,
+  from `loadDebtPayoff` in `src/lib/debt-payoff-data.ts`, shared with the website page), the rate and
+  minimum through `PATCH /api/v1/accounts/:id` (`interestRateBps`, `minimumPaymentCents`, saved by
+  `setDebtTerms` in `src/lib/account-edits.ts`, shared with the website's form).
+  `src/screens/debt/index.tsx`, `src/utils/debt.ts`
 - Investments (Accounts → Investments ›, or an investment account's page, on servers that list
   `investments` in `/api/v1/me`): the website's Investments card. **Room left** for each TFSA, RRSP
   and FHSA type held, this room year (an RRSP's is its deduction limit's), with where the figure came

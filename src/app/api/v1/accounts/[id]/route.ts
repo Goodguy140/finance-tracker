@@ -27,7 +27,8 @@ export async function GET(request: Request, { params }: Params) {
 /**
  * PATCH /api/v1/accounts/:id — any of Settings → Accounts' fields: `name`, `type`, `currency`
  * (kept once the account holds money in it), `countsAsSavings`, a credit card's
- * `creditLimitCents` and `paymentDueDay` (null clears either), and `archived` (refused while a
+ * `creditLimitCents` and `paymentDueDay` (null clears either), a card's, loan's or mortgage's
+ * `interestRateBps` and `minimumPaymentCents` for the payoff plan (null clears either), and `archived` (refused while a
  * recurring rule, contribution or portfolio value uses the account). 400 with the reason. Scope `app`.
  */
 export async function PATCH(request: Request, { params }: Params) {

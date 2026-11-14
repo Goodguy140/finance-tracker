@@ -17,6 +17,7 @@ import {
   accountPatch,
   ACCOUNTS_PATH,
   emptyAccountForm,
+  hasDebtTerms,
   newAccountBody,
   type AccountForm,
 } from '@/utils/account-settings';
@@ -162,6 +163,33 @@ function AccountEditor({ page, homeCurrency }: { page: AccountPage | null; homeC
                 placeholderTextColor={theme.textSecondary}
                 keyboardType="number-pad"
                 maxLength={2}
+                style={[formStyles.input, formStyles.amount, { color: theme.text }]}
+              />
+            </FormField>
+          </Section>
+        ) : null}
+        {page && hasDebtTerms(form, page) ? (
+          <Section
+            title="Interest and minimum"
+            footer="The debt payoff plan adds interest monthly at this rate and pays at least the minimum. Leave either empty to clear it.">
+            <FormField label="Interest rate (% a year)">
+              <TextInput
+                value={form.interestRate}
+                onChangeText={(v) => set('interestRate', v)}
+                placeholder="19.99"
+                placeholderTextColor={theme.textSecondary}
+                keyboardType="decimal-pad"
+                style={[formStyles.input, formStyles.amount, { color: theme.text }]}
+                accessibilityLabel="Interest rate, percent a year"
+              />
+            </FormField>
+            <FormField label={`Minimum a month (${form.currency.toUpperCase() || page.account.currency})`}>
+              <TextInput
+                value={form.minimum}
+                onChangeText={(v) => set('minimum', v)}
+                placeholder="25.00"
+                placeholderTextColor={theme.textSecondary}
+                keyboardType="decimal-pad"
                 style={[formStyles.input, formStyles.amount, { color: theme.text }]}
               />
             </FormField>

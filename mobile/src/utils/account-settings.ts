@@ -1,4 +1,5 @@
 import type { AccountPage, Me } from '@/api/types';
+import { isLiabilityType, parseRateInput, rateInputText } from '@/utils/debt';
 import { amountInputText, parseAmountInput } from '@/utils/transactions';
 
 /** Settings → Accounts on the phone: adding an account, and changing or archiving one from its page. */
@@ -32,10 +33,13 @@ export type AccountForm = {
   /** A credit card's limit and due day; empty clears either. */
   creditLimit: string;
   dueDay: string;
+  /** A card's, loan's or mortgage's yearly interest rate and minimum a month, for the payoff plan; empty clears either. */
+  interestRate: string;
+  minimum: string;
 };
 
 export function emptyAccountForm(currency: string): AccountForm {
-  return { name: '', type: 'CHEQUING', currency, countsAsSavings: false, creditLimit: '', dueDay: '' };
+  return { name: '', type: 'CHEQUING', currency, countsAsSavings: false, creditLimit: '', dueDay: '', interestRate: '', minimum: '' };
 }
 
 export function accountForm(page: AccountPage): AccountForm {
@@ -47,7 +51,14 @@ export function accountForm(page: AccountPage): AccountForm {
     countsAsSavings: settings?.countsAsSavings ?? false,
     creditLimit: settings?.creditLimitCents ? amountInputText(settings.creditLimitCents) : '',
     dueDay: settings?.paymentDueDay ? String(settings.paymentDueDay) : '',
+    interestRate: rateInputText(settings?.interestRateBps),
+    minimum: settings?.minimumPaymentCents != null ? amountInputText(settings.minimumPaymentCents) : '',
   };
+}
+
+/** The rate and minimum fields: for a card, loan or mortgage, on servers that keep them. */
+export function hasDebtTerms(form: Pick<AccountForm, 'type'>, page: AccountPage | null): boolean {
+  return isLiabilityType(form.type) && page?.settings?.interestRateBps !== undefined;
 }
 
 function checkedName(form: AccountForm): string | { error: string } {
@@ -86,6 +97,21 @@ export function accountPatch(form: AccountForm, page: AccountPage): { body: Reco
     }
     if (limit !== page.settings.creditLimitCents) body.creditLimitCents = limit;
     if (dueDay !== page.settings.paymentDueDay) body.paymentDueDay = dueDay;
+  }
+  if (hasDebtTerms(form, page) && page.settings) {
+    let rate: number | null = null;
+    if (form.interestRate.trim()) {
+      rate = parseRateInput(form.interestRate);
+      if (rate === null) return { error: 'Enter the interest rate as a yearly percentage, like 19.99.' };
+    }
+    let minimum: number | null = null;
+    if (form.minimum.trim()) {
+      // Zero is a minimum too (a loan in a payment holiday); parseAmountInput reads it as no amount.
+      minimum = /^\$?(0+(\.0{0,2})?|\.0{1,2})$/.test(form.minimum.trim()) ? 0 : parseAmountInput(form.minimum);
+      if (minimum === null || minimum < 0) return { error: 'Enter the minimum payment as an amount, like 25.00.' };
+    }
+    if (rate !== (page.settings.interestRateBps ?? null)) body.interestRateBps = rate;
+    if (minimum !== (page.settings.minimumPaymentCents ?? null)) body.minimumPaymentCents = minimum;
   }
   return Object.keys(body).length > 0 ? { body } : null;
 }

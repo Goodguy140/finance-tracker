@@ -421,7 +421,14 @@ export type NetWorthAccount = NetWorth['accounts'][number];
 export type AccountPage = {
   account: { id: string; name: string; type: string; typeLabel: string; currency: string; archived: boolean };
   /** Settings → Accounts' fields, for the Edit sheet. Absent from older servers. */
-  settings?: { countsAsSavings: boolean; creditLimitCents: number | null; paymentDueDay: number | null };
+  settings?: {
+    countsAsSavings: boolean;
+    creditLimitCents: number | null;
+    paymentDueDay: number | null;
+    /** A card's or loan's yearly rate in basis points (19.99% is 1999), for the payoff plan. Absent from older servers. */
+    interestRateBps?: number | null;
+    minimumPaymentCents?: number | null;
+  };
   liability: boolean;
   balance: AccountBalance | null;
   history: { ym: string; label: string; cents: number }[];
@@ -890,4 +897,40 @@ export type YearEnd = {
   /** Tax-looking tags first. */
   tags: { tagId: string; name: string; taxRelated: boolean; count: number; spentCents: number; receivedCents: number }[];
   registered: { accountId: string; name: string; typeLabel: string; contributedCents: number; withdrawnCents: number }[];
+};
+
+/** `GET /api/v1/debt-payoff`: the website's Debt payoff page. On servers that list `debt-payoff` in `/api/v1/me`. */
+export type DebtPayoff = {
+  currency: string;
+  accounts: {
+    id: string;
+    name: string;
+    type: string;
+    typeLabel: string;
+    /** Yearly rate in basis points: 19.99% is 1999. Null until it is set. */
+    interestRateBps: number | null;
+    minimumPaymentCents: number | null;
+    /** Null when there is no balance in the home currency yet. */
+    owed: { cents: number; date: string } | null;
+    utilization: { pct: number; high: boolean } | null;
+  }[];
+  /** Debts with no rate or minimum yet: counted as interest-free with no minimum. */
+  missing: string[];
+  totalOwedCents: number;
+  minimumsCents: number;
+  /** What the plans pay each month: the amount asked for, never less than the minimums. */
+  monthlyCents: number;
+  strategies: DebtStrategy[];
+};
+
+export type DebtStrategy = {
+  id: 'avalanche' | 'snowball' | 'minimums';
+  label: string;
+  hint: string;
+  /** Null when it is never paid off at this amount. */
+  months: number | null;
+  /** "March 2028". */
+  debtFree: string | null;
+  totalInterestCents: number;
+  payoffOrder: { id: string; name: string; month: number; label: string }[];
 };
