@@ -592,6 +592,33 @@ export type MerchantActivity = {
 /** `POST /api/v1/rules`: the rule made, and how many past entries applying it would change. */
 export type MadeRule = { id: string; matches: number };
 
+/** One rule from `GET /api/v1/rules`, in the order they run. */
+export type AppRule = {
+  id: string;
+  enabled: boolean;
+  /** Its place in the order, from 1. */
+  position: number;
+  /** Settings → Rules' description: "Title contains “tim”, expenses only". */
+  condition: string;
+  /** "category → Coffee, tag + Treats". */
+  actions: string;
+  match: 'contains' | 'is' | 'starts_with';
+  texts: string[];
+  /** null matches expenses and income alike. */
+  type: 'expense' | 'income' | null;
+  accountId: string | null;
+  categoryId: string | null;
+  rename: string | null;
+  tag: string | null;
+  /** What the rule sets that only the website edits ("a split", "a note"); kept by a change here. */
+  alsoOnWebsite: string[];
+};
+
+export type RuleList = { max: number; rules: AppRule[] };
+
+/** `GET`/`PATCH /api/v1/rules/:id`: the rule, how many there are, and how many past entries Apply would change. */
+export type RuleDetail = { rule: AppRule; count: number; matches: number | null };
+
 /** `GET /api/v1/rules/suggestions`: learned Title → Category combos no rule decides yet, newest first. */
 export type RuleSuggestions = { total: number; suggestions: { title: string; categoryId: string; categoryName: string }[] };
 

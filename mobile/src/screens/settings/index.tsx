@@ -17,6 +17,7 @@ import { RELOCK_AFTER_MS } from '@/utils/app-lock';
 import { canEditGoals } from '@/utils/goals';
 import { canSetSafeToSpendBuffer } from '@/utils/safe-to-spend';
 import { canUseZeroBased } from '@/utils/zero-based';
+import { canEditRules } from '@/utils/rule-edits';
 import { canMakeRules } from '@/utils/transaction-rules';
 
 import { AboutSection } from './about';
@@ -81,7 +82,18 @@ export function Settings() {
         </Section>
 
         {canMakeRules(me.data) ? (
-          <Section title="Rules" footer="Make a rule from an entry or a bank row with Make a Rule…, or from a title you use often here.">
+          <Section
+            title="Rules"
+            footer={
+              canEditRules(me.data)
+                ? 'Change, turn off, reorder or delete your rules. Make one from an entry or a bank row with Make a Rule…, or from a title you use often.'
+                : 'Make a rule from an entry or a bank row with Make a Rule…, or from a title you use often here.'
+            }>
+            {canEditRules(me.data) ? (
+              <Pressable onPress={() => router.push('/settings/rule-list')} accessibilityRole="button" hitSlop={8}>
+                <Text style={[styles.link, { color: theme.tint }]}>Your rules ›</Text>
+              </Pressable>
+            ) : null}
             <Pressable onPress={() => router.push('/settings/rules')} accessibilityRole="button" hitSlop={8}>
               <Text style={[styles.link, { color: theme.tint }]}>Suggested rules ›</Text>
             </Pressable>

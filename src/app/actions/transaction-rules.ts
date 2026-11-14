@@ -13,11 +13,12 @@ import { requireUser } from "@/lib/session";
 import {
   applyTransactionRule,
   createTransactionRule,
-  findOwnedRule as findRule,
+  deleteTransactionRule,
   hideLearnedTitle,
+  moveTransactionRule,
   planRuleChanges,
-  prepareTransactionRule,
-  splitRows,
+  setTransactionRuleEnabled,
+  updateTransactionRule,
 } from "@/lib/transaction-rule-edits";
 import type { RuleChange } from "@/lib/transaction-rules";
 import {
@@ -71,10 +72,6 @@ function revalidateRules() {
   revalidatePath("/settings", "layout");
 }
 
-function findOwnedRule(userId: string, ruleId: string) {
-  return findRule(prisma, userId, ruleId);
-}
-
 export const createTransactionRuleAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   await createTransactionRule(prisma, user.id, parseRuleForm(formData));
@@ -84,20 +81,14 @@ export const createTransactionRuleAction = formAction(async (formData: FormData)
 export const updateTransactionRuleAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const { ruleId } = updateTransactionRuleSchema.parse({ ruleId: getFormValue(formData, "ruleId") });
-  const rule = await findOwnedRule(user.id, ruleId);
-  const { rule: data, split } = await prepareTransactionRule(prisma, user.id, parseRuleForm(formData));
-  await prisma.transactionRule.update({
-    where: { id: rule.id },
-    data: { ...data, splits: { deleteMany: {}, create: splitRows(split) } },
-  });
+  await updateTransactionRule(prisma, user.id, ruleId, parseRuleForm(formData));
   revalidateRules();
 });
 
 export const deleteTransactionRuleAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const { ruleId } = updateTransactionRuleSchema.parse({ ruleId: getFormValue(formData, "ruleId") });
-  const rule = await findOwnedRule(user.id, ruleId);
-  await prisma.transactionRule.delete({ where: { id: rule.id } });
+  await deleteTransactionRule(prisma, user.id, ruleId);
   revalidateRules();
 });
 
@@ -107,36 +98,18 @@ export const setTransactionRuleEnabledAction = formAction(async (formData: FormD
     ruleId: getFormValue(formData, "ruleId"),
     enabled: getFormValue(formData, "enabled"),
   });
-  const rule = await findOwnedRule(user.id, payload.ruleId);
-  await prisma.transactionRule.update({ where: { id: rule.id }, data: { enabled: payload.enabled === "true" } });
+  await setTransactionRuleEnabled(prisma, user.id, payload.ruleId, payload.enabled === "true");
   revalidateRules();
 });
 
-/** Swaps a rule with its neighbour, then renumbers every rule 0..n-1 so gaps never build up. */
+/** Swaps a rule with its neighbour (`moveTransactionRule`). */
 export const moveTransactionRuleAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const payload = moveTransactionRuleSchema.parse({
     ruleId: getFormValue(formData, "ruleId"),
     direction: getFormValue(formData, "direction"),
   });
-  await prisma.$transaction(async (tx) => {
-    const rules = await tx.transactionRule.findMany({
-      where: { userId: user.id },
-      orderBy: [{ priority: "asc" }, { id: "asc" }],
-      select: { id: true, priority: true },
-    });
-    const index = rules.findIndex((r) => r.id === payload.ruleId);
-    if (index === -1) throw new Error("Rule not found.");
-    const target = payload.direction === "up" ? index - 1 : index + 1;
-    if (target < 0 || target >= rules.length) return;
-    const ordered = [...rules];
-    [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
-    for (const [priority, rule] of ordered.entries()) {
-      if (rule.priority !== priority) {
-        await tx.transactionRule.update({ where: { id: rule.id }, data: { priority } });
-      }
-    }
-  });
+  await moveTransactionRule(prisma, user.id, payload.ruleId, payload.direction);
   revalidateRules();
 });
 

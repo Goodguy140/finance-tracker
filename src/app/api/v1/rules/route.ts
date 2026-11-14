@@ -1,10 +1,22 @@
 import { NextResponse } from "next/server";
 import { API_SCOPES } from "@/lib/api-token";
 import { apiError, authorizeApiRequest, NO_STORE, readJsonBody } from "@/lib/api-v1/route-auth";
-import { createTransactionRuleFromApi } from "@/lib/api-v1/transaction-rules";
+import { createTransactionRuleFromApi, loadAppRules } from "@/lib/api-v1/transaction-rules";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * GET /api/v1/rules — every rule in the order they run, as Settings → Rules lists them:
+ * `{ max, rules: [{ id, enabled, position, condition, actions, match, texts, type, accountId,
+ * categoryId, rename, tag, alsoOnWebsite }] }`. `condition` and `actions` are the website's
+ * description; `alsoOnWebsite` names what the rule sets that only the website edits. Scope `app`.
+ */
+export async function GET(request: Request) {
+  const authorized = await authorizeApiRequest(request, API_SCOPES.app, "rules");
+  if (!authorized.ok) return authorized.response;
+  return NextResponse.json(await loadAppRules(prisma, authorized.auth.user), { headers: NO_STORE });
+}
 
 /**
  * POST /api/v1/rules `{ match, texts, type?, accountId?, categoryId?, rename?, tag? }` — adds a
