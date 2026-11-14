@@ -43,9 +43,9 @@ import { readDashboardLayoutJson } from "@/lib/dashboard-layout/read";
 import { CARD_IDS, type DashboardCardId } from "@/lib/dashboard-layout/schema";
 import { isCardPlaced } from "@/lib/dashboard-layout/visibility";
 import {
-  budgetPeriodMonthInYtd,
   describeDashboardPeriod,
   endExclusiveOfMonthYm,
+  monthsOfPeriod,
   parseDashboardSearchParams,
   shiftYm,
   startOfCalendarYearForYm,
@@ -59,6 +59,7 @@ import {
 } from "@/lib/budget-alerts";
 import {
   buildBudgetProgressRows,
+  buildRangeBudgetProgressRows,
   carriesForMonth,
   computeSpendByCategory,
   selectActiveBudgetsByCategory,
@@ -504,76 +505,16 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     const rolloverCarries = await loadRolloverCarries(prisma, user.id, homeCurrency, [period.ym], budgets);
     budgetProgressItems = buildBudgetProgressRows(activeBudgets, spendByCategory, carriesForMonth(rolloverCarries, period.ym));
     totalBudgetCents = budgetProgressItems.reduce((sum, row) => sum + row.limitCents, 0);
-  } else if (period.range === "ytd" || period.range === "custom") {
-    // A custom range sums the budgets of every month it touches, as YTD does from January.
-    const fromYm = period.custom?.fromYmd.slice(0, 7);
-    const inRange = (periodMonth: string) =>
-      fromYm ? periodMonth >= fromYm && periodMonth <= period.ym : budgetPeriodMonthInYtd(periodMonth, period.ym);
-    const limitSumByCategory = new Map<string, number>();
-    const nameByCategory = new Map<string, string>();
-    for (const budget of budgets) {
-      if (!inRange(budget.periodMonth)) continue;
-      limitSumByCategory.set(
-        budget.categoryId,
-        (limitSumByCategory.get(budget.categoryId) ?? 0) + budget.limitCents,
-      );
-      if (!nameByCategory.has(budget.categoryId)) {
-        nameByCategory.set(budget.categoryId, budget.category.name);
-      }
-    }
-    const categoryIds = new Set([...limitSumByCategory.keys(), ...spendByCategory.keys()]);
-    budgetProgressItems = Array.from(categoryIds)
-      .map((categoryId) => {
-        const limitCents = limitSumByCategory.get(categoryId) ?? 0;
-        const spentCents = spendByCategory.get(categoryId) ?? 0;
-        const progressPct =
-          limitCents > 0 ? Math.min(Math.max((spentCents / limitCents) * 100, 0), 100) : 0;
-        return {
-          id: categoryId,
-          categoryId,
-          categoryName: nameByCategory.get(categoryId) ?? categoryName(categoryId),
-          spentCents,
-          limitCents,
-          // Rollover is a month-to-month carry; the summed limits over many months already net it.
-          baseLimitCents: limitCents,
-          carryCents: 0,
-          progressPct,
-        };
-      })
-      .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
-    totalBudgetCents = budgetProgressItems.reduce((sum, row) => sum + row.limitCents, 0);
   } else {
-    const limitSumByCategory = new Map<string, number>();
-    const nameByCategory = new Map<string, string>();
-    for (const budget of budgets) {
-      limitSumByCategory.set(
-        budget.categoryId,
-        (limitSumByCategory.get(budget.categoryId) ?? 0) + budget.limitCents,
-      );
-      if (!nameByCategory.has(budget.categoryId)) {
-        nameByCategory.set(budget.categoryId, budget.category.name);
-      }
-    }
-    const categoryIds = new Set([...limitSumByCategory.keys(), ...spendByCategory.keys()]);
-    budgetProgressItems = Array.from(categoryIds)
-      .map((categoryId) => {
-        const limitCents = limitSumByCategory.get(categoryId) ?? 0;
-        const spentCents = spendByCategory.get(categoryId) ?? 0;
-        const progressPct =
-          limitCents > 0 ? Math.min(Math.max((spentCents / limitCents) * 100, 0), 100) : 0;
-        return {
-          id: categoryId,
-          categoryId,
-          categoryName: nameByCategory.get(categoryId) ?? categoryName(categoryId),
-          spentCents,
-          limitCents,
-          // Rollover is a month-to-month carry; the summed limits over many months already net it.
-          baseLimitCents: limitCents,
-          carryCents: 0,
-          progressPct,
-        };
-      })
-      .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
+    // Year to date, a custom range or all of time: the budget in force each month it touches,
+    // added up. All of time starts at the first budget set.
+    const firstBudgetYm = budgets.reduce<string | undefined>((first, b) => (!first || b.periodMonth < first ? b.periodMonth : first), undefined);
+    budgetProgressItems = buildRangeBudgetProgressRows(
+      budgets,
+      spendByCategory,
+      period.range === "lifetime" && !firstBudgetYm ? [] : monthsOfPeriod(period, firstBudgetYm),
+      categoryName,
+    );
     totalBudgetCents = budgetProgressItems.reduce((sum, row) => sum + row.limitCents, 0);
   }
 

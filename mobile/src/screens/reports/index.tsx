@@ -1,4 +1,3 @@
-import { DateTimePicker } from '@expo/ui/community/datetime-picker';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useState } from 'react';
@@ -6,15 +5,14 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 
 import { errorText, useApiQuery } from '@/api/query';
 import type { Reports, ReportMerchant, Tag } from '@/api/types';
-import { FormButton, FormField } from '@/components/form';
 import { GroupBars } from '@/components/group-bars';
 import { LoadState } from '@/components/load-state';
+import { RangePicker } from '@/components/range-picker';
 import { Section } from '@/components/section';
 import { Spacing } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
-import { dateFromYmd, localToday, ymdFromDate } from '@/utils/dates';
+import { localToday } from '@/utils/dates';
 import { formatCents } from '@/utils/money';
 import {
   belowZeroLines,
@@ -40,7 +38,6 @@ const YOY_ROWS = 8;
  */
 export function ReportsScreen() {
   const theme = useTheme();
-  const scheme = useColorScheme();
   const router = useRouter();
   const [period, setPeriod] = useState<ReportsPeriod>({ kind: 'option', key: '12m' });
   const [tagId, setTagId] = useState<string | null>(null);
@@ -50,7 +47,6 @@ export function ReportsScreen() {
   const { refreshing, onRefresh } = usePullToRefresh(query.refetch);
   const data = query.data;
   const tagName = tags.find((t) => t.id === tagId)?.name;
-  const themeVariant = scheme === 'dark' ? 'dark' : 'light';
 
   function startRange() {
     const today = localToday();
@@ -65,34 +61,13 @@ export function ReportsScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
         {range ? (
-          <Section title="Custom range" footer="Both days are included.">
-            <FormField label="From">
-              <DateTimePicker
-                value={dateFromYmd(range.from)}
-                onValueChange={(_, d) => setRange({ ...range, from: ymdFromDate(d) })}
-                display="compact"
-                timeZoneName="UTC"
-                themeVariant={themeVariant}
-              />
-            </FormField>
-            <FormField label="To">
-              <DateTimePicker
-                value={dateFromYmd(range.to)}
-                onValueChange={(_, d) => setRange({ ...range, to: ymdFromDate(d) })}
-                display="compact"
-                timeZoneName="UTC"
-                themeVariant={themeVariant}
-              />
-            </FormField>
-            <FormButton
-              label="Show This Range"
-              disabled={range.from > range.to}
-              onPress={() => {
-                setPeriod({ kind: 'custom', ...range });
-                setRange(null);
-              }}
-            />
-          </Section>
+          <RangePicker
+            initial={range}
+            onShow={(picked) => {
+              setPeriod({ kind: 'custom', ...picked });
+              setRange(null);
+            }}
+          />
         ) : null}
         {data ? (
           <Text style={[styles.intro, { color: theme.textSecondary }]}>

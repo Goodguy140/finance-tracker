@@ -14,9 +14,11 @@ export function budgetPath(categoryId: string, action?: 'cover'): string {
 
 /**
  * Budgets can be changed only on this month's page, and only from a server that says which month
- * that is (one from before sends no `currentMonth` and takes no changes).
+ * that is (one from before sends no `currentMonth` and takes no changes); never from year to date
+ * or a custom range, even one ending this month.
  */
-export function canEditBudgets(data: Pick<Budgets, 'periodMonth' | 'currentMonth'>): boolean {
+export function canEditBudgets(data: Pick<Budgets, 'periodMonth' | 'currentMonth' | 'period'>): boolean {
+  if (data.period && data.period.range !== 'month') return false;
   return data.currentMonth !== undefined && data.periodMonth === data.currentMonth;
 }
 

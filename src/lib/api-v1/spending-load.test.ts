@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { DEFAULT_LAYOUT } from "@/lib/dashboard-layout/cards";
+import { parseDashboardSearchParams } from "@/lib/dashboard-period";
 import { copyMigratedDatabase } from "@/test-support/migrated-db";
 
 /**
@@ -30,6 +31,7 @@ afterAll(async () => {
 });
 
 const day = (ymd: string) => new Date(`${ymd}T00:00:00Z`);
+const month = (ym: string) => parseDashboardSearchParams({ month: ym });
 
 it("builds both charts from the month's home-currency spending, last month, the budgets and savings transfers", async () => {
   const user = await db.user.create({ data: { email: "spending@example.test", displayName: "Test", countryCode: "CA" } });
@@ -68,7 +70,7 @@ it("builds both charts from the month's home-currency spending, last month, the 
   });
 
   const now = new Date("2026-11-10T15:00:00Z");
-  const data = await api.loadAppSpending(user, "2026-11", {}, now);
+  const data = await api.loadAppSpending(user, month("2026-11"), {}, now);
 
   expect(data).toMatchObject({ month: "2026-11", today: "2026-11-10", currency: "CAD", compareWith: "last-month", showSavings: false });
   expect(data.cumulative.days).toHaveLength(30);
@@ -82,9 +84,42 @@ it("builds both charts from the month's home-currency spending, last month, the 
   expect(data.categories.savings).toBeNull();
 
   // The phone's own picks win over the card's.
-  const picked = await api.loadAppSpending(user, "2026-11", { compareWith: "none", showSavings: true }, now);
+  const picked = await api.loadAppSpending(user, month("2026-11"), { compareWith: "none", showSavings: true }, now);
   expect(picked.cumulative.comparisonGapCents).toBeNull();
   expect(picked.cumulative.days.every((d) => d.comparisonCents === null)).toBe(true);
   expect(picked.categories.savings).toEqual({ cents: 25_000, accounts: 1 });
   expect(picked.categories.slices.at(-1)).toMatchObject({ name: "Savings", cents: 25_000, kind: "savings" });
+});
+
+it("shows year to date by month and a short custom range by day, with no comparison", async () => {
+  const user = await db.user.create({ data: { email: "spending-range@example.test", displayName: "Test", countryCode: "CA" } });
+  const userId = user.id;
+  const food = await db.category.create({ data: { userId, name: "Food", kind: "EXPENSE" } });
+  const spend = (ymd: string, amountCents: number) =>
+    db.transaction.create({ data: { userId, categoryId: food.id, type: "EXPENSE", amountCents, date: day(ymd) } });
+  await spend("2025-12-30", 7_000);
+  await spend("2026-01-15", 1_000);
+  await spend("2026-03-02", 2_000);
+  await spend("2026-03-20", 4_000);
+  await db.dashboardLayout.create({
+    data: { userId, layoutJson: JSON.stringify({ ...DEFAULT_LAYOUT, settings: { "cumulative-spend": { compareWith: "last-month" } } }) },
+  });
+  const now = new Date("2026-03-25T15:00:00Z");
+
+  const ytd = await api.loadAppSpending(user, parseDashboardSearchParams({ month: "2026-03", range: "ytd" }), {}, now);
+  expect(ytd.period).toMatchObject({ range: "ytd", from: "2026-01-01", to: "2026-03-31" });
+  expect(ytd).toMatchObject({ compareWith: "none", cumulative: { granularity: "month", totalCents: 7_000 } });
+  expect(ytd.cumulative.days.map((d) => [d.label, d.totalCents])).toEqual([
+    ["Jan", 1_000],
+    ["Feb", 1_000],
+    ["Mar", 7_000],
+  ]);
+  expect(ytd.categories.totalCents).toBe(7_000);
+
+  const range = parseDashboardSearchParams({ range: "custom", from: "2025-12-30", to: "2026-01-15" });
+  const custom = await api.loadAppSpending(user, range, {}, now);
+  expect(custom.period).toMatchObject({ range: "custom", from: "2025-12-30", to: "2026-01-15" });
+  expect(custom.cumulative.granularity).toBe("day");
+  expect(custom.cumulative.days).toHaveLength(17);
+  expect(custom.cumulative.days.at(-1)).toMatchObject({ label: "Jan 15", totalCents: 8_000 });
 });

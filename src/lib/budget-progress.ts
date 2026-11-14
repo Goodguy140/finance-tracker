@@ -96,6 +96,78 @@ export function buildBudgetProgressRows(
 }
 
 /**
+ * Budgets against spending over several months (year to date, a custom range, all time): each
+ * category's limit is the budget in force in each month of `months`, added up, since a budget
+ * carries forward until it is changed just as in a month view; its spending is the whole range's.
+ * Categories with spending and no budget are listed with a limit of zero. No rollover: summed over
+ * the months, the limits already net what one month leaves for the next.
+ */
+export function buildRangeBudgetProgressRows(
+  budgets: readonly { categoryId: string; periodMonth: string; limitCents: number; category: { name: string } }[],
+  spendByCategory: ReadonlyMap<string, number>,
+  months: readonly string[],
+  categoryName: (categoryId: string) => string,
+): BudgetProgressRow[] {
+  const limitSumByCategory = new Map<string, number>();
+  const nameByCategory = new Map<string, string>();
+  for (const ym of months) {
+    for (const budget of selectActiveBudgetsByCategory(budgets, ym).values()) {
+      limitSumByCategory.set(budget.categoryId, (limitSumByCategory.get(budget.categoryId) ?? 0) + budget.limitCents);
+      if (!nameByCategory.has(budget.categoryId)) nameByCategory.set(budget.categoryId, budget.category.name);
+    }
+  }
+  const categoryIds = new Set([...limitSumByCategory.keys(), ...spendByCategory.keys()]);
+  return Array.from(categoryIds)
+    .map((categoryId) => {
+      const limitCents = limitSumByCategory.get(categoryId) ?? 0;
+      const spentCents = spendByCategory.get(categoryId) ?? 0;
+      return {
+        id: categoryId,
+        categoryId,
+        categoryName: nameByCategory.get(categoryId) ?? categoryName(categoryId),
+        spentCents,
+        limitCents,
+        baseLimitCents: limitCents,
+        carryCents: 0,
+        progressPct: limitCents > 0 ? Math.min(Math.max((spentCents / limitCents) * 100, 0), 100) : 0,
+      };
+    })
+    .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
+}
+
+/**
+ * Budgets against spending from `from` to before `to` in the home currency, added up over
+ * `months` (`buildRangeBudgetProgressRows`), for the phone's year to date and custom ranges. Only
+ * budgeted categories, as a month's progress lists them. `periodMonth` is the range's last month.
+ */
+export async function buildRangeBudgetProgress(
+  userId: string,
+  range: { gte: Date; lt: Date },
+  months: readonly string[],
+  client: PrismaClient = prisma,
+): Promise<MonthlyBudgetProgress> {
+  const user = await client.user.findUnique({ where: { id: userId }, select: { countryCode: true } });
+  const currency = homeCurrencyOf(user?.countryCode);
+  const [budgets, periodExpenses] = await Promise.all([
+    client.budget.findMany({ where: { userId }, include: { category: true } }),
+    client.transaction.findMany({
+      where: { userId, type: TransactionType.EXPENSE, date: range, ...inCurrencyWhere(currency) },
+      select: { categoryId: true, amountCents: true, splitParts: { select: { categoryId: true, amountCents: true } } },
+    }),
+  ]);
+  const rows = buildRangeBudgetProgressRows(budgets, computeSpendByCategory(periodExpenses), months, () => "Unknown").filter(
+    (row) => row.limitCents > 0,
+  );
+  return {
+    periodMonth: months[months.length - 1],
+    currency,
+    budgets: rows,
+    totalLimitCents: rows.reduce((sum, row) => sum + row.limitCents, 0),
+    totalSpentCents: rows.reduce((sum, row) => sum + row.spentCents, 0),
+  };
+}
+
+/**
  * Current-month budget-vs-actual for a user, ready to serialize over the API.
  * Self-contained (fetches its own data) so route handlers can call it directly;
  * the dashboard page reuses the pure helpers above with its already-loaded data.

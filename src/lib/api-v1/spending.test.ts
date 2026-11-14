@@ -42,7 +42,7 @@ describe("buildAppSpending: cumulative spending", () => {
   it("runs the total to today, leaves later days empty, and measures it against the budgets' pace", () => {
     const { cumulative } = buildAppSpending(input());
     expect(cumulative.days).toHaveLength(30);
-    expect(cumulative.days[4]).toEqual({ day: 5, spentCents: 7_000, totalCents: 10_000, expectedCents: 10_000, comparisonCents: null });
+    expect(cumulative.days[4]).toEqual({ day: 5, label: "5", fullLabel: "Nov 5", spentCents: 7_000, totalCents: 10_000, expectedCents: 10_000, comparisonCents: null });
     expect(cumulative.days[9].totalCents).toBe(12_000);
     expect(cumulative.days[10].totalCents).toBeNull();
     // A month's budgets spread over 30 days: 20,000 by the 10th, so 8,000 under.

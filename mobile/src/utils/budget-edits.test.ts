@@ -33,6 +33,10 @@ describe('canEditBudgets', () => {
     expect(canEditBudgets(data)).toBe(true);
     expect(canEditBudgets({ ...data, periodMonth: '2026-10' })).toBe(false);
     expect(canEditBudgets({ ...data, currentMonth: undefined })).toBe(false);
+    // Year to date through this month is still not this month's page.
+    const ytd = { range: 'ytd' as const, from: '2026-01-01', to: '2026-11-30', label: 'Year to date (Jan–Nov 2026)' };
+    expect(canEditBudgets({ ...data, period: ytd })).toBe(false);
+    expect(canEditBudgets({ ...data, period: { ...ytd, range: 'month' } })).toBe(true);
   });
 });
 

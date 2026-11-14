@@ -4,6 +4,7 @@ import type { Spending } from '@/api/types';
 
 import {
   amountAxis,
+  chartTicks,
   comparisonLine,
   dashedSegments,
   dayIndexAt,
@@ -12,8 +13,10 @@ import {
   expectedGapLine,
   linePoints,
   savingsNote,
+  periodTitle,
   sliceShares,
   spendingPath,
+  tickLabel,
 } from './spending';
 
 function spending(overrides: Partial<Spending> = {}, cumulative: Partial<Spending['cumulative']> = {}): Spending {
@@ -47,6 +50,43 @@ describe('spendingPath', () => {
     expect(spendingPath({})).toBe('/api/v1/spending');
     expect(spendingPath({ compareWith: 'last-month', showSavings: false })).toBe('/api/v1/spending?compare=last-month&savings=0');
     expect(spendingPath({ showSavings: true })).toBe('/api/v1/spending?savings=1');
+  });
+
+  it('asks for year to date or a custom range only from a server that has them', () => {
+    expect(spendingPath({ period: { kind: 'ytd' }, showSavings: true }, true)).toBe('/api/v1/spending?range=ytd&savings=1');
+    expect(spendingPath({ period: { kind: 'custom', from: '2026-01-05', to: '2026-02-01' } }, true)).toBe(
+      '/api/v1/spending?range=custom&from=2026-01-05&to=2026-02-01',
+    );
+    expect(spendingPath({ period: { kind: 'ytd' } }, false)).toBe('/api/v1/spending');
+    // A choice kept from before that is not one any more is left out.
+    expect(spendingPath({ period: { kind: 'week' } as never }, true)).toBe('/api/v1/spending');
+  });
+});
+
+describe('a year to date or a custom range', () => {
+  const months = spending(
+    { period: { range: 'ytd', from: '2026-01-01', to: '2026-11-30', label: 'Year to date (Jan–Nov 2026)' } },
+    {
+      granularity: 'month',
+      days: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov'].map((label, i) => ({
+        day: i + 1,
+        label,
+        fullLabel: `${label} 2026`,
+        spentCents: 1_000,
+        totalCents: 1_000 * (i + 1),
+        expectedCents: null,
+        comparisonCents: null,
+      })),
+    },
+  );
+
+  it('is named by its label, labels months along the axis, and reads a point as a month', () => {
+    expect(periodTitle(months)).toBe('Year to date (Jan–Nov 2026)');
+    expect(periodTitle(spending())).toBe('November 2026');
+    expect(chartTicks(months)).toEqual([1, 4, 7, 10]);
+    expect(chartTicks(spending())).toEqual(dayTicks(4));
+    expect([tickLabel(months, 1), tickLabel(months, 10), tickLabel(spending(), 3)]).toEqual(['Jan', 'Oct', '3']);
+    expect(dayDetail(months, 2)).toEqual({ total: '$30.00', lines: ['Mar 2026', '+$10.00 that month'] });
   });
 });
 

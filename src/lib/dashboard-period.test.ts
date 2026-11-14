@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  budgetPeriodMonthInYtd,
   currentPeriodYm,
   describeDashboardPeriod,
   endExclusiveOfMonthYm,
   formatYmLongLabel,
+  monthsOfPeriod,
   parseDashboardSearchParams,
   shiftYm,
   startOfCalendarYearForYm,
@@ -164,12 +164,15 @@ describe("parseDashboardSearchParams", () => {
   });
 });
 
-describe("budgetPeriodMonthInYtd", () => {
-  it("includes months in same year from Jan through anchor", () => {
-    expect(budgetPeriodMonthInYtd("2025-01", "2025-05")).toBe(true);
-    expect(budgetPeriodMonthInYtd("2025-05", "2025-05")).toBe(true);
-    expect(budgetPeriodMonthInYtd("2024-12", "2025-05")).toBe(false);
-    expect(budgetPeriodMonthInYtd("2025-06", "2025-05")).toBe(false);
+describe("monthsOfPeriod", () => {
+  it("lists every month a period touches, oldest first", () => {
+    const ref = new Date("2025-05-15T12:00:00Z");
+    expect(monthsOfPeriod(parseDashboardSearchParams({ month: "2025-05" }, ref))).toEqual(["2025-05"]);
+    expect(monthsOfPeriod(parseDashboardSearchParams({ month: "2025-03", range: "ytd" }, ref))).toEqual(["2025-01", "2025-02", "2025-03"]);
+    expect(
+      monthsOfPeriod(parseDashboardSearchParams({ range: "custom", from: "2024-11-20", to: "2025-01-05" }, ref)),
+    ).toEqual(["2024-11", "2024-12", "2025-01"]);
+    expect(monthsOfPeriod(parseDashboardSearchParams({ month: "all" }, ref), "2025-03")).toEqual(["2025-03", "2025-04", "2025-05"]);
   });
 });
 

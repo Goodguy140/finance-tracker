@@ -43,6 +43,8 @@ export function LineChart(props: {
   /** Day numbers to label along the bottom (1 is the first day). */
   dayTicks: readonly number[];
   dayCount: number;
+  /** What to write under a tick, when it isn't the day number ("Mar", "Nov 6"). */
+  tickLabel?: (day: number) => string;
   height: number;
   selected: number | null;
   onSelect: (index: number | null) => void;
@@ -97,16 +99,18 @@ export function LineChart(props: {
             {props.dayTicks.map((day, i) => {
               const x = xOf(day - 1);
               const edge = i === 0 ? 'left' : i === props.dayTicks.length - 1 && day === dayCount ? 'right' : 'center';
+              // Words need more room than a day number.
+              const w = props.tickLabel ? 44 : 30;
               return (
                 <Text
                   key={day}
+                  numberOfLines={1}
                   style={[
                     styles.axis,
-                    styles.dayLabel,
-                    { top: height + 3, color: theme.textSecondary },
-                    edge === 'left' ? { left: 0 } : edge === 'right' ? { left: x - 30, textAlign: 'right' } : { left: x - 15, textAlign: 'center' },
+                    { width: w, top: height + 3, color: theme.textSecondary },
+                    edge === 'left' ? { left: 0 } : edge === 'right' ? { left: x - w, textAlign: 'right' } : { left: x - w / 2, textAlign: 'center' },
                   ]}>
-                  {day}
+                  {props.tickLabel ? props.tickLabel(day) : day}
                 </Text>
               );
             })}
@@ -210,7 +214,6 @@ function Dot({ at, size, color, ring }: { at: Point; size: number; color: string
 const styles = StyleSheet.create({
   grid: { position: 'absolute', left: 0, height: StyleSheet.hairlineWidth },
   axis: { position: 'absolute', fontSize: 11, fontVariant: ['tabular-nums'] },
-  dayLabel: { width: 30 },
   rule: { position: 'absolute', top: 0, width: 1, opacity: 0.6 },
   touch: { position: 'absolute', left: 0, top: 0 },
 });

@@ -6,24 +6,28 @@ import { Platform, Pressable, StyleSheet, Switch, Text, View } from 'react-nativ
 
 import type { Spending, SpendingComparison } from '@/api/types';
 import { LineChart, type ChartSeries } from '@/components/line-chart';
+import { RangePicker } from '@/components/range-picker';
 import { Section } from '@/components/section';
 import { SwipePages, type SwipePage } from '@/components/swipe-pages';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { formatCents, formatPeriodMonth } from '@/utils/money';
+import { formatCents } from '@/utils/money';
+import { initialRange, isRange, type PeriodChoice } from '@/utils/period';
 import {
   amountAxis,
   chartMaxCents,
+  chartTicks,
   COMPARE_OPTIONS,
   comparisonLegend,
   comparisonLine,
   dayDetail,
-  dayTicks,
   expectedGapLine,
   expectedLegend,
+  periodTitle,
   savingsNote,
   sliceShares,
   SPENDING_CHARTS,
+  tickLabel,
   type SpendingOptions,
 } from '@/utils/spending';
 
@@ -35,10 +39,16 @@ const PIE_HEIGHT = 210;
 /** Swift Charts draws pies from iOS 17; iOS 16 gets the same slices as one bar. */
 const PIE_SUPPORTED = Platform.OS === 'ios' && Number.parseInt(String(Platform.Version), 10) >= 17;
 
+const PERIOD_KINDS: readonly { kind: PeriodChoice['kind']; label: string }[] = [
+  { kind: 'month', label: 'This Month' },
+  { kind: 'ytd', label: 'Year to Date' },
+  { kind: 'custom', label: 'Custom' },
+];
+
 /**
  * The website's two spending cards in one, as its phone layout has them: swipe between Spending by
  * category and Cumulative spending, or pick one from the pills under them. The page last shown is
- * kept on the phone.
+ * kept on the phone, and so is the period, where the server has year to date and custom ranges.
  */
 export function SpendingCharts(props: {
   data: Spending;
@@ -47,10 +57,15 @@ export function SpendingCharts(props: {
   updating: boolean;
   /** The server has the Calendar card: a third page. */
   calendar?: boolean;
+  /** The server shows year to date and custom ranges. */
+  periods?: boolean;
 }) {
-  const { data, options, onOptions, updating, calendar } = props;
+  const { data, options, onOptions, updating, calendar, periods } = props;
   // The chart being read along by a resting finger keeps the card from swiping underneath it.
   const [scrubbing, setScrubbing] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const ranged = isRange(data.period);
+  const kind = picking ? 'custom' : ranged ? (data.period?.range ?? 'month') : 'month';
   const pages: SwipePage[] = [
     {
       key: 'categories',
@@ -77,11 +92,35 @@ export function SpendingCharts(props: {
         />
       ),
     },
-    ...(calendar ? [{ key: 'calendar', label: 'Calendar', content: <SpendingCalendar month={data.month} /> }] : []),
+    // The calendar is a month's; a range has none.
+    ...(calendar && !ranged ? [{ key: 'calendar', label: 'Calendar', content: <SpendingCalendar month={data.month} /> }] : []),
   ];
   const index = Math.max(0, pages.findIndex((page) => page.key === (options.chart ?? SPENDING_CHARTS[0])));
   return (
-    <Section title={`Spending · ${formatPeriodMonth(data.month)}`}>
+    <Section title={`Spending · ${periodTitle(data)}`}>
+      {periods ? (
+        <SegmentedControl
+          values={PERIOD_KINDS.map((p) => p.label)}
+          selectedIndex={Math.max(0, PERIOD_KINDS.findIndex((p) => p.kind === kind))}
+          onChange={(event) => {
+            const picked = PERIOD_KINDS[event.nativeEvent.selectedSegmentIndex]?.kind;
+            if (picked === 'custom') return setPicking(true);
+            setPicking(false);
+            if (picked) onOptions({ period: { kind: picked } });
+          }}
+          accessibilityLabel="Period"
+        />
+      ) : null}
+      {picking ? (
+        <RangePicker
+          inline
+          initial={initialRange(options.period ?? { kind: 'month' }, data.today)}
+          onShow={(range) => {
+            setPicking(false);
+            onOptions({ period: { kind: 'custom', ...range } });
+          }}
+        />
+      ) : null}
       <SwipePages
         pages={pages}
         index={index}
@@ -125,7 +164,9 @@ function CumulativeSpending(props: {
     ...(hasComparison ? [{ key: 'comparison', values: days.map((d) => d.comparisonCents), color: theme.chartComparison, width: 2 }] : []),
     { key: 'actual', values: days.map((d) => d.totalCents), color: theme.tint, width: 3, endDot: true },
   ];
-  const summary = [`Spent ${money(data.cumulative.totalCents)} so far in ${formatPeriodMonth(data.month)}`, expected?.text, compared?.text]
+  const ranged = isRange(data.period);
+  const byMonth = data.cumulative.granularity === 'month';
+  const summary = [`Spent ${money(data.cumulative.totalCents)} so far in ${periodTitle(data)}`, expected?.text, compared?.text]
     .filter(Boolean)
     .join('. ');
 
@@ -143,7 +184,7 @@ function CumulativeSpending(props: {
                 <Text style={[styles.small, { color: compared.tone ? theme[compared.tone] : theme.textSecondary }]}>{compared.text}</Text>
               ) : null}
               {!expected && !compared ? (
-                <Text style={[styles.small, { color: theme.textSecondary }]}>Running total by day</Text>
+                <Text style={[styles.small, { color: theme.textSecondary }]}>Running total by {byMonth ? 'month' : 'day'}</Text>
               ) : null}
             </>
           )}
@@ -154,8 +195,9 @@ function CumulativeSpending(props: {
           series={series}
           maxCents={axis.maxCents}
           ticks={axis.ticks}
-          dayTicks={dayTicks(days.length)}
+          dayTicks={chartTicks(data)}
           dayCount={days.length}
+          tickLabel={ranged ? (position) => tickLabel(data, position) : undefined}
           height={CHART_HEIGHT}
           selected={selected}
           onSelect={setSelected}
@@ -168,18 +210,20 @@ function CumulativeSpending(props: {
         {hasComparison && comparisonName ? <LegendLine color={theme.chartComparison} label={comparisonName} /> : null}
         {hasExpected && expectedName ? <LegendLine color={theme.chartExpected} label={expectedName} dashed /> : null}
       </View>
-      <View style={styles.control}>
-        <Text style={[styles.small, { color: theme.textSecondary }]}>Compare with</Text>
-        <SegmentedControl
-          values={COMPARE_OPTIONS.map((option) => option.label)}
-          selectedIndex={Math.max(0, COMPARE_OPTIONS.findIndex((option) => option.value === props.compareWith))}
-          onChange={(event) => {
-            const option = COMPARE_OPTIONS[event.nativeEvent.selectedSegmentIndex];
-            if (option) props.onCompare(option.value);
-          }}
-          accessibilityLabel="Compare with"
-        />
-      </View>
+      {ranged ? null : (
+        <View style={styles.control}>
+          <Text style={[styles.small, { color: theme.textSecondary }]}>Compare with</Text>
+          <SegmentedControl
+            values={COMPARE_OPTIONS.map((option) => option.label)}
+            selectedIndex={Math.max(0, COMPARE_OPTIONS.findIndex((option) => option.value === props.compareWith))}
+            onChange={(event) => {
+              const option = COMPARE_OPTIONS[event.nativeEvent.selectedSegmentIndex];
+              if (option) props.onCompare(option.value);
+            }}
+            accessibilityLabel="Compare with"
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -225,7 +269,9 @@ function CategorySpending(props: {
   return (
     <View style={styles.body}>
       {slices.length === 0 ? (
-        <Text style={[styles.muted, { color: theme.textSecondary }]}>No spending in a category this month yet.</Text>
+        <Text style={[styles.muted, { color: theme.textSecondary }]}>
+          {isRange(data.period) ? 'No spending in a category in this period.' : 'No spending in a category this month yet.'}
+        </Text>
       ) : (
         <View style={{ gap: Spacing.three, opacity: props.updating ? 0.6 : 1 }}>
           <View
