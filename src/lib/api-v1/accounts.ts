@@ -71,6 +71,9 @@ export function serializeAccountPage(page: AccountPage) {
       countsAsSavings: account.countsAsSavings,
       creditLimitCents: account.creditLimitCents,
       paymentDueDay: account.paymentDueDay,
+      /** A card's, loan's or mortgage's yearly rate in basis points (19.99% is 1999) and minimum a month, for the payoff plan. */
+      interestRateBps: account.interestRateBps,
+      minimumPaymentCents: account.minimumPaymentCents,
     },
     liability,
     balance: balance(latest),

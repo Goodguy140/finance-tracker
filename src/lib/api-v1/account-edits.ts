@@ -1,6 +1,6 @@
 import { AccountType, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
-import { AccountEditError, createAccount, setAccountArchived, setCardTerms, updateAccount } from "@/lib/account-edits";
+import { AccountEditError, createAccount, setAccountArchived, setCardTerms, setDebtTerms, updateAccount } from "@/lib/account-edits";
 import { MAX_AMOUNT_CENTS } from "@/lib/money";
 
 /** Settings → Accounts' add and edit forms for the phone: `POST /api/v1/accounts`, `PATCH /api/v1/accounts/:id`. */
@@ -25,6 +25,22 @@ const patchSchema = z
     creditLimitCents: z.number().int().min(1, "Enter the credit limit as an amount, like 5000.").max(MAX_AMOUNT_CENTS).nullable().optional(),
     /** The day of the month a card's payment is due, 1 to 31; null clears it. */
     paymentDueDay: z.number().int().min(1, "Enter the due day as a day of the month, 1 to 31.").max(31, "Enter the due day as a day of the month, 1 to 31.").nullable().optional(),
+    /** A card's, loan's or mortgage's yearly interest rate in basis points, 0 to 10000 (19.99% is 1999); null clears it. */
+    interestRateBps: z
+      .number()
+      .int("Enter the interest rate as a yearly percentage, like 19.99.")
+      .min(0, "Enter the interest rate as a yearly percentage, like 19.99.")
+      .max(10_000, "Enter the interest rate as a yearly percentage, like 19.99.")
+      .nullable()
+      .optional(),
+    /** Its minimum payment a month; null clears it. */
+    minimumPaymentCents: z
+      .number()
+      .int("Enter the minimum payment as an amount, like 25.00.")
+      .min(0, "Enter the minimum payment as an amount, like 25.00.")
+      .max(MAX_AMOUNT_CENTS, "Enter the minimum payment as an amount, like 25.00.")
+      .nullable()
+      .optional(),
     archived: z.boolean().optional(),
   })
   .strict();
@@ -49,7 +65,7 @@ export async function createAccountFromApi(
 
 /**
  * Changes what the body names, in the form's order: the details, then a card's limit and due
- * day, then archived. A refusal stops there with its reason; what came before it is saved.
+ * day, then a card's or loan's interest rate and minimum, then archived. A refusal stops there with its reason; what came before it is saved.
  */
 export async function patchAccountFromApi(
   db: PrismaClient,
@@ -63,7 +79,16 @@ export async function patchAccountFromApi(
   const change = parsed.data;
   const current = await db.account.findFirst({
     where: { id: accountId, userId },
-    select: { name: true, type: true, currency: true, countsAsSavings: true, creditLimitCents: true, paymentDueDay: true },
+    select: {
+      name: true,
+      type: true,
+      currency: true,
+      countsAsSavings: true,
+      creditLimitCents: true,
+      paymentDueDay: true,
+      interestRateBps: true,
+      minimumPaymentCents: true,
+    },
   });
   if (!current) return { ok: false, status: 404, error: "Account not found." };
   try {
@@ -79,6 +104,12 @@ export async function patchAccountFromApi(
       await setCardTerms(db, userId, accountId, {
         creditLimitCents: change.creditLimitCents !== undefined ? change.creditLimitCents : current.creditLimitCents,
         paymentDueDay: change.paymentDueDay !== undefined ? change.paymentDueDay : current.paymentDueDay,
+      });
+    }
+    if (change.interestRateBps !== undefined || change.minimumPaymentCents !== undefined) {
+      await setDebtTerms(db, userId, accountId, {
+        interestRateBps: change.interestRateBps !== undefined ? change.interestRateBps : current.interestRateBps,
+        minimumPaymentCents: change.minimumPaymentCents !== undefined ? change.minimumPaymentCents : current.minimumPaymentCents,
       });
     }
     if (change.archived !== undefined) await setAccountArchived(db, userId, accountId, change.archived, headers);

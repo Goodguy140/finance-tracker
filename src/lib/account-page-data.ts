@@ -22,6 +22,8 @@ export type AccountPage = {
     countsAsSavings: boolean;
     creditLimitCents: number | null;
     paymentDueDay: number | null;
+    interestRateBps: number | null;
+    minimumPaymentCents: number | null;
   };
   liability: boolean;
   latest: { cents: number; date: Date; source: BalanceReadingSource } | null;
@@ -68,6 +70,8 @@ export async function loadAccountPage(
       countsAsSavings: true,
       creditLimitCents: true,
       paymentDueDay: true,
+      interestRateBps: true,
+      minimumPaymentCents: true,
     },
   });
   if (!account) return null;
