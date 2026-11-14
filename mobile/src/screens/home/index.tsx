@@ -5,7 +5,7 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { errorText, useApiQuery } from '@/api/query';
-import type { FinancialScore, Me, NetWorth, Spending, Summary } from '@/api/types';
+import type { FinancialScore, Me, NetWorth, Spending, Summary, ZeroBased } from '@/api/types';
 import { BudgetLine } from '@/components/budget-line';
 import { LoadState } from '@/components/load-state';
 import { OutboxBanner } from '@/components/outbox-banner';
@@ -28,6 +28,7 @@ import { bandTone, INSIGHTS_PATH, SCORE_PATH, scoreChangeText } from '@/utils/in
 import { formatCents, formatPeriodMonth } from '@/utils/money';
 import { hasReports } from '@/utils/reports';
 import { canSetSafeToSpendBuffer, safeToSpendBreakdown, safeToSpendBufferLine, safeToSpendLine } from '@/utils/safe-to-spend';
+import { zeroBasedBreakdown, zeroBasedLine, zeroBasedOverspent, zeroBasedTone } from '@/utils/zero-based';
 import { spendingPath } from '@/utils/spending';
 import { updateWidgets } from '@/widgets/update';
 
@@ -84,7 +85,12 @@ export function Home() {
   function card(id: HomeSectionId, summaryData: Summary): ReactNode {
     switch (id) {
       case 'safe-to-spend':
-        return <SafeToSpendCard data={summaryData} bufferHere={canSetSafeToSpendBuffer(me)} />;
+        // With zero-based budgeting on, the card shows "To assign" instead, as on the website.
+        return summaryData.zeroBased ? (
+          <ZeroBasedCard data={summaryData} zeroBased={summaryData.zeroBased} />
+        ) : (
+          <SafeToSpendCard data={summaryData} bufferHere={canSetSafeToSpendBuffer(me)} />
+        );
       case 'waiting':
         return <Waiting data={summaryData} />;
       case 'spending':
@@ -192,6 +198,73 @@ function SafeToSpendCard({ data, bufferHere }: { data: Summary; bufferHere: bool
           <Text style={[styles.link, { color: theme.tint }]}>
             {safe.bufferDays ? `Bill buffer: ${safe.bufferDays} day${safe.bufferDays === 1 ? '' : 's'} ›` : 'Set a bill buffer ›'}
           </Text>
+        </Pressable>
+      ) : null}
+    </Section>
+  );
+}
+
+function ZeroBasedCard({ data, zeroBased }: { data: Summary; zeroBased: ZeroBased }) {
+  const theme = useTheme();
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const money = (cents: number) => formatCents(cents, data.currency);
+  const tone = zeroBasedTone(zeroBased);
+  const overspent = zeroBasedOverspent(zeroBased, data.currency);
+  return (
+    <Section title="To assign this month">
+      <View style={styles.hero}>
+        <Text
+          style={[styles.heroAmount, { color: tone === 'danger' ? theme.danger : tone === 'positive' ? theme.positive : theme.text }]}
+          accessibilityLabel={`To assign this month: ${money(zeroBased.toAssignCents)}`}>
+          {money(zeroBased.toAssignCents)}
+        </Text>
+        <Text style={[styles.muted, { color: theme.textSecondary }]}>{zeroBasedLine(zeroBased, data.currency)}</Text>
+      </View>
+      {overspent ? (
+        <>
+          <Text style={[styles.muted, { color: theme.danger }]}>{overspent.line}</Text>
+          {overspent.rows.map((row) => (
+            <Pressable
+              key={row.categoryId}
+              onPress={() => router.push({ pathname: '/budget-cover', params: { categoryId: row.categoryId } })}
+              accessibilityRole="button"
+              accessibilityLabel={`${row.categoryName}, ${money(row.overCents)} over`}
+              accessibilityHint="Move money in from another budget"
+              style={styles.line}>
+              <Text style={[styles.lineLabel, { color: theme.text, flexShrink: 1 }]} numberOfLines={1}>
+                {row.categoryName}
+              </Text>
+              <Text style={[styles.lineAmount, { color: theme.danger }]}>{money(row.overCents)} ›</Text>
+            </Pressable>
+          ))}
+        </>
+      ) : null}
+      <Pressable
+        onPress={() => setOpen((v) => !v)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        hitSlop={8}>
+        <Text style={[styles.link, { color: theme.tint }]}>{open ? 'Hide how this is worked out' : 'How this is worked out'}</Text>
+      </Pressable>
+      {open
+        ? zeroBasedBreakdown(zeroBased).map((row) => (
+            <View key={row.label} style={styles.line}>
+              <Text style={[styles.lineLabel, { color: theme.textSecondary }]}>{row.label}</Text>
+              <Text style={[styles.lineAmount, { color: row.sign === '+' ? theme.positive : theme.text }]}>
+                {row.sign === '+' ? '+' : '−'}
+                {money(row.cents)}
+              </Text>
+            </View>
+          ))
+        : null}
+      {open ? (
+        <Pressable
+          onPress={() => router.push('/settings/safe-to-spend')}
+          accessibilityRole="button"
+          accessibilityHint="Opens Safe to spend in Settings, where zero-based budgeting is switched off"
+          hitSlop={8}>
+          <Text style={[styles.link, { color: theme.tint }]}>Zero-based budgeting: on ›</Text>
         </Pressable>
       ) : null}
     </Section>

@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Stack } from 'expo-router/stack';
 import { useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Switch, Text, TextInput } from 'react-native';
 
 import { apiRequest } from '@/api/client';
 import { errorText, useApiQuery } from '@/api/query';
@@ -25,7 +25,7 @@ import {
 /**
  * Safe to spend's bill buffer, the same value the website's Safe to spend card sets: how many days
  * ahead it also holds back bills that fall next month. Saves when the field is left, and shows the
- * number it gives now.
+ * number it gives now. Also the website card's zero-based switch, where the server takes it.
  */
 export function SafeToSpendSettingsScreen() {
   const theme = useTheme();
@@ -35,6 +35,7 @@ export function SafeToSpendSettingsScreen() {
   const { refreshing, onRefresh } = usePullToRefresh(query.refetch);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [switchProblem, setSwitchProblem] = useState<string | null>(null);
   // The field while it is being typed in; null shows what is saved.
   const [text, setText] = useState<string | null>(null);
   const settings = query.data;
@@ -59,6 +60,24 @@ export function SafeToSpendSettingsScreen() {
       void client.invalidateQueries({ queryKey: ['api', '/api/v1/summary'] });
     } catch (error) {
       setProblem(errorText(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setZeroBased(on: boolean) {
+    if (!session) return;
+    setSwitchProblem(null);
+    setBusy(true);
+    try {
+      client.setQueryData(
+        ['api', SAFE_TO_SPEND_PATH],
+        await apiRequest<SafeToSpendSettings>(session, 'PATCH', SAFE_TO_SPEND_PATH, { zeroBased: on }),
+      );
+      // Home's card switches between Safe to spend and To assign.
+      void client.invalidateQueries({ queryKey: ['api', '/api/v1/summary'] });
+    } catch (error) {
+      setSwitchProblem(errorText(error));
     } finally {
       setBusy(false);
     }
@@ -97,6 +116,22 @@ export function SafeToSpendSettingsScreen() {
               </FormField>
               {problem ? <Text style={[formStyles.error, { color: theme.danger }]}>{problem}</Text> : null}
             </Section>
+
+            {settings.zeroBased !== undefined ? (
+              <Section
+                title="Zero-based budgeting"
+                footer="Give every dollar a job: Home shows this month's income still to assign to budgets and goals instead of Safe to spend. The website's Safe to spend card switches the same setting.">
+                <FormField label="Show To assign on Home">
+                  <Switch
+                    value={settings.zeroBased}
+                    disabled={busy}
+                    onValueChange={(on) => void setZeroBased(on)}
+                    accessibilityLabel="Zero-based budgeting"
+                  />
+                </FormField>
+                {switchProblem ? <Text style={[formStyles.error, { color: theme.danger }]}>{switchProblem}</Text> : null}
+              </Section>
+            ) : null}
 
             <Section title="Safe to spend now">
               <Text style={[styles.amount, { color: safe.safeCents < 0 ? theme.danger : theme.positive }]}>
