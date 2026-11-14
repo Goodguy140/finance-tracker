@@ -697,7 +697,13 @@ build).
   its four pillars, where to improve and how it is worked out, then every insight under the
   website's sections, each with its transactions, its website page when it has one (tracking a
   recurring charge, a budget or rule opens the website in Safari), and the website's Snooze, Dismiss,
-  Not recurring or Don't flag this; dismissed and snoozed ones can be put back. Home shows the score
+  Not recurring or Don't flag this; dismissed and snoozed ones can be put back. On a server that
+  says how (`track` on each insight), **Track It** on a recurring charge opens the recurring rule
+  sheet filled in as the website's Track it form is, and **Track Separately** on a habit files it under
+  a category of its own with a rule per merchant (the website's `trackHabitSeparatelyAction`, shared
+  through `src/lib/insights/track-habit.ts`; `POST /api/v1/insights/track-habit`), then offers
+  **Set a Budget**. A link to Settings → Accounts, Settings → Categories or who owes you opens the
+  phone's own screen (`phoneRouteFor`). Home shows the score
   and how it moved. `GET /api/v1/score`, `GET /api/v1/insights`, `POST /api/v1/insights/dismiss` and
   `/restore` (`src/lib/api-v1/insights.ts`, the website's `loadInsights` and `loadFinancialScore`;
   `src/lib/insights/dismiss.ts` behind both apps' buttons). `src/screens/insights/`, `src/utils/insights.ts`

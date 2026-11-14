@@ -1,3 +1,4 @@
+import { CategoryKind } from "@prisma/client";
 import { z } from "zod";
 import type { InsightItemView } from "@/components/insights/insight-item";
 import { scoreBand, type FinancialScore } from "@/lib/financial-score";
@@ -5,14 +6,17 @@ import { loadFinancialScore } from "@/lib/financial-score-data";
 import { INSIGHT_SNOOZE_DAYS } from "@/lib/insights/dismiss";
 import { loadInsights } from "@/lib/insights/load";
 import { insightViews } from "@/lib/insights/view";
-import { insightKeySchema } from "@/lib/validation";
+import { HABIT_CATEGORY_NAMES } from "@/lib/insights/habit-patterns";
+import { prisma } from "@/lib/prisma";
+import { insightKeySchema, trackHabitSchema } from "@/lib/validation";
 
 /**
  * Insights and the financial score as `/api/v1/insights` and `/api/v1/score` give them to the
  * phone app. Both come from the loaders behind the website's Insights page, so the two show the
- * same insights and the same score. The phone has none of the website's forms (tracking a
- * recurring charge, filing a habit under its own category), so an insight that offers one, or a
- * link to another page, says which page of the website to open for it.
+ * same insights and the same score. An insight whose button leads somewhere says which page of
+ * the website it opens (`website`, for apps from before `track`); one the phone can act on itself
+ * also says how (`track`): a recurring charge with the website's "Track it" form filled in, or a
+ * habit to file under a category of its own (`POST /api/v1/insights/track-habit`).
  */
 
 type User = { id: string; countryCode: string; timezone: string | null };
@@ -25,7 +29,41 @@ function websiteAction(action: InsightItemView["action"]): { path: string; label
   return { path: "/insights#insights-habit", label: "Track separately" };
 }
 
-export function serializeAppInsight(view: InsightItemView) {
+/** What the phone needs to do an insight's "Track it" or "Track separately" itself. */
+function appTrack(action: InsightItemView["action"], expenseCategories: ReadonlyMap<string, string>) {
+  if (action?.kind === "track-recurring") {
+    const p = action.prefill;
+    return {
+      kind: "recurring" as const,
+      /** The website's "Track it" form as it opens. */
+      prefill: {
+        name: p.name,
+        type: p.type === "INCOME" ? ("income" as const) : ("expense" as const),
+        amountCents: p.amountCents,
+        cadence: p.cadence.toLowerCase() as Lowercase<typeof p.cadence>,
+        accountId: p.accountId,
+        categoryId: p.categoryId,
+        nextExpectedDate: p.nextExpectedDate,
+        semiMonthly: p.semiMonthly
+          ? { firstDay: p.semiMonthly.day, secondDay: p.semiMonthly.secondDay, beforeWeekend: p.semiMonthly.beforeWeekend }
+          : null,
+      },
+    };
+  }
+  if (action?.kind === "track-habit") {
+    const categoryName = HABIT_CATEGORY_NAMES[action.habit];
+    return {
+      kind: "habit" as const,
+      habit: action.habit,
+      categoryName,
+      /** The category it is already filed under, once tracked; null until then. */
+      trackedCategoryId: expenseCategories.get(categoryName.toLowerCase()) ?? null,
+    };
+  }
+  return null;
+}
+
+export function serializeAppInsight(view: InsightItemView, expenseCategories: ReadonlyMap<string, string> = new Map()) {
   return {
     /** Stable across loads: what dismissing and restoring name. */
     key: view.key,
@@ -46,6 +84,7 @@ export function serializeAppInsight(view: InsightItemView) {
       type: row.type.toLowerCase() as Lowercase<typeof row.type>,
     })),
     website: websiteAction(view.action),
+    track: appTrack(view.action, expenseCategories),
     /** Only on a hidden one: snoozed until this `YYYY-MM-DD`, or null when dismissed for good. */
     ...(view.dismissedUntil !== undefined ? { hiddenUntil: view.dismissedUntil } : {}),
   };
@@ -54,14 +93,19 @@ export function serializeAppInsight(view: InsightItemView) {
 export type AppInsight = ReturnType<typeof serializeAppInsight>;
 
 export async function loadAppInsights(user: User) {
-  const loaded = await loadInsights(user.id, user.countryCode, user.timezone);
+  const [loaded, categories] = await Promise.all([
+    loadInsights(user.id, user.countryCode, user.timezone),
+    prisma.category.findMany({ where: { userId: user.id, kind: CategoryKind.EXPENSE }, select: { id: true, name: true } }),
+  ]);
   const { visible, dismissed } = insightViews(loaded);
+  // Matched ignoring case, as the website tells a tracked habit from an untracked one.
+  const byName = new Map(categories.map((c) => [c.name.toLowerCase(), c.id]));
   return {
     currency: loaded.currency,
     snoozeDays: INSIGHT_SNOOZE_DAYS,
-    insights: visible.map(serializeAppInsight),
+    insights: visible.map((view) => serializeAppInsight(view, byName)),
     /** Dismissed or snoozed, for putting back. */
-    hidden: dismissed.map(serializeAppInsight),
+    hidden: dismissed.map((view) => serializeAppInsight(view, byName)),
   };
 }
 
@@ -126,6 +170,11 @@ function parse<T>(schema: z.ZodType<T>, body: unknown): Parsed<T> {
 /** `{ "key", "mode" }`: `snooze` hides it for `INSIGHT_SNOOZE_DAYS`, `forever` (the default) for good. */
 export function parseDismissBody(body: unknown): Parsed<{ key: string; mode: "snooze" | "forever" }> {
   return parse(dismissBody, body);
+}
+
+/** `{ "habit" }`: the habit insight's `track.habit`. */
+export function parseTrackHabitBody(body: unknown): Parsed<{ habit: z.infer<typeof trackHabitSchema>["habit"] }> {
+  return parse(trackHabitSchema.strict(), body);
 }
 
 /** `{ "key" }`: the dismissed or snoozed insight to list again. */
