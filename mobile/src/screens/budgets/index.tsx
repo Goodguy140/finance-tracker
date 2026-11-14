@@ -13,6 +13,7 @@ import { Section } from '@/components/section';
 import { Spacing } from '@/constants/theme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useTheme } from '@/hooks/use-theme';
+import { canEditCategories } from '@/utils/category-edits';
 import { canEditBudgets } from '@/utils/budget-edits';
 import { fundNote, rolloverNote, sectionByGroup } from '@/utils/budgets';
 import { localToday, shiftMonth } from '@/utils/dates';
@@ -62,7 +63,7 @@ export function Budgets() {
           </Text>
         ) : null}
         <LoadState loading={query.isPending} error={query.error ? errorText(query.error) : null} />
-        {data && !query.error ? <BudgetList data={data} /> : null}
+        {data && !query.error ? <BudgetList data={data} suggest={canEditCategories(me)} /> : null}
       </ScrollView>
       <Stack.Title large>Budgets</Stack.Title>
       {data?.currentMonth && shown && !ranged ? (
@@ -131,14 +132,19 @@ function Tappable(props: { categoryId: string; label: string; editable: boolean;
   );
 }
 
-function BudgetList({ data }: { data: BudgetsData }) {
+function BudgetList({ data, suggest }: { data: BudgetsData; suggest: boolean }) {
   const theme = useTheme();
   const router = useRouter();
   const yearly = data.yearly ?? [];
   const ranged = isRange(data.period);
   const editable = canEditBudgets(data);
   const trends = data.trends === true;
-  const add = editable ? <FormButton label="Add a Budget" onPress={() => router.push('/budget')} /> : null;
+  const add = editable ? (
+    <>
+      <FormButton label="Add a Budget" onPress={() => router.push('/budget')} />
+      {suggest ? <FormButton label="Suggest Budgets" onPress={() => router.push('/budget-suggestions')} /> : null}
+    </>
+  ) : null;
   if (data.budgets.length === 0 && yearly.length === 0) {
     return (
       <>

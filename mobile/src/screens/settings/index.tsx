@@ -16,6 +16,7 @@ import { canSetAlertTiming } from '@/utils/alert-timing';
 import { RELOCK_AFTER_MS } from '@/utils/app-lock';
 import { canEditGoals } from '@/utils/goals';
 import { canSetSafeToSpendBuffer } from '@/utils/safe-to-spend';
+import { canEditCategories } from '@/utils/category-edits';
 import { canUseZeroBased } from '@/utils/zero-based';
 import { canEditRules } from '@/utils/rule-edits';
 import { canMakeRules } from '@/utils/transaction-rules';
@@ -96,6 +97,17 @@ export function Settings() {
             ) : null}
             <Pressable onPress={() => router.push('/settings/rules')} accessibilityRole="button" hitSlop={8}>
               <Text style={[styles.link, { color: theme.tint }]}>Suggested rules ›</Text>
+            </Pressable>
+          </Section>
+        ) : null}
+
+        {canEditCategories(me.data) ? (
+          <Section title="Categories and tags" footer="Add, rename, group or delete categories, have budgets suggested, and tidy tags.">
+            <Pressable onPress={() => router.push('/settings/categories')} accessibilityRole="button" hitSlop={8}>
+              <Text style={[styles.link, { color: theme.tint }]}>Categories ›</Text>
+            </Pressable>
+            <Pressable onPress={() => router.push('/settings/tags')} accessibilityRole="button" hitSlop={8}>
+              <Text style={[styles.link, { color: theme.tint }]}>Tags ›</Text>
             </Pressable>
           </Section>
         ) : null}

@@ -1,11 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { CategoryKind, SpendingRole, type Prisma } from "@prisma/client";
+import { CategoryKind, SpendingRole } from "@prisma/client";
 import { z } from "zod";
-import { normalizeGroupName } from "@/lib/category-groups";
+import {
+  createCategory,
+  deleteCategory,
+  findManagedCategory,
+  mergeCategory,
+  renameCategory,
+  setCategoryGroup,
+  setCategorySpendingRole,
+} from "@/lib/category-edits";
 import { toCents } from "@/lib/money";
-import { currentYmInTimeZone } from "@/lib/period-month";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { setBudgetRollover, setMonthlyBudget, setYearlyBudget } from "@/lib/budget-edits";
@@ -16,91 +23,12 @@ import { formAction, getFormValue } from "./_helpers";
 
 /**
  * Category management: add, rename, merge, delete, the budget that goes with a category, and
- * which category each Plaid category lands in.
- *
- * Only expense and income categories are managed here. The one transfer category is the
- * app's own (see `ensureFallbackCategory`), and nothing should rename or remove it.
+ * which category each Plaid category lands in. Adding, renaming, merging, deleting, groups and
+ * needs or wants save through `src/lib/category-edits.ts`, shared with the iPhone app.
  */
 
-const MAX_CATEGORY_NAME_LENGTH = 80;
 const manageableKind = z.enum([CategoryKind.EXPENSE, CategoryKind.INCOME]);
 const idSchema = z.string().min(1);
-
-type Tx = Prisma.TransactionClient;
-
-function normalizeName(raw: string) {
-  const name = raw.trim().replace(/\s+/g, " ");
-  if (!name) throw new Error("Enter a name for the category.");
-  if (name.length > MAX_CATEGORY_NAME_LENGTH) {
-    throw new Error(`Category names can be at most ${MAX_CATEGORY_NAME_LENGTH} characters.`);
-  }
-  return name;
-}
-
-async function findManagedCategory(client: Tx | typeof prisma, userId: string, categoryId: string) {
-  const category = await client.category.findFirst({
-    where: { id: idSchema.parse(categoryId), userId, kind: { in: manageableKind.options } },
-  });
-  if (!category) throw new Error("Category not found.");
-  return category;
-}
-
-/** Another category of the same kind whose name matches ignoring case, if any. */
-async function findSameName(tx: Tx, userId: string, kind: CategoryKind, name: string, exceptId?: string) {
-  const sameKind = await tx.category.findMany({ where: { userId, kind }, select: { id: true, name: true } });
-  const key = name.toLowerCase();
-  return sameKind.find((c) => c.id !== exceptId && c.name.toLowerCase() === key);
-}
-
-/**
- * Moves everything that points at `fromId` onto `toId`, then deletes `fromId`.
- *
- * Budgets: where both categories have a limit for the same month, the target's is kept —
- * merging is "this was always that", so the category being merged away gives up its own.
- * Every other month's limit moves across. Budget alert history for the old category is
- * dropped; the merged spend is judged against the target's limit from here on.
- */
-async function mergeCategoryInto(tx: Tx, userId: string, fromId: string, toId: string) {
-  const move = { where: { userId, categoryId: fromId }, data: { categoryId: toId } };
-  await tx.transaction.updateMany(move);
-  await tx.splitTransactionPart.updateMany(move);
-  await tx.recurringTransaction.updateMany(move);
-  await tx.plannedTransaction.updateMany(move);
-  await tx.plaidCategoryMapping.updateMany(move);
-  await tx.plaidItem.updateMany({ where: { userId, defaultCategoryId: fromId }, data: { defaultCategoryId: toId } });
-  await tx.transactionRule.updateMany({ where: { userId, setCategoryId: fromId }, data: { setCategoryId: toId } });
-  await tx.savedSearch.updateMany(move);
-  await tx.transactionRuleSplit.updateMany({
-    where: { categoryId: fromId, rule: { userId } },
-    data: { categoryId: toId },
-  });
-  await tx.plaidStagedTransaction.updateMany({
-    where: { userId, suggestedCategoryId: fromId },
-    data: { suggestedCategoryId: toId },
-  });
-
-  const [fromBudgets, toBudgets] = await Promise.all([
-    tx.budget.findMany({ where: { userId, categoryId: fromId }, select: { id: true, periodMonth: true } }),
-    tx.budget.findMany({ where: { userId, categoryId: toId }, select: { periodMonth: true } }),
-  ]);
-  const targetMonths = new Set(toBudgets.map((b) => b.periodMonth));
-  const clashing = fromBudgets.filter((b) => targetMonths.has(b.periodMonth)).map((b) => b.id);
-  if (clashing.length > 0) await tx.budget.deleteMany({ where: { id: { in: clashing } } });
-  await tx.budget.updateMany(move);
-  await tx.budgetAlertNotification.deleteMany({ where: { userId, categoryId: fromId } });
-
-  // Yearly budgets merge the same way: the target keeps its own for a year both have.
-  const [fromYearly, toYearly] = await Promise.all([
-    tx.yearlyBudget.findMany({ where: { userId, categoryId: fromId }, select: { id: true, year: true } }),
-    tx.yearlyBudget.findMany({ where: { userId, categoryId: toId }, select: { year: true } }),
-  ]);
-  const targetYears = new Set(toYearly.map((b) => b.year));
-  const clashingYears = fromYearly.filter((b) => targetYears.has(b.year)).map((b) => b.id);
-  if (clashingYears.length > 0) await tx.yearlyBudget.deleteMany({ where: { id: { in: clashingYears } } });
-  await tx.yearlyBudget.updateMany(move);
-
-  await tx.category.delete({ where: { id: fromId } });
-}
 
 async function afterCategoryChange(user: { id: string; timezone: string }) {
   // Staged rows pointed at a merged or deleted category, or a mapping changed: the queue
@@ -113,30 +41,10 @@ async function afterCategoryChange(user: { id: string; timezone: string }) {
 /** Adds a category, with an optional monthly budget from this month on. */
 export const createCategoryAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const name = normalizeName(getFormValue(formData, "name"));
   const kind = manageableKind.parse(getFormValue(formData, "kind") || CategoryKind.EXPENSE);
   const rawLimit = getFormValue(formData, "limit").trim();
   const limitCents = rawLimit ? parseLimit(rawLimit) : null;
-  if (limitCents !== null && kind !== CategoryKind.EXPENSE) {
-    throw new Error("Budgets apply to expense categories only.");
-  }
-
-  await prisma.$transaction(async (tx) => {
-    if (await findSameName(tx, user.id, kind, name)) {
-      throw new Error(`You already have a category called “${name}”.`);
-    }
-    const created = await tx.category.create({ data: { userId: user.id, name, kind }, select: { id: true } });
-    if (limitCents !== null) {
-      await tx.budget.create({
-        data: {
-          userId: user.id,
-          categoryId: created.id,
-          periodMonth: currentYmInTimeZone(user.timezone),
-          limitCents,
-        },
-      });
-    }
-  });
+  await createCategory(prisma, user, { name: getFormValue(formData, "name"), kind, limitCents });
   revalidatePath("/");
   revalidatePath("/settings", "layout");
 });
@@ -148,29 +56,14 @@ export const createCategoryAction = formAction(async (formData: FormData) => {
  */
 export const renameCategoryAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const name = normalizeName(getFormValue(formData, "name"));
-  await prisma.$transaction(async (tx) => {
-    const category = await findManagedCategory(tx, user.id, getFormValue(formData, "categoryId"));
-    const other = await findSameName(tx, user.id, category.kind, name, category.id);
-    if (other) {
-      await mergeCategoryInto(tx, user.id, category.id, other.id);
-      return;
-    }
-    await tx.category.update({ where: { id: category.id }, data: { name } });
-  });
+  await renameCategory(prisma, user.id, getFormValue(formData, "categoryId"), getFormValue(formData, "name"));
   await afterCategoryChange(user);
 });
 
 /** Merges one category into another of the same kind. */
 export const mergeCategoryAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  await prisma.$transaction(async (tx) => {
-    const from = await findManagedCategory(tx, user.id, getFormValue(formData, "categoryId"));
-    const to = await findManagedCategory(tx, user.id, getFormValue(formData, "targetCategoryId"));
-    if (from.id === to.id) throw new Error("Pick a different category to merge into.");
-    if (from.kind !== to.kind) throw new Error("Expense and income categories cannot be merged.");
-    await mergeCategoryInto(tx, user.id, from.id, to.id);
-  });
+  await mergeCategory(prisma, user.id, getFormValue(formData, "categoryId"), getFormValue(formData, "targetCategoryId"));
   await afterCategoryChange(user);
 });
 
@@ -182,32 +75,7 @@ export const mergeCategoryAction = formAction(async (formData: FormData) => {
 export const deleteCategoryAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
   const targetId = getFormValue(formData, "targetCategoryId").trim();
-  await prisma.$transaction(async (tx) => {
-    const category = await findManagedCategory(tx, user.id, getFormValue(formData, "categoryId"));
-    const remaining = await tx.category.count({ where: { userId: user.id, kind: category.kind } });
-    if (remaining <= 1) {
-      throw new Error(`Keep at least one ${category.kind === CategoryKind.INCOME ? "income" : "expense"} category.`);
-    }
-    if (targetId) {
-      const target = await findManagedCategory(tx, user.id, targetId);
-      if (target.id === category.id) throw new Error("Pick a different category to move its transactions to.");
-      if (target.kind !== category.kind) throw new Error("Expense and income categories cannot be merged.");
-      await mergeCategoryInto(tx, user.id, category.id, target.id);
-      return;
-    }
-    const [transactions, splitParts, recurring, planned] = await Promise.all([
-      tx.transaction.count({ where: { userId: user.id, categoryId: category.id } }),
-      tx.splitTransactionPart.count({ where: { userId: user.id, categoryId: category.id } }),
-      tx.recurringTransaction.count({ where: { userId: user.id, categoryId: category.id } }),
-      tx.plannedTransaction.count({ where: { userId: user.id, categoryId: category.id } }),
-    ]);
-    if (transactions + splitParts + recurring + planned > 0) {
-      throw new Error("This category is in use. Choose a category to move its transactions to.");
-    }
-    await tx.budget.deleteMany({ where: { userId: user.id, categoryId: category.id } });
-    await tx.budgetAlertNotification.deleteMany({ where: { userId: user.id, categoryId: category.id } });
-    await tx.category.delete({ where: { id: category.id } });
-  });
+  await deleteCategory(prisma, user.id, getFormValue(formData, "categoryId"), targetId || null);
   await afterCategoryChange(user);
 });
 
@@ -274,11 +142,9 @@ export const setCategoryYearlyBudgetAction = formAction(async (formData: FormDat
  */
 export const setCategorySpendingRoleAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const category = await findManagedCategory(prisma, user.id, getFormValue(formData, "categoryId"));
-  if (category.kind !== CategoryKind.EXPENSE) throw new Error("Only spending categories are needs or wants.");
   const raw = getFormValue(formData, "spendingRole");
   const spendingRole = raw === "NEED" ? SpendingRole.NEED : raw === "WANT" ? SpendingRole.WANT : null;
-  await prisma.category.update({ where: { id: category.id }, data: { spendingRole } });
+  await setCategorySpendingRole(prisma, user.id, getFormValue(formData, "categoryId"), spendingRole);
   revalidatePath("/insights");
   revalidatePath("/settings", "layout");
 });
@@ -289,16 +155,7 @@ export const setCategorySpendingRoleAction = formAction(async (formData: FormDat
  */
 export const setCategoryGroupAction = formAction(async (formData: FormData) => {
   const user = await requireUser();
-  const category = await findManagedCategory(prisma, user.id, getFormValue(formData, "categoryId"));
-  let groupName = normalizeGroupName(getFormValue(formData, "groupName"));
-  if (groupName) {
-    const existing = await prisma.category.findMany({
-      where: { userId: user.id, groupName: { not: null }, NOT: { id: category.id } },
-      select: { groupName: true },
-    });
-    groupName = existing.find((c) => c.groupName!.toLowerCase() === groupName!.toLowerCase())?.groupName ?? groupName;
-  }
-  await prisma.category.update({ where: { id: category.id }, data: { groupName } });
+  await setCategoryGroup(prisma, user.id, getFormValue(formData, "categoryId"), getFormValue(formData, "groupName"));
   revalidatePath("/");
   revalidatePath("/reports", "layout");
   revalidatePath("/settings", "layout");

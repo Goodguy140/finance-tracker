@@ -352,7 +352,8 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
   - Categories & budgets (add, rename, merge, delete with reassign, budget, rollover, earlier
     budgets, bank mapping, group, need or want for the score's 50/30/20 split):
     `categories-panel.tsx`, `settings/budget-history.tsx`,
-    `actions/categories.ts`, `actions/budgets.ts`. **Category groups** (`Category.groupName`, a
+    `actions/categories.ts`, `actions/budgets.ts`; adding, renaming, merging, deleting, groups and
+    needs or wants save through `src/lib/category-edits.ts`, shared with the iPhone app. **Category groups** (`Category.groupName`, a
     shared label, matched ignoring case; `src/lib/category-groups.ts`): the list is shown under
     group headings with each group's budget and spend; the Budgets card shows its rows under
     group headings with the group's total and what is left; the pie adds each group up (card
@@ -366,7 +367,8 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     amount per expense category from the last 3 or 6 full months since the first transaction,
     the median month (a one-off month is marked and passed over) rounded up, with a tick box
     and an editable amount per row and the total against average income; ticked rows are set
-    from this month on. `src/lib/budget-suggestions.ts`, `budget-suggestions-data.ts`,
+    from this month on (`applyBudgetSuggestions` in `src/lib/budget-edits.ts`, shared with the
+    iPhone app). `src/lib/budget-suggestions.ts`, `budget-suggestions-data.ts`,
     `settings/budget-suggestions.tsx`, `applyBudgetSuggestionsAction`
   - Rules (title/type/account/amount conditions, the title matching any of up to 20 texts —
     "contains Bell Aliant Pap or Internet", stored one per line in `titlePattern`; set category, title, amount, account, note,
@@ -379,7 +381,8 @@ Sections are defined once in `src/lib/settings-sections.ts` (sidebar, home list,
     API split unless the row names a category, the bank queue splits while the row keeps the
     rule's category (not "Add with category"), apply to past splits matching expenses without owed
     shares; cents from `splitCentsByShares`, written as `SplitTransactionPart`; in backups
-  - Tags (rename, merge, delete): `settings/tags-panel.tsx`, `src/lib/tags*.ts`
+  - Tags (rename, merge, delete): `settings/tags-panel.tsx`, `src/lib/tags*.ts`, `src/lib/tag-edits.ts`
+    (shared with the iPhone app)
   - Subscriptions (shared members, who paid, skip occurrence): `subscriptions-panel.tsx`,
     `actions/subscriptions.ts`, `src/lib/recurring-skip.ts`
   - **Subscription cancel helper** (Recurring card and rule form, bills only): "Where to cancel"
@@ -661,6 +664,23 @@ build).
   split, a new amount or account, a note, a transfer) is named under Then and kept as it is.
   `GET /api/v1/rules`, `GET`/`PATCH`/`DELETE /api/v1/rules/:id`, `POST /api/v1/rules/:id/move`.
   `src/screens/rules/list.tsx`, `src/screens/rules/edit.tsx`, `src/utils/rule-edits.ts`
+- Categories, Suggest budgets and tags (Settings → Categories and tags, on servers that list
+  `category-edits` in `/api/v1/me`). **Categories**: spending under its groups, then income, each
+  with how often it is used; + adds one (spending or income, an optional monthly budget from this
+  month on). A category's sheet renames it (into another of the kind's name asks, then merges the
+  two, as the website does), files it under a group (typing an existing one in any case joins it),
+  marks spending a need, a want or neither for the score, and **Delete Category** (one in use moves
+  its entries, budgets and rules to the category picked; the last of a kind is kept).
+  **Suggest budgets** (Categories, or Budgets beside Add a Budget): the website's dialog, last 3 or
+  6 full months, each row's months with the one-off passed over, a switch and an amount, the total
+  after setting against average income; the ticked ones are set from this month on. **Tags**: each
+  with its count; Rename… (into another's name asks, then merges) and Delete…. `GET
+  /api/v1/categories?details=1`, `POST /api/v1/categories`, `PATCH`/`DELETE
+  /api/v1/categories/:id` (`?moveTo=`), `GET`/`POST /api/v1/budgets/suggestions`, `PATCH`/`DELETE
+  /api/v1/tags/:id` (`src/lib/api-v1/category-edits.ts`, from the website's
+  `src/lib/category-edits.ts`, `tag-edits.ts` and `applyBudgetSuggestions` in `budget-edits.ts`).
+  `src/screens/categories/`, `src/screens/budgets/suggest.tsx`, `src/screens/tags/list.tsx`,
+  `src/utils/category-edits.ts`
 - Savings goals (Home's Savings goals card, Settings → Savings goals, a goal on an account's page):
   every goal's saved amount of its target, bar and status, what a dated goal needs a month and when
   it would be reached at its pace, as the website's card says it. **Add a Goal** and tapping a goal
