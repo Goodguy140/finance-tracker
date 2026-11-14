@@ -13,6 +13,7 @@ import {
   parseTagsInput,
   transactionName,
   transactionSubtitle,
+  transferChanges,
   transferSides,
 } from './transactions';
 
@@ -162,6 +163,7 @@ describe('a transfer’s accounts', () => {
   it('can be changed unless the transfer is paired or the server is too old', () => {
     expect(lockedReason(transfer(), 'account')).toBeNull();
     expect(lockedReason(transfer({ transferPeerId: 'other-leg' }), 'account')).toMatch(/Unpair it on the website/);
+    expect(lockedReason(transfer({ transferPeerId: 'other-leg' }), 'account', true)).toMatch(/Unpair it below/);
     expect(lockedReason(transfer({ transferPeerId: undefined }), 'account')).toMatch(/too old/);
     expect(lockedReason(transfer(), 'amount')).toMatch(/amount can't be changed/);
   });
@@ -190,5 +192,27 @@ describe('listPath', () => {
   it('looks across every month while searching or showing what needs review', () => {
     expect(listPath('2026-02', 'tim hortons', none, null)).toBe('/api/v1/transactions?limit=100&q=tim+hortons');
     expect(listPath('2026-02', '', { type: null, needsReview: true }, null)).toBe('/api/v1/transactions?limit=100&needsReview=true');
+  });
+});
+
+describe('transferChanges', () => {
+  const transfer = (overrides: Partial<Transaction> = {}) =>
+    tx({ type: 'transfer', amountCents: 4_000, accountId: 'chequing', transferAccountId: 'savings', transferPeerId: null, ...overrides });
+  it('offers Mark as transfer on spending and income, saying what it takes out of', () => {
+    expect(transferChanges(tx()).map((c) => [c.change, c.label])).toEqual([['mark', 'Mark as Transfer']]);
+    expect(transferChanges(tx())[0].note).toMatch(/totals and budgets/);
+    expect(transferChanges(tx({ type: 'income', amountCents: 5_000 }))[0].note).toMatch(/not income/);
+  });
+
+  it('counts a transfer back the way the money went', () => {
+    expect(transferChanges(transfer({ amountCents: 4_000 })).map((c) => c.label)).toEqual(['Not a Transfer: Count as an Expense']);
+    expect(transferChanges(transfer({ amountCents: -4_000 })).map((c) => c.label)).toEqual(['Not a Transfer: Count as Income']);
+    expect(transferChanges(transfer())[0].confirm).toBeNull();
+  });
+
+  it('asks first for a pair, whose other side changes too', () => {
+    const pair = transferChanges(transfer({ transferPeerId: 'other-leg' }));
+    expect(pair.map((c) => c.change)).toEqual(['unpair', 'unmark']);
+    expect(pair.every((c) => c.confirm)).toBe(true);
   });
 });

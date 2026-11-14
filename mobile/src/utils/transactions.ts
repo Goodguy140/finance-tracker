@@ -227,14 +227,19 @@ export function transferSides(row: Pick<Transaction, 'amountCents'>): {
 }
 
 /** Why the phone cannot change a field of this entry, or null when it can. */
-export function lockedReason(row: Transaction, field: 'amount' | 'category' | 'account'): string | null {
+export function lockedReason(
+  row: Transaction,
+  field: 'amount' | 'category' | 'account',
+  /** The server takes Unpair from the phone (`canChangeTransfers`). */
+  canUnpair = false,
+): string | null {
   if (row.type === 'transfer') {
     if (field === 'amount') return "A transfer's amount can't be changed.";
     if (field === 'category') return 'A transfer has no category.';
     // A server from before the phone could change them refuses it, and does not send this.
     if (row.transferPeerId === undefined) return "This server is too old to change a transfer's accounts from the phone.";
     if (row.transferPeerId) {
-      return 'Both sides of this transfer are in your log, each from its own bank. Unpair it on the website to change its accounts.';
+      return `Both sides of this transfer are in your log, each from its own bank. Unpair it ${canUnpair ? 'below' : 'on the website'} to change its accounts.`;
     }
     return null;
   }
@@ -268,4 +273,60 @@ export function listPath(month: string, search: string, filters: ListFilters, cu
   if (filters.needsReview) params.set('needsReview', 'true');
   if (cursor) params.set('cursor', cursor);
   return `/api/v1/transactions?${params.toString()}`;
+}
+
+/** Whether the server takes Mark as transfer, Not a transfer and Unpair from the phone. */
+export function canChangeTransfers(me: { features?: string[] } | undefined): boolean {
+  return me?.features?.includes('transfer-marking') ?? false;
+}
+
+export type TransferChange = 'mark' | 'unmark' | 'unpair';
+
+/**
+ * The website's transfer controls for one entry: Mark as transfer under an expense or income
+ * entry, Not a transfer under a transfer (both sides for a pair), and Unpair for a pair. Each
+ * with what it does, and the question to ask first when it changes more than this entry.
+ */
+export function transferChanges(
+  row: Pick<Transaction, 'type' | 'amountCents' | 'transferPeerId'>,
+): { change: TransferChange; label: string; note: string; confirm: string | null }[] {
+  if (row.type === 'expense' || row.type === 'income') {
+    return [
+      {
+        change: 'mark',
+        label: 'Mark as Transfer',
+        note:
+          row.type === 'expense'
+            ? 'Paying a credit card or moving money to savings is not spending. Mark it as a transfer to take it out of your totals and budgets.'
+            : 'Money from one of your own accounts is not income. Mark it as a transfer to take it out of your totals.',
+        confirm: null,
+      },
+    ];
+  }
+  // Money leaving the account (a positive amount) was spending; arriving, income.
+  const counted = row.amountCents >= 0 ? 'an expense' : 'income';
+  if (!row.transferPeerId) {
+    return [
+      {
+        change: 'unmark',
+        label: `Not a Transfer: Count as ${row.amountCents >= 0 ? 'an Expense' : 'Income'}`,
+        note: `It goes back into your totals as ${counted}, in Other${row.amountCents >= 0 ? '' : ' Income'} until you pick a category.`,
+        confirm: null,
+      },
+    ];
+  }
+  return [
+    {
+      change: 'unpair',
+      label: 'Unpair',
+      note: 'Both sides stay transfers, each with its own accounts to set.',
+      confirm: 'Both sides stay transfers. Neither one names the other account until you set it.',
+    },
+    {
+      change: 'unmark',
+      label: 'Not a Transfer: Count Both Sides',
+      note: 'The side that left becomes an expense and the side that arrived becomes income.',
+      confirm: 'The other side of this transfer is counted again too: the money that left as an expense, the money that arrived as income.',
+    },
+  ];
 }
