@@ -167,7 +167,7 @@ otherwise). Audit: `mfa_verified` (`method: "passkey-signin"`, `via: "app"`) and
   and `_skipped`), as are rows added or
   linked from the queue (`plaid_transactions_committed` with `via: "app"`); the phone's adds skip
   Needs review, since the person typed them. Nothing on `/api/v1` clears or restores data in bulk, changes
-  sign-in, or reaches admin controls.
+  sign-in (apart from adding a passkey, below, behind a fresh second factor), or reaches admin controls.
 - Connecting a bank, or fixing one (signing in again, renewing access, sharing new accounts),
   needs Face ID, as the website asks "Confirm it's you" before Plaid Link (`requireFreshMfa`): a
   bank connection is a standing credential to someone's account, so a stolen device token alone
@@ -184,6 +184,17 @@ otherwise). Audit: `mfa_verified` (`method: "passkey-signin"`, `via: "app"`) and
   (`method: "passkey"`, `via: "app"`, `for: "bank-link"`), `plaid_link_started`,
   `plaid_item_linked` or `plaid_item_update_completed`, and `plaid_account_mapped`, each with
   `via: "app"`. `src/lib/app-bank-link.ts`.
+- Adding a passkey (`POST /api/v1/app/passkeys/options`, then `POST /api/v1/app/passkeys`) needs
+  what the website's `proveEnrollment` asks for when the account already has a second factor: a
+  fresh use of one. With a passkey, that is Face ID with it (a single-use `authenticate`
+  challenge, checked by `verifyAuthentication`); with only an authenticator app, a code from it
+  (`verifyTotpForUser`, which refuses a code used before, limited to 10 tries in 15 minutes per
+  user). An account with neither is refused (403): its first factor is added on the website, which
+  asks for the password and shows the recovery codes, and the phone never handles a password.
+  Only after the proof does the server hand out a single-use `register` challenge for that user;
+  the passkey is then checked by the website's `verifyRegistration` (user verification required,
+  origin and RP ID from `NEXTAUTH_URL`). Device tokens only. Audit: `passkey_registered`
+  (`from: "app"`). `src/lib/app-passkeys.ts`.
 - It ends when the phone signs out (`POST /api/v1/app/revoke`), when the person signs it out
   under **Settings → Security → Signed-in apps**, after 90 days unused, and on anything that
   bumps `User.tokenVersion` (password change or reset, suspension, `reset-mfa.cjs`). A

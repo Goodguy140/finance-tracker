@@ -496,6 +496,16 @@ build).
   the app are not available there.
   `app.config.ts`, `passkeys/Passkeys.swift`, `src/session/passkeys.ts`,
   `src/utils/passkey-sign-in.ts`, `src/utils/home-server.ts`
+- Passkeys (Settings → Security → Passkeys, needs the build with `Passkeys.register`): the
+  account's passkeys with when each was added and last used, and on the home server **Add a
+  Passkey**: confirm it's you first, with Face ID and a passkey the account has, or else a code from
+  its authenticator app (as the website asks for a fresh second factor), then iOS saves the new one
+  behind Face ID, telling iOS not to make a second of one it already holds. An account with no
+  second factor adds its first on the website (it asks for the password, which the app never
+  sees, and shows recovery codes). Rename and remove stay on the website. `GET`/`POST
+  /api/v1/app/passkeys`, `POST /api/v1/app/passkeys/options` (device tokens only,
+  `src/lib/app-passkeys.ts`, audit-logged as on the web). `src/screens/settings/passkeys.tsx`,
+  `src/session/add-passkey.ts`, `src/session/step-up.ts`, `src/utils/passkey-add.ts`
 - Tabs (`src/app/(tabs)/_layout.tsx`, native tab bar): Home, Transactions, Review (badged with the
   bank rows waiting), Budgets, Settings. Data is cached and
   refetched when the app comes back to the front (`src/api/query.tsx`, TanStack Query)

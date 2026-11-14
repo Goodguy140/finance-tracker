@@ -17,6 +17,7 @@ import { RELOCK_AFTER_MS } from '@/utils/app-lock';
 import { canEditGoals } from '@/utils/goals';
 import { canSetSafeToSpendBuffer } from '@/utils/safe-to-spend';
 import { canEditCategories } from '@/utils/category-edits';
+import { hasPasskeys } from '@/utils/passkey-add';
 import { canUseZeroBased } from '@/utils/zero-based';
 import { canEditRules } from '@/utils/rule-edits';
 import { canMakeRules } from '@/utils/transaction-rules';
@@ -148,7 +149,7 @@ export function Settings() {
           </Section>
         ) : null}
 
-        <LockSection />
+        <LockSection passkeys={hasPasskeys(me.data)} />
 
         <AboutSection />
 
@@ -167,8 +168,10 @@ export function Settings() {
   );
 }
 
-/** The Face ID lock: on or off, each way confirmed by iOS first. */
-function LockSection() {
+/** The Face ID lock: on or off, each way confirmed by iOS first. And the account's passkeys. */
+function LockSection({ passkeys }: { passkeys: boolean }) {
+  const theme = useTheme();
+  const router = useRouter();
   const lock = useAppLock();
   const [busy, setBusy] = useState(false);
   const minutes = RELOCK_AFTER_MS / 60_000;
@@ -192,6 +195,11 @@ function LockSection() {
           accessibilityLabel={`Require ${lock.method}`}
         />
       </FormField>
+      {passkeys ? (
+        <Pressable onPress={() => router.push('/settings/passkeys')} accessibilityRole="button" hitSlop={8}>
+          <Text style={[styles.link, { color: theme.tint }]}>Passkeys ›</Text>
+        </Pressable>
+      ) : null}
     </Section>
   );
 }

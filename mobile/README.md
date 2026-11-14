@@ -46,10 +46,17 @@ Environment variables: name `HOME_SERVER_DOMAIN`, value the server's domain (no 
 environment **production**, visibility **Plain text** or **Sensitive** (not Secret: EAS reads it
 on the computer that starts the build, where secrets are hidden). Builds without it work as before.
 
+Settings → Security → Passkeys lists the account's passkeys and, on the home server, adds one:
+Face ID with a passkey the account has (or a code from its authenticator app) confirms it's you,
+then iOS saves the new passkey (`src/lib/app-passkeys.ts`, `GET`/`POST /api/v1/app/passkeys` and
+`POST /api/v1/app/passkeys/options`). An account with neither adds its first one on the website,
+which asks for the password the app never sees and shows the recovery codes. A build without
+`Passkeys.register` says to update.
+
 Every other server still works: the app signs in through its web page, and the sign-in screen says
 that Face ID sign-in and connecting banks are not available there. The app and passkey code:
 `passkeys/Passkeys.swift` (an inline module), `src/session/passkeys.ts`,
-`src/utils/passkey-sign-in.ts` and `src/utils/home-server.ts`.
+`src/utils/passkey-sign-in.ts`, `src/utils/passkey-add.ts` and `src/utils/home-server.ts`.
 
 ### Connecting banks in the app
 
@@ -81,7 +88,7 @@ and `src/utils/banks.ts`.
 | `src/widgets/` | The Home Screen widgets (`'widget'` components run by iOS, not the app) and `update.ts`, which writes Home's numbers to them |
 | `src/launch/` | What opens the app on a screen from outside it: a receipt shared from another app, Siri |
 | `app-intents/` | Swift for Siri and the Shortcuts app ("Log an expense"), compiled into the app (Expo inline modules) |
-| `passkeys/` | Swift for Face ID sign-in with a passkey (`ASAuthorizationController`), compiled into the app the same way |
+| `passkeys/` | Swift for Face ID sign-in with a passkey and adding one (`ASAuthorizationController`), compiled into the app the same way |
 | `app.config.ts` | `app.json` plus the home server (`HOME_SERVER_DOMAIN`, see How sign-in works) |
 | `src/utils/` | Plain functions with unit tests beside them |
 | `src/state/` | Small app-wide state outside the server cache (the Undo offer after a delete) |

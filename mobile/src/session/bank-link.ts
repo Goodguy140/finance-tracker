@@ -1,11 +1,9 @@
 import { createPlaidLinkSession } from 'react-native-plaid-link-sdk';
 
-import { fetchWithTimeout, SignedOutError } from '@/api/client';
-import { signChallengeWithPasskey } from '@/session/passkeys';
+import { SignedOutError } from '@/api/client';
+import { confirmWithFaceId, postAsApp as post } from '@/session/step-up';
 import type { StoredSession } from '@/session/store';
-import { base64FromBase64Url } from '@/utils/base64url';
 import { readLinkFinish, readLinkStart, type LinkFinish, type UpdateKind } from '@/utils/banks';
-import { authenticationResponse, readPasskeyOptions } from '@/utils/passkey-sign-in';
 
 /** Storing a new bank waits on Plaid and the bank, so this allows longer than an ordinary call. */
 const LINK_TIMEOUT_MS = 90_000;
@@ -16,43 +14,6 @@ export type BankLinkOutcome =
   | { status: 'done'; result: LinkFinish }
   | { status: 'cancelled' }
   | { status: 'failed'; error: string };
-
-/**
- * POSTs JSON as this phone. Every answer these routes give in `{ error }` is written for the
- * person, including a 502 carrying Plaid's own words, so it is shown whatever the status.
- */
-async function post(session: StoredSession, path: string, body: unknown, timeoutMs?: number): Promise<unknown> {
-  const res = await fetchWithTimeout(
-    `${session.origin}${path}`,
-    {
-      method: 'POST',
-      headers: { authorization: `Bearer ${session.token}`, accept: 'application/json', 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    },
-    timeoutMs,
-  );
-  if (res.status === 401) throw new SignedOutError();
-  const json: unknown = await res.json().catch(() => null);
-  if (!res.ok) {
-    const error = (json as { error?: unknown } | null)?.error;
-    throw new Error(typeof error === 'string' && error ? error : `The server answered ${res.status}. Try again shortly.`);
-  }
-  return json;
-}
-
-type Confirmed = { status: 'confirmed'; stepUp: { challengeId: string; response: ReturnType<typeof authenticationResponse> } };
-
-/** "Confirm it's you", as the website asks before a bank connection: Face ID with this account's passkey. */
-async function confirmWithFaceId(session: StoredSession): Promise<Confirmed | { status: 'cancelled' } | { status: 'failed'; error: string }> {
-  const options = readPasskeyOptions(await post(session, '/api/v1/app/step-up/options', {}));
-  if (!options) return { status: 'failed', error: 'The server did not start Face ID. Try again.' };
-  const signed = await signChallengeWithPasskey(options.rpId, base64FromBase64Url(options.challenge));
-  if (signed.status === 'cancelled') return { status: 'cancelled' };
-  if (signed.status === 'failed') {
-    return { status: 'failed', error: `Face ID did not confirm it was you: ${signed.error}` };
-  }
-  return { status: 'confirmed', stepUp: { challengeId: options.challengeId, response: authenticationResponse(signed.assertion) } };
-}
 
 type LinkResult = { status: 'success'; publicToken: string } | { status: 'exit'; error: string | null };
 
