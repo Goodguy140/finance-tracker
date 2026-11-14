@@ -25,8 +25,8 @@ import {
   markAsTransfer,
   setTransferAccount,
   unmarkTransfer,
+  TRANSFER_MARK_REFUSALS,
   unpairTransfer,
-  type TransferMarkRefusal,
 } from "@/lib/transfer-marking";
 import {
   expenseCsvImportSchema,
@@ -746,13 +746,6 @@ export const markTransactionsReviewedAction = formActionWithResult(
     return { ok: true, changed: count };
   },
 );
-
-const TRANSFER_MARK_REFUSALS: Record<TransferMarkRefusal, string> = {
-  "not-found": "Transaction not found.",
-  split: "A split expense cannot be a transfer. Remove the split first.",
-  owed: "Someone owes you part of this expense. Remove what they owe before making it a transfer.",
-  "same-account": "A transfer cannot go to the account it came from.",
-};
 
 /** Books a logged expense or income entry as a transfer between the user's own accounts. */
 export const markAsTransferAction = formAction(async (formData: FormData) => {

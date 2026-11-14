@@ -28,6 +28,28 @@ export type TransferMarkOutcome =
   | { ok: true; type: TransactionType }
   | { ok: false; reason: TransferMarkRefusal };
 
+/** What each refusal tells the person, on the website and the phone alike. */
+export const TRANSFER_MARK_REFUSALS: Record<TransferMarkRefusal, string> = {
+  "not-found": "Transaction not found.",
+  split: "A split expense cannot be a transfer. Remove the split first.",
+  owed: "Someone owes you part of this expense. Remove what they owe before making it a transfer.",
+  "same-account": "A transfer cannot go to the account it came from.",
+};
+
+/** The three ways the log's transfer controls change how an entry is counted. */
+export type TransferChange = "mark" | "unmark" | "unpair";
+
+/** `markAsTransfer`, `unmarkTransfer` or `unpairTransfer`, by name. */
+export function changeTransfer(
+  tx: Tx,
+  input: { userId: string; transactionId: string; change: TransferChange },
+): Promise<TransferMarkOutcome> {
+  const target = { userId: input.userId, transactionId: input.transactionId };
+  if (input.change === "mark") return markAsTransfer(tx, target);
+  if (input.change === "unmark") return unmarkTransfer(tx, target);
+  return unpairTransfer(tx, target);
+}
+
 export async function markAsTransfer(
   tx: Tx,
   input: { userId: string; transactionId: string },

@@ -532,7 +532,13 @@ build).
   dates, category, account, tags and note, plus Mark reviewed and Delete with an Undo bar. A
   transfer shows From and To in place of category and account, and either can be changed (picked
   the other way round, the transfer is reversed); a paired transfer keeps the accounts of its two
-  bank rows until it is unpaired on the website. An expense can be **split across categories**
+  bank rows until it is unpaired. On servers that list `transfer-marking` in `/api/v1/me`, the
+  editor also has the Expense Log's transfer controls: **Mark as Transfer** under an expense or
+  income entry (refused for a split or money owed back, as on the website), **Not a Transfer: Count
+  as an Expense / Income** under a transfer (**Count Both Sides** for a pair, after a confirm), and
+  **Unpair** for a pair; the editor then opens again as what the entry has become.
+  `POST /api/v1/transactions/:id/transfer` (`src/lib/api-v1/transfer-marking.ts`, the website's
+  `changeTransfer` in `src/lib/transfer-marking.ts`). An expense can be **split across categories**
   (lines with a category and an amount each, adding up to the amount; Remove the split books it in
   one category again) or carry **who owes part of it back** (a name and an amount each; the amount
   becomes "You paid" and only the person's own part counts as spending), never both, checked as

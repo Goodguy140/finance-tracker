@@ -20,6 +20,7 @@ import { lineKey } from '@/utils/split-owed';
 import { canMakeRules } from '@/utils/transaction-rules';
 import {
   amountInputText,
+  canChangeTransfers,
   canEditSplitsAndShares,
   changedFields,
   formFromTransaction,
@@ -27,8 +28,10 @@ import {
   parseAmountInput,
   transactionName,
   transactionSubtitle,
+  transferChanges,
   transferSides,
   type EditForm,
+  type TransferChange,
 } from '@/utils/transactions';
 
 import { Receipts } from './receipts';
@@ -55,15 +58,18 @@ export function EditTransaction({ id }: { id: string }) {
       </>
     );
   }
-  // Keyed by id: the form starts from the entry once and keeps what the person types.
-  return <Editor key={row.id} row={row} categories={categories.data.categories} accounts={accounts.data.accounts} />;
+  // Keyed by id: the form starts from the entry once and keeps what the person types. Marking it
+  // as a transfer, or back, or unpairing it, starts the form again from what it has become.
+  return <Editor key={`${row.id}:${row.type}:${row.transferPeerId ?? ''}`} row={row} categories={categories.data.categories} accounts={accounts.data.accounts} />;
 }
 
 function Editor({ row, categories, accounts }: { row: TransactionDetail; categories: Category[]; accounts: Account[] }) {
   const theme = useTheme();
   const scheme = useColorScheme();
   const router = useRouter();
-  const rules = canMakeRules(useApiQuery<Me>('/api/v1/me').data);
+  const me = useApiQuery<Me>('/api/v1/me').data;
+  const rules = canMakeRules(me);
+  const transfers = canChangeTransfers(me);
   const [form, setForm] = useState<EditForm>(() => formFromTransaction(row));
   const [error, setError] = useState<string | null>(null);
   const save = useApiMutation<Record<string, unknown>, { transaction: TransactionDetail }>(
@@ -72,7 +78,12 @@ function Editor({ row, categories, accounts }: { row: TransactionDetail; categor
     (body) => body,
   );
   const remove = useApiMutation<void, { undoId: string }>('DELETE', () => `/api/v1/transactions/${encodeURIComponent(row.id)}`);
-  const busy = save.isPending || remove.isPending;
+  const transferChange = useApiMutation<TransferChange, { transaction: TransactionDetail }>(
+    'POST',
+    () => `/api/v1/transactions/${encodeURIComponent(row.id)}/transfer`,
+    (change) => ({ change }),
+  );
+  const busy = save.isPending || remove.isPending || transferChange.isPending;
 
   const change = changedFields(row, form);
   const dirty = 'error' in change || Object.keys(change.body).length > 0;
@@ -85,7 +96,7 @@ function Editor({ row, categories, accounts }: { row: TransactionDetail; categor
   const accountOptions = accounts.filter((a) => !a.archived || a.id === row.accountId || a.id === row.transferAccountId);
   const amountLock = lockedReason(row, 'amount');
   const categoryLock = lockedReason(row, 'category');
-  const accountLock = lockedReason(row, 'account');
+  const accountLock = lockedReason(row, 'account', transfers);
   const currency = row.currency ?? 'CAD';
   const sides = transferSides(row);
   // A locked side is shown as saved.
@@ -131,6 +142,19 @@ function Editor({ row, categories, accounts }: { row: TransactionDetail; categor
   function markReviewed() {
     setError(null);
     save.mutate({ reviewed: true }, { onSuccess: () => router.back(), onError: fail });
+  }
+
+  /** Stays on the entry: refetched, it opens again as what it has become, a transfer's accounts to set. */
+  function changeTransfer(change: TransferChange, label: string, confirm: string | null) {
+    const run = () => {
+      setError(null);
+      transferChange.mutate(change, { onError: fail });
+    };
+    if (!confirm) return run();
+    Alert.alert(`${label}?`, confirm, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: label, onPress: run },
+    ]);
   }
 
   function confirmDelete() {
@@ -309,6 +333,19 @@ function Editor({ row, categories, accounts }: { row: TransactionDetail; categor
         <Details row={row} currency={currency} />
         {row.attachments ? <Receipts transactionId={row.id} attachments={row.attachments} /> : null}
 
+        {transfers && !dirty
+          ? transferChanges(row).map((c) => (
+              <Section key={c.change} footer={c.note}>
+                <Pressable
+                  onPress={() => changeTransfer(c.change, c.label, c.confirm)}
+                  disabled={busy}
+                  accessibilityRole="button"
+                  style={{ opacity: busy ? 0.5 : 1 }}>
+                  <Text style={[formStyles.value, styles.link, { color: theme.tint }]}>{c.label}</Text>
+                </Pressable>
+              </Section>
+            ))
+          : null}
         {row.needsReview && !dirty ? (
           <FormButton label="Mark reviewed" onPress={markReviewed} disabled={busy} />
         ) : null}
