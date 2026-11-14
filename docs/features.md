@@ -196,7 +196,8 @@ owed money, room, goals or gaps).
 
 ## Reports (`/reports`)
 
-Page: `src/app/reports/page.tsx`; data `src/lib/reports/*`; charts
+Page: `src/app/reports/page.tsx`; data `src/lib/reports/*` (the page's figures worked out once in
+`loadReportsOverview`, `src/lib/reports/overview.ts`, shared with the iPhone app's Reports); charts
 `src/components/reports/report-charts.tsx`.
 
 - Period picker (last 12 months, years, or a custom range: a plain GET form sending `from`/`to`,
@@ -707,6 +708,17 @@ build).
   and how it moved. `GET /api/v1/score`, `GET /api/v1/insights`, `POST /api/v1/insights/dismiss` and
   `/restore` (`src/lib/api-v1/insights.ts`, the website's `loadInsights` and `loadFinancialScore`;
   `src/lib/insights/dismiss.ts` behind both apps' buttons). `src/screens/insights/`, `src/utils/insights.ts`
+- Reports (Home's Net worth card, "See reports", on servers that list `reports` in `/api/v1/me`):
+  the website's Reports page. The toolbar picks the period (Last 12 months, a year, or a custom range
+  of days) and a tag, as the website's pills, range form and tag filter. Then the totals (Income,
+  Spending, Left over or Saved, and Saved by transfer once accounts count as savings), income and
+  spending by month as bars (tap one for its month), where the money went and came from (the
+  cash-flow diagram as lists), year over year by category (each opening its category page), top
+  payees and who paid you (each opening its payee page), net worth at each month end (below zero
+  hangs under the line), and projected balances at 30, 60 and 90 days with any account that goes
+  below zero. `GET /api/v1/reports?period=&from=&to=&tagId=` (`src/lib/api-v1/reports.ts`, from
+  `loadReportsOverview`). `src/screens/reports/index.tsx`, `src/components/group-bars.tsx` (plain
+  views), `src/utils/reports.ts`
 - Accounts (Home's Net worth card, "See accounts and their registers"): net worth with what you have
   and what you owe, then every open account with its latest balance (other currencies listed apart,
   out of the totals), as Reports' Net worth. An account opens to the website's account page: balance

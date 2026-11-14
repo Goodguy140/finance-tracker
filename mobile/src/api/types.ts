@@ -775,3 +775,42 @@ export type Investments = {
   /** Newest first. */
   activity: InvestmentActivity[];
 };
+
+/** `GET /api/v1/reports`: the website's Reports page. On servers that list `reports` in `/api/v1/me`. */
+export type Reports = {
+  currency: string;
+  period: { key: string; label: string; from: string; to: string; toDate: boolean; custom: boolean };
+  periodOptions: { key: string; label: string }[];
+  totals: { incomeCents: number; spendingCents: number; netCents: number; toSavingsCents: number | null };
+  months: { ym: string; label: string; incomeCents: number; spendingCents: number; netCents: number; toSavingsCents: number | null }[];
+  cashFlow: {
+    sources: { name: string; kind: 'income' | 'refunds' | 'shortfall'; cents: number }[];
+    uses: { name: string; kind: 'expense' | 'savings' | 'saved'; cents: number }[];
+  };
+  yearOverYear: {
+    rows: { categoryId: string; categoryName: string; currentCents: number; previousCents: number; changeRatio: number | null }[];
+    currentTotalCents: number;
+    previousTotalCents: number;
+  };
+  payees: ReportMerchant[];
+  payers: ReportMerchant[];
+  otherCurrencyNote: string;
+  netWorth: { points: { ym: string; label: string; netCents: number; assetsCents: number; liabilitiesCents: number }[] };
+  projection: {
+    days: number[];
+    netCents: number[];
+    includesTransfers: boolean;
+    rulesLeftOut: number;
+    accounts: {
+      accountId: string;
+      name: string;
+      liability: boolean;
+      currentCents: number;
+      asOf: string;
+      projectedCents: number[];
+      belowZero: { date: string; lowestCents: number } | null;
+    }[];
+  } | null;
+};
+
+export type ReportMerchant = { key: string; name: string; count: number; spentCents: number; receivedCents: number; lastDate: string };
