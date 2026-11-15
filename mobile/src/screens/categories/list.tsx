@@ -1,9 +1,10 @@
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet } from 'react-native';
 
 import { errorText, useApiQuery } from '@/api/query';
 import type { CategoryDetail } from '@/api/types';
+import { ListRow } from '@/components/list-row';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
 import { Spacing } from '@/constants/theme';
@@ -33,33 +34,21 @@ export function CategoriesScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
         <LoadState loading={query.isPending} error={query.error && !categories ? errorText(query.error) : null} />
         {categories ? (
-          <Section footer="A monthly amount for each spending category from the last 3 or 6 months, to tick and set in one go.">
-            <Pressable onPress={() => router.push('/budget-suggestions')} accessibilityRole="button" hitSlop={8}>
-              <Text style={[styles.link, { color: theme.tint }]}>Suggest budgets ›</Text>
-            </Pressable>
+          <Section list footer="A monthly amount for each spending category from the last 3 or 6 months, to tick and set in one go.">
+            <ListRow label="Suggest Budgets" onPress={() => router.push('/budget-suggestions')} />
           </Section>
         ) : null}
         {categories
           ? categorySections(categories).map((section) => (
-              <Section key={section.title} title={section.title}>
+              <Section key={section.title} title={section.title} list>
                 {section.items.map((c) => (
-                  <Pressable
+                  <ListRow
                     key={c.id}
+                    label={c.name}
+                    subtitle={`${usesLine(c.uses)}${c.spendingRole ? ` · ${c.spendingRole === 'need' ? 'Need' : 'Want'}` : ''}`}
                     onPress={() => router.push({ pathname: '/category-edit', params: { id: c.id } })}
-                    accessibilityRole="button"
                     accessibilityHint="Rename, group or delete it"
-                    style={({ pressed }) => [styles.row, { opacity: pressed ? 0.6 : 1 }]}>
-                    <View style={styles.grow}>
-                      <Text style={[styles.body, { color: theme.text }]} numberOfLines={1}>
-                        {c.name}
-                      </Text>
-                      <Text style={[styles.small, { color: theme.textSecondary }]}>
-                        {usesLine(c.uses)}
-                        {c.spendingRole ? ` · ${c.spendingRole === 'need' ? 'Need' : 'Want'}` : ''}
-                      </Text>
-                    </View>
-                    <Text style={[styles.body, { color: theme.textSecondary }]}>›</Text>
-                  </Pressable>
+                  />
                 ))}
               </Section>
             ))
@@ -75,9 +64,4 @@ export function CategoriesScreen() {
 
 const styles = StyleSheet.create({
   content: { padding: Spacing.three, gap: Spacing.four, paddingBottom: Spacing.five },
-  body: { fontSize: 17, lineHeight: 22 },
-  small: { fontSize: 13, lineHeight: 18 },
-  link: { fontSize: 15, fontWeight: '600' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  grow: { flex: 1 },
 });

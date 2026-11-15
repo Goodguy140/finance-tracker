@@ -3,6 +3,8 @@ export const Colors = {
   light: {
     text: '#0f172a',
     textSecondary: '#475569',
+    // Chevrons and other marks that only show a row can be opened, as iOS draws them in a light grey.
+    textTertiary: '#94a3b8',
     background: '#f8fafc',
     backgroundElement: '#ffffff',
     border: '#e2e8f0',
@@ -19,6 +21,7 @@ export const Colors = {
   dark: {
     text: '#f1f5f9',
     textSecondary: '#94a3b8',
+    textTertiary: '#64748b',
     background: '#020617',
     backgroundElement: '#0f172a',
     border: '#1e293b',

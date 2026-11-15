@@ -1,13 +1,14 @@
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Linking, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { errorText, useApiQuery } from '@/api/query';
 import type { Me } from '@/api/types';
 import { FormField } from '@/components/form';
+import { ListRow } from '@/components/list-row';
 import { Section } from '@/components/section';
-import { Radius, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAppLock } from '@/session/app-lock';
 import { useSession } from '@/session/session-provider';
@@ -51,10 +52,13 @@ export function Settings() {
         contentInsetAdjustmentBehavior="automatic"
         style={{ backgroundColor: theme.background }}
         contentContainerStyle={styles.content}>
-        <Section title="Signed in as">
+        <Section
+          title="Signed in as"
+          list
+          footer="Anything the app does not have, such as backups, your password and server admin, is on the website.">
           {me.data ? (
             <View style={styles.stack}>
-              <Text style={[styles.title, { color: theme.text }]}>{me.data.user.displayName}</Text>
+              <Text style={[styles.name, { color: theme.text }]}>{me.data.user.displayName}</Text>
               <Text style={[styles.muted, { color: theme.textSecondary }]}>{me.data.user.email}</Text>
             </View>
           ) : (
@@ -62,106 +66,69 @@ export function Settings() {
               {me.error ? errorText(me.error) : 'Loading…'}
             </Text>
           )}
-        </Section>
-
-        <Section title="Server" footer="Reports, imports, rules and the rest of your settings are on the website.">
-          <Text style={[styles.title, { color: theme.text }]} selectable>
-            {host}
-          </Text>
-          <Pressable
+          <ListRow label="Server" value={host} />
+          <ListRow
+            label="Open Website"
+            kind="external"
             onPress={() => session && void Linking.openURL(`${session.origin}/`)}
-            accessibilityRole="link"
             accessibilityHint="Opens the website in Safari"
-            hitSlop={8}>
-            <Text style={[styles.link, { color: theme.tint }]}>Open the website</Text>
-          </Pressable>
+          />
         </Section>
 
-        <Section title="Banks" footer="What each bank connection needs, and where its accounts' transactions go.">
-          <Pressable onPress={() => router.push('/settings/banks')} accessibilityRole="button" hitSlop={8}>
-            <Text style={[styles.link, { color: theme.tint }]}>Bank connections ›</Text>
-          </Pressable>
+        <Section list footer="What each bank connection needs, and where its accounts' transactions go.">
+          <ListRow label="Bank Connections" onPress={() => router.push('/settings/banks')} />
         </Section>
 
         {canMakeRules(me.data) ? (
           <Section
             title="Rules"
+            list
             footer={
               canEditRules(me.data)
                 ? 'Change, turn off, reorder or delete your rules. Make one from an entry or a bank row with Make a Rule…, or from a title you use often.'
                 : 'Make a rule from an entry or a bank row with Make a Rule…, or from a title you use often here.'
             }>
-            {canEditRules(me.data) ? (
-              <Pressable onPress={() => router.push('/settings/rule-list')} accessibilityRole="button" hitSlop={8}>
-                <Text style={[styles.link, { color: theme.tint }]}>Your rules ›</Text>
-              </Pressable>
-            ) : null}
-            <Pressable onPress={() => router.push('/settings/rules')} accessibilityRole="button" hitSlop={8}>
-              <Text style={[styles.link, { color: theme.tint }]}>Suggested rules ›</Text>
-            </Pressable>
+            {canEditRules(me.data) ? <ListRow label="Your Rules" onPress={() => router.push('/settings/rule-list')} /> : null}
+            <ListRow label="Suggested Rules" onPress={() => router.push('/settings/rules')} />
           </Section>
         ) : null}
 
         {canEditCategories(me.data) ? (
-          <Section title="Categories and tags" footer="Add, rename, group or delete categories, have budgets suggested, and tidy tags.">
-            <Pressable onPress={() => router.push('/settings/categories')} accessibilityRole="button" hitSlop={8}>
-              <Text style={[styles.link, { color: theme.tint }]}>Categories ›</Text>
-            </Pressable>
-            <Pressable onPress={() => router.push('/settings/tags')} accessibilityRole="button" hitSlop={8}>
-              <Text style={[styles.link, { color: theme.tint }]}>Tags ›</Text>
-            </Pressable>
-          </Section>
-        ) : null}
-
-        {canEditGoals(me.data) ? (
-          <Section title="Savings goals" footer="Add a goal, change one, or put money toward one tracked by hand.">
-            <Pressable onPress={() => router.push('/settings/goals')} accessibilityRole="button" hitSlop={8}>
-              <Text style={[styles.link, { color: theme.tint }]}>Savings goals ›</Text>
-            </Pressable>
-          </Section>
-        ) : null}
-
-        {canSetSafeToSpendBuffer(me.data) ? (
           <Section
-            title="Safe to spend"
+            title="Categories and tags"
+            list
+            footer="Add, rename, group or delete categories, have budgets suggested, and tidy tags.">
+            <ListRow label="Categories" onPress={() => router.push('/settings/categories')} />
+            <ListRow label="Tags" onPress={() => router.push('/settings/tags')} />
+          </Section>
+        ) : null}
+
+        {canEditGoals(me.data) || canSetSafeToSpendBuffer(me.data) ? (
+          <Section
+            list
             footer={
-              canUseZeroBased(me.data)
-                ? "How many days ahead Safe to spend also holds back bills that fall next month, and whether Home shows zero-based budgeting's To assign instead. The website's Safe to spend card sets the same."
-                : "How many days ahead Safe to spend also holds back bills that fall next month. The website's Safe to spend card sets the same buffer."
+              !canSetSafeToSpendBuffer(me.data)
+                ? null
+                : canUseZeroBased(me.data)
+                  ? 'Safe to Spend has the bill buffer, and the switch that shows To assign from zero-based budgeting on Home instead.'
+                  : 'Safe to Spend has the bill buffer: how many days ahead it also holds back bills that fall next month.'
             }>
-            <Pressable onPress={() => router.push('/settings/safe-to-spend')} accessibilityRole="button" hitSlop={8}>
-              <Text style={[styles.link, { color: theme.tint }]}>
-                {canUseZeroBased(me.data) ? 'Bill buffer and zero-based budgeting ›' : 'Bill buffer ›'}
-              </Text>
-            </Pressable>
+            {canEditGoals(me.data) ? <ListRow label="Savings Goals" onPress={() => router.push('/settings/goals')} /> : null}
+            {canSetSafeToSpendBuffer(me.data) ? (
+              <ListRow label="Safe to Spend" onPress={() => router.push('/settings/safe-to-spend')} />
+            ) : null}
           </Section>
         ) : null}
 
-        <AlertsSection timingHere={canSetAlertTiming(me.data)} />
-
-        {canSetAlertTiming(me.data) ? (
-          <Section
-            title="When alerts come"
-            footer="How long before a bill to remind you, which charges count as large or unusual, and the email digest.">
-            <Pressable onPress={() => router.push('/settings/alert-timing')} accessibilityRole="button" hitSlop={8}>
-              <Text style={[styles.link, { color: theme.tint }]}>When alerts come ›</Text>
-            </Pressable>
-          </Section>
-        ) : null}
+        <AlertsSection onTiming={canSetAlertTiming(me.data) ? () => router.push('/settings/alert-timing') : undefined} />
 
         <LockSection passkeys={hasPasskeys(me.data)} />
 
         <AboutSection />
 
-        <Pressable
-          onPress={confirmSignOut}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            styles.signOut,
-            { backgroundColor: theme.backgroundElement, borderColor: theme.border, opacity: pressed ? 0.7 : 1 },
-          ]}>
-          <Text style={[styles.signOutText, { color: theme.danger }]}>Sign out</Text>
-        </Pressable>
+        <Section list>
+          <ListRow label="Sign Out" kind="destructive" onPress={confirmSignOut} />
+        </Section>
       </ScrollView>
       <Stack.Title large>Settings</Stack.Title>
     </>
@@ -170,7 +137,6 @@ export function Settings() {
 
 /** The Face ID lock: on or off, each way confirmed by iOS first. And the account's passkeys. */
 function LockSection({ passkeys }: { passkeys: boolean }) {
-  const theme = useTheme();
   const router = useRouter();
   const lock = useAppLock();
   const [busy, setBusy] = useState(false);
@@ -186,6 +152,7 @@ function LockSection({ passkeys }: { passkeys: boolean }) {
   return (
     <Section
       title="Security"
+      list
       footer={`Asks for ${lock.method} when the app opens and after ${minutes} minutes in the background.`}>
       <FormField label={`Require ${lock.method}`}>
         <Switch
@@ -195,21 +162,14 @@ function LockSection({ passkeys }: { passkeys: boolean }) {
           accessibilityLabel={`Require ${lock.method}`}
         />
       </FormField>
-      {passkeys ? (
-        <Pressable onPress={() => router.push('/settings/passkeys')} accessibilityRole="button" hitSlop={8}>
-          <Text style={[styles.link, { color: theme.tint }]}>Passkeys ›</Text>
-        </Pressable>
-      ) : null}
+      {passkeys ? <ListRow label="Passkeys" onPress={() => router.push('/settings/passkeys')} /> : null}
     </Section>
   );
 }
 
 const styles = StyleSheet.create({
   content: { padding: Spacing.three, gap: Spacing.four, paddingBottom: Spacing.five },
-  stack: { gap: 2 },
-  title: { fontSize: 17 },
+  stack: { gap: 2, paddingVertical: 4 },
+  name: { fontSize: 17, fontWeight: '600' },
   muted: { fontSize: 15, lineHeight: 21 },
-  link: { fontSize: 15, fontWeight: '600' },
-  signOut: { borderRadius: Radius, borderWidth: StyleSheet.hairlineWidth, paddingVertical: 14, alignItems: 'center' },
-  signOutText: { fontSize: 17, fontWeight: '600' },
 });

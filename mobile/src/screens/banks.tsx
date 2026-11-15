@@ -9,6 +9,7 @@ import { refreshBanks, syncOneBank } from '@/api/banks';
 import { useApiMutation } from '@/api/mutations';
 import { errorText, useApiQuery } from '@/api/query';
 import { FormButton, FormField, formStyles } from '@/components/form';
+import { ListRow } from '@/components/list-row';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
 import { Radius, Spacing } from '@/constants/theme';
@@ -204,9 +205,9 @@ export function Banks() {
                 />
               </>
             ) : (
-              <Section title={data.banks.length ? 'Connect or fix a bank' : 'Connect a bank'}>
+              <Section title={data.banks.length ? 'Connect or fix a bank' : 'Connect a bank'} list>
                 <Text style={[styles.body, { color: theme.textSecondary }]}>{linking.reason}</Text>
-                {data.available && website ? <WebsiteLink url={website} label="Open Banks on the website" /> : null}
+                {data.available && website ? <WebsiteRow url={website} label="Open Banks on the Website" /> : null}
               </Section>
             )}
           </>
@@ -265,37 +266,23 @@ function BankCard(props: {
     .join(' ');
 
   return (
-    <Section title={bank.name} footer={footer}>
+    <Section title={bank.name} footer={footer} list>
       {attention ? (
         <View style={styles.attention}>
           <Text style={[styles.body, { color: theme.warning }]}>{attention.message}</Text>
           {canFix ? (
-            <CardButton
-              label={fixing ? 'Opening Plaid…' : attention.actionLabel}
-              onPress={() => onFix(attention)}
-              disabled={disabled}
-              primary
-            />
-          ) : website ? (
-            <WebsiteLink url={website} label={`${attention.actionLabel} on the website`} />
+            <FixButton label={fixing ? 'Opening Plaid…' : attention.actionLabel} onPress={() => onFix(attention)} disabled={disabled} />
           ) : null}
         </View>
       ) : null}
-      {canSync ? (
-        <View style={styles.attention}>
-          <CardButton label={syncing ? 'Syncing…' : 'Sync Now'} onPress={onSync} disabled={disabled} />
-          {result ? (
-            <Text accessibilityLiveRegion="polite" style={[styles.body, { color: toneColor(theme, result.tone) }]}>
-              {result.message}
-            </Text>
-          ) : null}
-          {result && result.staged > 0 ? (
-            <Pressable onPress={() => router.navigate('/review')} accessibilityRole="link" hitSlop={8}>
-              <Text style={[styles.link, { color: theme.tint }]}>Review them ›</Text>
-            </Pressable>
-          ) : null}
-        </View>
+      {attention && !canFix && website ? <WebsiteRow url={website} label={`${attention.actionLabel} on the Website`} /> : null}
+      {canSync ? <ListRow label={syncing ? 'Syncing…' : 'Sync Now'} kind="action" onPress={onSync} disabled={disabled} /> : null}
+      {canSync && result ? (
+        <Text accessibilityLiveRegion="polite" style={[styles.body, { color: toneColor(theme, result.tone) }]}>
+          {result.message}
+        </Text>
       ) : null}
+      {canSync && result && result.staged > 0 ? <ListRow label="Review Them" onPress={() => router.navigate('/review')} /> : null}
       {bank.accounts.map((account) => {
         const choices = accountChoices(account, accounts);
         // Pointed at an account the picker cannot offer (archived since): shown, so it is not lost silently.
@@ -323,8 +310,8 @@ function BankCard(props: {
   );
 }
 
-/** A bank's own action: a rounded button, filled for the one that fixes something. */
-function CardButton(props: { label: string; onPress: () => void; disabled?: boolean; primary?: boolean }) {
+/** The one thing that fixes a bank, such as signing in again: a filled button, so it stands out. */
+function FixButton(props: { label: string; onPress: () => void; disabled?: boolean }) {
   const theme = useTheme();
   return (
     <Pressable
@@ -332,35 +319,24 @@ function CardButton(props: { label: string; onPress: () => void; disabled?: bool
       disabled={props.disabled}
       accessibilityRole="button"
       style={({ pressed }) => [
-        styles.cardButton,
-        props.primary
-          ? { backgroundColor: theme.tint, borderColor: theme.tint }
-          : { backgroundColor: theme.background, borderColor: theme.border },
-        { opacity: props.disabled ? 0.5 : pressed ? 0.7 : 1 },
+        styles.fixButton,
+        { backgroundColor: theme.tint, opacity: props.disabled ? 0.5 : pressed ? 0.7 : 1 },
       ]}>
-      <Text style={[styles.cardButtonText, { color: props.primary ? '#ffffff' : theme.tint }]}>{props.label}</Text>
+      <Text style={[styles.fixButtonText, { color: theme.onTint }]}>{props.label}</Text>
     </Pressable>
   );
 }
 
-function WebsiteLink({ url, label }: { url: string; label: string }) {
-  const theme = useTheme();
+function WebsiteRow({ url, label }: { url: string; label: string }) {
   return (
-    <Pressable
-      onPress={() => void Linking.openURL(url)}
-      accessibilityRole="link"
-      accessibilityHint="Opens the website in Safari"
-      hitSlop={8}>
-      <Text style={[styles.link, { color: theme.tint }]}>{label} ›</Text>
-    </Pressable>
+    <ListRow label={label} kind="external" onPress={() => void Linking.openURL(url)} accessibilityHint="Opens the website in Safari" />
   );
 }
 
 const styles = StyleSheet.create({
   note: { fontSize: 15, lineHeight: 21, marginHorizontal: Spacing.one },
   body: { fontSize: 15, lineHeight: 21 },
-  link: { fontSize: 15, fontWeight: '600' },
-  attention: { gap: Spacing.two, alignItems: 'flex-start' },
-  cardButton: { borderRadius: Radius, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingVertical: 8 },
-  cardButtonText: { fontSize: 15, fontWeight: '600' },
+  attention: { gap: Spacing.two, alignItems: 'flex-start', paddingVertical: 6 },
+  fixButton: { borderRadius: Radius, paddingHorizontal: 14, paddingVertical: 8 },
+  fixButtonText: { fontSize: 15, fontWeight: '600' },
 });
