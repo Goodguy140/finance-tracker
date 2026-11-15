@@ -9,6 +9,9 @@ ignore it. Read `README.md` here for how sign-in and TestFlight builds work.
 - **Unit tests are vitest on plain TypeScript** (`src/utils/*.test.ts`), with
   `expect.requireAssertions` on like the server. Keep logic that needs testing out of React
   components and native modules, as `src/utils/sign-in.ts` does, so it runs in Node.
+- **Settings-style lists use `<Section list>` with `ListRow`** (`src/components/list-row.tsx`), never
+  tinted text with a `›`: a grey chevron opens a screen, a grey arrow leaves the app, a tinted label
+  acts in place, and red is for destructive. Switches and text go in the same section as plain children.
 - **The app talks only to `/api/v1`** with a device token (`ftd_…`, `src/lib/app-devices.ts` on
   the server). A new screen that needs data the API does not have needs a server route first, with
   its own tests, in the same or an earlier pull request.

@@ -1,9 +1,10 @@
 import * as Application from 'expo-application';
 import * as Updates from 'expo-updates';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { FormField } from '@/components/form';
+import { ListRow } from '@/components/list-row';
 import { Section } from '@/components/section';
 import { useTheme } from '@/hooks/use-theme';
 import { buildText, PENDING_NOTE, shortRuntime, updateText } from '@/utils/app-version';
@@ -34,7 +35,8 @@ export function AboutSection() {
   return (
     <Section
       title="About this app"
-      footer="The build is what TestFlight installed. An update is newer code the app downloads by itself between builds.">
+      list
+      footer={`${isUpdatePending ? `${PENDING_NOTE} ` : ''}The build is what TestFlight installed. An update is newer code the app downloads by itself between builds.`}>
       <FormField label="Version">
         <Text style={valueStyle} selectable>
           {buildText({ version: Application.nativeApplicationVersion, build: Application.nativeBuildVersion })}
@@ -62,14 +64,7 @@ export function AboutSection() {
           </Text>
         </FormField>
       ) : null}
-      {isUpdatePending ? (
-        <View style={styles.stack}>
-          <Text style={[styles.note, { color: theme.text }]}>{PENDING_NOTE}</Text>
-          <Pressable onPress={() => void restart()} disabled={restarting} accessibilityRole="button" hitSlop={8}>
-            <Text style={[styles.link, { color: theme.tint, opacity: restarting ? 0.5 : 1 }]}>Restart Now</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      {isUpdatePending ? <ListRow label="Restart Now" kind="action" onPress={() => void restart()} disabled={restarting} /> : null}
     </Section>
   );
 }
@@ -78,6 +73,4 @@ const styles = StyleSheet.create({
   stack: { gap: 4 },
   value: { fontSize: 17, fontVariant: ['tabular-nums'] },
   id: { fontSize: 12, fontFamily: 'Menlo' },
-  note: { fontSize: 15, lineHeight: 21 },
-  link: { fontSize: 15, fontWeight: '600' },
 });

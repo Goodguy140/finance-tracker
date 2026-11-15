@@ -1,11 +1,12 @@
 import { Stack } from 'expo-router/stack';
 import { useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text } from 'react-native';
+import { Alert, RefreshControl, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { useApiMutation } from '@/api/mutations';
 import { errorText, useApiQuery } from '@/api/query';
 import type { Tag } from '@/api/types';
 import { formStyles } from '@/components/form';
+import { ListRow } from '@/components/list-row';
 import { LoadState } from '@/components/load-state';
 import { Section } from '@/components/section';
 import { Spacing } from '@/constants/theme';
@@ -103,23 +104,19 @@ export function TagsScreen() {
         ) : null}
         <LoadState loading={query.isPending} error={query.error && !tags ? errorText(query.error) : null} />
         {tags ? (
-          <Section footer={tags.length > 0 ? 'Tap one to rename, merge or delete it. Add tags to entries when you add or edit them.' : null}>
+          <Section list footer={tags.length > 0 ? 'Tap one to rename, merge or delete it. Add tags to entries when you add or edit them.' : null}>
             {tags.length === 0 ? (
               <Text style={[styles.body, { color: theme.textSecondary }]}>No tags yet. Add one to an entry when you add or edit it.</Text>
             ) : (
               tags.map((tag) => (
-                <Pressable
+                <ListRow
                   key={tag.id}
+                  label={`#${tag.name}`}
+                  value={String(tag.count)}
                   onPress={() => open(tag)}
-                  accessibilityRole="button"
                   accessibilityLabel={`#${tag.name}, ${tag.count} ${tag.count === 1 ? 'entry' : 'entries'}`}
                   accessibilityHint="Rename, merge or delete it"
-                  style={({ pressed }) => [styles.row, { opacity: pressed ? 0.6 : 1 }]}>
-                  <Text style={[styles.body, styles.grow, { color: theme.text }]} numberOfLines={1}>
-                    #{tag.name}
-                  </Text>
-                  <Text style={[styles.small, { color: theme.textSecondary }]}>{tag.count}</Text>
-                </Pressable>
+                />
               ))
             )}
           </Section>
@@ -133,7 +130,4 @@ export function TagsScreen() {
 const styles = StyleSheet.create({
   content: { padding: Spacing.three, gap: Spacing.four, paddingBottom: Spacing.five },
   body: { fontSize: 17, lineHeight: 22 },
-  small: { fontSize: 15, fontVariant: ['tabular-nums'] },
-  row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  grow: { flex: 1 },
 });
