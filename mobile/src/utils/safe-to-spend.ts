@@ -1,4 +1,4 @@
-import type { Me, SafeToSpend } from '@/api/types';
+import type { Me, SafeToSpend, SafeToSpendSettings } from '@/api/types';
 import { formatCents } from '@/utils/money';
 
 export const SAFE_TO_SPEND_PATH = '/api/v1/safe-to-spend';
@@ -48,22 +48,25 @@ export function bufferDaysText(days: number | null): string {
   return days === null ? '' : String(days);
 }
 
+/** The body `PATCH /api/v1/safe-to-spend` takes. */
+export type BufferDaysPatch = Pick<SafeToSpendSettings, 'bufferDays'>;
+
 /**
- * What leaving the buffer field asks for: a number of days, `null` to turn it off (the field
- * emptied), nothing when it still says what is saved, or why it can't be saved.
+ * What leaving the buffer field asks for: the `PATCH` body to send (`bufferDays` null turns the
+ * buffer off, the field emptied), nothing when it still says what is saved, or why it can't be saved.
  */
 export function bufferDaysChange(
   text: string,
   saved: number | null,
   max: number,
-): { days: number | null } | { error: string } | null {
+): BufferDaysPatch | { error: string } | null {
   const trimmed = text.trim();
-  if (!trimmed) return saved === null ? null : { days: null };
+  if (!trimmed) return saved === null ? null : { bufferDays: null };
   const days = Number(trimmed);
   if (!/^\d+$/.test(trimmed) || days < 1 || days > max) {
     return { error: `Enter a whole number of days from 1 to ${max}, or leave it empty for none.` };
   }
-  return days === saved ? null : { days };
+  return days === saved ? null : { bufferDays: days };
 }
 
 /** One line on what the buffer does now. */
